@@ -437,6 +437,7 @@ it('keeps sibling service points pending, routes agent edits by file, and offers
       if(!orders.trace.points.length)throw Error('agent point went to the viewed process');
       service.select(orders);
       const beforeRemoval=(await rates.trace.rpc.points(rates.sessionId)).map(p=>p.breakpoint_id);
+      if(beforeRemoval.length!==1)throw Error('pending point registered more than once: '+JSON.stringify({trace:beforeRemoval,breakpoints:rates.controller.knownBreakpoints().map(p=>[p.id,p.sourceId,p.requestedLine])}));
       const removed=await call('trace_point_remove',{file:'packages/rates/src/index.js',line:7,session:rates.sessionId});
       const remaining={local:rates.trace.points.map(p=>p.breakpoint_id),node:(await rates.trace.rpc.points(rates.sessionId)).map(p=>p.breakpoint_id)};
       if(remaining.local.length||remaining.node.length)throw Error('agent removal not reflected: '+JSON.stringify({before:beforeRemoval,...remaining})+' '+removed);

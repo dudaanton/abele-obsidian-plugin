@@ -23,15 +23,21 @@ it('keeps pending record settings until recording confirms them', async () => {
     .mockResolvedValueOnce({ pending: true })
     .mockResolvedValue({ pending: false })
   binding.trace = { savePoint, dispose: vi.fn() } as never
+  const pendingId = service.pendingPoint(target, 'lib/helper.ts', 2)!.id
   await service.admitFile(target, 'lib/helper.ts')
   expect(service.pendingBreakpoints(target, 'lib/helper.ts')).toEqual([2])
-  expect(savePoint).toHaveBeenCalledWith('sample-added', 2, {
-    take: ['sample'],
-    note: 'sample capture',
-    when: 'sample > 0',
-    enabled: true,
-    hitCondition: undefined,
-  })
+  expect(savePoint).toHaveBeenCalledWith(
+    'sample-added',
+    2,
+    {
+      take: ['sample'],
+      note: 'sample capture',
+      when: 'sample > 0',
+      enabled: true,
+      hitCondition: undefined,
+    },
+    pendingId
+  )
   await service.admitFile(target, 'lib/helper.ts')
   expect(service.pendingBreakpoints(target, 'lib/helper.ts')).toEqual([])
 })

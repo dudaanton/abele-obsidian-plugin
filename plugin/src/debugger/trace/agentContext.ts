@@ -174,17 +174,22 @@ function traceContextFor(
         (b.sourceId === source || b.file === file) && b.requestedLine === line
       // Several adapter registrations can name the same requested location. Removing the
       // person's point removes all of those, within its owning process.
-      const points = binding.controller
-        .knownBreakpoints()
-        .filter((b) => atLine(b) && trace.points.some((p) => p.breakpoint_id === b.id))
-      if (!points.length) throw new Error(`No record point at ${file}:${line}`)
-      for (const point of points) {
+      const points = new Set(
+        binding.controller
+          .knownBreakpoints()
+          .filter((b) => atLine(b) && trace.points.some((p) => p.breakpoint_id === b.id))
+          .map((b) => b.id)
+      )
+      if (source) for (const id of trace.registeredPointIds(source, line, file)) points.add(id)
+      if (!points.size) throw new Error(`No record point at ${file}:${line}`)
+      for (const id of points) {
         guard()
         current()
-        await trace.removePoint(point.id)
+        await trace.removePoint(id)
       }
       current()
       if (
+        (source && trace.registeredPointIds(source, line, file).length) ||
         binding.controller
           .knownBreakpoints()
           .some((b) => atLine(b) && trace.points.some((p) => p.breakpoint_id === b.id))

@@ -20,6 +20,7 @@ const state = vi.hoisted(() => {
       savePoint: vi.fn(),
       removePoint: vi.fn(),
       refreshPoints: vi.fn(async () => {}),
+      registeredPointIds: vi.fn(() => []),
     },
   }
   const folder = {

@@ -572,12 +572,17 @@ export class DebuggerService {
           : await binding.controller.setBreakpoint(id, mapping.sourceId, line)
       if (point.record) {
         if (!binding.trace) continue
-        const saved = await binding.trace.savePoint(mapping.sourceId, line, {
-          ...point.record,
-          when: point.condition,
-          enabled: point.enabled,
-          hitCondition: point.hitCondition,
-        })
+        const saved = await binding.trace.savePoint(
+          mapping.sourceId,
+          line,
+          {
+            ...point.record,
+            when: point.condition,
+            enabled: point.enabled,
+            hitCondition: point.hitCondition,
+          },
+          id
+        )
         if (saved.pending) continue
       }
       if (

@@ -64,9 +64,11 @@ it.each([
   { copies: 1, refused: false },
   { copies: 2, refused: false },
   { copies: 1, refused: true },
+  { copies: 1, refused: false, canonical: true },
+  { copies: 2, refused: false, orphan: true },
 ])(
-  'removes the pending then attached sibling point: $copies registrations, node retains: $refused',
-  async ({ copies, refused }) => {
+  'removes the pending then attached sibling point: copies=$copies retained=$refused canonical=$canonical orphan=$orphan',
+  async ({ copies, refused, canonical, orphan }) => {
     const orders = session('sample-orders', 'packages/orders/src/index.ts', 101)
     const file = 'packages/rates/src/index.ts'
     service.editPendingPoint(target, file, 7, { record: { take: ['rate'] } })
@@ -93,8 +95,14 @@ it.each([
     })
     for (const binding of [orders, rates]) {
       binding.trace = new TraceSession(new TraceRpc(request), binding.controller, () => {})
+      let first = true
       vi.spyOn(binding.controller, 'setBreakpoint').mockImplementation(
         async (id, sourceId, line) => {
+          const mapped = canonical && binding === rates ? 'sample-runtime-source' : sourceId
+          binding.controller.registerSource(
+            mapped,
+            binding === rates ? file : 'packages/orders/src/index.ts'
+          )
           binding.controller.observe({
             observation: 'current',
             snapshot: debuggerSnapshot({
@@ -103,7 +111,7 @@ it.each([
               breakpoints: [
                 {
                   breakpoint_id: id,
-                  source_id: sourceId,
+                  source_id: mapped,
                   line,
                   resolved_line: line,
                   resolved_column: null,
@@ -113,7 +121,9 @@ it.each([
               ],
             }),
           })
-          return { outcome: 'completed' } as never
+          const pending = canonical && binding === rates && first
+          first = false
+          return { outcome: pending ? 'pending' : 'completed' } as never
         }
       )
       vi.spyOn(binding.controller, 'removeBreakpoint').mockImplementation(async (id) => {
@@ -131,9 +141,20 @@ it.each([
       })
     }
     await service.admitFile(target, file)
+    if (canonical) {
+      expect(service.pendingBreakpoints(target, file)).toEqual([7])
+      // An unconfirmed application is retried after the adapter publishes its source identity.
+      await service.admitFile(target, file)
+    }
     expect(service.pendingBreakpoints(target, file)).toEqual([])
     expect(rates.trace!.points).toHaveLength(1)
-    if (copies === 2) {
+    if (orphan) {
+      // A new adapter source replaces the breakpoint inventory; the old trace registration
+      // still exists on the node even though it is no longer a known debugger breakpoint.
+      await rates.trace!.savePoint('sample-new-source', 7, { take: ['rate'] })
+      expect(rates.controller.knownBreakpoints()).toHaveLength(1)
+      expect(rates.trace!.points).toHaveLength(2)
+    } else if (copies === 2) {
       const original = rates.controller.snapshot!.breakpoints[0]
       rates.controller.observe({
         observation: 'current',
@@ -231,6 +252,7 @@ it('adds, lists and removes an explicit agent point in a mapped shared package',
     savePoint,
     removePoint,
     refreshPoints: vi.fn(async () => {}),
+    registeredPointIds: vi.fn(() => []),
     dispose: vi.fn(),
   } as never
   vi.spyOn(orders.controller, 'knownBreakpoints').mockReturnValue([
@@ -344,7 +366,8 @@ it('applies pending recording settings only after the matching service attaches'
   expect(savePoint).toHaveBeenCalledWith(
     'rates-source',
     4,
-    expect.objectContaining({ take: ['rate'], when: 'rate > 0' })
+    expect.objectContaining({ take: ['rate'], when: 'rate > 0' }),
+    set.mock.calls[0][0]
   )
   expect(service.pendingBreakpoints(target, 'packages/rates/src/rates.ts')).toEqual([])
   expect(service.active.value).toBe(orders)

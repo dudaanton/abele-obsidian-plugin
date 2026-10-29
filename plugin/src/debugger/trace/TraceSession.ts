@@ -10,6 +10,7 @@ import type { TraceRpc, WirePoint, WireRunPoint, WireRunSummary, WireStatus } fr
 export interface TraceBreakpoints {
   readonly snapshot: DebuggerSnapshot | null
   readonly disconnectRequested?: boolean
+  path?(sourceId: string): string | undefined
   knownBreakpoints(): (KnownBreakpoint & {
     sourceId: string
     requestedLine: number
@@ -49,6 +50,10 @@ export class TraceSession {
   folder = ''
   private refreshing?: Promise<void>
   private pointsRevision = 0
+  private readonly pointLocations = new Map<
+    string,
+    { session: string; sourceId: string; file?: string; line: number }
+  >()
   private observedSession?: string
   private readonly completedRuns = new Set<string>()
   private readonly endedListeners = new Set<(runId: string) => void>()
@@ -183,6 +188,23 @@ export class TraceSession {
     const points = await this.rpc.setPoints(session, upsert, remove)
     ++this.pointsRevision
     this.points = points
+    for (const id of remove)
+      if (!points.some((point) => point.breakpoint_id === id)) this.pointLocations.delete(id)
+  }
+
+  /** A replaced adapter breakpoint can leave its trace registration outside the inventory. */
+  registeredPointIds(sourceId: string, line: number, file?: string) {
+    return this.points
+      .filter((point) => {
+        const location = this.pointLocations.get(point.breakpoint_id)
+        return (
+          location !== undefined &&
+          location.session === this.sessionId &&
+          (location.sourceId === sourceId || (file !== undefined && location.file === file)) &&
+          location.line === line
+        )
+      })
+      .map((point) => point.breakpoint_id)
   }
 
   /** Read the owning process before an edit; a cached list can omit a late registration. */
@@ -200,14 +222,24 @@ export class TraceSession {
 
   /** Sets up a record point on a line: the point first, so a hit never comes before what to take,
    * then its breakpoint, kept when one is already there. */
-  async savePoint(sourceId: string, line: number, edit: PointEdit) {
+  async savePoint(sourceId: string, line: number, edit: PointEdit, pointId?: string) {
     const session = this.sessionId
     if (!session) throw new Error('No debugger session')
     const known = this.debug.knownBreakpoints()
     // Resolved lines can collide with a different requested point. Its identity and captures
     // belong to that request, even when the adapter moves it onto this line.
-    const existing = known.find((b) => b.sourceId === sourceId && b.requestedLine === line)
-    const id = existing?.id ?? crypto.randomUUID()
+    const existing = known.find((b) =>
+      pointId ? b.id === pointId : b.sourceId === sourceId && b.requestedLine === line
+    )
+    // Pending intent already has an identity. Adapter source remapping must not mint another
+    // registration when that same intent is retried before its breakpoint is confirmed.
+    const id = pointId ?? existing?.id ?? crypto.randomUUID()
+    this.pointLocations.set(id, {
+      session,
+      sourceId,
+      file: this.debug.path?.(sourceId) ?? existing?.file,
+      line,
+    })
     await this.setPoints(
       session,
       [
