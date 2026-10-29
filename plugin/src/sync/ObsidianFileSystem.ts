@@ -321,15 +321,24 @@ export class ObsidianFileSystem implements FileSystem {
   }
   /** A named host event or pending adapter write invalidates the read-only index shortcut. */
   [Symbol.for('abele.sync.unchanged-index-path-v1')](path: string): boolean {
-    if (!this.prepareStartupInventory || !this.inventory || !this.indexReady()) return false
-    if (this.awaitingIndex.has(path) || this.inventory.mutations.has(path)) return false
+    return this.unchangedIndexReason(path) === 'hit'
+  }
+  /** A bounded reason counter can explain why a settled indexed row needed inspection. */
+  [Symbol.for('abele.sync.unchanged-index-reason-v1')](path: string): string {
+    return this.unchangedIndexReason(path)
+  }
+  private unchangedIndexReason(path: string): string {
+    if (!this.prepareStartupInventory) return 'index-disabled'
+    if (!this.inventory) return 'no-inventory'
+    if (!this.indexReady()) return 'index-not-clean'
+    if (this.awaitingIndex.has(path) || this.inventory.mutations.has(path)) return 'pending-event'
     const key = this.pathKey(path)
-    if (this.inventoryRevision(path) > this.inventory.pollRevision) return false
+    if (this.inventoryRevision(path) > this.inventory.pollRevision) return 'pending-event'
     for (let parent = key; parent; parent = parent.slice(0, parent.lastIndexOf('/'))) {
-      if (this.watchChanges.has(parent)) return false
+      if (this.watchChanges.has(parent)) return 'pending-event'
       if (!parent.includes('/')) break
     }
-    return true
+    return 'hit'
   }
   private readonly promotedInstallations = new WeakSet<object>()
   private readonly bufferedInstallations = new Map<string, InstallItem>()
@@ -2658,7 +2667,8 @@ export class ObsidianFileSystem implements FileSystem {
     const root =
       scope === undefined ? this.app.vault.getRoot() : this.app.vault.getAbstractFileByPath(scope)
     const index = async (node: { path: string; children?: unknown[] }) => {
-      await budget.account(4096)
+      const pause = budget.account(4096)
+      if (pause !== undefined) await pause
       if (node.path && !visible(node.path)) return
       if (!node.children) return
       if (node.path) folders.add(node.path)
@@ -2670,7 +2680,8 @@ export class ObsidianFileSystem implements FileSystem {
         await index(child as { path: string; children?: unknown[] })
     } else if (root) await index(root)
     for (const path of files) {
-      await budget.account(4096)
+      const pause = budget.account(4096)
+      if (pause !== undefined) await pause
       for (let cut = path.indexOf('/'); cut !== -1; cut = path.indexOf('/', cut + 1))
         if (within(path.slice(0, cut))) folders.add(path.slice(0, cut))
     }
@@ -2696,7 +2707,8 @@ export class ObsidianFileSystem implements FileSystem {
       byParent.get(parentOf(path))?.delete(path)
     }
     for (const path of files) {
-      await budget.account(4096)
+      const pause = budget.account(4096)
+      if (pause !== undefined) await pause
       addFile(path)
     }
     const under = async (paths: Iterable<string>, self: boolean) => {
@@ -2707,7 +2719,8 @@ export class ObsidianFileSystem implements FileSystem {
         else result.set(key, [path])
       }
       for (const path of paths) {
-        await budget.account(4096)
+        const pause = budget.account(4096)
+        if (pause !== undefined) await pause
         const key = this.pathKey(path)
         for (let cut = key.indexOf('/'); cut !== -1; cut = key.indexOf('/', cut + 1))
           put(key.slice(0, cut), path)
@@ -2719,7 +2732,8 @@ export class ObsidianFileSystem implements FileSystem {
     const foldersAt = await under(indexedFolders, true)
     const parents = new Set<string>()
     for (const path of [...files, ...folders]) {
-      await budget.account(4096)
+      const pause = budget.account(4096)
+      if (pause !== undefined) await pause
       const segments = path.split('/')
       const risk = segments.findIndex(normalizationPossible)
       if (risk !== -1) {

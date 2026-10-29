@@ -15,24 +15,32 @@ export function trustedProjectionInspectionIdentity(
   path: string,
   prior: InspectionIdentity
 ): boolean {
-  if (!Number.isFinite(prior.ctime) || path.split('/').some((part) => part.startsWith('.')))
-    return false
+  return trustedProjectionInspectionReason(app, path, prior) === 'hit'
+}
+
+/** Reasons are counted without paths in the connection's classification diagnostics. */
+export function trustedProjectionInspectionReason(
+  app: App,
+  path: string,
+  prior: InspectionIdentity
+): string {
+  if (!Number.isFinite(prior.ctime)) return 'saved-ctime-missing'
+  if (path.split('/').some((part) => part.startsWith('.'))) return 'hidden-path'
   const indexed = app.vault.getFileByPath(path)
-  if (!indexed || indexed.path !== path || !Number.isFinite(indexed.stat.ctime)) return false
+  if (!indexed || indexed.path !== path) return 'index-missing'
+  if (!Number.isFinite(indexed.stat.ctime)) return 'index-ctime-missing'
   const cache = app.metadataCache as typeof app.metadataCache & {
     initialized?: boolean
     isCacheClean?: () => boolean
   }
   try {
-    return (
-      cache.initialized !== false &&
-      cache.isCacheClean?.() === true &&
-      indexed.stat.size === prior.size &&
-      Math.max(0, Math.round(indexed.stat.mtime)) === prior.mtime &&
-      indexed.stat.ctime === prior.ctime
-    )
+    if (cache.initialized === false || cache.isCacheClean?.() !== true) return 'index-not-clean'
+    if (indexed.stat.size !== prior.size) return 'size-mismatch'
+    if (Math.max(0, Math.round(indexed.stat.mtime)) !== prior.mtime) return 'mtime-mismatch'
+    if (indexed.stat.ctime !== prior.ctime) return 'ctime-mismatch'
+    return 'hit'
   } catch {
-    return false
+    return 'index-not-clean'
   }
 }
 
@@ -54,10 +62,21 @@ export async function projectionInspectionIdentity(
   const identity = native?.fileIdentity ? await native.fileIdentity(path) : undefined
   // A native port that cannot prove its identity cannot reuse an earlier byte decision.
   if (native?.fileIdentity && !identity) return null
+  const metadata = app.metadataCache as typeof app.metadataCache & { isCacheClean?: () => boolean }
+  // The host index's creation time is the one the SDK lists and persists. A native
+  // identity separately includes status-change time, which must not replace it.
+  const hostCtime =
+    indexed?.path === path &&
+    indexed.stat.size === stat.size &&
+    Math.max(0, Math.round(indexed.stat.mtime)) === Math.max(0, Math.round(stat.mtime)) &&
+    metadata?.isCacheClean?.() === true &&
+    Number.isFinite(indexed.stat.ctime)
+      ? indexed.stat.ctime
+      : stat.ctime
   return {
     size: stat.size,
     mtime: Math.max(0, Math.round(stat.mtime)),
-    ...(Number.isFinite(stat.ctime) ? { ctime: stat.ctime } : {}),
+    ...(Number.isFinite(hostCtime) ? { ctime: hostCtime } : {}),
     ...(identity ? { identity } : {}),
   }
 }

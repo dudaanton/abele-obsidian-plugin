@@ -14,9 +14,27 @@ import { withDesktopFs } from '../helpers/fakeDesktopFs'
 import { ExternalRepresentation } from '@/sync/external/representation'
 import {
   projectionInspectionIdentity,
+  trustedProjectionInspectionReason,
   type InspectionEntry,
 } from '@/sync/external/inspectionIdentity'
 import { readIgnore } from '@/sync/scope'
+
+it('reports the exact indexed identity mismatch without probing the disk', () => {
+  const path = 'sample.md'
+  const app = buildFakeVault([{ path, content: 'sample', mtime: 1000, ctime: 100 }])
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
+  const prior = { size: 6, mtime: 1000, ctime: 100 }
+  const stat = app.vault.getFileByPath(path)!.stat
+  expect(trustedProjectionInspectionReason(app as never, path, prior)).toBe('hit')
+  stat.ctime = 101
+  expect(trustedProjectionInspectionReason(app as never, path, prior)).toBe('ctime-mismatch')
+  stat.ctime = 100
+  stat.mtime = 2000
+  expect(trustedProjectionInspectionReason(app as never, path, prior)).toBe('mtime-mismatch')
+  stat.mtime = 1000
+  stat.size = 7
+  expect(trustedProjectionInspectionReason(app as never, path, prior)).toBe('size-mismatch')
+})
 
 it.each([true, false])(
   'upgrades legacy classification, reuses restart and rereads replacement, native=%s',

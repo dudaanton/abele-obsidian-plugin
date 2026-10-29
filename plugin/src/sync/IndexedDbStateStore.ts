@@ -91,7 +91,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     paths: Promise<Map<string, StateEntry>>
   } | null = null
   /** The pull-write intent keys, read once per pass: a ledger walk asks for each file's. */
-  private pullWrites: Promise<Set<string>> | null = null
+  private pullWrites: Promise<Set<string>> | Set<string> | null = null
 
   async [Symbol.for('abele.sync.normalization-pass-v1')]<T>(work: () => Promise<T>): Promise<T> {
     // Overlapping passes never share a snapshot. Only the ordinary single-owner pass caches.
@@ -323,7 +323,8 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
             const budget = new SyncTaskBudget()
             for (const row of rows) {
               paths.set(row.path, row)
-              await budget.account(4096)
+              const pause = budget.account(4096)
+              if (pause !== undefined) await pause
             }
             return paths
           }),
@@ -515,13 +516,22 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     // Inside a pass, an absent pull-write intent is answered from one key inventory instead of
     // one transaction per file. Any write in this store drops the inventory.
     if (key.startsWith(PULL_WRITE) && this.normalizationCache && !this.transactionPending) {
-      const inventory = (this.pullWrites ??= this.metadataKeys(PULL_WRITE).then(
-        (keys) => new Set(keys)
-      ))
-      const known = await inventory.catch((error) => {
-        if (this.pullWrites === inventory) this.pullWrites = null
-        throw error
-      })
+      let inventory = this.pullWrites
+      if (!inventory) {
+        const loading = this.metadataKeys(PULL_WRITE).then((keys) => {
+          const known = new Set(keys)
+          if (this.pullWrites === loading) this.pullWrites = known
+          return known
+        })
+        this.pullWrites = inventory = loading
+      }
+      const known =
+        inventory instanceof Set
+          ? inventory
+          : await inventory.catch((error) => {
+              if (this.pullWrites === inventory) this.pullWrites = null
+              throw error
+            })
       if (!known.has(key)) return null
     }
     const cache =

@@ -115,7 +115,9 @@ export function scopedFileSystem(
         return value.bind(target)
       if (
         key === Symbol.for('abele.sync.local-change-revision-v1') ||
-        key === Symbol.for('abele.sync.watch-revision-v1')
+        key === Symbol.for('abele.sync.watch-revision-v1') ||
+        key === Symbol.for('abele.sync.unchanged-index-path-v1') ||
+        key === Symbol.for('abele.sync.unchanged-index-reason-v1')
       )
         return (path?: string) => {
           if (path !== undefined) assertPath(path)

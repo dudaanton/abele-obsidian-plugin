@@ -63,7 +63,7 @@ export interface RepresentationOptions {
     ownsKey?(path: string): boolean
     identity?(path: string, prior?: InspectionIdentity): Promise<InspectionIdentity | null>
     /** Read-only settled-index proof for a saved inspection; no disk or await. */
-    trusted?(path: string, prior: InspectionIdentity): boolean
+    trusted?(path: string, prior: InspectionIdentity): boolean | string
     /** Where the cache is kept, for diagnostics. */
     storage?: string
     save(entries: readonly InspectionEntry[], retired?: readonly string[]): void | Promise<void>
@@ -272,15 +272,37 @@ export class ExternalRepresentation {
   }
   private trustedOrdinaryLedger(entry: StateEntry): boolean {
     const inspection = this.options.inspection
-    if (!inspection?.trusted) return false
+    if (!inspection?.trusted) {
+      this.count('state.trust', 'no-proof-port')
+      return false
+    }
     const restricted = this.restrictedLedgerPaths()
-    if (restricted.ids.has(entry.fileId)) return false
+    if (restricted.ids.has(entry.fileId)) {
+      this.count('state.trust', 'managed-file')
+      return false
+    }
     if (restricted.paths.size || this.options.retiredPaths?.size) {
       const folded = key(entry.path)
-      if (restricted.paths.has(folded) || this.options.retiredPaths?.has(folded)) return false
+      if (restricted.paths.has(folded) || this.options.retiredPaths?.has(folded)) {
+        this.count('state.trust', 'restricted-path')
+        return false
+      }
     }
     const prior = this.inspected.get(inspection.cacheKey?.(entry.path) ?? entry.path)
-    return !!prior && !prior.marker && inspection.trusted(entry.path, prior)
+    if (!prior) {
+      this.count('state.trust', 'no-saved-inspection')
+      return false
+    }
+    if (prior.marker) {
+      this.count('state.trust', 'marked-projection')
+      return false
+    }
+    const decision = inspection.trusted(entry.path, prior)
+    this.count(
+      'state.trust',
+      decision === true ? 'hit' : typeof decision === 'string' ? decision : 'other'
+    )
+    return decision === true
   }
   private restrictedLedgerPaths(): { ids: Set<string>; paths: Set<string> } {
     if (this.ledgerRestrictions?.document === this.document) return this.ledgerRestrictions

@@ -56,13 +56,23 @@ it(`restarts a synced ${FILES}-file native vault from its settled host index`, a
       await Promise.all(
         paths.slice(i, i + 64).map((path) => nodeDisk.writeFile(join(root, path), `sample ${path}`))
       )
+    // A metadata-only update changes native status time while creation time stays put.
+    // The settled host index reports creation time at its own precision.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    await nodeDisk.utimes(join(root, paths[0]), new Date(1_600_000_000_000), new Date(1_600_000_000_000))
     const app = nativeVault(root, disk, paths)
     for (let i = 0; i < paths.length; i += 64)
       await Promise.all(
         paths.slice(i, i + 64).map(async (path) => {
           const stat = await nodeDisk.stat(join(root, path))
           const indexed = app.vault.getFileByPath(path)!
-          indexed.stat = { size: stat.size, mtime: stat.mtimeMs, ctime: stat.birthtimeMs }
+          indexed.stat = {
+            size: stat.size,
+            mtime: stat.mtimeMs,
+            ctime: path === paths[0] ? stat.birthtimeMs + 0.25 : stat.birthtimeMs,
+          }
+          if (path === paths[0])
+            expect(Math.abs(stat.ctimeMs - stat.birthtimeMs)).toBeGreaterThan(1)
         })
       )
     Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
@@ -137,6 +147,7 @@ it(`restarts a synced ${FILES}-file native vault from its settled host index`, a
       })
     )
     expect(classification?.contentReads).toBe(0)
+    expect(classification?.callers['state.trust']?.hit).toBeGreaterThanOrEqual(FILES)
     expect(fileProbes).toEqual([])
     // A settled host row retains the last verified bytes. Ledger walks reuse that decision
     // while the watcher sees no change, so they add no per-file disk or database round trip.
@@ -144,7 +155,9 @@ it(`restarts a synced ${FILES}-file native vault from its settled host index`, a
     expect(verified.hit ?? 0).toBeLessThanOrEqual(FILES * 2)
     // A settled indexed row now skips classification through the trusted read-only path.
     expect(Object.keys(verified).sort()).toEqual(['trusted'])
-    expect(counted.calls.get('lstat') ?? 0).toBeLessThanOrEqual(FILES * 12)
+    // Directory and config checks have a fixed cost even in a tiny diagnostic vault.
+    // The fileProbes assertion above is the per-file guarantee.
+    expect(counted.calls.get('lstat') ?? 0).toBeLessThanOrEqual(FILES * 12 + 100)
     expect(counted.calls.get('realpath') ?? 0).toBeLessThan(FILES / 4 + 300)
     expect(transactions.readonly).toBeLessThan(FILES / 4 + 300)
     // Alone it takes about two seconds at 2000 files; this only catches a collapse.

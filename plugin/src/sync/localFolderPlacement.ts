@@ -228,7 +228,10 @@ export class LocalFolderPlacement {
         }
         const value = Reflect.get(target, key)
         if (typeof value !== 'function') return value
-        if (key === Symbol.for('abele.sync.unchanged-index-path-v1'))
+        if (
+          key === Symbol.for('abele.sync.unchanged-index-path-v1') ||
+          key === Symbol.for('abele.sync.unchanged-index-reason-v1')
+        )
           return (path: string) => value.call(target, placement.toLocal(path))
         if (key === Symbol.for('abele.sync.local-scan-revision-v1'))
           return () => {
@@ -305,7 +308,8 @@ export class LocalFolderPlacement {
                   path: placement.toServer(item.path, String(key) + '.result', true),
                 })
               // At most 256 entries or 8 ms of projection before a renderer task boundary.
-              await budget.account(4096)
+              const pause = budget.account(4096)
+              if (pause !== undefined) await pause
             }
             return projected
           }
@@ -365,7 +369,8 @@ export class LocalFolderPlacement {
             const result = [],
               budget = new SyncTaskBudget()
             for (const item of children) {
-              await budget.account(0)
+              const pause = budget.account(0)
+              if (pause !== undefined) await pause
               result.push({
                 ...item,
                 path: placement.toServer(item.path, String(key) + '.result', true),
@@ -391,7 +396,8 @@ export class LocalFolderPlacement {
                   ...item,
                   path: placement.toServer(item.path, String(key) + '.result', true),
                 }
-              await budget.account(4096)
+              const pause = budget.account(4096)
+              if (pause !== undefined) await pause
             }
           }
         if (policy === 'watch')

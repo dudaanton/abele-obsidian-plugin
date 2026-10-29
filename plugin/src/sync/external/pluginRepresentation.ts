@@ -13,7 +13,7 @@ import { inspectionCache } from './inspectionCache'
 import {
   projectionInspectionIdentity,
   sameInspectionEntry,
-  trustedProjectionInspectionIdentity,
+  trustedProjectionInspectionReason,
 } from './inspectionIdentity'
 import type { LocalFolderPlacement } from '../localFolderPlacement'
 import { placedExternalHost } from '../placedExternalHost'
@@ -79,12 +79,11 @@ export async function pluginRepresentation(options: {
         projectionInspectionIdentity(app, options.placement?.toLocal(path) ?? path, prior),
       trusted: (path, prior) => {
         const physical = options.placement?.toLocal(path) ?? path
-        const unchanged = Reflect.get(options.fs, Symbol.for('abele.sync.unchanged-index-path-v1'))
-        return (
-          typeof unchanged === 'function' &&
-          unchanged.call(options.fs, path) === true &&
-          trustedProjectionInspectionIdentity(app, physical, prior)
-        )
+        const reason = Reflect.get(options.fs, Symbol.for('abele.sync.unchanged-index-reason-v1'))
+        const indexReason = typeof reason === 'function' ? reason.call(options.fs, path) : 'other'
+        if (indexReason !== 'hit') return indexReason
+        const inspectionReason = trustedProjectionInspectionReason(app, physical, prior)
+        return inspectionReason === 'hit' ? true : inspectionReason
       },
       save: async (current, retired = []) => {
         fence.assertOwned()

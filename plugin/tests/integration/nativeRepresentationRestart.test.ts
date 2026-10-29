@@ -271,6 +271,9 @@ it('restarts a synced 33000-file native representation without reading content',
     expect(cycles.callers).toEqual({
       list: { hit: paths.length },
       'state.all': { hit: paths.length + 2, pass: paths.length * 2 - 2 },
+      // This fixture deliberately has no settled host index, so all three walks retain
+      // native verification. The diagnostic must explain every refused shortcut.
+      'state.trust': { 'index-disabled': paths.length * 3 },
     })
     expect(lstats).toBeLessThanOrEqual(paths.length * 2 + 64)
     expect(walksMs).toBeLessThan(15000)
