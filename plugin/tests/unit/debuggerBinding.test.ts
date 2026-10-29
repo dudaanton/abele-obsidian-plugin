@@ -7,6 +7,43 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { Platform } from 'obsidian'
 import { debuggerStatus } from '../fixtures/debugger'
 import type { NodeConnection } from '@/node/NodeService'
+it('does not focus an initially discovered pause, but still focuses a subsequent stop', async () => {
+  const rpc = vi.fn(async (method: string) => {
+    if (method === 'debugger.v1.status') return debuggerStatus()
+    if (method === 'debugger.v1.wait') return new Promise(() => {})
+    return { cancelled: true }
+  })
+  const binding = new DebuggerBinding(
+    {
+      state: ref('connected'),
+      client: { request: rpc, debugger: new DebuggerClient(rpc) },
+    } as unknown as NodeConnection,
+    'sample-chat',
+    'sample-registration'
+  )
+  vi.spyOn(binding.controller, 'refreshApprovals').mockResolvedValue(undefined)
+  vi.spyOn(binding.controller, 'refreshHistory').mockResolvedValue(undefined)
+  vi.spyOn(binding.controller, 'refreshOutput').mockResolvedValue(undefined)
+  vi.spyOn(binding.controller, 'refreshExitInfo').mockResolvedValue(undefined)
+  vi.spyOn(binding.controller, 'loadStack').mockResolvedValue(undefined)
+  const focus = vi.spyOn(DebuggerService.instance, 'focusPause')
+  try {
+    await binding.open('sample-debug')
+    expect(focus).not.toHaveBeenCalled()
+    binding.controller.observe({
+      observation: 'current',
+      snapshot: {
+        ...debuggerStatus().snapshot,
+        stop_epoch: debuggerStatus().snapshot.stop_epoch + 1,
+      },
+    })
+    await binding.refresh()
+    expect(focus).toHaveBeenCalledWith(binding)
+  } finally {
+    binding.destroy()
+    focus.mockRestore()
+  }
+})
 it('clears an old read failure only after opening a fresh debugger snapshot', async () => {
   const rpc = vi.fn(async (method: string, params: any) => {
     if (method === 'debugger.v1.status') return debuggerStatus()

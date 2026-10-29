@@ -191,7 +191,8 @@ export class DebuggerBinding {
       if (this.controller.current || this.controller.session.unavailable) this.controller.error = ''
       await this.loadGrant(abort)
       if (abort.signal.aborted || this.disposed) return
-      await this.refresh()
+      // Opening retained observations loads their data without selecting an old paused peer.
+      await this.refresh(false)
       if (abort.signal.aborted) return
       DebuggerService.instance.observeFolder(this, sessionId)
       void this.loop(sessionId, result.snapshot.event_seq, result.snapshot.incarnation, abort)
@@ -361,7 +362,7 @@ export class DebuggerBinding {
         .catch((e) => console.debug('[debugger] Final exit metadata unavailable', e))
     }
   }
-  refresh(): Promise<void> {
+  refresh(focusPause = true): Promise<void> {
     return (this.refreshing ??= (async () => {
       if (!this.controller.current) return
       DebuggerService.instance.syncSources(this)
@@ -381,7 +382,7 @@ export class DebuggerBinding {
       ) {
         await this.controller.loadStack()
         this.loadedEpoch = this.controller.loadedStackEpoch ?? epoch
-        DebuggerService.instance.focusPause(this)
+        if (focusPause) DebuggerService.instance.focusPause(this)
         // The first frame with a file: a program held on its first line sits in Node's loader.
         const f = this.controller.session.frames.find((frame) => frame.file)
         const view = Platform.isPhone

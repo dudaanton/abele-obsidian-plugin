@@ -398,13 +398,17 @@ it.each(['desktop', 'phone'])(
       await until(()=>api.DebuggerService.instance.active.value!==previousBinding&&api.DebuggerService.instance.active.value?.controller.session.status==='paused','new folder debugger paused',500);
       const binding=api.DebuggerService.instance.active.value;
       await shot(${JSON.stringify(name + '-debugger-no-chat')});
+      if(api.DebuggerService.instance.active.value!==binding)throw Error('Initial observation replaced the selected session');
       await until(()=>visible('.abele-debug-panel'),'visible folder debugger');
       await until(()=>binding.controller.session.variables.length,'automatic frame scopes');
       const noOwnerApproval=()=>{if(document.querySelector(".abele-debug-view .abele-debug-action_asked"))throw Error("Owner control requested approval")};
       const scope=await until(()=>visible('.abele-debug-value_row .tree-item-self'),'scope row');
       press(scope);
       noOwnerApproval();
-      await until(()=>binding.controller.session.variables.some(v=>v.children),'scope values loaded');
+      await until(()=>{
+        if(api.DebuggerService.instance.active.value!==binding)throw Error('Background observation replaced the selected session during inspection');
+        return binding.controller.session.variables.some(v=>v.children);
+      },'scope values loaded');
       await shot(${JSON.stringify(name)}+'-variables');
       if(!binding.connection.client.channel.channel.welcome.methods.includes('debugger.v1.exceptionBreakpoints.set'))throw Error('Exception filters not exposed');
       for(const label of ['Caught exceptions','Uncaught exceptions']){
