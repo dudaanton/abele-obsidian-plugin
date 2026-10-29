@@ -493,6 +493,7 @@ describe('ObsidianFileSystem — listing', () => {
       path: 'Note.md',
       size: 5,
       mtime: 1000,
+      ctime: 900,
     })
     expect(infos.find((info) => info.path === 'Notes/Deep/second.md')?.mtime).toBe(2000)
   })
@@ -508,6 +509,7 @@ describe('ObsidianFileSystem — listing', () => {
       path: 'Pulled.md',
       size: 11,
       mtime: 7000,
+      ctime: expect.any(Number),
     })
     indexing = true
     expect((await listed(fs)).filter((file) => file.path === 'Pulled.md')).toHaveLength(1)
@@ -716,6 +718,7 @@ describe('ObsidianFileSystem — reading and writing', () => {
       path: 'New/Deeper/third.md',
       size: 5,
       mtime: 7000,
+      ctime: expect.any(Number),
     })
     expect(read(await fs.read('New/Deeper/third.md'))).toBe('third')
     // The write reached the file index too, which is where the next scan reads sizes from.
@@ -771,7 +774,7 @@ describe('ObsidianFileSystem — the names it is given', () => {
     const paths = (await listed(fs)).map((info) => info.path)
     expect(paths).toContain(note)
     expect(paths).toContain(settings)
-    expect(await fs.stat(note)).toEqual({ path: note, size: 5, mtime: 11 })
+    expect(await fs.stat(note)).toEqual({ path: note, size: 5, mtime: 11, ctime: expect.any(Number) })
     expect(read(await fs.read(note))).toBe('north')
     // And nothing landed under the tidied-up name beside it.
     expect(paths).not.toContain(normalizePath(note))
@@ -997,6 +1000,7 @@ describe('ObsidianFileSystem — moving and removing', () => {
       path: '.obsidian/app.json',
       size: 7,
       mtime: 3000,
+      ctime: 900,
     })
     expect(await fs.stat('Notes')).toBeNull()
     expect(await fs.stat('nowhere.md')).toBeNull()

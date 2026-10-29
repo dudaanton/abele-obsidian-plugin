@@ -237,7 +237,9 @@ export interface ProjectionInspection {
   scope?: string
   roots?: readonly string[]
   paths?: readonly string[]
-  inventory?(files: ReadonlyMap<string, { path: string; size: number; mtime: number }>): void
+  inventory?(
+    files: ReadonlyMap<string, { path: string; size: number; mtime: number; ctime?: number }>
+  ): void
   cached?(entries: readonly InspectionEntry[]): void
   /** Ordinary classification loads this cache on first use after the read-only handshake. */
   deferCache?: boolean
@@ -412,7 +414,7 @@ export async function projectionEvidence(
       .filter((file) => included(file.path) && !file.path.startsWith(recoveryPrefix))
       .map((file) => [file.path, file])
   )
-  const inventory = new Map<string, { path: string; size: number; mtime: number }>()
+  const inventory = new Map<string, { path: string; size: number; mtime: number; ctime?: number }>()
   const paths = new Set(indexed.keys())
   for (const path of inspection.paths ?? [])
     if (!isDeviceLocalPluginState(path, app.vault.configDir)) paths.add(path)
@@ -509,7 +511,12 @@ export async function projectionEvidence(
     const identity = await readOnly(() => projectionInspectionIdentity(app, path))
     assertCurrent()
     if (!identity) return
-    inventory.set(path, { path, size: identity.size, mtime: identity.mtime })
+    inventory.set(path, {
+      path,
+      size: identity.size,
+      mtime: identity.mtime,
+      ...(identity.ctime === undefined ? {} : { ctime: identity.ctime }),
+    })
     if (identity.size > MAX_PROJECTION_BYTES) return
     const old = previous.get(path)
     const stable =
@@ -693,7 +700,10 @@ export async function recoverExternalState(
     fence.assertOwned()
     inspection.cached?.(cached)
     if (cached.length) {
-      const inventory = new Map<string, { path: string; size: number; mtime: number }>()
+      const inventory = new Map<
+        string,
+        { path: string; size: number; mtime: number; ctime?: number }
+      >()
       const budget = new SyncTaskBudget()
       for (const row of cached) {
         inventory.set(row.path, row)

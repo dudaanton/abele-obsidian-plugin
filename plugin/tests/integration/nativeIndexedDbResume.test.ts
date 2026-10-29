@@ -15,6 +15,27 @@ import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { ignoreFor } from '@/sync/scope'
 import { buildFakeVault } from '../helpers/fakeVault'
 
+it('preserves indexed change time across a state store restart', async () => {
+  const factory = new IDBFactory()
+  const entry = {
+    path: 'Sample/entry.md',
+    wirePath: 'Sample/entry.md',
+    fileId: 'sample-entry',
+    versionId: 'sample-version',
+    sha: 'sample-hash',
+    size: 4,
+    mtime: 12,
+    ctime: 34,
+  }
+  const first = await IndexedDbStateStore.open(factory, 'sample-change-time')
+  await first.put(entry)
+  first.close()
+  const reopened = await IndexedDbStateStore.open(factory, 'sample-change-time')
+  expect(await reopened.get(entry.path)).toEqual(entry)
+  expect(await Array.fromAsync(reopened.all())).toEqual([entry])
+  reopened.close()
+})
+
 it('resumes a crashed 33000-file native upload with durable IndexedDB and real task scheduling', async () => {
   const timers = ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] as const
   const previous = timers.map((key) => Object.getOwnPropertyDescriptor(window, key))

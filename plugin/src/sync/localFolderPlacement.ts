@@ -45,6 +45,7 @@ export const placementMethods = {
   discardStage: 'opaque',
   conditionalFile: 'opaque',
   conditionalOwnership: 'opaque',
+  trustedIndexIdentities: 'opaque',
   conditionalCapture: 'opaque',
   installedFile: 'opaque',
   discardInstallation: 'opaque',

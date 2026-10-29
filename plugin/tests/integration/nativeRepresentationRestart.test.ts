@@ -178,11 +178,19 @@ it('restarts a synced 33000-file native representation without reading content',
       const ledger = representation.stateStore()
       lstats = 0
       const started = performance.now()
+      let firstPath: string | undefined
       for (let cycle = 0; cycle < cycles; cycle++)
         await Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).call(fs, async () => {
           for (let walk = 0; walk < 5; walk++) {
             let walked = 0
-            for await (const _ of ledger.all()) walked++
+            for await (const entry of ledger.all()) {
+              if (cycle === 0 && walked === 0 && walk === 0) {
+                firstPath = entry.path
+                entry.path = 'Shared/mutated-by-consumer.md'
+              }
+              if (cycle === 0 && walked === 0 && walk === 1) expect(entry.path).toBe(firstPath)
+              walked++
+            }
             expect(walked).toBe(expected)
           }
         })
@@ -257,13 +265,12 @@ it('restarts a synced 33000-file native representation without reading content',
       callers: cycles.callers,
     })
     expect(contentBytes).toBe(0)
-    // Every file is verified once while the watcher covers the vault; the other fourteen walks
-    // over three cycles reuse that proof without touching the disk. Before, each cycle verified
-    // every file again and every walk stated it.
+    // Every file is verified once while the watcher covers the vault. Later ledger walks
+    // over three cycles reuse the filtered state snapshot until its revision or index clock
+    // changes, without repeating a per-row replay or touching content.
     expect(cycles.callers).toEqual({
       list: { hit: paths.length },
       'state.all': { hit: paths.length + 2, pass: paths.length * 2 - 2 },
-      'state.replay': { pass: paths.length * 12 },
     })
     expect(lstats).toBeLessThanOrEqual(paths.length * 2 + 64)
     expect(walksMs).toBeLessThan(15000)

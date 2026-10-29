@@ -705,6 +705,11 @@ export class ExternalRepresentation {
     const self = this
     let replayKey: string | undefined
     const ordinary = new Set<string>()
+    let replay: { key: string; revision: number; rows: StateEntry[] } | undefined
+    const revision = async (): Promise<number | undefined> => {
+      const read = Reflect.get(store, Symbol.for('abele.sync.scope-state-revision-v1'))
+      return typeof read === 'function' ? await read.call(store) : undefined
+    }
     const clock = () => {
       const fs = self.options.fs
       const pass = Reflect.get(fs, Symbol.for('abele.sync.inventory-id-v1'))?.call(fs)
@@ -742,6 +747,28 @@ export class ExternalRepresentation {
           }
         if (method === 'all')
           return async function* () {
+            const initialKey = clock()
+            const initialRevision = initialKey === undefined ? undefined : await revision()
+            if (replay && initialKey === replay.key && initialRevision === replay.revision) {
+              for (const entry of replay.rows) {
+                self.ownedRead()
+                if (clock() === initialKey) {
+                  yield { ...entry }
+                } else {
+                  replay = undefined
+                  const file = self.file(entry.fileId)
+                  if (
+                    (!file || !self.managed(file)) &&
+                    (await self.classify(entry.path, undefined, undefined, 'state.all')).kind ===
+                      'ordinary'
+                  )
+                    yield { ...entry }
+                }
+              }
+              return
+            }
+            replay = undefined
+            const rows: StateEntry[] = []
             for await (const entry of store.all()) {
               const file = self.file(entry.fileId)
               if (file && self.managed(file)) continue
@@ -755,15 +782,24 @@ export class ExternalRepresentation {
               self.ownedRead()
               if (key !== undefined && ordinary.has(entry.path)) {
                 self.count('state.replay', 'pass')
+                rows.push({ ...entry })
                 yield entry
               } else if (
                 (await self.classify(entry.path, undefined, undefined, 'state.all')).kind ===
                 'ordinary'
               ) {
                 if (key !== undefined && key === clock()) ordinary.add(entry.path)
+                rows.push({ ...entry })
                 yield entry
               }
             }
+            if (
+              initialKey !== undefined &&
+              initialRevision !== undefined &&
+              clock() === initialKey &&
+              (await revision()) === initialRevision
+            )
+              replay = { key: initialKey, revision: initialRevision, rows }
           }
         if (method === 'getJournal')
           return async () => {

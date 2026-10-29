@@ -246,6 +246,7 @@ async function measure() {
           sha: hash,
           size: bytes.length,
           mtime: Math.round(stat.mtimeMs),
+          ctime: stat.birthtimeMs,
         })
       }
       await tx.setCursor(1)
@@ -480,8 +481,8 @@ it('keeps 33000 files content-read-free through startup, inspection and rebuild 
   }
 }, 240000)
 
-it.fails(
-  'BUG: unchanged indexed files need no native probes during a restart cycle',
+it(
+  'unchanged indexed files need no native probes during a restart cycle',
   async () => {
     await ensureMeasured()
     for (const result of results) expect(result.indexedFileProbes).toBe(0)

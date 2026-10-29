@@ -95,7 +95,7 @@ it.each([
 it('reuses startup inventory once and observes later config edits without waiting for the poll', async () => {
   const app = buildFakeVault([{ path: '.obsidian/app.json', content: '{}', mtime: 1 }])
   const initial = new Map([
-    ['.obsidian/app.json', { path: '.obsidian/app.json', size: 2, mtime: 1 }],
+    ['.obsidian/app.json', { path: '.obsidian/app.json', size: 2, mtime: 1, ctime: 0 }],
   ])
   const fs = new ObsidianFileSystem(app as never, { startupInventory: () => initial })
   const collect = async () => {
@@ -109,7 +109,7 @@ it('reuses startup inventory once and observes later config edits without waitin
     new TextEncoder().encode('{"changed":true}').buffer as ArrayBuffer,
     { mtime: 2 }
   )
-  expect(await collect()).toContainEqual({ path: '.obsidian/app.json', size: 16, mtime: 2 })
+  expect(await collect()).toContainEqual({ path: '.obsidian/app.json', size: 16, mtime: 2, ctime: 0 })
 })
 
 it('does not stat published siblings again after the index observes them during a pull', async () => {

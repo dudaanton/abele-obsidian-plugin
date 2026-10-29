@@ -353,7 +353,12 @@ for (const platform of ['phone', 'desktop'] as const) {
       const { app, fs } = useVault()
       await fs.writeAtomic('Note.md', text('second'), 8000)
       expect(read(await fs.read('Note.md'))).toBe('second')
-      expect(await fs.stat('Note.md')).toEqual({ path: 'Note.md', size: 6, mtime: 8000 })
+      expect(await fs.stat('Note.md')).toEqual({
+        path: 'Note.md',
+        size: 6,
+        mtime: 8000,
+        ctime: expect.any(Number),
+      })
       await fs.writeAtomic('.obsidian/plugins/abele/DATA.json', text('{}'), 8100)
       expect(await ownedInventory(app)).toEqual(['.obsidian/plugins/abele/data.json', 'Note.md'])
       expect(read(await fs.read('.obsidian/plugins/abele/data.json'))).toBe('{}')

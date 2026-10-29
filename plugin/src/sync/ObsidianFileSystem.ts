@@ -315,6 +315,10 @@ export interface ObsidianFileSystemOptions {
  * paths it hands over; they go to the adapter exactly as they came.
  */
 export class ObsidianFileSystem implements FileSystem {
+  /** Startup listings wait for the host's settled index before trusting file identities. */
+  get trustedIndexIdentities(): true | undefined {
+    return this.prepareStartupInventory ? true : undefined
+  }
   private readonly promotedInstallations = new WeakSet<object>()
   private readonly bufferedInstallations = new Map<string, InstallItem>()
   private async installationBarrier<T>(path: string, work: () => Promise<T>): Promise<T> {
@@ -2541,11 +2545,21 @@ export class ObsidianFileSystem implements FileSystem {
         if (actual.size === file.stat.size && stamp(actual.mtime) === stamp(file.stat.mtime))
           this.awaitingIndex.delete(file.path)
         indexed.add(this.pathKey(file.path))
-        yield { path: file.path, size: actual.size, mtime: stamp(actual.mtime) }
+        yield {
+          path: file.path,
+          size: actual.size,
+          mtime: stamp(actual.mtime),
+          ctime: actual.ctime,
+        }
         continue
       }
       indexed.add(this.pathKey(file.path))
-      yield { path: file.path, size: file.stat.size, mtime: stamp(file.stat.mtime) }
+      yield {
+        path: file.path,
+        size: file.stat.size,
+        mtime: stamp(file.stat.mtime),
+        ctime: file.stat.ctime,
+      }
     }
     // A pull can finish before the index sees its adapter renames, including across engine
     // rebuilds and app restarts. The ledger is authoritative about what might still be on disk.
@@ -2783,7 +2797,7 @@ export class ObsidianFileSystem implements FileSystem {
   }
   private async *rawVaultFiles(scope?: string): AsyncIterable<{
     path: string
-    stat: { size: number; mtime: number }
+    stat: { size: number; mtime: number; ctime: number }
   }> {
     if (this.prepareStartupInventory) await this.waitForStartupIndex()
     const indexed = new Map(this.indexedFiles(scope).map((file) => [file.path, file]))
@@ -3715,7 +3729,12 @@ export class ObsidianFileSystem implements FileSystem {
   private async fileAt(path: string): Promise<FileInfo | null> {
     const indexed = this.app.vault.getFileByPath(path)
     if (indexed && this.indexReady() !== false && !this.awaitingIndex.has(path))
-      return { path, size: indexed.stat.size, mtime: stamp(indexed.stat.mtime) }
+      return {
+        path,
+        size: indexed.stat.size,
+        mtime: stamp(indexed.stat.mtime),
+        ctime: indexed.stat.ctime,
+      }
     const operation = this.operationStats
     if (operation && operation.revision !== this.operationRevision()) {
       operation.cache.clear()
@@ -3733,7 +3752,7 @@ export class ObsidianFileSystem implements FileSystem {
     if (standing === null || standing.type !== 'file') return null
     // The path that was statted, spelled as it was asked for: the engine matches what comes
     // back against what it holds, and a name it did not ask about would be a different file.
-    return { path, size: standing.size, mtime: stamp(standing.mtime) }
+    return { path, size: standing.size, mtime: stamp(standing.mtime), ctime: standing.ctime }
   }
 
   /**
@@ -4088,17 +4107,15 @@ export class ObsidianFileSystem implements FileSystem {
   /** Watchers and scans share this cache; their startup order must not change wire metadata. */
   private startupConfigInventory(): FileInfo[] | undefined {
     const inventory = this.startupInventory?.()
-    return (
-      inventory &&
-      [...inventory.values()]
-        .filter(
-          (info) =>
-            info.path.startsWith(this.configDir + '/') &&
-            !isAdapterTemp(info.path) &&
-            !isDeviceLocalPluginState(info.path, this.configDir)
-        )
-        .map((info) => ({ ...info, mtime: stamp(info.mtime) }))
+    if (!inventory) return undefined
+    const rows = [...inventory.values()].filter(
+      (info) =>
+        info.path.startsWith(this.configDir + '/') &&
+        !isAdapterTemp(info.path) &&
+        !isDeviceLocalPluginState(info.path, this.configDir)
     )
+    if (rows.some((info) => typeof info.ctime !== 'number')) return undefined
+    return rows.map((info) => ({ ...info, mtime: stamp(info.mtime) }))
   }
 
   private async spellingOnDisk(path: string): Promise<string | null> {

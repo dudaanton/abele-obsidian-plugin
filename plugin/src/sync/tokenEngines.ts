@@ -720,7 +720,9 @@ export class TokenEngines {
           )
         : journalApp
 
-      let inventory: ReadonlyMap<string, { path: string; size: number; mtime: number }> | undefined
+      let inventory:
+        | ReadonlyMap<string, { path: string; size: number; mtime: number; ctime?: number }>
+        | undefined
       let inspectionRows: readonly InspectionEntry[] | undefined
       let inspectionLoad: Promise<readonly InspectionEntry[]> | undefined
       const loadInspection = () =>
@@ -729,7 +731,10 @@ export class TokenEngines {
           assertActive()
           inspectionRows = rows
           if (rows.length) {
-            const known = new Map<string, { path: string; size: number; mtime: number }>()
+            const known = new Map<
+              string,
+              { path: string; size: number; mtime: number; ctime?: number }
+            >()
             const budget = new SyncTaskBudget()
             for (const row of rows) {
               known.set(row.path, row)

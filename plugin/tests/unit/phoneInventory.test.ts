@@ -6,7 +6,7 @@ import { tokenHostFixture } from '../helpers/tokenHostFixture'
 
 it('normalizes fractional inventory timestamps exactly like a fresh config listing', async () => {
   const app = buildFakeVault([{ path: '.obsidian/app.json', content: '{}' }])
-  const info = { path: '.obsidian/app.json', size: 2, mtime: 1234.75 }
+  const info = { path: '.obsidian/app.json', size: 2, mtime: 1234.75, ctime: 0 }
   const fs = new ObsidianFileSystem(app as never, {
     startupInventory: () => new Map([[info.path, info]]),
   })
