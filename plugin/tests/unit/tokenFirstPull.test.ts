@@ -381,10 +381,12 @@ it.each([
         console.log('[cold token-host pull calls]', JSON.stringify(events))
 
         expect(firstPull!.small.count).toBe(1)
-        expect(firstPull!.small.max).toMatchObject({ bridge: 6, preparationBridge: 1 })
+        // The acknowledgement verifies current bytes and stable identity before it
+        // certifies change time for an unchanged restart.
+        expect(firstPull!.small.max).toMatchObject({ bridge: 14, preparationBridge: 1 })
         assertSmallPullBounds(firstPull!.small.max)
         // One private payload write and one exclusive rename replace the overwrite-capable
-        // public create. Preparation shares the target fact; one stat protects the receipt.
+        // public create. The later reads and stats verify acknowledgement bytes and identity.
         expect(
           events
             .filter((event) => event.operation.startsWith('adapter '))
@@ -396,6 +398,14 @@ it.each([
           'adapter mkdir',
           'adapter writeBinary',
           'adapter rename',
+          'adapter stat',
+          'adapter stat',
+          'adapter stat',
+          'adapter readBinary',
+          'adapter stat',
+          'adapter stat',
+          'adapter readBinary',
+          'adapter stat',
         ])
         expect(events.filter((event) => event.operation === 'adapter rename')).toHaveLength(1)
         expect(
