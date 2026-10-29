@@ -35,6 +35,8 @@ import {
   type RepoRef,
   type Stage,
 } from './source'
+import { resolveImport } from './imports'
+import { repoTree } from '../tree/repoTree'
 import type { CodeNav } from './navAddon'
 
 import { type Scope, type TabChanges } from '@/repository/search'
@@ -438,6 +440,29 @@ export class TabCode implements CodeNav {
       }
     }
     return hits
+  }
+
+  async openImport(specifier: string, fromPath: string): Promise<void> {
+    if (!this.captured) return this.snapshot().code.openImport(specifier, fromPath)
+    try {
+      const sha = await this.src.sha()
+      const tree = this.src.source
+        ? await this.src.source().tree(sha)
+        : await repoTree(this.src.client(), this.src.repo(), sha)
+      const path = await resolveImport(tree, fromPath, specifier)
+      if (!path) {
+        new Notice(t('repository.importMissing'))
+        return
+      }
+      console.debug('[Abele] open imported file', { fromPath, specifier, path })
+      this.src.open(
+        this.src.source?.().navigation.file(sha, path) ?? blobUrl(this.src.repo(), sha, path),
+        false
+      )
+    } catch (error) {
+      console.debug('[Abele] open imported file failed', error)
+      new Notice(t('repository.importMissing'))
+    }
   }
 
   findReferences(name: string): void {

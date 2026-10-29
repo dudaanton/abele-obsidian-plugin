@@ -1,4 +1,7 @@
 export const repository = {
+  'repository.openImport': 'Abrir archivo importado',
+  'repository.importMissing': 'No se encontró el archivo importado.',
+
   'repository.noReferencesTo': 'No hay referencias a {name}.',
   'repository.showReferencesMore': {
     one: 'Mostrar {number} más',

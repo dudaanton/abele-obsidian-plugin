@@ -301,3 +301,8 @@ In node code views, hold Ctrl, Cmd or Alt (Option) while pointing at a symbol to
 type and documentation. Releasing the key hides the tooltip. Cmd/Ctrl-click or Alt-click
 opens a definition (or a chooser for several matches). Holding any of these modifiers
 underlines the symbol to follow.
+
+In repository code, Ctrl-click (Cmd-click on macOS) or Alt-click a relative import, export,
+require or dynamic import path to open its file at the same revision. Extensionless paths and
+directory index files are resolved from the repository tree. On a phone, the code menu offers
+**Open imported file** when the line contains exactly one relative module path.

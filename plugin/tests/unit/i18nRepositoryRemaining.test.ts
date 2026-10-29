@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+import ledger from '@/i18n/repository-ledger.json'
 import { catalogs as testCatalogs } from '@/i18n/catalogs'
 import { ForgejoError, ForgejoUnknownWrite } from '@/forge/forgejoClient'
 import { presentUiError } from '@/i18n/streamBErrors'
@@ -45,4 +47,16 @@ it('localizes generated diff notes without translating source or serialized text
     'before',
     'after',
   ])
+})
+
+it('has reviewed import navigation labels in every language', () => {
+  for (const key of ['repository.openImport', 'repository.importMissing'] as const) {
+    expect(createHash('sha256').update(testCatalogs.en[key]).digest('hex')).toBe(
+      ledger[key].englishHash
+    )
+    for (const language of ['ru', 'lv', 'es', 'de'] as const) {
+      expect(testCatalogs[language][key]).toBeTruthy()
+      expect(testCatalogs[language][key]).not.toBe(testCatalogs.en[key])
+    }
+  }
 })

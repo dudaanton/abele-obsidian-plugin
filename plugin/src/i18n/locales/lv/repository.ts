@@ -1,4 +1,7 @@
 export const repository = {
+  'repository.openImport': 'Atvērt importēto failu',
+  'repository.importMissing': 'Importētais fails nav atrasts.',
+
   'repository.noReferencesTo': 'Nav {name} lietojumu.',
   'repository.showReferencesMore': {
     zero: 'Rādīt vēl {number}',

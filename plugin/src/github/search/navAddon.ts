@@ -13,15 +13,18 @@ import { t } from '@/i18n'
  * what it knows with `provideCodeNav`, and the viewer finds it from its own element. A viewer in
  * a note — a snippet card — finds none and stays plain.
  */
-import { StateEffect, StateField, type Extension } from '@codemirror/state'
+import { StateEffect, StateField, type Extension, type Text } from '@codemirror/state'
 import { Decoration, EditorView, type DecorationSet } from '@codemirror/view'
 import { Menu } from 'obsidian'
+import { importedPaths } from './imports'
 import { isIdentifier } from './definitions'
 import { lspFor, lspNavigation } from '@/node/lspContext'
 import { lspHoverMenuLabel } from '@/node/lspMenu'
 import { beginCodeSurface } from './codeSurface'
 
 export interface CodeNav {
+  /** Follow a relative module string using the repository tree. */
+  openImport?(specifier: string, fromPath: string): void | Promise<void>
   /** The path of the file a viewer inside the tab shows. */
   pathOf(viewerEl: HTMLElement): string
   goToDefinition(
@@ -88,6 +91,42 @@ const linkField = StateField.define<DecorationSet>({
 const isMod = (e: MouseEvent, view: EditorView) =>
   e.metaKey || e.ctrlKey || (e.altKey && !!lspFor(view.dom)?.document.supported)
 
+const importCache = new WeakMap<Text, ReturnType<typeof importedPaths>>()
+function pathsIn(view: EditorView) {
+  const doc = view.state.doc
+  let paths = importCache.get(doc)
+  if (!paths) {
+    paths = importedPaths(doc.toString())
+    importCache.set(doc, paths)
+  }
+  return paths
+}
+
+function importAt(view: EditorView, pos: number) {
+  return pathsIn(view).find((path) => pos >= path.from && pos < path.to) ?? null
+}
+
+function importUnder(view: EditorView, e: MouseEvent) {
+  if (!(e.target instanceof Node) || !view.contentDOM.contains(e.target)) return null
+  const pos = view.posAtCoords({ x: e.clientX, y: e.clientY }, false)
+  return pos === null ? null : importAt(view, pos)
+}
+
+function menuTarget(view: EditorView, pos: number) {
+  const word = wordAt(view, pos)
+  if (word) return word
+  if (!navFor(view.dom)?.openImport) return null
+  const line = view.state.doc.lineAt(pos)
+  const paths = pathsIn(view).filter((path) => path.from >= line.from && path.to <= line.to)
+  return paths.length === 1 ? paths[0] : null
+}
+
+function menuUnder(view: EditorView, e: MouseEvent) {
+  if (!(e.target instanceof Node) || !view.contentDOM.contains(e.target)) return null
+  const pos = view.posAtCoords({ x: e.clientX, y: e.clientY }, false)
+  return pos === null ? null : menuTarget(view, pos)
+}
+
 function wordUnder(view: EditorView, e: MouseEvent) {
   if (!(e.target instanceof Node) || !view.contentDOM.contains(e.target)) return null
   const pos = view.posAtCoords({ x: e.clientX, y: e.clientY }, false)
@@ -140,6 +179,20 @@ function references(nav: CodeNav, view: EditorView, name: string, offset: number
 }
 function navMenu(nav: CodeNav, view: EditorView, name: string, offset: number): Menu {
   const menu = new Menu()
+  const line = view.state.doc.lineAt(offset)
+  const paths = nav.openImport
+    ? pathsIn(view).filter((path) => path.from >= line.from && path.to <= line.to)
+    : []
+  if (nav.openImport && paths.length === 1) {
+    menu.addItem((item) =>
+      item
+        .setTitle(t('repository.openImport'))
+        .setIcon('file-code')
+        .onClick(() => {
+          void nav.openImport?.(paths[0].text, nav.pathOf(view.dom))
+        })
+    )
+  }
   menu.addItem((item) =>
     item
       .setTitle(t('streamB.goToDefinitionOf.14ff5d', { v0: String(name) }))
@@ -234,8 +287,18 @@ export function codeNavAddon(): Extension {
       },
       mousedown(e, view) {
         navigated.delete(view)
-        if (!isMod(e, view) || e.button !== 0) return false
+        if (e.button !== 0) return false
         const nav = navFor(view.dom)
+        const imported =
+          nav?.openImport && (e.ctrlKey || e.metaKey || e.altKey) ? importUnder(view, e) : null
+        if (nav?.openImport && imported) {
+          e.preventDefault()
+          navigated.add(view)
+          clearLink(view)
+          void nav.openImport(imported.text, nav.pathOf(view.dom))
+          return true
+        }
+        if (!isMod(e, view)) return false
         const word = nav && wordUnder(view, e)
         if (!nav || !word) return false
         e.preventDefault()
@@ -245,7 +308,10 @@ export function codeNavAddon(): Extension {
         return true
       },
       mousemove(e, view) {
-        const word = isMod(e, view) && navFor(view.dom) ? wordUnder(view, e) : null
+        const nav = navFor(view.dom)
+        const imported =
+          nav?.openImport && (e.ctrlKey || e.metaKey || e.altKey) ? importUnder(view, e) : null
+        const word = imported ?? (isMod(e, view) && nav ? wordUnder(view, e) : null)
         const now = view.state.field(linkField)
         let same = false
         now.between(0, view.state.doc.length, (from, to) => {
@@ -261,7 +327,7 @@ export function codeNavAddon(): Extension {
       },
       contextmenu(e, view) {
         // A modifier-left-click can also emit a native contextmenu on macOS.
-        if (navigated.has(view) && isMod(e, view)) {
+        if (navigated.has(view) && (e.ctrlKey || e.metaKey || e.altKey)) {
           navigated.delete(view)
           e.preventDefault()
           return true
@@ -272,7 +338,7 @@ export function codeNavAddon(): Extension {
           return true
         }
         const nav = navFor(view.dom)
-        const word = nav && wordUnder(view, e)
+        const word = nav && menuUnder(view, e)
         if (!nav || !word) return false
         e.preventDefault()
         showNavMenu(nav, view, word.text, word.from, (menu) => menu.showAtMouseEvent(e))
@@ -288,7 +354,7 @@ export function codeNavAddon(): Extension {
           pressing = null
           const nav = navFor(view.dom)
           const pos = view.posAtCoords(start, false)
-          const word = nav && pos !== null ? wordAt(view, pos) : null
+          const word = nav && pos !== null ? menuTarget(view, pos) : null
           if (!nav || !word) return
           longPressAt = Date.now()
           // The phone may have begun selecting the word under the finger: the menu is the answer.

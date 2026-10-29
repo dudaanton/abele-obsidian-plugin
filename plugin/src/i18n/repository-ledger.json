@@ -73,5 +73,11 @@
   },
   "repository.showReferencesMore": {
     "englishHash": "e71bde9907615bef4edd7a134c8b925cde19eed7339cfcafac88a993be499fec"
+  },
+  "repository.openImport": {
+    "englishHash": "9a4948a600c0e06d146f0b60bf378abfaf529c5afefe2f90c98d1910d81e5161"
+  },
+  "repository.importMissing": {
+    "englishHash": "c2a1dbd21d65f2cd6d06d4516e2aacf9b0a3b38b93a5ea6d8b251c791f2a2601"
   }
 }
