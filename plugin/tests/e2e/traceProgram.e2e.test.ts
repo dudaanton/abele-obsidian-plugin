@@ -342,8 +342,9 @@ it('runs a JavaScript program picked from Debug, records at a point set in its m
     out.restartAfter=restartOn();
     await shot('2026-10-14-trace4-restart-desktop');
     for(const l of app.workspace.getLeavesOfType('abele-trace-run'))l.detach();
-    press(restartButton());
-    await until(()=>{const id=api.DebuggerService.instance.active.value.controller.snapshot?.debug_session_id;return id&&id!==first},'a new session',600);
+    // Closing the run changes layout and can refresh the panel; use its settled, enabled control.
+    press(await until(()=>restartOn()&&restartButton(),'Restart enabled after closing the run'));
+    await until(()=>{const id=api.DebuggerService.instance.active.value.controller.snapshot?.debug_session_id;return id&&id!==first},'a new session',600).catch(async()=>{await shot('trace-restart-failed-desktop');throw Error('Restart did not select a new session: '+debugState0())});
     await goOn();
     await until(()=>document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step').length===3,'the second run opened by itself',600).catch(()=>{const b=api.DebuggerService.instance.active.value;throw Error('second run did not open: '+JSON.stringify({session:b?.sessionId,status:b?.controller.session.status,error:b?.controller.error,points:b?.trace?.points.length,runs:b?.trace?.runs.map(r=>[r.state,r.steps]),tabs:app.workspace.getLeavesOfType('abele-trace-run').length})+' '+debugState())});
     out.again={session:true,steps:document.querySelectorAll('.abele-trace-run__steps > .abele-trace-run__step').length};
@@ -390,15 +391,16 @@ it('records at a line of TypeScript open beside its build, through the source ma
   expect(seen.steps[1]!.values.item).toContain('label')
 })
 
-it('keeps sibling service points pending, routes agent edits by file, and offers only names in scope', () => {
-  const seen = inApp<{
-    pending: boolean
-    applied: boolean
-    offers: string[]
-    orders: string
-    rates: string
-    listed: string
-  }>(`(async()=>{${prelude}
+it('keeps sibling service points pending, routes agent edits by file, and offers only names in scope', async () => {
+  const check = (layout: 'desktop' | 'phone') => {
+    const seen = inApp<{
+      pending: boolean
+      applied: boolean
+      offers: string[]
+      orders: string
+      rates: string
+      listed: string
+    }>(`(async()=>{${prelude}
     const service=api.DebuggerService.instance,target=${JSON.stringify(folder)};
     let orders,rates;
     const agent={nodeScopeIdentity:'sample-multi-process-'+crypto.randomUUID(),overrides:{value:{nodeScope:[{kind:'project',node_id:target.nodeId,project_id:target.projectId,access:'edit'}]}},conversationVersion:{value:0},permissionMode:{value:'allow-edit'}};
@@ -413,6 +415,7 @@ it('keeps sibling service points pending, routes agent edits by file, and offers
       press(await until(()=>item('Add record point'),'pending record menu'));
       await until(()=>document.querySelector('.abele-trace-point'),'pending point editor');
       const offers=[...document.querySelectorAll('.abele-trace-point__offer')].map(el=>el.textContent.trim());
+      await shot('trace-multiple-processes-scope-${layout}');
       const take=document.querySelector('.abele-trace-point [aria-label="Take surge"]');
       if(!take)throw Error('surge not offered: '+JSON.stringify(offers));
       press(take);
@@ -423,14 +426,19 @@ it('keeps sibling service points pending, routes agent edits by file, and offers
       rates=service.active.value;
       await until(()=>rates.trace?.points.length===1&&!service.pendingBreakpoints(target,'packages/rates/src/index.js').length,'point applied to matching service');
       const applied=service.fileBinding(target,'packages/rates/src/index.js')===rates;
-      const tools=api.createAgentTools(),call=async(name,p)=>(await tools.find(t=>t.name===name).execute('sample-multi',p,undefined,{session:agent})).content[0].text;
+      const call=async(name,p)=>{
+        const result=await api.createAgentTools().find(t=>t.name===name).execute('sample-multi',p,undefined,{session:agent});
+        if(result.isError)throw Error(name+': '+JSON.stringify(result));
+        return result.content[0].text;
+      };
       // The person views rates while the agent edits orders, then views orders while it removes rates.
       await call('trace_point_add',{file:'packages/orders/src/index.js',line:2,take:['value']});
       const listed=await call('trace_point_list',{file:'packages/orders/src/index.js'});
       if(!orders.trace.points.length)throw Error('agent point went to the viewed process');
       service.select(orders);
-      await call('trace_point_remove',{file:'packages/rates/src/index.js',line:7,session:rates.sessionId});
-      if(rates.trace.points.length)throw Error('agent removal used the viewed process');
+      const removed=await call('trace_point_remove',{file:'packages/rates/src/index.js',line:7,session:rates.sessionId});
+      if(rates.trace.points.length||(await rates.trace.rpc.points(rates.sessionId)).length)throw Error('agent removal not reflected: '+removed);
+      if(orders.trace.points.length!==1)throw Error('removing rates changed orders');
       await call('trace_point_add',{file:'packages/rates/src/index.js',line:7,take:['surge']});
       await call('trace_point_list',{file:'packages/orders/src/index.js'});
       await orders.controller.command('continue');
@@ -444,20 +452,30 @@ it('keeps sibling service points pending, routes agent edits by file, and offers
       const page=await orders.trace.rpc.run(target.projectId,ownRun.id,0,80);
       const fromId=await call('trace_timeline',{run:ownRun.id,from:page.steps[0].id});
       for(const step of page.steps)if(!fromId.includes(step.id+' ·'))throw Error('named-step paging skipped '+step.id);
-      await shot('trace-multiple-processes-desktop');
+      await shot('trace-multiple-processes-${layout}');
       return {pending,applied,offers,orders:service.sessionName(orders.controller.snapshot),rates:service.sessionName(rates.controller.snapshot),listed};
     } finally {
       agent.overrides.value={nodeScope:[]};
       for(const binding of [orders,rates])if(binding?.controller.current)await binding.controller.command('stop');
+      if(${layout === 'phone'}){
+        for(const type of ['abele-debug-view','abele-node-file','abele-trace-run','abele-trace-value'])for(const leaf of app.workspace.getLeavesOfType(type))leaf.detach();
+        await app.workspace.requestSaveLayout.run();
+      }
     }
   })()`)
-  expect(seen.pending).toBe(true)
-  expect(seen.applied).toBe(true)
-  expect(seen.offers).not.toContain('entry')
-  expect(seen.offers).not.toContain('lineTotal')
-  expect(seen.orders).toBe('orders/index.js')
-  expect(seen.rates).toBe('rates/index.js')
-  expect(seen.listed).toContain('packages/orders/src/index.js:2')
+    expect(seen.pending).toBe(true)
+    expect(seen.applied).toBe(true)
+    expect(seen.offers).not.toContain('entry')
+    expect(seen.offers).not.toContain('lineTotal')
+    expect(seen.orders).toBe('orders/index.js')
+    expect(seen.rates).toBe('rates/index.js')
+    expect(seen.listed).toContain('packages/orders/src/index.js:2')
+  }
+  check('desktop')
+  await withEmulatedPhone(async () => {
+    openChat()
+    check('phone')
+  })
 })
 
 it('on a phone: the picker offers the file open in a tab, the stack folds Node, Restart is offered', async () => {
