@@ -35,6 +35,33 @@ it.each(['detached', 'terminated', 'failed'] as const)(
   }
 )
 
+it('does not restore a removed point from a refresh already in flight', async () => {
+  const node = fakeNode()
+  const debug = fakeDebugger([{ id: 'sample-point', line: 4 }])
+  const trace = new TraceSession(node.rpc, debug, () => {})
+  try {
+    await trace.savePoint('sample-source', 4, { take: ['sample'] })
+    const oldPoints = [...trace.points]
+    let release!: () => void
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.spyOn(node.rpc, 'points').mockImplementationOnce(async () => {
+      await held
+      return oldPoints
+    })
+    const reading = trace.refresh()
+    const removing = trace.removePoint('sample-point')
+    await vi.waitFor(() => expect(trace.points).toEqual([]))
+    release()
+    await Promise.all([reading, removing])
+    expect(trace.points).toEqual([])
+    expect(await node.rpc.points('sample-debug')).toEqual([])
+  } finally {
+    trace.dispose()
+  }
+})
+
 it('opens a new completed run even when recording began and ended between reads', async () => {
   const node = fakeNode()
   const debug = fakeDebugger()

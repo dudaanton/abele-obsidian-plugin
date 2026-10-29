@@ -48,6 +48,7 @@ export class TraceSession {
   latest?: WireRunPoint[]
   folder = ''
   private refreshing?: Promise<void>
+  private pointsRevision = 0
   private observedSession?: string
   private readonly completedRuns = new Set<string>()
   private readonly endedListeners = new Set<(runId: string) => void>()
@@ -80,6 +81,7 @@ export class TraceSession {
     return (this.refreshing ??= (async () => {
       const session = this.sessionId,
         project = this.projectId
+      const pointsRevision = this.pointsRevision
       if (!session || !project) return
       const [points, status, runs] = await Promise.all([
         this.rpc.points(session),
@@ -110,7 +112,7 @@ export class TraceSession {
           )
             ended.add(run.id)
       this.observedSession = session
-      this.points = points
+      if (pointsRevision === this.pointsRevision) this.points = points
       this.status = status
       this.runs = ownRuns
       this.folder = runs.folder
@@ -176,6 +178,13 @@ export class TraceSession {
       .map((r) => runSummary(r, now))
   }
 
+  /** A completed edit wins over a point list requested before that edit. */
+  private async setPoints(session: string, upsert: WirePoint[], remove: string[]) {
+    const points = await this.rpc.setPoints(session, upsert, remove)
+    ++this.pointsRevision
+    this.points = points
+  }
+
   /** Sets up a record point on a line: the point first, so a hit never comes before what to take,
    * then its breakpoint, kept when one is already there. */
   async savePoint(sourceId: string, line: number, edit: PointEdit) {
@@ -186,7 +195,7 @@ export class TraceSession {
     // belong to that request, even when the adapter moves it onto this line.
     const existing = known.find((b) => b.sourceId === sourceId && b.requestedLine === line)
     const id = existing?.id ?? crypto.randomUUID()
-    this.points = await this.rpc.setPoints(
+    await this.setPoints(
       session,
       [
         {
@@ -237,8 +246,7 @@ export class TraceSession {
             const removed = (await this.debug.removeBreakpoint(id)) as
               | { outcome?: string }
               | undefined
-            if (removed?.outcome === 'completed')
-              this.points = await this.rpc.setPoints(session, [], [id])
+            if (removed?.outcome === 'completed') await this.setPoints(session, [], [id])
           } catch (error) {
             console.debug('[trace] Unconfirmed record point could not be removed', error)
           }
@@ -267,7 +275,7 @@ export class TraceSession {
   async toBreakpoint(id: string) {
     const session = this.sessionId
     if (!session) return
-    this.points = await this.rpc.setPoints(session, [], [id])
+    await this.setPoints(session, [], [id])
     this.changed()
     await this.refresh()
   }
@@ -297,7 +305,7 @@ export class TraceSession {
       throw new RecordPointSaveError(
         typeof result.outcome === 'string' ? result.outcome : 'not_completed'
       )
-    this.points = await this.rpc.setPoints(session, [], [id])
+    await this.setPoints(session, [], [id])
     this.changed()
     await this.refresh()
   }
