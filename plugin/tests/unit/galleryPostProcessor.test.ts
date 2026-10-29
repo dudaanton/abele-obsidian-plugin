@@ -48,7 +48,12 @@ const render = (html: string) => {
 const galleries = () => GlobalStore.getInstance().galleriesContainers.value
 
 beforeEach(() => {
-  useVault([{ path: 'Notes/A.md', content: '' }])
+  useVault([
+    { path: 'Notes/A.md', content: '' },
+    { path: 'sample-a.png', content: '' },
+    { path: 'sample-b.png', content: '' },
+  ])
+  document.body.replaceChildren()
   galleries().splice(0)
 })
 
@@ -62,6 +67,7 @@ describe('a whole document, as MarkdownRenderer hands it over', () => {
         '</p></div><div><p>After gallery</p></div>'
     )
     el.classList.add('print')
+    document.body.append(el)
     galleryPostProcessor(el, context())
     expect(el.querySelectorAll('.abele-print-gallery img')).toHaveLength(2)
     expect(el.querySelectorAll('.internal-embed')).toHaveLength(0)
@@ -87,12 +93,55 @@ describe('a whole document, as MarkdownRenderer hands it over', () => {
       })
     )
     el.classList.add('print')
+    document.body.append(el)
     await galleryPostProcessor(el, context())
     const images = el.querySelectorAll('img')
     expect(images).toHaveLength(2)
     expect(Array.from(images).every((image) => image.loading !== 'lazy')).toBe(true)
     expect(el.querySelector('.abele-print-gallery')).not.toBeNull()
     expect(galleries()).toHaveLength(0)
+  })
+
+  it.each([
+    ['javascript:sample.mp4', 'Blocked video'],
+    ['file:///sample.mp4', ''],
+    ['data:video/mp4;base64,AAAA', 'Blocked data'],
+    ['missing.png', 'Missing picture'],
+    ['javascript:sample.png', 'Blocked picture'],
+    ['file:///sample.png', 'Blocked file'],
+    ['data:image/png;base64,AAAA', 'Blocked image data'],
+  ])('prints unresolved %s as plain text', (path, description) => {
+    const el = render('<p>::abele-gallery::</p>')
+    el.className = 'print'
+    document.body.append(el)
+    const text = `::abele-gallery::\n![[${path}${description ? `|${description}` : ''}]]`
+    galleryPostProcessor(el, context('Notes/A.md', { text, lineStart: 0, lineEnd: 1 }))
+    const figure = el.querySelector('figure')!
+    expect(figure).not.toBeNull()
+    expect(figure.querySelector('a, img')).toBeNull()
+    expect(figure.textContent).toBe(description || path)
+  })
+
+  it('uses vault resources for local media and http links for remote videos', () => {
+    useVault([
+      { path: 'Notes/A.md', content: '' },
+      { path: 'sample.png', content: '' },
+      { path: 'sample.mp4', content: '' },
+    ])
+    const el = render('<p>::abele-gallery::</p>')
+    el.className = 'print'
+    document.body.append(el)
+    const text =
+      '::abele-gallery::\n![[sample.png]]\n![[sample.mp4]]\n![Remote](http://example.com/sample.mp4)'
+    galleryPostProcessor(el, context('Notes/A.md', { text, lineStart: 0, lineEnd: 3 }))
+    const { app } = GlobalStore.getInstance()
+    const resource = (path: string) =>
+      app.vault.getResourcePath(app.metadataCache.getFirstLinkpathDest(path, 'Notes/A.md')!)
+    expect(el.querySelector('img')?.getAttribute('src')).toBe(resource('sample.png'))
+    expect(Array.from(el.querySelectorAll('a'), (a) => a.getAttribute('href'))).toEqual([
+      resource('sample.mp4'),
+      'http://example.com/sample.mp4',
+    ])
   })
 
   it('reads a marker directly in a tight checkbox list item without a paragraph wrapper', () => {

@@ -76,7 +76,15 @@ export function galleryPostProcessor(el: HTMLElement, ctx: MarkdownPostProcessor
           entry.type === 'local'
             ? app.metadataCache.getFirstLinkpathDest(entry.path, ctx.sourcePath)
             : null
-        const src = file ? app.vault.getResourcePath(file) : entry.path
+        const src = file
+          ? app.vault.getResourcePath(file)
+          : entry.type === 'remote' && isHttpUrl(entry.path)
+            ? entry.path
+            : null
+        if (!src) {
+          figure.textContent = entry.description || entry.path
+          continue
+        }
         if (entry.mediaType === 'video') {
           const link = figure.appendChild(paragraph.ownerDocument.win.createEl('a'))
           link.href = src
@@ -98,6 +106,15 @@ export function galleryPostProcessor(el: HTMLElement, ctx: MarkdownPostProcessor
       continue
     }
     mount(paragraph, ctx, options, images)
+  }
+}
+
+function isHttpUrl(path: string): boolean {
+  try {
+    const { protocol } = new URL(path)
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
   }
 }
 
