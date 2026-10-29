@@ -269,7 +269,16 @@ it('shows a late answer live, after changing tabs and after reopening without re
     shown.detach();await openRequest('Late answer');
     await until(()=>facts().includes('200')&&tab().textContent.includes('late sample answer'),'late answer reopened');
     if(model.entry(state.id).shown!==sendId||model.entry(state.id).history.length!==1)throw Error('Read changed the send identity');
-    await shot('late-answer-reopened');other.detach();return true;
+    await shot('late-answer-reopened');
+    await send();
+    if(!notice().includes('No answer'))throw Error('Expected another unknown outcome');
+    const secondId=model.entry(state.id).shown;
+    shown.detach();for(const leaf of app.workspace.getLeavesOfType('abele-requests'))leaf.detach();
+    await wait(5000);
+    await api.requests.openTab(state,state.id);shown=await until(()=>leafOf('Late answer'),'reopened tab');
+    await until(()=>facts().includes('200')&&tab().textContent.includes('late sample answer'),'answer read after closing while unknown');
+    if(model.entry(state.id).shown!==secondId||model.entry(state.id).history.length!==2)throw Error('Reopening resent or selected a different request');
+    await shot('late-answer-closed-while-unknown');other.detach();return true;
   })()`)
   expect(seen).toBe(true)
 })
