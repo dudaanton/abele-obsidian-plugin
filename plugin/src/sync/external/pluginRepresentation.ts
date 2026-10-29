@@ -10,7 +10,11 @@ import type { ConnectionBinding } from './records'
 import { IndexedDbStateStore } from '../IndexedDbStateStore'
 import { retiredArtifactPaths } from './pluginSafety'
 import { inspectionCache } from './inspectionCache'
-import { projectionInspectionIdentity, sameInspectionEntry } from './inspectionIdentity'
+import {
+  projectionInspectionIdentity,
+  sameInspectionEntry,
+  trustedProjectionInspectionIdentity,
+} from './inspectionIdentity'
 import type { LocalFolderPlacement } from '../localFolderPlacement'
 import { placedExternalHost } from '../placedExternalHost'
 import { SyncTaskBudget } from '../syncTaskBudget'
@@ -73,6 +77,15 @@ export async function pluginRepresentation(options: {
             path.startsWith(options.placement.local + '/'),
       identity: (path, prior) =>
         projectionInspectionIdentity(app, options.placement?.toLocal(path) ?? path, prior),
+      trusted: (path, prior) => {
+        const physical = options.placement?.toLocal(path) ?? path
+        const unchanged = Reflect.get(options.fs, Symbol.for('abele.sync.unchanged-index-path-v1'))
+        return (
+          typeof unchanged === 'function' &&
+          unchanged.call(options.fs, path) === true &&
+          trustedProjectionInspectionIdentity(app, physical, prior)
+        )
+      },
       save: async (current, retired = []) => {
         fence.assertOwned()
         // Write only rows that changed. Rows are per path, so another connection's completed

@@ -10,7 +10,7 @@ import { TokenEngines } from '@/sync/tokenEngines'
 import { openTokenLedger } from '@/sync/tokenLedger'
 import { tokenHostFixture } from '../helpers/tokenHostFixture'
 import { nativeVault, countedDisk, countTransactions } from '../helpers/nativeRestartVault'
-import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
+import { IDBFactory, IDBKeyRange, IDBObjectStore } from 'fake-indexeddb'
 import { HostSyncStorage } from '@/sync/hostSyncStorage'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { scopeKey } from '@/sync/scope'
@@ -20,6 +20,7 @@ import { withMetadataInventory } from '@/sync/vaultPathLinks'
 import { ExchangeTrace } from '@/sync/exchangeTrace'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ExternalRepresentation } from '@/sync/external/representation'
+import { SyncTaskBudget } from '@/sync/syncTaskBudget'
 import {
   SyncStartupTimeline,
   timedSyncTransport,
@@ -63,6 +64,7 @@ type Measurement = {
   interrupted: boolean
   timeline: SyncStartupMark[]
   native: Record<string, number>
+  ledgerRows: { native: Record<string, number>; indexedFileProbes: number; readonly: number; requests: number; yields: number; classifications: number }
 }
 const results: Measurement[] = []
 let measured: Promise<void> | undefined
@@ -159,6 +161,18 @@ async function measure() {
   Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => indexClean })
   const factory = new IDBFactory()
   const transactions = countTransactions(factory, idbWait.begin)
+  const idbRequests = [
+    vi.spyOn(IDBObjectStore.prototype, 'get'),
+    vi.spyOn(IDBObjectStore.prototype, 'getAll'),
+    vi.spyOn(IDBObjectStore.prototype, 'openCursor'),
+  ]
+  let metadataYields = 0
+  const metadataRow = SyncTaskBudget.prototype.metadataRow
+  const budgetSpy = vi.spyOn(SyncTaskBudget.prototype, 'metadataRow').mockImplementation(function (...args) {
+    const pause = metadataRow.apply(this, args)
+    if (pause !== undefined) metadataYields++
+    return pause
+  })
   const storage = await HostSyncStorage.open(factory, 'sample-vault', app)
   const inspectionReads = vi.spyOn(storage, 'readInspections')
   const f = tokenHostFixture(transport, [], { app, factory })
@@ -307,7 +321,33 @@ async function measure() {
       inspectionReads.mockClear()
       timeline = new SyncStartupTimeline()
       const marks: SyncStartupMark[] = []
-      timeline.subscribe((mark) => marks.push(mark))
+      let ledgerStart: Measurement['ledgerRows'] | undefined
+      let ledgerRows: Measurement['ledgerRows'] | undefined
+      const snapshot = () => ({
+        native: Object.fromEntries(counted.calls),
+        indexedFileProbes,
+        readonly: transactions.readonly,
+        requests: idbRequests.reduce((sum, spy) => sum + spy.mock.calls.length, 0),
+        yields: metadataYields,
+        classifications,
+      })
+      timeline.subscribe((mark) => {
+        marks.push(mark)
+        if (mark.phase === 'reconcile:inventory:ledger-rows:begin') ledgerStart = snapshot()
+        if (mark.phase === 'reconcile:inventory:ledger-rows:end' && ledgerStart) {
+          const end = snapshot()
+          ledgerRows = {
+            native: Object.fromEntries(
+              Object.keys(end.native).map((key) => [key, (end.native[key] ?? 0) - (ledgerStart!.native[key] ?? 0)])
+            ),
+            indexedFileProbes: end.indexedFileProbes - ledgerStart.indexedFileProbes,
+            readonly: end.readonly - ledgerStart.readonly,
+            requests: end.requests - ledgerStart.requests,
+            yields: end.yields - ledgerStart.yields,
+            classifications: end.classifications - ledgerStart.classifications,
+          }
+        }
+      })
       timeline.mark('onload')
       timeline.mark('layout-ready')
       ordinaryBytes = polledBytes = 0
@@ -383,6 +423,7 @@ async function measure() {
         timeline: marks,
         firstRequestMs: requests[0] - started,
         native: Object.fromEntries(counted.calls),
+        ledgerRows: ledgerRows!,
         transactions: { ...transactions },
         classification: f.ui.activity.value[f.id]?.classification,
         cycles: cycleReceipts,
@@ -413,6 +454,8 @@ async function measure() {
     trace.mockRestore()
     ledger.mockRestore()
     classification.mockRestore()
+    budgetSpy.mockRestore()
+    for (const spy of idbRequests) spy.mockRestore()
     clearInterval(progress)
     await host?.close()
     await f.host.close()
@@ -489,6 +532,20 @@ it(
   },
   240000
 )
+
+it('walks 33000 trusted ledger rows without per-file classification, disk work or host waits', async () => {
+  await ensureMeasured()
+  for (const result of results) {
+    // The one hidden configuration row is absent from the host index.
+    expect(result.ledgerRows.classifications).toBeLessThanOrEqual(1)
+    expect(result.ledgerRows.indexedFileProbes).toBe(0)
+    expect(result.ledgerRows.native.lstat ?? 0).toBeLessThanOrEqual(64)
+    expect(result.ledgerRows.readonly).toBeLessThanOrEqual(4)
+    // Two paged snapshots (ledger and inspection) plus small metadata reads.
+    expect(result.ledgerRows.requests).toBeLessThanOrEqual(150)
+    expect(result.ledgerRows.yields).toBeLessThan(64)
+  }
+}, 240000)
 
 it('settles a 33000-file host restart and inspection within ten seconds with one verification per path', async () => {
   await ensureMeasured()

@@ -319,6 +319,18 @@ export class ObsidianFileSystem implements FileSystem {
   get trustedIndexIdentities(): true | undefined {
     return this.prepareStartupInventory ? true : undefined
   }
+  /** A named host event or pending adapter write invalidates the read-only index shortcut. */
+  [Symbol.for('abele.sync.unchanged-index-path-v1')](path: string): boolean {
+    if (!this.prepareStartupInventory || !this.inventory || !this.indexReady()) return false
+    if (this.awaitingIndex.has(path) || this.inventory.mutations.has(path)) return false
+    const key = this.pathKey(path)
+    if (this.inventoryRevision(path) > this.inventory.pollRevision) return false
+    for (let parent = key; parent; parent = parent.slice(0, parent.lastIndexOf('/'))) {
+      if (this.watchChanges.has(parent)) return false
+      if (!parent.includes('/')) break
+    }
+    return true
+  }
   private readonly promotedInstallations = new WeakSet<object>()
   private readonly bufferedInstallations = new Map<string, InstallItem>()
   private async installationBarrier<T>(path: string, work: () => Promise<T>): Promise<T> {
@@ -2418,7 +2430,8 @@ export class ObsidianFileSystem implements FileSystem {
     }
     const budget = new SyncTaskBudget()
     for (const row of snapshot.rows) {
-      await budget.metadataRow()
+      const pause = budget.metadataRow()
+      if (pause !== undefined) await pause
       yield row
     }
   }
@@ -2535,7 +2548,8 @@ export class ObsidianFileSystem implements FileSystem {
         ? this.app.vault.getFiles().filter((file) => this.discovery.includes(file.path))
         : this.rawVaultFiles(scope)
     for await (const file of files) {
-      await budget.metadataRow()
+      const pause = budget.metadataRow()
+      if (pause !== undefined) await pause
       if (!withinScope(file.path) || (this.discovery && !this.discovery.includes(file.path)))
         continue
       if (!this.inventoryVisible(file.path)) continue
@@ -2566,12 +2580,14 @@ export class ObsidianFileSystem implements FileSystem {
     const candidates = new Set(this.awaitingIndex)
     if (this.ledger !== null) {
       for await (const entry of this.ledgerEntries()) {
-        await budget.metadataRow()
+        const pause = budget.metadataRow()
+        if (pause !== undefined) await pause
         candidates.add(entry.path)
       }
     }
     for (const path of candidates) {
-      await budget.metadataRow()
+      const pause = budget.metadataRow()
+      if (pause !== undefined) await pause
       if (!withinScope(path) || !this.inventoryVisible(path)) continue
       if (this.discovery && !this.discovery.includes(path)) continue
       if (indexed.has(this.pathKey(path)) || path.startsWith(`${this.configDir}/`)) {

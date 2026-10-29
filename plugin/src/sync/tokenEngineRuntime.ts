@@ -318,6 +318,8 @@ export class TokenEngineRuntime
   private readyToPublish = false
   private acceptHandshake = false
   private ignore: PathMatcher | null = null
+  private ignoreMemoRules: PathMatcher | null = null
+  private readonly ignoreResults = new Map<string, boolean>()
   private authority: V2Connection | null = null
   private readonly compared = new Set<string>()
   private readonly comparisonBudget = new SyncTaskBudget()
@@ -2333,7 +2335,7 @@ export class TokenEngineRuntime
     return (
       this.options.localOnly?.(path) === true ||
       this.outsideScope(path) ||
-      (this.ignore?.ignores(this.placement?.toLocal(path) ?? path) ?? false) ||
+      this.ignoredByRules(this.placement?.toLocal(path) ?? path) ||
       (!this.isRoot() && configurationPath(path, this.options.paths)) ||
       [...this.held].some((held) => withinSyncPath(path, held))
     )
@@ -3110,10 +3112,23 @@ export class TokenEngineRuntime
     if (this.options.localOnly?.(path) || this.outsideScope(path)) return true
     path = this.placement?.toLocal(path) ?? path
     return (
-      (this.ignore?.ignores(path) ?? false) ||
+      this.ignoredByRules(path) ||
       (!this.isRoot() && configurationPath(path, this.options.paths)) ||
       this.selectiveExcluded(path, size)
     )
+  }
+  private ignoredByRules(path: string): boolean {
+    if (this.ignoreMemoRules !== this.ignore) {
+      this.ignoreMemoRules = this.ignore
+      this.ignoreResults.clear()
+    }
+    if (!this.ignore) return false
+    const known = this.ignoreResults.get(path)
+    if (known !== undefined) return known
+    const result = this.ignore.ignores(path)
+    if (this.ignoreResults.size >= 131_072) this.ignoreResults.clear()
+    this.ignoreResults.set(path, result)
+    return result
   }
   private readonly selectiveExclusions = new Map<string, Map<number, boolean>>()
   private selectiveExcluded(path: string, size: number): boolean {

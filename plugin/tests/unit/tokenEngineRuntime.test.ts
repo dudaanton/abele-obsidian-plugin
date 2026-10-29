@@ -87,6 +87,31 @@ it('reuses unchanged selective exclusions across a 33k-file reconciliation', asy
   }
 })
 
+it('evaluates each unchanged ignore path once across repeated inventory and block passes', async () => {
+  const wire = await server('Notes/unused.md', '')
+  const one = runtime(wire, new MemoryFileSystem())
+  const internals = one.runtime as unknown as {
+    ignore: { ignores(path: string): boolean }
+    localExcluded(path: string, size: number): boolean
+    blocked(path: string): boolean
+  }
+  let evaluations = 0
+  internals.ignore = { ignores: () => (evaluations++, false) }
+  try {
+    for (let pass = 0; pass < 2; pass++)
+      for (let i = 0; i < 33_000; i++) {
+        const path = `Notes/sample-${i}.md`
+        expect(internals.localExcluded(path, 1)).toBe(false)
+        expect(internals.blocked(path)).toBe(false)
+      }
+    expect(evaluations).toBe(33_000)
+    internals.ignore = { ignores: () => true }
+    expect(internals.localExcluded('Notes/sample-0.md', 1)).toBe(true)
+  } finally {
+    await one.runtime.close()
+  }
+})
+
 it.each(['receipt', 'head'] as const)(
   'expires a cached %s entitlement without restarting',
   async (mode) => {

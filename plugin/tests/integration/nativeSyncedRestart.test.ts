@@ -123,7 +123,8 @@ it(`restarts a synced ${FILES}-file native vault from its settled host index`, a
     // while the watcher sees no change, so they add no per-file disk or database round trip.
     const verified = classification!.callers['state.all']
     expect(verified.hit ?? 0).toBeLessThanOrEqual(FILES * 2)
-    expect(Object.keys(verified).sort()).toEqual(['hit', 'pass'])
+    // A settled indexed row now skips classification through the trusted read-only path.
+    expect(Object.keys(verified).sort()).toEqual(['trusted'])
     expect(counted.calls.get('lstat') ?? 0).toBeLessThanOrEqual(FILES * 12)
     expect(counted.calls.get('realpath') ?? 0).toBeLessThan(FILES / 4 + 300)
     expect(transactions.readonly).toBeLessThan(FILES / 4 + 300)

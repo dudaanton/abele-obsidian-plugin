@@ -62,6 +62,8 @@ export interface RepresentationOptions {
     cacheKey?(path: string): string
     ownsKey?(path: string): boolean
     identity?(path: string, prior?: InspectionIdentity): Promise<InspectionIdentity | null>
+    /** Read-only settled-index proof for a saved inspection; no disk or await. */
+    trusted?(path: string, prior: InspectionIdentity): boolean
     /** Where the cache is kept, for diagnostics. */
     storage?: string
     save(entries: readonly InspectionEntry[], retired?: readonly string[]): void | Promise<void>
@@ -124,6 +126,11 @@ export class ExternalRepresentation {
   private readonly inspected = new Map<string, InspectionEntry>()
   /** Files whose identity was verified in the current proof scope, by their revision in it. */
   private readonly verified = new Map<string, Verified>()
+  private ledgerRestrictions?: {
+    document: ExternalDocument
+    ids: Set<string>
+    paths: Set<string>
+  }
   private readonly stats: ClassificationStats
   private inspectionLoading?: Promise<void>
   private async loadInspection(): Promise<void> {
@@ -262,6 +269,45 @@ export class ExternalRepresentation {
     void yieldSyncTask().then(() => {
       this.ownedInTask = false
     })
+  }
+  private trustedOrdinaryLedger(entry: StateEntry): boolean {
+    const inspection = this.options.inspection
+    if (!inspection?.trusted) return false
+    const restricted = this.restrictedLedgerPaths()
+    if (restricted.ids.has(entry.fileId)) return false
+    if (restricted.paths.size || this.options.retiredPaths?.size) {
+      const folded = key(entry.path)
+      if (restricted.paths.has(folded) || this.options.retiredPaths?.has(folded)) return false
+    }
+    const prior = this.inspected.get(inspection.cacheKey?.(entry.path) ?? entry.path)
+    return !!prior && !prior.marker && inspection.trusted(entry.path, prior)
+  }
+  private restrictedLedgerPaths(): { ids: Set<string>; paths: Set<string> } {
+    if (this.ledgerRestrictions?.document === this.document) return this.ledgerRestrictions
+    const ids = new Set<string>(),
+      paths = new Set<string>()
+    const add = (path?: string | null) => {
+      if (path) paths.add(key(path))
+    }
+    for (const file of this.document.files) {
+      add(file.projectionPath)
+      if (!this.managed(file)) continue
+      ids.add(file.fileId)
+      const entry = this.entries.get(file.fileId)
+      add(entry?.path)
+      add(entry?.wirePath)
+      add(file.lastProvenLocalBase?.path)
+    }
+    for (const operation of this.document.operations) {
+      for (const artifact of operation.ownedArtifacts) add(artifact.path)
+      if (operation.expected && ids.has(operation.expected.fileId)) add(operation.expected.path)
+      if (['projection-update', 'projection-move'].includes(operation.kind)) {
+        add(operation.sourcePath)
+        add(operation.targetPath)
+      }
+    }
+    this.ledgerRestrictions = { document: this.document, ids, paths }
+    return this.ledgerRestrictions
   }
   private file(id: string): ExternalRecord | undefined {
     return this.document.files.find((file) => file.fileId === id)
@@ -769,9 +815,9 @@ export class ExternalRepresentation {
             }
             replay = undefined
             const rows: StateEntry[] = []
+            await self.loadInspection()
             for await (const entry of store.all()) {
-              const file = self.file(entry.fileId)
-              if (file && self.managed(file)) continue
+              if (self.restrictedLedgerPaths().ids.has(entry.fileId)) continue
               // Repeated walks in one inventory see the same classification. Recheck the
               // clocks per row: a consumer may await a local edit between yielded entries.
               const key = clock()
@@ -780,8 +826,10 @@ export class ExternalRepresentation {
                 replayKey = key
               }
               self.ownedRead()
-              if (key !== undefined && ordinary.has(entry.path)) {
-                self.count('state.replay', 'pass')
+              const replayed = key !== undefined && ordinary.has(entry.path)
+              const trusted = key !== undefined && !replayed && self.trustedOrdinaryLedger(entry)
+              if (replayed || trusted) {
+                self.count(replayed ? 'state.replay' : 'state.all', replayed ? 'pass' : 'trusted')
                 rows.push({ ...entry })
                 yield entry
               } else if (

@@ -9,6 +9,33 @@ export type InspectionIdentity = {
 }
 export type InspectionEntry = InspectionIdentity & { path: string; marker: boolean }
 
+/** A settled host row can reuse a completed inspection without a native identity read. */
+export function trustedProjectionInspectionIdentity(
+  app: App,
+  path: string,
+  prior: InspectionIdentity
+): boolean {
+  if (!Number.isFinite(prior.ctime) || path.split('/').some((part) => part.startsWith('.')))
+    return false
+  const indexed = app.vault.getFileByPath(path)
+  if (!indexed || indexed.path !== path || !Number.isFinite(indexed.stat.ctime)) return false
+  const cache = app.metadataCache as typeof app.metadataCache & {
+    initialized?: boolean
+    isCacheClean?: () => boolean
+  }
+  try {
+    return (
+      cache.initialized !== false &&
+      cache.isCacheClean?.() === true &&
+      indexed.stat.size === prior.size &&
+      Math.max(0, Math.round(indexed.stat.mtime)) === prior.mtime &&
+      indexed.stat.ctime === prior.ctime
+    )
+  } catch {
+    return false
+  }
+}
+
 /** Use the same disk metadata and native file identity as the scan fingerprint. */
 export async function projectionInspectionIdentity(
   app: App,
@@ -17,28 +44,8 @@ export async function projectionInspectionIdentity(
 ): Promise<InspectionIdentity | null> {
   const disk = vaultDisk(app.vault)
   const native = nativeOf(disk)
+  if (prior && trustedProjectionInspectionIdentity(app, path, prior)) return prior
   const indexed = app.vault.getFileByPath(path)
-  const cache = app.metadataCache as typeof app.metadataCache & {
-    initialized?: boolean
-    isCacheClean?: () => boolean
-  }
-  let settled = false
-  try {
-    settled = cache.initialized !== false && cache.isCacheClean?.() === true
-  } catch {
-    // An unavailable host index cannot authorize a retained byte decision.
-  }
-  if (
-    prior &&
-    cacheableInspectionIdentity(prior) &&
-    indexed &&
-    indexed.path === path &&
-    settled &&
-    indexed.stat.size === prior.size &&
-    Math.max(0, Math.round(indexed.stat.mtime)) === prior.mtime &&
-    (!Number.isFinite(indexed.stat.ctime) || indexed.stat.ctime === prior.ctime)
-  )
-    return prior
   // Portable scans use Obsidian's file index for ordinary vault files. Hidden/config
   // files are absent there and still need a direct adapter stat.
   const ordinary = native ? null : indexed

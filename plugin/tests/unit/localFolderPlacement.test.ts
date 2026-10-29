@@ -22,6 +22,24 @@ it('forwards a readonly scan revision with its receiver and current placement id
   expect(Reflect.get(placement.fileSystem(new MemoryFileSystem()), revision)).toBeUndefined()
 })
 
+it('maps the synchronous settled-index proof through a scoped file system', () => {
+  const port = Symbol.for('abele.sync.unchanged-index-path-v1')
+  const paths: string[] = []
+  const disk = Object.assign(new MemoryFileSystem(), {
+    [port]: function (path: string) {
+      expect(this).toBe(disk)
+      paths.push(path)
+      return true
+    },
+  })
+  const placement = new LocalFolderPlacement('Shared', 'Moved')
+  const fs = placement.fileSystem(disk)
+  expect(Reflect.get(fs, port)('Shared/sample.md')).toBe(true)
+  placement.local = 'Other'
+  expect(Reflect.get(fs, port)('Shared/sample.md')).toBe(true)
+  expect(paths).toEqual(['Moved/sample.md', 'Other/sample.md'])
+})
+
 it('projects batched feed entries like byFileId while forwarding cancellation and receiver', async () => {
   const port = Symbol.for('abele.sync.feed-entries-v1')
   const row = {

@@ -228,6 +228,8 @@ export class LocalFolderPlacement {
         }
         const value = Reflect.get(target, key)
         if (typeof value !== 'function') return value
+        if (key === Symbol.for('abele.sync.unchanged-index-path-v1'))
+          return (path: string) => value.call(target, placement.toLocal(path))
         if (key === Symbol.for('abele.sync.local-scan-revision-v1'))
           return () => {
             const revision = value.call(target)
