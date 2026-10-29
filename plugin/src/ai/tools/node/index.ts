@@ -306,6 +306,7 @@ export function createNodeTools(
           target_kind: { type: 'string', enum: ['workspace', 'worktree'] },
           expected_content_id: { type: ['string', 'null'] },
           case_sensitive: { type: 'boolean' },
+          include_ignored: { type: 'boolean' },
           start_line: { type: 'integer', minimum: 1 },
           end_line: { type: 'integer', minimum: 1 },
         },

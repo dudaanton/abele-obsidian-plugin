@@ -1,3 +1,4 @@
+import { readWithIgnoredFallback } from '@/node/ignoredRead'
 import type { NodeClient, RepositoryRevision } from '@abele/node-client'
 import { t } from '@/i18n'
 import * as protocol from '@abele/node-protocol'
@@ -279,6 +280,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         expected_content_id: { type: ['string', 'null'] },
         target_kind: { type: 'string', enum: ['workspace', 'worktree'] },
         case_sensitive: { type: 'boolean' },
+        include_ignored: { type: 'boolean' },
         start: { type: 'integer', minimum: 1 },
         count: { type: 'integer', minimum: 1, maximum: 1500 },
         offset: {
@@ -947,31 +949,17 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           ''
         )
       )
-      const revision = async (): Promise<RepositoryRevision> => {
+      const revision = async (includeIgnored = false): Promise<RepositoryRevision> => {
         if (text(params, 'ref'))
           return safe(() => repo.resolve({ worktree_id: id, ref: text(params, 'ref') }))
-        const includeIgnored = ['node_read', 'node_ls', 'node_search'].includes(name)
-        try {
-          return (
-            await safe(() =>
-              repo.observe({
-                worktree_id: id,
-                ...(includeIgnored ? { include_ignored: true } : {}),
-              })
-            )
-          ).revision
-        } catch (error) {
-          // Older nodes may reject the optional observation field.
-          if (
-            !includeIgnored ||
-            !error ||
-            typeof error !== 'object' ||
-            !('code' in error) ||
-            error.code !== 'invalid_params'
+        return (
+          await safe(() =>
+            repo.observe({
+              worktree_id: id,
+              ...(includeIgnored ? { include_ignored: true } : {}),
+            })
           )
-            throw error
-          return (await safe(() => repo.observe({ worktree_id: id }))).revision
-        }
+        ).revision
       }
       const content = async (contentId: string): Promise<string> => {
         const prefix: number[] = []
@@ -996,8 +984,13 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       const read = async (file: string) => {
         fileSchema.parse(file)
         const blob = git
-          ? await safe(async () =>
-              repo.blob({ worktree_id: id, revision: await revision(), path: file })
+          ? await readWithIgnoredFallback(
+              file,
+              (ignored) =>
+                safe(async () =>
+                  repo.blob({ worktree_id: id, revision: await revision(ignored), path: file })
+                ),
+              params.include_ignored === true
             )
           : await safe(() => client.readFile(id, file))
         if (blob.binary || blob.too_large || blob.size > maxReadBytes || !blob.content_id)
@@ -1084,9 +1077,17 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       }
       if (name === 'node_ls') {
         if (git) {
-          const ref = await revision()
           return retain(
-            await paged((cursor) => repo.tree({ worktree_id: id, revision: ref, path, cursor }))
+            await readWithIgnoredFallback(
+              path,
+              async (ignored) => {
+                const ref = await revision(ignored)
+                return paged((cursor) =>
+                  repo.tree({ worktree_id: id, revision: ref, path, cursor })
+                )
+              },
+              params.include_ignored === true
+            )
           )
         }
         const entries = []
@@ -1120,9 +1121,17 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
               )
             )
           )
-        const ref = await revision()
         return retain(
-          await paged((cursor) => repo.search({ worktree_id: id, revision: ref, ...query, cursor }))
+          await readWithIgnoredFallback(
+            path,
+            async (ignored) => {
+              const ref = await revision(ignored)
+              return paged((cursor) =>
+                repo.search({ worktree_id: id, revision: ref, ...query, cursor })
+              )
+            },
+            params.include_ignored === true
+          )
         )
       }
       if (name.startsWith('node_git_')) {

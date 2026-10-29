@@ -1,3 +1,4 @@
+import { readWithIgnoredFallback } from './ignoredRead'
 import { uiErrorMessage, UiError, uiMessage } from '@/i18n/streamBErrors'
 
 import type { NodeClient } from '@abele/node-client'
@@ -890,21 +891,21 @@ export class NodePathClientPort implements NodePathPort {
         ? Promise.resolve(known.changes)
         : this.status(target, revision).then((entries) => entries.map(pathStatus))
     const params = { worktree_id: target.id, revision, path }
-    // The bundled SDK predates this optional person-read flag. Validate its response here.
-    const blob =
-      revision.kind === 'working' && this.client.request
-        ? this.client
-            .request('repository.v1.blob', { ...params, include_ignored: true })
-            .then((value) => {
-              const blob = RepositoryBlobSchema.parse(value)
-              return { ...blob, content_id: blob.content_id ?? null }
-            })
-            .catch((error: unknown) => {
-              if (error instanceof ChannelError && error.code === 'invalid_params')
-                return this.client.repository.blob(params)
-              throw error
-            })
-        : this.client.repository.blob(params)
+    const blob = readWithIgnoredFallback(
+      path,
+      async (ignored) => {
+        if (!ignored || revision.kind !== 'working' || !this.client.request)
+          return this.client.repository.blob(params)
+        const value = await this.client.request('repository.v1.blob', {
+          ...params,
+          include_ignored: true,
+        })
+        const blob = RepositoryBlobSchema.parse(value)
+        return { ...blob, content_id: blob.content_id ?? null }
+      },
+      false,
+      false
+    )
     const comparison = changes.then(async (entries) => {
       const observedChange = entries.find((entry) => entry.path === path)
       if (!observedChange) return undefined

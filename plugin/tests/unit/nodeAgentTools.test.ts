@@ -16,9 +16,56 @@ import { digest, hash, project, workspace, setup, setupGit } from '../helpers/no
 
 describe('Obsidian chat node tools', () => {
   it.each(['node_read', 'node_ls', 'node_search'])(
-    '%s includes ignored source in its working observation',
+    '%s falls back when an explicit ignored scan exceeds the limit',
     async (name) => {
       const f = setupGit()
+      const observe = f.repository.observe.getMockImplementation()!
+      f.repository.observe.mockImplementation(async (params) => {
+        if (params.include_ignored)
+          throw Object.assign(new Error('scan_limit'), { code: 'scan_limit' })
+        return observe(params)
+      })
+      Object.assign(f.repository, {
+        tree: vi.fn(async () => ({ entries: [], cursor: null, incomplete: false, omissions: [] })),
+        search: vi.fn(async () => ({
+          entries: [],
+          cursor: null,
+          incomplete: false,
+          omissions: [],
+        })),
+      })
+      await f.call(name, { path: 'sample.txt', query: 'sample', include_ignored: true })
+      expect(f.repository.observe.mock.calls.map(([p]) => p.include_ignored)).toEqual([
+        true,
+        undefined,
+      ])
+    }
+  )
+  it('names the ignored path when its expanded scan cannot finish', async () => {
+    const f = setupGit()
+    f.repository.blob.mockRejectedValue(
+      Object.assign(new Error('Path is ignored'), { code: 'not_found' })
+    )
+    const observe = f.repository.observe.getMockImplementation()!
+    f.repository.observe.mockImplementation(async (params) => {
+      if (params.include_ignored)
+        throw Object.assign(new Error('scan_limit'), { code: 'scan_limit' })
+      return observe(params)
+    })
+    await expect(f.call('node_read', { path: 'generated/sample.ts' })).rejects.toThrow(
+      /generated\/sample.ts.*ignored.*too big/
+    )
+  })
+  it.each(['node_read', 'node_ls', 'node_search'])(
+    '%s avoids ignored scans by default',
+    async (name) => {
+      const f = setupGit()
+      const observe = f.repository.observe.getMockImplementation()!
+      f.repository.observe.mockImplementation(async (params) => {
+        if (params.include_ignored)
+          throw Object.assign(new Error('scan_limit'), { code: 'scan_limit' })
+        return observe(params)
+      })
       const page = { entries: [], cursor: null, incomplete: false, omissions: [] }
       Object.assign(f.repository, {
         tree: vi.fn(async () => page),
@@ -27,7 +74,6 @@ describe('Obsidian chat node tools', () => {
       await f.call(name, { path: 'generated/sample.ts', query: 'sample' })
       expect(f.repository.observe).toHaveBeenCalledWith({
         worktree_id: 'sample-tree',
-        include_ignored: true,
       })
     }
   )
@@ -36,7 +82,7 @@ describe('Obsidian chat node tools', () => {
     f.repository.observe.mockRejectedValueOnce(
       Object.assign(new Error('Unknown field'), { code: 'invalid_params' })
     )
-    await f.call('node_read', { path: 'sample.txt' })
+    await f.call('node_read', { path: 'sample.txt', include_ignored: true })
     expect(f.repository.observe.mock.calls).toEqual([
       [{ worktree_id: 'sample-tree', include_ignored: true }],
       [{ worktree_id: 'sample-tree' }],

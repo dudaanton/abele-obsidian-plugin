@@ -498,16 +498,28 @@ it('ignores repository invalidations belonging to another watched target', async
 })
 
 describe('independent file reads', () => {
-  it('opts explicit working-file reads into ignored source without changing tree observations', async () => {
+  it('retries ordinary visibility after an ignored scan exceeds the limit', async () => {
     const f = fake()
     const catalogue = await f.port.catalogue()
-    const request = vi.fn(f.request)
+    const request = vi.fn().mockRejectedValue(new ChannelError('scan_limit', 'scan_limit'))
     Object.assign(f.client, { request })
+    const blob = vi
+      .spyOn(f.client.repository, 'blob')
+      .mockRejectedValueOnce(new ChannelError('not_found', 'Path is ignored'))
     await f.port.file(catalogue.targets[0], 'app.ts')
     expect(request).toHaveBeenCalledWith(
       'repository.v1.blob',
-      expect.objectContaining({ path: 'app.ts', include_ignored: true })
+      expect.objectContaining({ include_ignored: true })
     )
+    expect(blob).toHaveBeenCalledTimes(2)
+  })
+  it('opens ordinary files without scanning ignored trees', async () => {
+    const f = fake()
+    const catalogue = await f.port.catalogue()
+    const request = vi.fn().mockRejectedValue(new ChannelError('scan_limit', 'scan_limit'))
+    Object.assign(f.client, { request })
+    await f.port.file(catalogue.targets[0], 'app.ts')
+    expect(request).not.toHaveBeenCalled()
   })
 
   it('retries without the ignored-file flag when an older node rejects that parameter', async () => {
@@ -517,14 +529,16 @@ describe('independent file reads', () => {
       .fn()
       .mockRejectedValue(new ChannelError('invalid_params', 'Unknown parameter'))
     Object.assign(f.client, { request })
-    const blob = vi.spyOn(f.client.repository, 'blob')
+    const blob = vi
+      .spyOn(f.client.repository, 'blob')
+      .mockRejectedValueOnce(new ChannelError('not_found', 'Path is ignored'))
     await f.port.file(catalogue.targets[0], 'app.ts')
     expect(request).toHaveBeenCalledWith(
       'repository.v1.blob',
       expect.objectContaining({ include_ignored: true })
     )
-    expect(blob).toHaveBeenCalledTimes(1)
-    expect(blob.mock.calls[0][0]).not.toHaveProperty('include_ignored')
+    expect(blob).toHaveBeenCalledTimes(2)
+    expect(blob.mock.calls[1][0]).not.toHaveProperty('include_ignored')
   })
   it('reads file bytes while status is pending, without listing the tree', async () => {
     const f = fake()

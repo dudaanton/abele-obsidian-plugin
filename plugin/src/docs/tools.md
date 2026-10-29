@@ -1329,6 +1329,15 @@ picker, shell, stage or push is exposed by this toolset. Delegation tools use th
 | `node_git_blame` | Attribution for `path`, optionally `start` and `count` |
 | `node_worktree_switch` | Select an already scoped worktree inside this chat's current folder |
 
+Node file reads and listings try ordinary visibility first, retrying ignored content only
+when a path is reported ignored or excluded. Set `include_ignored: true` explicitly
+to request ignored content with `node_read`, `node_open`, `node_ls` or `node_search`.
+Search excludes ignored trees by default. If an ignored scan exceeds the node limit,
+the tools retry ordinary visibility; an unreachable ignored file is reported with its
+path and an explanation that the ignored trees are too big to scan. Personal file
+opens also try ordinary visibility first.
+
+
 `node_write` requires an explicitly supplied `text` string; `text: ""` is an intentional
 empty-file edit, while omitting it is invalid.
 
