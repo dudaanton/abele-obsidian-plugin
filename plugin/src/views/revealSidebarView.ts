@@ -4,7 +4,39 @@ import {
   type Workspace,
   type WorkspaceLeaf,
   type WorkspaceSidedock,
+  type Plugin,
 } from 'obsidian'
+
+/** Registration rebuilds existing leaves asynchronously, after onLayoutReady on reload. */
+export function restoreRegisteredViewHeaders(plugin: Plugin, types: readonly string[]): void {
+  let running = false
+  let pending = false
+  let disposed = false
+  plugin.register(() => {
+    disposed = true
+  })
+  const restore = async () => {
+    pending = true
+    if (running || disposed) return
+    running = true
+    try {
+      while (pending && !disposed) {
+        pending = false
+        await loadDeferredSidebarViews(plugin.app.workspace, types, true)
+      }
+    } finally {
+      running = false
+    }
+  }
+  plugin.registerEvent(
+    plugin.app.workspace.on('layout-change', () => {
+      void restore()
+    })
+  )
+  plugin.app.workspace.onLayoutReady(() => {
+    void restore()
+  })
+}
 
 /** Deferred sidebar leaves need their view loaded to restore its title and retained state. */
 export async function loadDeferredSidebarViews(
@@ -22,7 +54,11 @@ export async function loadDeferredSidebarViews(
         const restored = leaf as WorkspaceLeaf & {
           updateHeader?: () => void
           rebuildView?: () => Promise<void>
+          working?: boolean
         }
+        // The host's registration callback owns this leaf until setViewState completes.
+        // Its resulting layout change will run restoration again.
+        if (restored.working) return
         // An unloaded plugin leaves a placeholder with its view type as the title. It is not
         // a deferred view, so loading it alone cannot recreate the newly registered view.
         if (leaf.view && leaf.view.getDisplayText() === leaf.view.getViewType()) {

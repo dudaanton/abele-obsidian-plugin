@@ -21,7 +21,7 @@ import { registerRequests } from '@/requests/views'
 import { REQUEST_TAB_VIEW } from '@/requests/actions'
 import { TRACE_RUN_VIEW } from '@/debugger/trace/TraceTabs'
 import { NodeSidebarView } from '@/views/NodeSidebarView'
-import { revealSidebarView, loadDeferredSidebarViews } from '@/views/revealSidebarView'
+import { revealSidebarView, restoreRegisteredViewHeaders } from '@/views/revealSidebarView'
 import { NodePathMainView } from '@/views/NodePathMainView'
 import { NodePathService } from '@/node/NodePathService'
 import { createNodePathObsidianActions } from '@/node/NodePathObsidianActions'
@@ -70,13 +70,12 @@ export function registerViews(plugin: Plugin) {
     TIMELINE_SIDEBAR_VIEW_TYPE,
     (leaf) => new TimelineSidebarView(leaf, plugin.app)
   )
-  plugin.app.workspace.onLayoutReady(() => {
-    void loadDeferredSidebarViews(
-      plugin.app.workspace,
-      [TIMELINE_SIDEBAR_VIEW_TYPE, DEBUG_VIEW_TYPE, TRACE_RUN_VIEW, REQUEST_TAB_VIEW],
-      true
-    )
-  })
+  restoreRegisteredViewHeaders(plugin, [
+    TIMELINE_SIDEBAR_VIEW_TYPE,
+    DEBUG_VIEW_TYPE,
+    TRACE_RUN_VIEW,
+    REQUEST_TAB_VIEW,
+  ])
   plugin.registerView(TODO_SIDEBAR_VIEW_TYPE, (leaf) => new TodoSidebarView(leaf, plugin.app))
   plugin.registerView(FINANCE_SIDEBAR_VIEW_TYPE, (leaf) => new FinanceSidebarView(leaf, plugin.app))
   plugin.registerView(
