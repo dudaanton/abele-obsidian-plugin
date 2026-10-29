@@ -12,6 +12,7 @@ import { WireProxy } from './proxy.mjs'
 import { controlTiming } from './restart.mjs'
 import { validateBuildReceipt } from './build.mjs'
 import { restartModes } from './restart-probe-plan.mjs'
+import { waitForJsonExport } from './evidence-export.mjs'
 
 const delay = (ms) => new Promise((done) => setTimeout(done, ms))
 async function until(label, test, timeout = 180000) {
@@ -170,6 +171,7 @@ export async function runProbe(config) {
         },
         180000
       )
+      if (mode === 'profile-only') await waitForJsonExport(profileReceipt)
       const activity = await device.activityEvidence()
       report.restarts.push({
         number,
