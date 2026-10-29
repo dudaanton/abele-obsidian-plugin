@@ -11,7 +11,11 @@ import { NodeSuggestModal, type NodeSuggestion } from '@/components/nodeWork/Nod
 import { GlobalStore } from '@/stores/GlobalStore'
 import { confirmDialog } from '@/components/obsidian/dialogs'
 import { DebuggerService } from './DebuggerService'
-import { restoreBreakpoint } from './restoreBreakpoint'
+import {
+  restoreBreakpoint,
+  removeForgottenBreakpoints,
+  forgottenBreakpointLocations,
+} from './restoreBreakpoint'
 import { debuggerAcceptanceCapabilities } from '@/node/acceptanceCapabilities'
 import {
   StartResultSchema,
@@ -97,6 +101,7 @@ export async function attachToProgram(
     sha256(new TextEncoder().encode(JSON.stringify([program.cwd, program.port, program.script])))
   )
   const previous = service.forAttachment(presenter, attachmentKey)
+  const forgotten = forgottenBreakpointLocations(previous)
   const watches =
     previous?.controller.session.watches.map((watch) => ({
       expression: watch.expression,
@@ -131,6 +136,7 @@ export async function attachToProgram(
   // A source can be unreadable or slow to open. The attached session must already be selected
   // before those optional file reads, so a previous detached view cannot remain on screen.
   await show(started.debug_session_id)
+  await removeForgottenBreakpoints(previous, binding, forgotten)
   // Prefer mapped source. Check the ordinary file API before opening an adapter-provided
   // path: ignored build outputs can be admitted for debugging but refused by file browsing.
   const main =

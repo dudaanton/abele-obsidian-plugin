@@ -9,6 +9,7 @@ import type { TraceRpc, WirePoint, WireRunPoint, WireRunSummary, WireStatus } fr
 /** The breakpoints a record point stands on: the debugger controller, as far as trace needs it. */
 export interface TraceBreakpoints {
   readonly snapshot: DebuggerSnapshot | null
+  readonly disconnectRequested?: boolean
   knownBreakpoints(): (KnownBreakpoint & {
     sourceId: string
     requestedLine: number
@@ -56,7 +57,8 @@ export class TraceSession {
   constructor(
     readonly rpc: TraceRpc,
     private readonly debug: TraceBreakpoints,
-    private readonly changed: () => void
+    private readonly changed: () => void,
+    private readonly forgetPoint?: (id: string) => void
   ) {}
 
   /** A run the node was writing is written no more: the program stopped or its points went. */
@@ -273,6 +275,16 @@ export class TraceSession {
   async removePoint(id: string) {
     const session = this.sessionId
     if (!session) return
+    if (
+      this.debug.disconnectRequested ||
+      ['detached', 'terminated', 'failed'].includes(this.debug.snapshot?.lifecycle ?? '')
+    ) {
+      if (!this.forgetPoint) throw new RecordPointSaveError('not_completed')
+      this.forgetPoint(id)
+      this.points = this.points.filter((point) => point.breakpoint_id !== id)
+      this.changed()
+      return
+    }
     const result = await this.debug.removeBreakpoint(id)
     if (
       result &&

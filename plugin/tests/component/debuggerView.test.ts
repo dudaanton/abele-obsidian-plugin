@@ -8,6 +8,102 @@ import DebuggerView from '@/debugger/DebuggerView.vue'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import DebugActionCard from '@/components/debugger/DebugActionCard.vue'
 import type { DebugSession } from '@/components/debugger/types'
+it('shows only this view action failure, leaving unrelated controller diagnostics in their own surface', async () => {
+  const { shallowRef } = await import('vue')
+  const service = DebuggerService.instance
+  service.destroy()
+  service.active.value = {
+    revision: shallowRef(0),
+    refresh: vi.fn(async () => {}),
+    fail: vi.fn(),
+    controller: {
+      session: session('paused'),
+      actions: [],
+      error: 'sample unrelated source failure',
+      watch: async () => {
+        throw new Error('sample own watch failure')
+      },
+    },
+  } as never
+  const view = mount(DebuggerView)
+  try {
+    expect(view.find('.abele-debug-view__error').exists()).toBe(false)
+    view.getComponent(DebugPanel).vm.$emit('watch', 'missing.field')
+    await flushPromises()
+    expect(view.get('.abele-debug-view__error').text()).toContain('sample own watch failure')
+  } finally {
+    view.unmount()
+    service.active.value = null
+  }
+})
+it('keeps a late failed view action on the session that started it', async () => {
+  const { shallowRef } = await import('vue')
+  const service = DebuggerService.instance
+  service.destroy()
+  let reject!: (reason: Error) => void
+  const first = {
+    revision: shallowRef(0),
+    refresh: vi.fn(async () => {}),
+    fail: vi.fn(),
+    controller: {
+      session: session('paused'),
+      actions: [],
+      watch: () =>
+        new Promise((_resolve, fail) => {
+          reject = fail
+        }),
+    },
+  }
+  const second = { ...first, revision: shallowRef(0), fail: vi.fn() }
+  service.active.value = first as never
+  const view = mount(DebuggerView)
+  try {
+    view.getComponent(DebugPanel).vm.$emit('watch', 'missing.field')
+    service.active.value = second as never
+    reject(new Error('sample watch failure'))
+    await flushPromises()
+    expect(first.fail).toHaveBeenCalled()
+    expect(second.fail).not.toHaveBeenCalled()
+    expect(view.find('.abele-debug-view__error').exists()).toBe(false)
+  } finally {
+    view.unmount()
+    service.active.value = null
+  }
+})
+it('stops showing recording on a detached session even if the last trace read was recording', async () => {
+  const { shallowRef } = await import('vue')
+  const service = DebuggerService.instance
+  service.destroy()
+  const state = session('running')
+  const revision = shallowRef(0)
+  service.active.value = {
+    revision,
+    retainedBreakpoints: [],
+    forgottenBreakpoints: new Set(),
+    controller: { session: state, actions: [] },
+    trace: {
+      breakpoints: () => [],
+      summaries: () => [],
+      recording: () => ({
+        elapsed: '1:00',
+        steps: 1,
+        browser: { state: 'none', via: 'agent', hosts: [] },
+        folder: 'runs',
+      }),
+    },
+  } as never
+  const view = mount(DebuggerView)
+  try {
+    expect(view.getComponent(DebugPanel).props('recording')).toBeDefined()
+    state.status = 'exited'
+    revision.value++
+    await flushPromises()
+    expect(view.getComponent(DebugPanel).props('recording')).toBeUndefined()
+  } finally {
+    view.unmount()
+    service.active.value = null
+  }
+})
 const session = (status: DebugSession['status']): DebugSession => ({
   program: 'sample program',
   status,
@@ -31,6 +127,120 @@ it('keeps debugger controls in their own normal-flow row', () => {
     ).toBeGreaterThan(0)
   } finally {
     wrapper.unmount()
+  }
+})
+it('forgets each ended record point without converting it into a stopping breakpoint', async () => {
+  const { ref } = await import('vue')
+  const { debuggerSnapshot } = await import('../fixtures/debugger')
+  const service = DebuggerService.instance
+  service.destroy()
+  const b = service.binding({
+    reference: { registrationId: 'sample-registration', sessionId: 'sample-chat' },
+    connection: { state: ref('connected'), client: {} },
+  } as never)
+  b.controller.observe({
+    observation: 'current',
+    snapshot: debuggerSnapshot({
+      breakpoints: [7, 9].map((line) => ({
+        breakpoint_id: `sample-${line}`,
+        source_id: 'sample-source',
+        line,
+        enabled: true,
+        status: 'verified',
+        resolved_line: line,
+        resolved_column: null,
+        message: null,
+      })),
+    }),
+  })
+  b.controller.registerSource('sample-source', 'sample.ts')
+  const { TraceSession } = await import('@/debugger/trace/TraceSession')
+  b.trace = new TraceSession({} as never, b.controller, () => ++b.revision.value)
+  b.trace.points = [7, 9].map((line) => ({ breakpoint_id: `sample-${line}`, take: ['value'] }))
+  b.controller.session.status = 'exited'
+  b.controller.session.detached = true
+  service.select(b)
+  const remove = vi.spyOn(b.trace, 'removePoint').mockResolvedValue()
+  const view = mount(DebuggerView)
+  try {
+    for (const line of [7, 9]) {
+      view.getComponent(DebugPanel).vm.$emit('breakpoint', 'sample.ts', line)
+      await flushPromises()
+      expect(
+        view
+          .getComponent(DebugPanel)
+          .props('session')
+          .breakpoints.some((p: { line: number }) => p.line === line)
+      ).toBe(false)
+    }
+    expect(remove).not.toHaveBeenCalled()
+    expect(b.retainedBreakpoints).toEqual([])
+    expect(b.trace.points).toEqual([])
+  } finally {
+    view.unmount()
+    service.destroy()
+  }
+})
+it('keeps local point removal available on an unavailable ended session', () => {
+  const view = mount(DebugPanel, {
+    props: { session: { ...session('exited'), unavailable: true } },
+  })
+  try {
+    expect(view.get('[aria-label="Remove all breakpoints"]').attributes('disabled')).toBeUndefined()
+    expect(view.get('[aria-label="Remove"]').attributes('disabled')).toBeUndefined()
+  } finally {
+    view.unmount()
+  }
+})
+it('waits for source paths rather than showing adapter source ids in breakpoint rows', async () => {
+  const { shallowRef } = await import('vue')
+  const service = DebuggerService.instance
+  service.destroy()
+  const state = session('running')
+  state.breakpoints = [{ file: 'sample-adapter-source', line: 7, state: 'set' }]
+  const revision = shallowRef(0)
+  let file = 'sample-adapter-source'
+  service.active.value = {
+    revision,
+    controller: {
+      session: state,
+      actions: [],
+      knownBreakpoints: () => [{ file, sourceId: 'sample-adapter-source', line: 7 }],
+    },
+  } as never
+  const view = mount(DebuggerView)
+  try {
+    expect(view.text()).not.toContain('sample-adapter-source:7')
+    file = 'src/sample.ts'
+    state.breakpoints[0].file = file
+    revision.value++
+    await flushPromises()
+    expect(view.text()).toContain('sample.ts:7')
+  } finally {
+    view.unmount()
+    service.active.value = null
+  }
+})
+it('keeps a real paused state visible even when the trace classifies the hit as a record point', async () => {
+  const { shallowRef } = await import('vue')
+  const service = DebuggerService.instance
+  service.destroy()
+  service.active.value = {
+    revision: shallowRef(0),
+    controller: { session: session('paused'), actions: [] },
+    trace: {
+      breakpoints: () => [],
+      isRecordStop: () => true,
+      summaries: () => [],
+      recording: () => undefined,
+    },
+  } as never
+  const view = mount(DebuggerView)
+  try {
+    expect(view.getComponent(DebugPanel).props('session').status).toBe('paused')
+  } finally {
+    view.unmount()
+    service.active.value = null
   }
 })
 it('opens a selected caller frame and explains a library without source', async () => {
@@ -181,6 +391,25 @@ it('renders exact approvals in the debug view without a chat', async () => {
   }
 })
 describe('debugger panel', () => {
+  it('shows the evaluation diagnostic in its watch row', () => {
+    const view = mount(DebugPanel, {
+      props: {
+        session: {
+          ...session('paused'),
+          watches: [
+            { expression: 'missing.field', error: 'ReferenceError: missing is not defined' },
+          ],
+        },
+      },
+    })
+    try {
+      expect(view.get('.abele-debug-panel__value_error').text()).toContain(
+        'ReferenceError: missing is not defined'
+      )
+    } finally {
+      view.unmount()
+    }
+  })
   it('identifies a log point rather than promising to stop there', () => {
     const w = mount(DebugPanel, {
       props: {

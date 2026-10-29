@@ -1,4 +1,31 @@
 import type { DebuggerController } from './DebuggerController'
+import type { DebuggerBinding } from './DebuggerService'
+
+export function forgottenBreakpointLocations(binding: DebuggerBinding | undefined) {
+  if (!binding?.forgottenBreakpoints?.size) return []
+  return binding.controller
+    .knownBreakpoints()
+    .filter((point) => binding.forgottenBreakpoints.has(point.id))
+    .map(({ file, requestedLine }) => ({ file, requestedLine }))
+}
+
+/** The node can restore its retained points too; local removals must win over that history. */
+export async function removeForgottenBreakpoints(
+  previous: DebuggerBinding | undefined,
+  next: DebuggerBinding,
+  removed = forgottenBreakpointLocations(previous)
+) {
+  if (!removed.length) return
+  for (const point of next.controller.knownBreakpoints()) {
+    if (
+      !removed.some((old) => old.file === point.file && old.requestedLine === point.requestedLine)
+    )
+      continue
+    if (next.trace?.points.some((record) => record.breakpoint_id === point.id))
+      await next.trace.removePoint(point.id)
+    else await next.controller.removeBreakpoint(point.id)
+  }
+}
 
 /** Re-attach carries intent, while an identical point already restored by the node stays one. */
 export async function restoreBreakpoint(

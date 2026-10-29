@@ -8,6 +8,66 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 import { DebuggerBreakpointRequestSchema } from '@abele/node-protocol'
+it.each(['failed', 'rejected'])(
+  'shows an asynchronous %s evaluation error in its watch row',
+  async (outcome) => {
+    const { model, rpc, command } = fixture()
+    model.actions = []
+    await model.loadStack()
+    let operation = ''
+    const baseRpc = rpc.getMockImplementation()!
+    command.mockImplementation(async (_method, params: any) => {
+      operation = params.operation_id
+      return receipt()
+    })
+    rpc.mockImplementation(async (method) => {
+      if (method === 'debugger.v1.history')
+        return {
+          entries: operation
+            ? [
+                {
+                  actor: { kind: 'human', principal_id: 'sample-human' },
+                  operation_id: operation,
+                  operation: 'evaluate',
+                  outcome,
+                  debug_session_id: 'sample-debug',
+                  incarnation: 'sample-incarnation',
+                  history_seq: 1,
+                  event_seq: 8,
+                  stop: null,
+                  observed_at: '2025-01-01T00:00:00.000Z',
+                  stop_epoch: 3,
+                  state_revision: 4,
+                  target_id: 'sample-target',
+                  build_identity: 'matched',
+                  payload_status: 'retained',
+                  requested_data: { code: 'sample evaluation failed' },
+                },
+              ]
+            : [],
+          truncated_before: 0,
+        } as never
+      return baseRpc(method) as never
+    })
+    await model.watch('missing.field')
+    expect(model.session.watches[0]).toMatchObject({
+      expression: 'missing.field',
+      error: 'sample evaluation failed',
+      stale: false,
+    })
+    expect(model.session.status).toBe('paused')
+    expect(model.error).toBe('')
+  }
+)
+it('shows an evaluation transport error in the watch instead of the whole Debug view', async () => {
+  const { model, command } = fixture()
+  await model.loadStack()
+  command.mockRejectedValueOnce(new Error('sample evaluation failed'))
+  await model.watch('missing.field')
+  expect(model.session.watches[0]).toMatchObject({ error: 'sample evaluation failed' })
+  expect(model.session.status).toBe('paused')
+  expect(model.error).toBe('')
+})
 it('shows the capture destination without a disconnected browser row while recording code', () => {
   const { model } = fixture()
   const panel = mount(DebugPanel, {

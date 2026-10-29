@@ -2,6 +2,25 @@ import { describe, expect, it, vi } from 'vitest'
 import { TraceSession, type TraceBreakpoints } from '@/debugger/trace/TraceSession'
 import { TraceRpc } from '@/debugger/trace/wire'
 import type { DebuggerSnapshot } from '@abele/node-protocol'
+it.each(['detached', 'terminated', 'failed'] as const)(
+  'removes an ended %s record point through local intent only',
+  async (lifecycle) => {
+    const node = fakeNode()
+    const debug = fakeDebugger()
+    debug.snapshot!.lifecycle = lifecycle
+    const forget = vi.fn()
+    const trace = new TraceSession(node.rpc, debug, () => {}, forget)
+    try {
+      trace.points = [{ breakpoint_id: 'sample-record', take: ['value'] }]
+      await trace.removePoint('sample-record')
+      expect(forget).toHaveBeenCalledExactlyOnceWith('sample-record')
+      expect(debug.removeBreakpoint).not.toHaveBeenCalled()
+      expect(trace.points).toEqual([])
+    } finally {
+      trace.dispose()
+    }
+  }
+)
 
 it('opens a new completed run even when recording began and ended between reads', async () => {
   const node = fakeNode()

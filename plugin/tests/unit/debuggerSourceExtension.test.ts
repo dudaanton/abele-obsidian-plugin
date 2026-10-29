@@ -3,6 +3,38 @@ import { nextTick, ref } from 'vue'
 import { debuggerSnapshot } from '../fixtures/debugger'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import { mountDebugSource } from '@/debugger/sourceExtension'
+it.each(['running', 'exited'] as const)(
+  'clears a revealed stop when execution becomes %s',
+  async (status) => {
+    const service = DebuggerService.instance
+    const binding = service.binding({
+      reference: { registrationId: 'sample-registration', sessionId: 'sample-chat' },
+      connection: { state: ref('connected'), client: {} },
+    } as never)
+    binding.controller.observe({ observation: 'current', snapshot: debuggerSnapshot() })
+    const host = document.createElement('div')
+    const handle = mountDebugSource(host, {
+      registrationId: 'sample-registration',
+      conversationId: 'sample-chat',
+      sourceId: 'sample-source',
+      debugSessionId: 'sample-debug',
+      incarnation: 'sample-incarnation',
+      path: 'sample.ts',
+      text: 'sample',
+      line: 7,
+    })
+    try {
+      expect(host.querySelector('[data-line]')?.getAttribute('data-line')).toBe('7')
+      binding.controller.session.status = status
+      ++binding.revision.value
+      await nextTick()
+      expect(host.querySelector('[data-line]')).toBeNull()
+    } finally {
+      handle.destroy()
+      service.destroy()
+    }
+  }
+)
 vi.mock('@/components/debugger/DebugSource.vue', () => ({
   default: {
     props: ['stale', 'line', 'breakpoints'],

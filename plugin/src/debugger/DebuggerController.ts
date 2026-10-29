@@ -1015,10 +1015,23 @@ export class DebuggerController {
         }
       }
       const inspection = entry.operation_id ? this.inspections.get(entry.operation_id) : undefined
+      if (
+        inspection?.expression &&
+        ['failed', 'rejected', 'timed_out', 'outcome_unknown'].includes(entry.outcome)
+      ) {
+        const watch = this.session.watches.find((w) => w.expression === inspection.expression)
+        if (watch) {
+          watch.error = receiptMessage(typeof data?.code === 'string' ? data.code : entry.outcome)
+          watch.stale =
+            this.session.status !== 'paused' || entry.stop_epoch !== this.snapshot?.stop_epoch
+        }
+        this.inspections.delete(entry.operation_id)
+      }
       if (inspection && entry.outcome === 'completed' && data) {
         if (inspection.expression) {
           const watch = this.session.watches.find((w) => w.expression === inspection.expression)
           if (watch) {
+            watch.error = undefined
             watch.value = typeof data.value === 'string' ? data.value : JSON.stringify(data)
             watch.stale =
               this.session.status !== 'paused' ||
@@ -1312,21 +1325,35 @@ export class DebuggerController {
       const generation = this.serial,
         operation_id = crypto.randomUUID()
       this.inspections.set(operation_id, { expression })
-      const result = DebuggerReceiptSchema.parse(
-        await this.ownerCommand('evaluate', {
-          ...this.precondition(current),
-          operation_id,
-          frame_handle,
-          expression,
-        })
-      )
+      let result: DebuggerReceipt
+      try {
+        result = DebuggerReceiptSchema.parse(
+          await this.ownerCommand('evaluate', {
+            ...this.precondition(current),
+            operation_id,
+            frame_handle,
+            expression,
+          })
+        )
+      } catch (error) {
+        this.inspections.delete(operation_id)
+        if (!this.current || generation !== this.serial) return
+        const watch = this.session.watches.find((w) => w.expression === expression)
+        if (watch) {
+          watch.error = error instanceof Error ? error.message : t('node.error.generic')
+          watch.stale = this.session.status !== 'paused'
+        }
+        console.debug('[debugger] Watch evaluation unavailable', expression, error)
+        this.notify()
+        return
+      }
       if (!this.current || generation !== this.serial) return
       this.observe({ observation: 'current', snapshot: result.snapshot })
       const settled = result.outcome === 'completed' || result.outcome === 'failed'
-      if (result.outcome === 'failed') {
+      if (['failed', 'rejected', 'timed_out', 'outcome_unknown'].includes(result.outcome)) {
         const watch = this.session.watches.find((value) => value.expression === expression)
         if (watch) {
-          watch.value = receiptMessage(result.code ?? result.outcome)
+          watch.error = receiptMessage(result.code ?? result.outcome)
           watch.stale = false
         }
         this.inspections.delete(operation_id)

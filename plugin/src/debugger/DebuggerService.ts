@@ -13,7 +13,7 @@ import { DebuggerController } from './DebuggerController'
 import { nodeDebuggerSupported } from '@/node/providers'
 import { TraceSession } from './trace/TraceSession'
 import { nodeTraceSupported, TraceRpc } from './trace/wire'
-import { ItemView, Platform } from 'obsidian'
+import { Platform } from 'obsidian'
 import type { PathTarget } from '@/node/NodePathModel'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
@@ -56,7 +56,9 @@ export class DebuggerBinding {
   /** Ended sessions cannot accept a patch. Forget the local point used by a later reattach. */
   forgetBreakpoint(id: string) {
     this.forgottenBreakpoints.add(id)
-    const removed = this.retainedBreakpoints.find((point) => point.id === id)
+    const removed =
+      this.retainedBreakpoints.find((point) => point.id === id) ??
+      this.controller.knownBreakpoints().find((point) => point.id === id)
     this.retainedBreakpoints = this.retainedBreakpoints.filter((point) => point.id !== id)
     if (removed)
       this.controller.session.breakpoints = this.controller.session.breakpoints.filter(
@@ -68,6 +70,7 @@ export class DebuggerBinding {
     GlobalStore.getInstance().app?.workspace?.requestSaveLayout?.()
   }
   sessionMissing = false
+  observationError = ''
   /** The session's recording, where the node records runs. */
   trace?: TraceSession
   /** Runs the program last started from this chat again, with the same files: Restart in the panel. */
@@ -166,6 +169,7 @@ export class DebuggerBinding {
       if (abort.signal.aborted || this.disposed) return
       // Publish the status before optional capability/recording reads can stall.
       this.controller.observe(this.connection.client.debugger.current(sessionId))
+      DebuggerService.instance.syncSources(this)
       const recordsRuns = await this.recordsRuns()
       if (!this.trace && recordsRuns) {
         this.trace = new TraceSession(
@@ -173,7 +177,8 @@ export class DebuggerBinding {
           this.controller,
           () => {
             ++this.revision.value
-          }
+          },
+          (id) => this.forgetBreakpoint(id)
         )
         // A run that ends opens in its tab: what the points took is looked at there, and a note
         // about it is written only when someone asks for one.
@@ -194,6 +199,8 @@ export class DebuggerBinding {
       // Opening retained observations loads their data without selecting an old paused peer.
       await this.refresh(false)
       if (abort.signal.aborted) return
+      this.observationError = ''
+      ++this.revision.value
       DebuggerService.instance.observeFolder(this, sessionId)
       void this.loop(sessionId, result.snapshot.event_seq, result.snapshot.incarnation, abort)
         .catch((e) => {
@@ -385,15 +392,7 @@ export class DebuggerBinding {
         if (focusPause) DebuggerService.instance.focusPause(this)
         // The first frame with a file: a program held on its first line sits in Node's loader.
         const f = this.controller.session.frames.find((frame) => frame.file)
-        const view = Platform.isPhone
-          ? GlobalStore.getInstance().app.workspace.getActiveViewOfType(ItemView)
-          : undefined
-        const request = view?.getViewType() === 'abele-request' ? view.getState() : undefined
-        // The request tab names the paused location and opens the controls in one press.
-        const keepRequest =
-          request?.registrationId === this.registrationId &&
-          request.projectId === this.controller.snapshot?.target.project_id
-        if (f && !keepRequest && DebuggerService.instance.active.value === this) {
+        if (f && DebuggerService.instance.active.value === this) {
           if (Platform.isPhone) DebuggerService.instance.reveal(this, f.file, f.line, true)
           else DebuggerService.instance.reveal(this, f.file, f.line)
         }
@@ -410,6 +409,7 @@ export class DebuggerBinding {
     else ++this.revision.value
   }
   private observationFailed(error: unknown) {
+    this.observationError = error instanceof Error ? error.message : t('streamC.e6d2c5631ed60d81')
     this.fail(error)
     this.stopWatch()
     this.controller.disconnected()

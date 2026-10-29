@@ -164,7 +164,7 @@
             icon="trash-2"
             size="xs"
             :tooltip="t('debug.removeBreakpoints')"
-            :disabled="locked || !session.breakpoints.length"
+            :disabled="removalLocked || !session.breakpoints.length"
             @click.stop="emit('remove-breakpoints')"
           />
         </template>
@@ -226,7 +226,7 @@
               icon="x"
               size="xs"
               :tooltip="t('settings.nodes.remove')"
-              :disabled="locked"
+              :disabled="removalLocked"
               @click.stop="emit('breakpoint', b.file, b.line)"
             />
           </template>
@@ -387,6 +387,7 @@ const props = withDefaults(
 const locked = computed(
   () => props.session.status === 'lost' || props.session.unavailable || props.busy
 )
+const removalLocked = computed(() => props.session.status === 'lost' || props.busy)
 const modeKnown = computed(
   () => props.modeAvailable && props.session.mode !== 'unknown' && props.session.status !== 'lost'
 )

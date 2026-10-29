@@ -6,7 +6,11 @@ import type { DebuggerSnapshot } from '@abele/node-protocol'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { DebuggerService, type DebuggerBinding } from './DebuggerService'
 import { debuggerKey } from './DebuggerController'
-import { restoreBreakpoint } from './restoreBreakpoint'
+import {
+  restoreBreakpoint,
+  removeForgottenBreakpoints,
+  forgottenBreakpointLocations,
+} from './restoreBreakpoint'
 import DebuggerView from './DebuggerView.vue'
 import { registerDebugValues } from './DebugValueTab'
 import { registerTraceTabs } from './trace/TraceTabs'
@@ -26,7 +30,10 @@ export class DebugView extends ItemView {
       this.savedState = { ...state }
     try {
       const { folderOwner } = await import('./folderActions')
-      await DebuggerService.instance.restoreSelection(state, folderOwner)
+      // Revealing a retained leaf can reapply its old layout state after an explicit attach.
+      // An already selected session owns the live panel; layout restoration is startup only.
+      if (!DebuggerService.instance.active.value)
+        await DebuggerService.instance.restoreSelection(state, folderOwner)
       const service = DebuggerService.instance,
         binding = service.active.value
       const owner = binding && service.owner(binding)
@@ -132,6 +139,7 @@ function configureSessionActions(
     const restart = async () => {
       const carried = [...(binding.retainedBreakpoints ?? [])]
       const recordPoints = [...(binding.trace?.points ?? [])]
+      const forgotten = forgottenBreakpointLocations(binding)
       if (binding.sessionMissing) {
         const { askAndStartProgram, carriedPoints } = await import('./startProgram')
         return askAndStartProgram(
@@ -161,6 +169,7 @@ function configureSessionActions(
       await openSources(presenter, started, snapshot.incarnation, target)
       await showSession(presenter, started.debug_session_id)
       const next = DebuggerService.instance.binding(presenter, started.debug_session_id)
+      await removeForgottenBreakpoints(binding, next, forgotten)
       for (const point of carried) {
         const source = started.sources.find((source) => source.path === point.file)
         if (!source) continue

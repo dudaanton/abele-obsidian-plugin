@@ -49,9 +49,9 @@
         @unwatch="run(() => binding!.controller.unwatch($event))"
         @breakpoint="breakpoint"
         @breakpoint-menu="breakpointMenu"
-        @remove-breakpoints="run(() => binding!.controller.removeAllBreakpoints())"
+        @remove-breakpoints="removeBreakpoints"
         @exceptions="run(() => binding!.controller.setExceptionFilters($event))"
-        @reveal="(file, line) => service.reveal(binding!, file, line)"
+        @reveal="revealSource"
         @retry="retry"
       >
         <template #approvals>
@@ -84,6 +84,11 @@ import { browserMenu, folderMenu, openRun, runMenu, marginMenu } from './trace/p
 import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
 const service = DebuggerService.instance
 const binding = service.active
+const viewErrors = reactive(new WeakMap<DebuggerBinding, string>())
+function fail(b: DebuggerBinding, error: unknown) {
+  viewErrors.set(b, error instanceof Error ? error.message : t('node.error.generic'))
+  b.fail(error)
+}
 function peerState(peer: DebuggerBinding) {
   const session = peer.controller.session
   return session.status === 'paused'
@@ -130,6 +135,14 @@ function breakpointMenu(file: string, line: number, event: MouseEvent) {
   const point = b?.controller.knownBreakpoints().find((p) => p.file === file && p.line === line)
   if (b && point) marginMenu(b, point.sourceId, line, event)
 }
+function revealSource(file: string, line: number) {
+  const b = binding.value
+  if (!b) return
+  viewErrors.delete(b)
+  b.controller.error = ''
+  service.reveal(b, file, line)
+  if (b.controller.error) viewErrors.set(b, b.controller.error)
+}
 const actions = computed(() => {
   binding.value?.revision.value
   return (binding.value?.controller.actions ?? [])
@@ -145,12 +158,15 @@ const deciding = reactive(new Set<string>())
 async function decide(id: string, allow: boolean) {
   const b = binding.value
   if (!b || deciding.has(id)) return
+  viewErrors.delete(b)
+  b.controller.error = ''
   deciding.add(id)
   try {
     await b.controller.decide(id, allow)
     await b.refresh()
+    if (b.controller.error) viewErrors.set(b, b.controller.error)
   } catch (error) {
-    b.fail(error)
+    fail(b, error)
   } finally {
     deciding.delete(id)
   }
@@ -160,30 +176,42 @@ const session = computed(() => {
   const b = binding.value
   if (!b) return undefined
   const trace = b.trace
+  const known = b.controller.knownBreakpoints?.() ?? []
   const s = {
     ...b.controller.session,
     program: b.controller.snapshot
       ? service.sessionName(b.controller.snapshot, b.controller.session.program)
       : b.controller.session.program,
   }
-  if (s.unavailable) return { ...s, breakpoints: b.retainedBreakpoints }
-  if (!trace) return s
-  // A stop on record points only lasts as long as the values take: it reads as running.
+  const points = trace?.breakpoints() ?? (s.unavailable ? b.retainedBreakpoints : s.breakpoints)
   return {
     ...s,
-    breakpoints: trace.breakpoints(),
-    ...(s.status === 'paused' && trace.isRecordStop() ? { status: 'running' as const } : {}),
+    breakpoints: points.filter((point) => {
+      const identity = known.find((p) => p.file === point.file && p.line === point.line)
+      return (
+        (!identity || identity.file !== identity.sourceId) &&
+        !b.forgottenBreakpoints?.has(identity?.id ?? '')
+      )
+    }),
   }
 })
 // While a run is written its time goes on by the second.
 const now = ref(Date.now())
 const clock = window.setInterval(() => {
-  if (binding.value?.trace?.status?.recording) now.value = Date.now()
+  if (
+    binding.value?.controller.session.status !== 'exited' &&
+    binding.value?.trace?.status?.recording
+  )
+    now.value = Date.now()
 }, 1000)
 onBeforeUnmount(() => window.clearInterval(clock))
 const recording = computed(() => {
   binding.value?.revision.value
-  if (binding.value?.controller.session.unavailable) return undefined
+  if (
+    binding.value?.controller.session.unavailable ||
+    binding.value?.controller.session.status === 'exited'
+  )
+    return undefined
   return binding.value?.trace?.recording(now.value)
 })
 const runs = computed(() => {
@@ -197,20 +225,28 @@ function openRunTab(id: string) {
 }
 const error = computed(() => {
   binding.value?.revision.value
-  return binding.value?.controller.error
+  const b = binding.value
+  return b && (viewErrors.get(b) || b.observationError)
 })
 const busy = ref(false)
 function openValue(name: string, value: string, type?: string) {
-  void openDebugValue(name, value, type).catch((e) => binding.value?.fail(e))
+  const b = binding.value
+  void openDebugValue(name, value, type).catch((e) => {
+    if (b) fail(b, e)
+  })
 }
 async function run(work: () => Promise<unknown>) {
-  if (busy.value || !binding.value) return
+  const b = binding.value
+  if (busy.value || !b) return
+  viewErrors.delete(b)
+  b.controller.error = ''
   busy.value = true
   try {
     await work()
-    await binding.value.refresh()
+    await b.refresh()
+    if (b.controller.error) viewErrors.set(b, b.controller.error)
   } catch (e) {
-    binding.value?.fail(e)
+    fail(b, e)
   } finally {
     busy.value = false
   }
@@ -258,11 +294,19 @@ function breakpoint(file: string, line: number) {
   const b = binding.value
   const point = b?.controller.knownBreakpoints().find((p) => p.file === file && p.line === line)
   if (!b || !point) return
-  if (b.controller.session.unavailable) return b.forgetBreakpoint(point.id)
+  if (b.controller.session.unavailable || b.controller.session.status === 'exited')
+    return b.forgetBreakpoint(point.id)
   // A record point goes with what it takes; a breakpoint is only taken off.
   if (b.trace?.points.some((p) => p.breakpoint_id === point.id))
     void run(() => b.trace?.removePoint(point.id) ?? Promise.resolve())
   else void run(() => b.controller.removeBreakpoint(point.id))
+}
+function removeBreakpoints() {
+  const b = binding.value
+  if (!b) return
+  if (b.controller.session.unavailable || b.controller.session.status === 'exited') {
+    for (const point of b.controller.knownBreakpoints()) b.forgetBreakpoint(point.id)
+  } else void run(() => b.controller.removeAllBreakpoints())
 }
 function retry() {
   const b = binding.value
@@ -277,7 +321,7 @@ function retry() {
     void b.connection
       .connect()
       .then(() => b.open(sessionId))
-      .catch((e) => b.fail(e))
+      .catch((e) => fail(b, e))
 }
 </script>
 <style>

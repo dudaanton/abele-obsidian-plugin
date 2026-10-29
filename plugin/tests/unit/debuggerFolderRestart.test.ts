@@ -38,6 +38,17 @@ vi.mock('@/debugger/startProgram', async (original) => {
 import { DebugView, showSession } from '@/debugger/register'
 
 afterEach(() => vi.clearAllMocks())
+it('does not let a stale leaf state replace the session just explicitly selected', async () => {
+  const { binding } = fixture('detached')
+  f.active.value = binding
+  f.restore.mockImplementationOnce(async () => {
+    f.active.value = null
+  })
+  const view = new DebugView({} as never)
+  await view.setState({ sessionId: 'sample-old-session' }, {} as never)
+  expect(f.restore).not.toHaveBeenCalled()
+  expect(f.active.value).toBe(binding)
+})
 
 it('keeps saved view identity when plugin teardown clears the shared service', () => {
   const saved = { sessionId: 'sample-debug', sessions: ['sample-debug'], target: {}, sources: [] }

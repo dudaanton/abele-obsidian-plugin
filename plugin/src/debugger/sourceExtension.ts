@@ -39,7 +39,12 @@ export function mountDebugSource(
       void service.active.value
       const binding = service.forSource(context.registrationId, context.conversationId)
       if (binding) void binding.revision.value
-      return binding?.controller.session.frame
+      return JSON.stringify([
+        binding?.controller.session.frame,
+        binding?.controller.session.status,
+        binding?.controller.snapshot?.stop_epoch,
+        binding?.controller.snapshot?.incarnation,
+      ])
     },
     (frame, previous) => {
       console.debug('[debugger] Source frame changed', context.path, previous, frame)
@@ -99,7 +104,7 @@ export function mountDebugSource(
             [],
           line:
             revealed.value ??
-            ((model?.session.status === 'paused' || model?.session.status === 'lost') &&
+            (model?.session.status === 'paused' &&
             (frame?.file === context.path || frame?.file === context.sourceId)
               ? frame.line
               : undefined),

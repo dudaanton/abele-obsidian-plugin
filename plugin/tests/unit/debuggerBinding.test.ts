@@ -110,11 +110,11 @@ it('keeps a session request failure distinct from a lost node connection', () =>
 })
 
 it.each([
-  [true, true, false],
+  [true, true, true],
   [true, false, true],
   [false, true, true],
 ])(
-  'preserves request focus only on the same phone project (%s, %s)',
+  'brings stopped source forward from a request on desktop and phone (%s, %s)',
   async (phone, sameProject, reveals) => {
     const binding = new DebuggerBinding(
       { state: ref('connected'), client: {} } as unknown as NodeConnection,
