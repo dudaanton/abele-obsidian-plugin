@@ -12,6 +12,7 @@ import {
 import { NODE_FILE_VIEW } from '@/node/nodePathNavigation'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import type { PathTarget } from '@/node/NodePathModel'
+import { debugIdentity } from '@/debugger/owner'
 
 const target: PathTarget = {
   nodeId: 'node-a',
@@ -80,10 +81,34 @@ function fakePresenter() {
     connection: { client: { request }, connect: async () => {}, state: ref('connected') },
     reference: { sessionId: 'chat-a', registrationId: 'reg-a', nodeId: 'node-a' },
   } as unknown as NodeChatPresenter
+  // These launch tests drive observation explicitly; the fake node has no debugger stream.
+  vi.spyOn(DebuggerService.instance.binding(presenter, 'child-1'), 'open').mockResolvedValue()
   return { presenter, calls }
 }
 
 afterEach(() => DebuggerService.instance.destroy())
+
+it('restores carried points before publishing the restarted session controls', async () => {
+  fakeWorkspace()
+  const { presenter } = fakePresenter()
+  const binding = DebuggerService.instance.binding(presenter, 'child-1')
+  vi.spyOn(binding, 'open').mockImplementation(async () => {
+    binding.controller.session.status = 'paused'
+  })
+  const set = vi
+    .spyOn(binding.controller, 'setBreakpoint')
+    .mockResolvedValue({ outcome: 'completed' } as never)
+  await startProgram(
+    presenter,
+    'src/page.js',
+    [],
+    target,
+    async () => {
+      expect(set).toHaveBeenCalledWith(expect.any(String), 's1', 3, undefined)
+    },
+    [{ path: 'src/page.js', line: 3 }]
+  )
+})
 
 it('sends runtime configuration separately from program arguments and retains it on restart', async () => {
   fakeWorkspace()
@@ -242,7 +267,7 @@ describe('running a program under the debugger', () => {
     binding.controller.session.status = 'exited'
     service.registerSource(
       'reg-a',
-      'chat-a',
+      binding.conversationId,
       'sample-later',
       'src/later.js',
       'child-1',
@@ -472,7 +497,7 @@ describe('running a program under the debugger', () => {
           target,
           path: 'src/page.js',
           debug: {
-            conversationId: 'chat-a',
+            conversationId: debugIdentity(presenter, 'child-1').key,
             sourceId: 's1',
             debugSessionId: 'child-1',
             incarnation: 'i-child',
@@ -480,7 +505,9 @@ describe('running a program under the debugger', () => {
         },
       },
     ])
-    const sources = DebuggerService.instance.sources.get(JSON.stringify(['reg-a', 'chat-a']))
+    const sources = DebuggerService.instance.sources.get(
+      JSON.stringify(['reg-a', debugIdentity(presenter, 'child-1').key])
+    )
     expect([...(sources?.entries() ?? [])]).toEqual([
       [
         's1',
@@ -519,7 +546,7 @@ describe('files already open when the program starts', () => {
         state: expect.objectContaining({
           path: 'src/service.js',
           debug: {
-            conversationId: 'chat-a',
+            conversationId: debugIdentity(presenter, 'child-1').key,
             sourceId: 's2',
             debugSessionId: 'child-1',
             incarnation: 'i-child',

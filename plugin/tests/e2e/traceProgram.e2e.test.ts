@@ -424,6 +424,7 @@ it('keeps sibling service points pending, routes agent edits by file, and offers
       const pending=service.pendingBreakpoints(target,'packages/rates/src/index.js').includes(7)&&!orders.trace.points.length;
       { ${RUN('packages/rates/src/index.js')} }
       rates=service.active.value;
+      if(rates===orders||rates.sessionId===orders.sessionId)throw Error('chat launches reused one debug session binding');
       await until(()=>rates.trace?.points.length===1&&!service.pendingBreakpoints(target,'packages/rates/src/index.js').length,'point applied to matching service');
       const applied=service.fileBinding(target,'packages/rates/src/index.js')===rates;
       const call=async(name,p)=>{

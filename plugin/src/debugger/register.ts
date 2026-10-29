@@ -169,22 +169,27 @@ function configureSessionActions(
       )
       const snapshot = await registerSources(presenter, started, target)
       const next = DebuggerService.instance.binding(presenter, started.debug_session_id)
-      await next.open(started.debug_session_id)
-      if (carried.length) await untilHeld(next)
-      await removeForgottenBreakpoints(binding, next, forgotten)
-      for (const point of carried) {
-        const source = started.sources.find((source) => source.path === point.file)
-        if (!source) continue
-        const record = recordPoints.find((record) => record.breakpoint_id === point.id)
-        if (record && next.trace) {
-          await next.trace.savePoint(source.source_id, point.requestedLine, {
-            take: record.take,
-            ...(point.condition ? { when: point.condition } : {}),
-            ...(record.note ? { note: record.note } : {}),
-            ...(point.enabled !== undefined ? { enabled: point.enabled } : {}),
-            ...(point.hit_condition ? { hitCondition: point.hit_condition } : {}),
-          })
-        } else await restoreBreakpoint(next.controller, source.source_id, point)
+      next.restoringPoints = true
+      try {
+        await next.open(started.debug_session_id)
+        if (carried.length) await untilHeld(next)
+        await removeForgottenBreakpoints(binding, next, forgotten)
+        for (const point of carried) {
+          const source = started.sources.find((source) => source.path === point.file)
+          if (!source) continue
+          const record = recordPoints.find((record) => record.breakpoint_id === point.id)
+          if (record && next.trace) {
+            await next.trace.savePoint(source.source_id, point.requestedLine, {
+              take: record.take,
+              ...(point.condition ? { when: point.condition } : {}),
+              ...(record.note ? { note: record.note } : {}),
+              ...(point.enabled !== undefined ? { enabled: point.enabled } : {}),
+              ...(point.hit_condition ? { hitCondition: point.hit_condition } : {}),
+            })
+          } else await restoreBreakpoint(next.controller, source.source_id, point)
+        }
+      } finally {
+        next.restoringPoints = false
       }
       // Publish controls only after the new process has its points. A fast Continue must not
       // run past them while Restart is still restoring the previous session's intent.

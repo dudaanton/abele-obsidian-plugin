@@ -52,6 +52,7 @@ export class DebuggerBinding {
   readonly controller: DebuggerController
   attachmentKey?: string
   entryPath?: string
+  restoringPoints = false
   retainedBreakpoints: ReturnType<DebuggerController['knownBreakpoints']> = []
   readonly forgottenBreakpoints = new Set<string>()
   /** Ended sessions cannot accept a patch. Forget the local point used by a later reattach. */
@@ -676,6 +677,17 @@ export class DebuggerService {
       return selected[0]
     }
     const candidates = known.filter(live)
+    // Launching a peer admits other open files for navigation too. Its admitted copy of
+    // another process's entry does not make it that entry's owner.
+    const entries = candidates.filter((binding) => {
+      const entry = this.entryOf(binding)
+      return entry === path || (!!path && entry.endsWith('/' + path))
+    })
+    if (entries.length === 1) return entries[0]
+    if (entries.length > 1)
+      throw new Error(
+        `Ambiguous source ${path}; specify session or process: ${entries.map((binding) => binding.sessionId).join(', ')}`
+      )
     const packageOf = (file: string) =>
       /(?:^|\/)((?:packages|apps|services)\/[^/]+)\//.exec(file)?.[1]
     const filePackage = packageOf(path)
@@ -832,6 +844,13 @@ export class DebuggerService {
   }
   private readonly bindings = new Map<string, DebuggerBinding>()
   private readonly owners = new WeakMap<DebuggerBinding, DebugOwner>()
+  private readonly chatOwners = new WeakMap<DebuggerBinding, Set<string>>()
+  private rememberChat(binding: DebuggerBinding, presenter: DebugOwner) {
+    if (isFolderOwner(presenter)) return
+    const chats = this.chatOwners.get(binding) ?? new Set<string>()
+    chats.add(debugIdentity(presenter).key)
+    this.chatOwners.set(binding, chats)
+  }
   private readonly preferredSessions = new Set<string>()
   owner(binding: DebuggerBinding) {
     return this.owners.get(binding)
@@ -847,7 +866,7 @@ export class DebuggerService {
       const folder = this.folder(binding)
       return isFolderOwner(owner)
         ? folder?.kind === owner.target.kind && folder.id === owner.target.id
-        : binding.conversationId === identity.key
+        : this.chatOwners.get(binding)?.has(identity.key) || binding.conversationId === identity.key
     })
   }
   selectionState() {
@@ -1156,19 +1175,33 @@ export class DebuggerService {
   binding(presenter: DebugOwner, sessionId?: string) {
     this.stopped = false
     const identity = debugIdentity(presenter, sessionId)
-    if (isFolderOwner(presenter)) {
-      if (sessionId) {
-        const existing = [...this.bindings.values()].find(
-          (binding) =>
-            binding.registrationId === identity.registrationId &&
-            binding.observationId === sessionId
-        )
-        if (existing) {
-          this.owners.set(existing, presenter)
+    if (sessionId) {
+      const existing = [...this.bindings.values()].find(
+        (binding) =>
+          binding.registrationId === identity.registrationId &&
+          (binding.observationId === sessionId ||
+            (!binding.observationId && this.folders.get(binding)?.sessionId === sessionId))
+      )
+      if (existing) {
+        this.owners.set(existing, presenter)
+        if (isFolderOwner(presenter))
           this.folders.set(existing, { sessionId, target: { ...presenter.target } })
-          return existing
-        }
+        else this.rememberChat(existing, presenter)
+        return existing
       }
+    }
+    if (!isFolderOwner(presenter) && !sessionId) {
+      const candidates = [...this.bindings.values()].reverse()
+      const selected = this.active.value
+      if (selected) candidates.unshift(selected)
+      const existing = candidates.find(
+        (binding) =>
+          binding.registrationId === identity.registrationId &&
+          this.chatOwners.get(binding)?.has(identity.key)
+      )
+      if (existing) return existing
+    }
+    if (isFolderOwner(presenter)) {
       if (!sessionId) {
         const selected = this.active.value
         if (
@@ -1187,6 +1220,7 @@ export class DebuggerService {
       ++this.sourceRevision.value
     }
     this.owners.set(binding, presenter)
+    this.rememberChat(binding, presenter)
     if (isFolderOwner(presenter)) {
       const tracked = this.folders.get(binding)
       if (!tracked)
@@ -1216,6 +1250,7 @@ export class DebuggerService {
     ++this.sourceRevision.value
   }
   focusPause(binding: DebuggerBinding) {
+    if (binding.restoringPoints) return
     const active = this.active.value
     const folder = this.folder(binding)
     const selected = active && this.folder(active)

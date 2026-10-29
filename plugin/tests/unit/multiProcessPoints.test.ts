@@ -2,7 +2,8 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import { debuggerSnapshot } from '../fixtures/debugger'
-import type { FolderDebugOwner } from '@/debugger/owner'
+import type { DebugOwner, FolderDebugOwner } from '@/debugger/owner'
+import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { activeTraceContext } from '@/debugger/trace/agentContext'
 import { TraceSession } from '@/debugger/trace/TraceSession'
 import { TraceRpc, type WirePoint } from '@/debugger/trace/wire'
@@ -23,8 +24,9 @@ const owner = {
   target,
   connection: { state: ref('connected') },
 } as unknown as FolderDebugOwner
-function session(id: string, entry: string, pid: number) {
-  const binding = service.binding(owner, id)
+function session(id: string, entry: string, pid: number, presenter: DebugOwner = owner) {
+  const binding = service.binding(presenter, id)
+  service.trackFolder(presenter, id, target)
   const snapshot = debuggerSnapshot({ debug_session_id: id })
   snapshot.target.launch_configuration_id = `${entry} · pid ${pid}`
   binding.controller.observe({ observation: 'current', snapshot })
@@ -45,6 +47,40 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+it('keeps two programs launched from one chat in independent debugger bindings', () => {
+  const chat = {
+    reference: { registrationId: target.registrationId, sessionId: 'sample-chat' },
+    connection: owner.connection,
+  } as NodeChatPresenter
+  const orders = service.binding(chat, 'sample-orders')
+  orders.controller.observe({
+    observation: 'current',
+    snapshot: debuggerSnapshot({ debug_session_id: 'sample-orders' }),
+  })
+  const rates = service.binding(chat, 'sample-rates')
+  rates.controller.observe({
+    observation: 'current',
+    snapshot: debuggerSnapshot({ debug_session_id: 'sample-rates' }),
+  })
+  expect(rates).not.toBe(orders)
+  expect(orders.sessionId).toBe('sample-orders')
+  expect(rates.sessionId).toBe('sample-rates')
+  expect(service.binding(chat)).toBe(rates)
+  expect(service.binding(owner, 'sample-orders')).toBe(orders)
+})
+
+it('does not publish a restarted process from its entry pause before point restoration finishes', () => {
+  const previous = session('sample-previous', 'src/total.ts', 101)
+  const next = session('sample-next', 'src/total.ts', 102)
+  service.select(previous)
+  Object.assign(next, { restoringPoints: true })
+  service.focusPause(next)
+  expect(service.active.value).toBe(previous)
+  Object.assign(next, { restoringPoints: false })
+  service.focusPause(next)
+  expect(service.active.value).toBe(next)
+})
+
 it('keeps a mapped shared package source with its process for person points', () => {
   const orders = session('sample-orders', 'packages/orders/src/index.ts', 101)
   service.registerSource(
@@ -60,19 +96,52 @@ it('keeps a mapped shared package source with its process for person points', ()
   expect(service.debugFor(target, 'packages/common/money.ts')?.sourceId).toBe('shared')
 })
 
+it('keeps a program entry with its own process when a peer also admitted that open file', () => {
+  const file = 'packages/orders/src/index.ts'
+  const orders = session('sample-orders', file, 101)
+  const rates = session('sample-rates', 'packages/rates/src/index.ts', 102)
+  service.registerSource(
+    rates.registrationId,
+    rates.conversationId,
+    'peer-source',
+    file,
+    rates.sessionId!,
+    rates.controller.snapshot!.incarnation,
+    target
+  )
+  expect(service.fileBinding(target, file)).toBe(orders)
+})
+
 it.each([
   { copies: 1, refused: false },
   { copies: 2, refused: false },
   { copies: 1, refused: true },
   { copies: 1, refused: false, canonical: true },
   { copies: 2, refused: false, orphan: true },
+  { copies: 1, refused: false, chat: true },
 ])(
-  'removes the pending then attached sibling point: copies=$copies retained=$refused canonical=$canonical orphan=$orphan',
-  async ({ copies, refused, canonical, orphan }) => {
-    const orders = session('sample-orders', 'packages/orders/src/index.ts', 101)
+  'removes the pending then attached sibling point: copies=$copies retained=$refused canonical=$canonical orphan=$orphan chat=$chat',
+  async ({ copies, refused, canonical, orphan, chat }) => {
+    const presenter = chat
+      ? ({
+          reference: { registrationId: target.registrationId, sessionId: 'sample-chat' },
+          connection: owner.connection,
+        } as NodeChatPresenter)
+      : owner
+    const orders = session('sample-orders', 'packages/orders/src/index.ts', 101, presenter)
     const file = 'packages/rates/src/index.ts'
     service.editPendingPoint(target, file, 7, { record: { take: ['rate'] } })
-    const rates = session('sample-rates', file, 102)
+    const rates = session('sample-rates', file, 102, presenter)
+    if (chat)
+      service.registerSource(
+        rates.registrationId,
+        rates.conversationId,
+        'peer-open-file',
+        'packages/orders/src/index.ts',
+        rates.sessionId!,
+        rates.controller.snapshot!.incarnation,
+        target
+      )
     const saved = new Map<string, WirePoint[]>()
     const request = vi.fn(async (method: string, p: any) => {
       const id = p.debug_session_id

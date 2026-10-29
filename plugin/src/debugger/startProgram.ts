@@ -264,40 +264,65 @@ export async function startProgram(
   }
   // Finish admitting the source before the controls become available. A late file admission
   // would otherwise replace a location the person already selected in the debugger.
+  let sourceIncarnation: string | undefined
   try {
     const snapshot = await registerSources(presenter, started, target)
-    await openSources(presenter, started, snapshot.incarnation, target, options.source ?? program)
+    sourceIncarnation = snapshot.incarnation
+    if (!carry.length)
+      await openSources(presenter, started, snapshot.incarnation, target, options.source ?? program)
   } catch (error) {
     // The start already succeeded. Failure to read or navigate source is not launch failure.
     console.debug('[debugger] Started program source unavailable', sessionId, error)
     binding.fail(error)
   }
-  await show(sessionId)
+  if (!carry.length) await show(sessionId)
   // Held on its first line, the new run takes the points before any of its code runs. The node
   // can answer the start before that stop reaches the panel, and a point sent meanwhile names
   // a state the program has already left: the node refuses it and the run goes on without it.
-  if (carry.length) await untilHeld(binding)
-  for (const c of carry) {
-    const sourceId = started.sources.find((s) => s.path === c.path)?.source_id
-    if (!sourceId) {
-      console.debug('[debugger] Point not carried: the node did not take its file', c)
-      continue
+  binding.restoringPoints = carry.length > 0
+  try {
+    if (carry.length) {
+      // Observe without selecting or opening source: either can expose Continue to the person
+      // while the new process still lacks its restored record points.
+      await binding.open(sessionId)
+      await untilHeld(binding)
     }
-    if (c.take && binding.trace) {
-      await binding.trace.savePoint(sourceId, c.line, {
-        take: c.take,
-        ...(c.condition ? { when: c.condition } : {}),
-        ...(c.note ? { note: c.note } : {}),
-        ...(c.enabled !== undefined ? { enabled: c.enabled } : {}),
-        ...(c.hit_condition ? { hitCondition: c.hit_condition } : {}),
-      })
-    } else if (c.log_message || c.hit_condition || c.enabled === false)
-      await binding.controller.setBreakpoint(crypto.randomUUID(), sourceId, c.line, c.condition, {
-        ...(c.log_message ? { log_message: c.log_message } : {}),
-        ...(c.hit_condition ? { hit_condition: c.hit_condition } : {}),
-        ...(c.enabled !== undefined ? { enabled: c.enabled } : {}),
-      })
-    else await binding.controller.setBreakpoint(crypto.randomUUID(), sourceId, c.line, c.condition)
+    for (const c of carry) {
+      const sourceId = started.sources.find((s) => s.path === c.path)?.source_id
+      if (!sourceId) {
+        console.debug('[debugger] Point not carried: the node did not take its file', c)
+        continue
+      }
+      if (c.take && binding.trace) {
+        await binding.trace.savePoint(sourceId, c.line, {
+          take: c.take,
+          ...(c.condition ? { when: c.condition } : {}),
+          ...(c.note ? { note: c.note } : {}),
+          ...(c.enabled !== undefined ? { enabled: c.enabled } : {}),
+          ...(c.hit_condition ? { hitCondition: c.hit_condition } : {}),
+        })
+      } else if (c.log_message || c.hit_condition || c.enabled === false)
+        await binding.controller.setBreakpoint(crypto.randomUUID(), sourceId, c.line, c.condition, {
+          ...(c.log_message ? { log_message: c.log_message } : {}),
+          ...(c.hit_condition ? { hit_condition: c.hit_condition } : {}),
+          ...(c.enabled !== undefined ? { enabled: c.enabled } : {}),
+        })
+      else
+        await binding.controller.setBreakpoint(crypto.randomUUID(), sourceId, c.line, c.condition)
+    }
+  } finally {
+    binding.restoringPoints = false
+  }
+  if (carry.length) {
+    if (sourceIncarnation) {
+      try {
+        await openSources(presenter, started, sourceIncarnation, target, options.source ?? program)
+      } catch (error) {
+        console.debug('[debugger] Restarted program source unavailable', sessionId, error)
+        binding.fail(error)
+      }
+    }
+    await show(sessionId)
   }
   if (
     supportsStop &&

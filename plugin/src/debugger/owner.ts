@@ -22,7 +22,12 @@ export function debugIdentity(owner: DebugOwner, sessionId?: string) {
         registrationId: owner.target.registrationId,
         key: `folder:${bytesToHex(sha256(new TextEncoder().encode(JSON.stringify([owner.target.kind, owner.target.id, ...(sessionId ? [sessionId] : [])]))))}`,
       }
-    : { registrationId: owner.reference.registrationId, key: owner.reference.sessionId }
+    : {
+        registrationId: owner.reference.registrationId,
+        key: sessionId
+          ? `chat-debug:${bytesToHex(sha256(new TextEncoder().encode(JSON.stringify([owner.reference.sessionId, sessionId]))))}`
+          : owner.reference.sessionId,
+      }
 }
 export function debugOwnerParams(owner: DebugOwner) {
   return isFolderOwner(owner)
