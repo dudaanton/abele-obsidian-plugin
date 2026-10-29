@@ -730,10 +730,6 @@ export class DebuggerService {
     if (!binding || !/\.(?:[cm]?[jt]s|[jt]sx)$/.test(path)) return { message: '' }
     if (/^(?:\/|[a-z]:)|\\|(?:^|\/)\.\.(?:\/|$)|(?:^|\/)\.git(?:\/|$)|\0/i.test(path))
       return { message: t('debug.sourceOutside') }
-    if (!recheck && this.debugFor(target, path, sessionBinding)) {
-      await this.applyPendingFile(target, path, binding, !!sessionBinding)
-      return { message: '' }
-    }
     if (/\.d\.[cm]?ts$/.test(path)) return sourceRefusal('debugger_source_declaration')
     const sessionId = binding.sessionId
     const incarnation = binding.controller.snapshot?.incarnation
@@ -759,6 +755,12 @@ export class DebuggerService {
     const attempt = (async () => {
       try {
         if (!current()) return { message: '' }
+        // Mapped files need the same coalescing as new admissions: several open views can
+        // otherwise apply the same pending record point while its first save is still running.
+        if (!recheck && this.debugFor(target, path, sessionBinding)) {
+          await this.applyPendingFile(target, path, binding, !!sessionBinding)
+          return { message: '' }
+        }
         if (!nodeAdvertisesMethod(client, 'debugger.v1.addSources')) {
           return { message: t('debug.sourceUpdate') }
         }

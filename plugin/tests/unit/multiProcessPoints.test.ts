@@ -55,6 +55,29 @@ it('keeps a mapped shared package source with its process for person points', ()
   expect(service.debugFor(target, 'packages/common/money.ts')?.sourceId).toBe('shared')
 })
 
+it('applies a pending point once when several source views admit the same mapped file', async () => {
+  const file = 'packages/rates/src/index.ts'
+  service.editPendingPoint(target, file, 4, { record: { take: ['rate'] } })
+  const rates = session('sample-rates', file, 102)
+  let release!: () => void
+  const held = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const set = vi.spyOn(rates.controller, 'setBreakpoint').mockImplementation(async () => {
+    await held
+    return { outcome: 'completed' } as never
+  })
+  const savePoint = vi.fn(async () => ({ pending: false }))
+  rates.trace = { savePoint, dispose: vi.fn() } as never
+  const first = service.admitFile(target, file)
+  const second = service.admitFile(target, file)
+  release()
+  await Promise.all([first, second])
+  expect(set).toHaveBeenCalledTimes(1)
+  expect(savePoint).toHaveBeenCalledTimes(1)
+  expect(service.pendingBreakpoints(target, file)).toEqual([])
+})
+
 it('adds, lists and removes an explicit agent point in a mapped shared package', async () => {
   const orders = session('sample-orders', 'packages/orders/src/index.ts', 101)
   const file = 'packages/common/money.ts'
