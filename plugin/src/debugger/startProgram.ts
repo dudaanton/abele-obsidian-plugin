@@ -237,6 +237,7 @@ export async function startProgram(
   // The node has no restart of its own: Restart in the panel stops the program still going and
   // starts the same one again, with the points it had.
   const binding = service.binding(presenter, sessionId)
+  binding.entryPath = program
   binding.reattach = undefined
   binding.rerun = async () => {
     await presenter.connection.connect()

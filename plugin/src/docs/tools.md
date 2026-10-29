@@ -1040,26 +1040,30 @@ on the device. Failed launches show the exit code when known and a short stderr 
 the full supplied diagnostics remain in Details. These are user launch controls, not tools.
 
 `trace_runs`, `trace_timeline`, `trace_shape`, `trace_slice`, `trace_diff`, `trace_find`,
-`trace_follow`, `trace_mark`, `trace_point_add`, `trace_point_remove`, `trace_note`.
+`trace_follow`, `trace_mark`, `trace_point_add`, `trace_point_remove`, `trace_point_list`, `trace_note`.
 
 A run is what the debugger recorded while a record point was set: a record point is a
 breakpoint that takes named values whole each time the program passes and lets it go on. The
 person starts the program from a node folder, file or chat menu, or the command palette (**Run a program**) or attaches to one already
 running with `node --inspect` (**Attach to a running program**); no tool starts or attaches a
-program, and both kinds record the same way. The run lives on the node; these tools read it a little at a time from the debug session open in
-the Debug panel, and say so when there is none. Each answer stops at 80 lines or 6 KB, which no
+program, and both kinds record the same way. The run lives on the node; these tools read it
+a little at a time. A `file` selects its process independently of the Debug panel; `session`
+(session ID) or `process` (PID) selects one explicitly when a shared file is ambiguous.
+Each answer stops at 80 lines or 6 KB, which no
 parameter lifts, and says where to continue. There is no tool that returns a run or a value
 whole.
 
 Like every other tool each has its own Off/Ask/On mode: reading a run runs on its own by
 default; `trace_mark`, `trace_point_add`, `trace_point_remove` and `trace_note` ask first.
 
-- `trace_runs` lists the project's runs, newest first. Every other tool reads the newest run
-  unless given `run`.
+- `trace_runs` lists the project's runs, newest first. Without `run`, reads use the newest run
+  of the process the agent last worked with through these tools. The timeline names the run
+  it read and other available runs; specify `run` to choose another.
 - `trace_timeline` lists steps: id (`t0042`), time from the start, kind, label, place in the
   code, and each value as `name=brief [bytes]`, `=same` when unchanged since the last time,
   `✕` when it could not be taken. `from` continues from a zero-based step index or an inclusive
-  step id such as `t0008`; `kind` filters.
+  step id such as `t0008`, located by position in time order rather than by its numeric suffix;
+  `kind` filters.
 - `trace_shape(step, name)` gives a value's keys, types, list lengths, optional keys and one
   example per leaf, an XML element tree with counts. Read it before slicing.
 - `trace_slice(step, name, path)` is the only way to see the data: a JSON path such as
@@ -1073,9 +1077,11 @@ default; `trace_mark`, `trace_point_add`, `trace_point_remove` and `trace_note` 
   `question` puts it among the questions of a note about the run.
 - `trace_point_add(file, line, take, when?, note?)` sets a record point on a line of a file
   inside this session's granted node folder. The agent attaches the source itself; an open
-  file tab is unnecessary. An ended or detached session refuses the point. A point not bound
-  to the selected process reports that it is not recording and why. Only what `take` names
+  file tab is unnecessary. Without an attached owner, the point stays pending for its folder
+  until that process attaches. An explicitly selected ended or detached session refuses the point. A point not bound
+  to its process reports that it is not recording and why. Only what `take` names
   is taken; an empty list takes nothing.
+- `trace_point_list(file?, session?, process?)` lists record points for the matching process, independently of the viewed session.
 - `trace_point_remove(file, line)` removes the record point and breakpoint at its requested
   source line, keeping other points. It needs the same folder edit access and approval as adding a point.
 - `trace_note(run?)` writes a note about the run into the folder named in Settings → Nodes

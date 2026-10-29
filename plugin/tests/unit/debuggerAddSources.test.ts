@@ -304,7 +304,7 @@ it('admits a later-opened file once and retains it for restart', async () => {
   })
   expect(service.takenFiles(binding)).toContain('lib/helper.ts')
 })
-it('retries source admission after switching away during the first answer', async () => {
+it('keeps source admission attached to its process when the viewed session changes', async () => {
   const { service, binding, request } = fixture()
   service.select(binding)
   let complete!: (value: unknown) => void
@@ -332,8 +332,8 @@ it('retries source admission after switching away during the first answer', asyn
   await pending
   service.select(binding)
   await service.admitFile(target, 'lib/helper.ts')
-  expect(request).toHaveBeenCalledTimes(2)
-  expect(service.debugFor(target, 'lib/helper.ts')?.sourceId).toBe('sample-added')
+  expect(request).toHaveBeenCalledTimes(1)
+  expect(service.debugFor(target, 'lib/helper.ts')?.sourceId).toBe('sample-old-source')
 })
 it('explains an old node without sending an unsupported RPC', async () => {
   const { service, request } = fixture(false)

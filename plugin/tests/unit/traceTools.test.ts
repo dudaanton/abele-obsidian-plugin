@@ -120,6 +120,68 @@ function setup() {
   return { request, context, tools, call }
 }
 
+it('locates a named step by position when ids are not in time order', async () => {
+  const s = setup()
+  s.request.mockImplementation(async (method, params) => {
+    if (method === 'trace.v1.runs') return { folder: '/runs', chosen: false, runs: [summary] }
+    const ordered = [step(7), step(1), step(3)]
+    return {
+      run: { ...summary, steps: 3 },
+      points: [],
+      marks: [],
+      folder: '/runs',
+      steps: ordered.slice(params.from ?? 0, (params.from ?? 0) + params.limit),
+    }
+  })
+  const result = await s.call('trace_timeline', { from: 't0008' })
+  expect(result).toContain('t0008 ·')
+  expect(result).toContain('t0002 ·')
+  expect(result).toContain('t0004 ·')
+})
+
+it('routes tools by file or explicit process and remembers the agent process for implicit runs', async () => {
+  const s = setup()
+  const resolve = vi.fn((p?: Record<string, unknown>) => ({
+    ...s.context,
+    sessionId:
+      p?.file === 'packages/orders/src/index.ts' ||
+      p?.session === 'sample-orders' ||
+      p?.process === 101
+        ? 'sample-orders'
+        : 'sample-rates',
+    runs: async () => [
+      { id: 'rates-new', name: 'Rates', steps: 1, state: 'done', debugSessionId: 'sample-rates' },
+      {
+        id: 'orders-old',
+        name: 'Orders',
+        steps: 1,
+        state: 'done',
+        debugSessionId: 'sample-orders',
+      },
+    ],
+  }))
+  const tools = createTraceTools(resolve)
+  await tools
+    .find((t) => t.name === 'trace_point_add')!
+    .execute('sample', { file: 'packages/orders/src/index.ts', line: 4, take: ['value'] })
+  const timeline = await tools.find((t) => t.name === 'trace_timeline')!.execute('sample', {})
+  expect(resolve).toHaveBeenLastCalledWith({ session: 'sample-orders' })
+  expect(s.request).toHaveBeenLastCalledWith(
+    'trace.v1.run',
+    expect.objectContaining({ run_id: 'orders-old' })
+  )
+  expect(timeline.content[0]!.text).toContain('run orders-old')
+  expect(timeline.content[0]!.text).toContain('rates-new')
+  await tools
+    .find((t) => t.name === 'trace_point_remove')!
+    .execute('sample', { file: 'packages/common/money.ts', line: 4, process: 101 })
+  expect(resolve).toHaveBeenLastCalledWith({
+    file: 'packages/common/money.ts',
+    line: 4,
+    process: 101,
+  })
+})
+
 describe('the agent reading a recorded run', () => {
   it('has a tool for each view and none that shows a run or a value whole', () => {
     expect(Object.keys(setup().tools).sort()).toEqual([
@@ -129,6 +191,7 @@ describe('the agent reading a recorded run', () => {
       'trace_mark',
       'trace_note',
       'trace_point_add',
+      'trace_point_list',
       'trace_point_remove',
       'trace_runs',
       'trace_shape',
@@ -264,6 +327,7 @@ describe('the agent reading a recorded run', () => {
       trace_mark: 'ask',
       trace_point_add: 'ask',
       trace_point_remove: 'ask',
+      trace_point_list: 'auto',
       trace_note: 'ask',
       // The saved requests' tools stand in the same section.
       http_requests: 'auto',

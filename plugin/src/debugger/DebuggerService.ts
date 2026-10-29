@@ -51,6 +51,7 @@ export class DebuggerBinding {
   readonly acceptanceCapabilities = shallowRef(debuggerAcceptanceCapabilities(undefined))
   readonly controller: DebuggerController
   attachmentKey?: string
+  entryPath?: string
   retainedBreakpoints: ReturnType<DebuggerController['knownBreakpoints']> = []
   readonly forgottenBreakpoints = new Set<string>()
   /** Ended sessions cannot accept a patch. Forget the local point used by a later reattach. */
@@ -551,7 +552,10 @@ export class DebuggerService {
     if (!mapping || !points) return
     for (const [line, point] of points.lines) {
       const { id } = point
-      if ((!sessionBound && this.folderBinding(target) !== binding) || !binding.controller.current)
+      if (
+        (!sessionBound && this.fileBinding(target, path) !== binding) ||
+        !binding.controller.current
+      )
         return
       if (point.record && !binding.trace) continue
       // Stable identity makes a retried request idempotent; never toggle an existing point off.
@@ -634,6 +638,73 @@ export class DebuggerService {
     }
     return undefined
   }
+  /** Package boundaries distinguish services; shared sources require an explicit process. */
+  fileBinding(
+    target: PathTarget,
+    path: string,
+    selector: { session?: string; process?: number } = {}
+  ) {
+    const known = [...this.folders]
+      .filter(
+        ([binding, folder]) =>
+          this.folderKey(folder.target) === this.folderKey(target) && !!binding.controller.snapshot
+      )
+      .map(([binding]) => binding)
+    const live = (binding: DebuggerBinding) =>
+      binding.controller.current &&
+      !binding.controller.session.unavailable &&
+      binding.controller.snapshot?.lifecycle === 'active'
+    if (selector.session || selector.process !== undefined) {
+      let selected = known.filter((binding) => {
+        const snapshot = binding.controller.snapshot
+        const pid =
+          snapshot.target.process_evidence?.pid ??
+          Number(/ · pid (\d+)$/.exec(snapshot.target.launch_configuration_id)?.[1])
+        return (
+          (!selector.session || binding.sessionId === selector.session) &&
+          (selector.process === undefined || pid === selector.process)
+        )
+      })
+      if (selected.some(live)) selected = selected.filter(live)
+      if (selected.length !== 1)
+        throw new Error('No unique debug process matches the requested session/process')
+      return selected[0]
+    }
+    const candidates = known.filter(live)
+    const packageOf = (file: string) =>
+      /(?:^|\/)((?:packages|apps|services)\/[^/]+)\//.exec(file)?.[1]
+    const filePackage = packageOf(path)
+    const mapped = candidates.filter((binding) => !!this.sourceFor(binding, path))
+    if (
+      mapped.length > 1 &&
+      !candidates.some((binding) => filePackage && packageOf(this.entryOf(binding)) === filePackage)
+    )
+      throw new Error(
+        `Ambiguous source ${path}; specify session or process: ${mapped.map((b) => b.sessionId).join(', ')}`
+      )
+    const matches = candidates.filter((binding) => {
+      const entryPackage = packageOf(this.entryOf(binding))
+      if (filePackage && entryPackage === filePackage) return true
+      if (
+        this.sourceFor(binding, path) &&
+        (!filePackage || !entryPackage || filePackage === entryPackage)
+      )
+        return true
+      return !filePackage && !entryPackage && candidates.length === 1
+    })
+    if (matches.length > 1)
+      throw new Error(
+        `Ambiguous source ${path}; specify session or process: ${matches.map((b) => b.sessionId).join(', ')}`
+      )
+    return matches[0]
+  }
+  private entryOf(binding: DebuggerBinding) {
+    if (binding.entryPath) return binding.entryPath
+    const launch =
+      binding.controller.snapshot?.target.launch_configuration_id.split(' · pid ')[0] ?? ''
+    if (launch.includes('/')) return launch
+    return this.takenFiles(binding).find((path) => path.endsWith('/' + launch)) ?? launch
+  }
   async admitSessionFile(binding: DebuggerBinding, path: string): Promise<SourceAdmission> {
     const snapshot = binding.controller.snapshot
     const target =
@@ -654,7 +725,15 @@ export class DebuggerService {
     recheck = false,
     sessionBinding?: DebuggerBinding
   ): Promise<SourceAdmission> {
-    const binding = sessionBinding ?? this.folderBinding(target)
+    let binding = sessionBinding
+    if (!binding) {
+      try {
+        binding = this.fileBinding(target, path)
+      } catch (error) {
+        console.debug('[debugger] Source needs an explicit process', path, error)
+        return { message: '' }
+      }
+    }
     if (!binding || !/\.(?:[cm]?[jt]s|[jt]sx)$/.test(path)) return { message: '' }
     if (/^(?:\/|[a-z]:)|\\|(?:^|\/)\.\.(?:\/|$)|(?:^|\/)\.git(?:\/|$)|\0/i.test(path))
       return { message: t('debug.sourceOutside') }
@@ -679,7 +758,7 @@ export class DebuggerService {
     const pending = this.admissions.get(key)
     if (pending !== undefined) return pending
     const current = () =>
-      (sessionBinding ? binding.controller.current : this.folderBinding(target) === binding) &&
+      binding.controller.current &&
       binding.connection.authorizationGeneration === generation &&
       binding.connection.client === client &&
       binding.sessionId === sessionId &&
@@ -787,6 +866,11 @@ export class DebuggerService {
         ]),
       ].slice(0, 256),
       target,
+      entries: peers.flatMap((peer) =>
+        peer.entryPath && peer.sessionId
+          ? [{ sessionId: peer.sessionId, path: peer.entryPath }]
+          : []
+      ),
       attachments: peers
         .flatMap((peer) =>
           peer.attachmentKey && peer.sessionId
@@ -862,6 +946,10 @@ export class DebuggerService {
       .object({
         sessionId: z.string().min(1).max(128),
         sessions: z.array(z.string().min(1).max(128)).max(256).default([]),
+        entries: z
+          .array(z.object({ sessionId: z.string(), path: z.string().max(4096) }))
+          .max(256)
+          .default([]),
         attachments: z
           .array(
             z.object({ sessionId: z.string().min(1).max(128), key: z.string().min(1).max(128) })
@@ -916,6 +1004,8 @@ export class DebuggerService {
       this.binding(owner, forgotten.sessionId).forgottenBreakpoints.add(forgotten.id)
     for (const attachment of parsed.data.attachments)
       this.binding(owner, attachment.sessionId).attachmentKey = attachment.key
+    for (const entry of parsed.data.entries)
+      this.binding(owner, entry.sessionId).entryPath = entry.path
     for (const source of parsed.data.sources) {
       const sourceSessionId = source.sessionId ?? parsed.data.sessionId
       const sourceBinding = this.binding(owner, sourceSessionId)
@@ -1039,7 +1129,9 @@ export class DebuggerService {
   readonly sources = new Map<string, Map<string, SourceMapping>>()
   sessionName(snapshot: DebuggerSnapshot, fallback = '') {
     const launch = snapshot.target?.launch_configuration_id ?? fallback
-    const entry = launch.split(' · pid ')[0]?.split('/').pop()
+    const program = launch.split(' · pid ')[0]
+    const suffix = launch.slice(program.length)
+    const entry = program.split('/').pop()
     if (!entry) return launch
     const source = [...this.sources.values()]
       .flatMap((sources) => [...sources.values()])
@@ -1047,9 +1139,16 @@ export class DebuggerService {
         (source) =>
           source.debugSessionId === snapshot.debug_session_id && source.path.endsWith(`/${entry}`)
       )
-    const parts = source?.path.split('/') ?? []
-    const folder = parts.length > 2 ? parts[parts.length - 3] : undefined
-    return folder ? `${folder}/${launch}` : launch
+    const binding = [...this.bindings.values()].find(
+      (b) => b.sessionId === snapshot.debug_session_id
+    )
+    const path = binding?.entryPath ?? source?.path ?? program
+    const pkg = /(?:^|\/)(?:packages|apps|services)\/([^/]+)\//.exec(path)?.[1]
+    const parts = path.split('/')
+    const folder =
+      pkg ??
+      (parts.length > 2 && parts[parts.length - 2] === 'src' ? parts[parts.length - 3] : undefined)
+    return `${folder ? folder + '/' : ''}${entry}${suffix}`
   }
   private key(registrationId: string, conversationId: string) {
     return JSON.stringify([registrationId, conversationId])
@@ -1187,18 +1286,20 @@ export class DebuggerService {
    * that folder: the tab shows its margin however it came to show the file. */
   debugFor(target: PathTarget | null | undefined, path: string, sessionBinding?: DebuggerBinding) {
     if (!target) return undefined
+    let owner = sessionBinding
+    if (!owner) {
+      try {
+        owner = this.fileBinding(target, path)
+      } catch {
+        owner = this.folderBinding(target)
+      }
+    }
     for (const [key, sources] of this.sources) {
       const [registrationId, conversationId] = JSON.parse(key) as [string, string]
       if (registrationId !== target.registrationId) continue
       const binding = this.forSource(registrationId, conversationId)
-      // Several sessions can debug one folder: only the selected one draws its margin there.
-      // A program started from a chat is not a folder session and keeps its own margin.
-      if (
-        sessionBinding
-          ? binding !== sessionBinding
-          : binding && this.folders.has(binding) && binding !== this.folderBinding(target)
-      )
-        continue
+      // A file draws its owning process's margin; a shared source uses the explicit UI selection.
+      if (binding && this.folders.has(binding) && binding !== owner) continue
       for (const [sourceId, m] of sources)
         if (
           (m.path === path || m.aliases?.has(path)) &&
@@ -1235,7 +1336,7 @@ export class DebuggerService {
       ([id, mapping]) =>
         mapping.debugSessionId === binding.sessionId &&
         mapping.incarnation === binding.controller.snapshot?.incarnation &&
-        (id === file || mapping.path === file)
+        (id === file || mapping.path === file || mapping.aliases?.has(file))
     )?.[0]
   }
   reveal(binding: DebuggerBinding, file: string, line: number, keepControls = false) {

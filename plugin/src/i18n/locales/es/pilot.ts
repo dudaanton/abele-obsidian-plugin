@@ -3310,6 +3310,7 @@ export const es = {
     many: 'Mostrar la transferencia como {count} códigos QR',
     other: 'Mostrar la transferencia como {count} códigos QR',
   },
+  'settings.metadata.tracePointList': 'Puntos de registro',
   'settings.metadata.bf774e203130976f': 'Añadir punto de grabación',
   'settings.metadata.ed11479db97b1ec2': 'Cancelar tarea del nodo',
   'settings.metadata.ce884b28082de708': 'Delegar al nodo',

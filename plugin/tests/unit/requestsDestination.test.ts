@@ -1,7 +1,12 @@
 import { expect, it, vi } from 'vitest'
 const state = vi.hoisted(() => ({ supported: true, bindings: [] as any[], request: vi.fn() }))
 vi.mock('@/debugger/DebuggerService', () => ({
-  DebuggerService: { instance: { projectBindings: () => state.bindings } },
+  DebuggerService: {
+    instance: {
+      projectBindings: () => state.bindings,
+      sessionName: (s: any) => `display:${s.target.launch_configuration_id}`,
+    },
+  },
 }))
 vi.mock('@/node/NodeService', () => ({
   NodeService: {
@@ -46,6 +51,7 @@ it('uses the node destination owner even when program output names another addre
   const context = { registrationId: 'sample-node', projectId: 'sample-project' }
   expect(await destinationRecording(context, 'http://localhost:4567/items')).toMatchObject({
     sessionId: 'sample-server',
+    name: 'display:sample-server',
     routeByDestination: true,
     stepHeader: true,
   })

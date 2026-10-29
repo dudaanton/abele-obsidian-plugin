@@ -3147,6 +3147,7 @@ export const en = {
     one: 'Show the transfer as {count} QR codes',
     other: 'Show the transfer as {count} QR codes',
   },
+  'settings.metadata.tracePointList': 'Record points',
   'settings.metadata.bf774e203130976f': 'Add record point',
   'settings.metadata.ed11479db97b1ec2': 'Cancel node task',
   'settings.metadata.ce884b28082de708': 'Delegate to node',

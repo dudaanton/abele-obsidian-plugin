@@ -28,6 +28,22 @@ function files(dir: string): string[] {
 }
 
 describe('complete settings migration', () => {
+  it('translates the record point list tool in every locale', () => {
+    try {
+      for (const [locale, label] of Object.entries({
+        en: 'Record points',
+        ru: 'Точки записи',
+        lv: 'Ieraksta punkti',
+        es: 'Puntos de registro',
+        de: 'Aufzeichnungspunkte',
+      })) {
+        initializeLocale(locale)
+        expect(settingsToolLabel({ name: 'trace_point_list', label: 'Record points' })).toBe(label)
+      }
+    } finally {
+      initializeLocale('en')
+    }
+  })
   it('keeps record point removal metadata stable and translates its settings label in every locale', () => {
     try {
       for (const [locale, label] of Object.entries({

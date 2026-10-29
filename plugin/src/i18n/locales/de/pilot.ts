@@ -3274,6 +3274,7 @@ export const de = {
     one: 'Die Übertragung als {count} QR-Codes anzeigen',
     other: 'Die Übertragung als {count} QR-Codes anzeigen',
   },
+  'settings.metadata.tracePointList': 'Aufzeichnungspunkte',
   'settings.metadata.bf774e203130976f': 'Aufzeichnungspunkt hinzufügen',
   'settings.metadata.ed11479db97b1ec2': 'Aufgabe auf Knoten abbrechen',
   'settings.metadata.ce884b28082de708': 'Aufgabe an Knoten delegieren',

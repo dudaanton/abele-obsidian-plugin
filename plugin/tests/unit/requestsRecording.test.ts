@@ -3,7 +3,12 @@ import { ref } from 'vue'
 
 const state = vi.hoisted(() => ({ bindings: [] as any[] }))
 vi.mock('@/debugger/DebuggerService', () => ({
-  DebuggerService: { instance: { projectBindings: () => state.bindings } },
+  DebuggerService: {
+    instance: {
+      projectBindings: () => state.bindings,
+      sessionName: (s: any) => `display:${s.target.launch_configuration_id}`,
+    },
+  },
 }))
 import { recordingOf } from '@/requests/RequestsService'
 
@@ -22,6 +27,7 @@ it('selects the recording at the request destination rather than the displayed s
   }))
   const context = { registrationId: 'sample-node', projectId: 'sample-project' }
   expect(recordingOf(context, 'http://127.0.0.1:4567/items')?.sessionId).toBe('sample-server')
+  expect(recordingOf(context, 'http://127.0.0.1:4567/items')?.name).toBe('display:sample-server')
   expect(recordingOf(context, 'http://localhost:4568/events')?.sessionId).toBe('sample-receiver')
   expect(recordingOf(context, 'http://localhost:9999/items')).toBeUndefined()
   state.bindings.push(state.bindings[1])

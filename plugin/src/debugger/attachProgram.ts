@@ -127,6 +127,14 @@ export async function attachToProgram(
   )
   console.debug('[debugger] Attached', program.pid, program.port, started.debug_session_id)
   const binding = service.binding(presenter, started.debug_session_id)
+  binding.entryPath =
+    started.sources
+      .filter(
+        (source) => program.script === source.path || program.script?.endsWith('/' + source.path)
+      )
+      .sort((a, b) => b.path.length - a.path.length)[0]?.path ??
+    program.script ??
+    undefined
   service.select(binding)
   const snapshot = await registerSources(presenter, started, target)
   // Nothing to restart: the node did not start it, and Detach leaves it running.

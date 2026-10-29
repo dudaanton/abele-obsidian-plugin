@@ -165,7 +165,7 @@ export function recordingOf(
   if (!sessionId || !snapshot) return undefined
   return {
     sessionId,
-    name: snapshot.target.launch_configuration_id,
+    name: DebuggerService.instance.sessionName(snapshot),
   }
 }
 
@@ -188,7 +188,7 @@ export async function destinationRecording(
   if (!binding?.trace?.status?.recording || !binding.controller.snapshot) return undefined
   return {
     sessionId: owner.debug_session_id,
-    name: binding.controller.snapshot.target.launch_configuration_id,
+    name: DebuggerService.instance.sessionName(binding.controller.snapshot),
     routeByDestination: true,
     stepHeader: support.correlation,
   }

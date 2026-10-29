@@ -3238,6 +3238,7 @@ export const lv = {
     one: 'Rādīt pārsūtījumu kā QR kodus: {count}',
     other: 'Rādīt pārsūtījumu kā QR kodus: {count}',
   },
+  'settings.metadata.tracePointList': 'Ieraksta punkti',
   'settings.metadata.bf774e203130976f': 'Pievienot ierakstīšanas punktu',
   'settings.metadata.ed11479db97b1ec2': 'Atcelt uzdevumu mezglā',
   'settings.metadata.ce884b28082de708': 'Deleģēt uzdevumu mezglam',

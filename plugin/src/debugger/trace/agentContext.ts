@@ -1,11 +1,49 @@
-// The recording the agent's trace tools read: the debugger session open in the panel.
+// Resolve the recording by source or explicit process without changing the viewed session.
 import type { TraceToolContext } from '@/ai/tools/TraceTools'
 import { DebuggerService } from '../DebuggerService'
 import { writeRunNote } from './runNote'
 
-export function activeTraceContext(): TraceToolContext | undefined {
+export function activeTraceContext(
+  params: Record<string, unknown> = {}
+): TraceToolContext | undefined {
   const service = DebuggerService.instance
-  const binding = service.active.value
+  if (
+    typeof params.file === 'string' &&
+    /^(?:\/|[a-z]:)|\\|(?:^|\/)\.\.(?:\/|$)|(?:^|\/)\.git(?:\/|$)|\0/i.test(params.file)
+  )
+    throw new Error('Use a source path inside the node folder')
+  let selected = service.active.value
+  const folder = selected && service.folder(selected)
+  let pendingFile = false
+  if (folder && (params.file || params.session || params.process !== undefined)) {
+    const matched = service.fileBinding(
+      folder,
+      typeof params.file === 'string' ? params.file : '',
+      {
+        session: typeof params.session === 'string' ? params.session : undefined,
+        process: typeof params.process === 'number' ? params.process : undefined,
+      }
+    )
+    if (matched) {
+      selected = matched
+      if (typeof params.file === 'string' && (params.session || params.process !== undefined)) {
+        let owner: typeof matched | undefined
+        let ambiguous = false
+        try {
+          owner = service.fileBinding(folder, params.file)
+        } catch {
+          ambiguous = true
+        }
+        if (owner && owner !== matched)
+          throw new Error(
+            `This file belongs to another process (${owner.sessionId}); use that session or omit the explicit selector.`
+          )
+        if (!owner && !ambiguous && matched.controller.snapshot?.lifecycle === 'active')
+          pendingFile = true
+      }
+    } else pendingFile = true
+  }
+  const binding = selected
   const trace = binding?.trace
   const projectId = trace?.projectId
   if (!binding || !trace || !projectId) return undefined
@@ -20,6 +58,7 @@ export function activeTraceContext(): TraceToolContext | undefined {
       throw new Error('Debug session changed; retry trace_point_add')
   }
   return {
+    sessionId,
     rpc: trace.rpc,
     projectId,
     registrationId: binding.registrationId,
@@ -31,10 +70,47 @@ export function activeTraceContext(): TraceToolContext | undefined {
         name: r.name,
         steps: r.steps,
         state: r.state,
+        debugSessionId: r.debug_session_id,
       })),
+    listPoints: async () => {
+      const file = typeof params.file === 'string' ? params.file : undefined
+      if (pendingFile && folder && file)
+        return (
+          service
+            .pendingBreakpoints(folder, file)
+            .filter((line) => service.pendingPoint(folder, file, line)?.record)
+            .map((line) => `${file}:${line} · pending · process not attached`)
+            .join('\n') || 'No record points in this folder.'
+        )
+      return (
+        binding.controller
+          .knownBreakpoints()
+          .filter((b) => trace.points.some((p) => p.breakpoint_id === b.id))
+          .filter(
+            (b) =>
+              !params.file ||
+              b.file === params.file ||
+              (typeof params.file === 'string' &&
+                service.sourceFor(binding, params.file) === b.sourceId)
+          )
+          .map((b) => `${b.file}:${b.requestedLine} · ${b.state} · ${binding.sessionId}`)
+          .join('\n') || 'No record points in this session.'
+      )
+    },
     addPoint: async (file, line, edit, guard = () => {}) => {
       guard()
       current()
+      if (pendingFile && folder) {
+        service.editPendingPoint(folder, file, line, {
+          record: { take: edit.take, note: edit.note },
+          condition: edit.when,
+        })
+        return {
+          recording: false,
+          reason:
+            'No attached process runs this file. The point is pending in the folder and will apply when its process attaches.',
+        }
+      }
       if (!binding.controller.current || binding.controller.session.unavailable)
         throw new Error(
           'The debug session has ended or detached. Attach to the program before setting a record point.'
@@ -69,6 +145,12 @@ export function activeTraceContext(): TraceToolContext | undefined {
     removePoint: async (file, line, guard = () => {}) => {
       guard()
       current()
+      if (pendingFile && folder) {
+        if (!service.pendingPoint(folder, file, line)?.record)
+          throw new Error(`No record point at ${file}:${line}`)
+        service.togglePendingBreakpoint(folder, file, line)
+        return
+      }
       const source = service.sourceFor(binding, file) ?? binding.controller.mappedSource(file)?.[0]
       const point = binding.controller
         .knownBreakpoints()

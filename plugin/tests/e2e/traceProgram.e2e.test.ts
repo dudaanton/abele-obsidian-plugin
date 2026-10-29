@@ -139,6 +139,10 @@ beforeAll(async () => {
   for (const [path, text] of Object.entries({
     'src/total.js': JS,
     'src/total.ts': TS,
+    'packages/orders/src/index.js':
+      'const value = 1\nglobalThis.sample = value\nsetInterval(() => {}, 1000)\n',
+    'packages/rates/src/index.js':
+      'const rate = 2\nconst amounts = [{price: 1}].map((entry) => {\n  const lineTotal = entry.price * rate\n  return lineTotal\n})\nconst surge = rate + 1\nglobalThis.sample = amounts.length + surge\nsetInterval(() => {}, 1000)\n',
     'dist/total.js':
       built.outputText.replace(/\/\/# sourceMappingURL=.*$/m, '') +
       '\n//# sourceMappingURL=total.js.map\n',
@@ -384,6 +388,76 @@ it('records at a line of TypeScript open beside its build, through the source ma
   for (const s of seen.steps) expect(s.place).toContain('total.ts:6')
   expect(seen.steps.map((s) => s.values.sum)).toEqual(['0', '7'])
   expect(seen.steps[1]!.values.item).toContain('label')
+})
+
+it('keeps sibling service points pending, routes agent edits by file, and offers only names in scope', () => {
+  const seen = inApp<{
+    pending: boolean
+    applied: boolean
+    offers: string[]
+    orders: string
+    rates: string
+    listed: string
+  }>(`(async()=>{${prelude}
+    const service=api.DebuggerService.instance,target=${JSON.stringify(folder)};
+    let orders,rates;
+    const agent={nodeScopeIdentity:'sample-multi-process-'+crypto.randomUUID(),overrides:{value:{nodeScope:[{kind:'project',node_id:target.nodeId,project_id:target.projectId,access:'edit'}]}},conversationVersion:{value:0},permissionMode:{value:'allow-edit'}};
+    try {
+      { ${RUN('packages/orders/src/index.js')} }
+      orders=service.active.value;
+      const leaf=app.workspace.createLeafInParent(app.workspace.rootSplit,0);
+      await leaf.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target,path:'packages/rates/src/index.js'}});
+      app.workspace.setActiveLeaf(leaf,{focus:true});
+      const mark=await until(()=>marginAt(7,leaf.containerEl),'pending sibling margin');
+      mark.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:200}));
+      press(await until(()=>item('Add record point'),'pending record menu'));
+      await until(()=>document.querySelector('.abele-trace-point'),'pending point editor');
+      const offers=[...document.querySelectorAll('.abele-trace-point__offer')].map(el=>el.textContent.trim());
+      const take=document.querySelector('.abele-trace-point [aria-label="Take surge"]');
+      if(!take)throw Error('surge not offered: '+JSON.stringify(offers));
+      press(take);
+      press(document.querySelector('.abele-trace-point [aria-label="Keep (Enter)"]'));
+      await until(()=>!document.querySelector('.abele-trace-point'),'pending point kept');
+      const pending=service.pendingBreakpoints(target,'packages/rates/src/index.js').includes(7)&&!orders.trace.points.length;
+      { ${RUN('packages/rates/src/index.js')} }
+      rates=service.active.value;
+      await until(()=>rates.trace?.points.length===1&&!service.pendingBreakpoints(target,'packages/rates/src/index.js').length,'point applied to matching service');
+      const applied=service.fileBinding(target,'packages/rates/src/index.js')===rates;
+      const tools=api.createAgentTools(),call=async(name,p)=>(await tools.find(t=>t.name===name).execute('sample-multi',p,undefined,{session:agent})).content[0].text;
+      // The person views rates while the agent edits orders, then views orders while it removes rates.
+      await call('trace_point_add',{file:'packages/orders/src/index.js',line:2,take:['value']});
+      const listed=await call('trace_point_list',{file:'packages/orders/src/index.js'});
+      if(!orders.trace.points.length)throw Error('agent point went to the viewed process');
+      service.select(orders);
+      await call('trace_point_remove',{file:'packages/rates/src/index.js',line:7,session:rates.sessionId});
+      if(rates.trace.points.length)throw Error('agent removal used the viewed process');
+      await call('trace_point_add',{file:'packages/rates/src/index.js',line:7,take:['surge']});
+      await call('trace_point_list',{file:'packages/orders/src/index.js'});
+      await orders.controller.command('continue');
+      await rates.controller.command('continue');
+      await until(()=>orders.trace.runs.some(r=>r.steps>0)&&rates.trace.runs.some(r=>r.steps>0),'both processes recorded');
+      service.select(rates);
+      const ownRun=orders.trace.runs.find(r=>r.debug_session_id===orders.sessionId&&r.steps>0);
+      if(!ownRun)throw Error('orders run missing');
+      const timeline=await call('trace_timeline',{});
+      if(!timeline.includes('run '+ownRun.id))throw Error('implicit timeline read the viewed process: '+timeline);
+      const page=await orders.trace.rpc.run(target.projectId,ownRun.id,0,80);
+      const fromId=await call('trace_timeline',{run:ownRun.id,from:page.steps[0].id});
+      for(const step of page.steps)if(!fromId.includes(step.id+' ·'))throw Error('named-step paging skipped '+step.id);
+      await shot('trace-multiple-processes-desktop');
+      return {pending,applied,offers,orders:service.sessionName(orders.controller.snapshot),rates:service.sessionName(rates.controller.snapshot),listed};
+    } finally {
+      agent.overrides.value={nodeScope:[]};
+      for(const binding of [orders,rates])if(binding?.controller.current)await binding.controller.command('stop');
+    }
+  })()`)
+  expect(seen.pending).toBe(true)
+  expect(seen.applied).toBe(true)
+  expect(seen.offers).not.toContain('entry')
+  expect(seen.offers).not.toContain('lineTotal')
+  expect(seen.orders).toBe('orders/index.js')
+  expect(seen.rates).toBe('rates/index.js')
+  expect(seen.listed).toContain('packages/orders/src/index.js:2')
 })
 
 it('on a phone: the picker offers the file open in a tab, the stack folds Node, Restart is offered', async () => {

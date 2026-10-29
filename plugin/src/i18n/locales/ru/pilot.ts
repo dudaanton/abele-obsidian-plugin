@@ -3311,6 +3311,7 @@ export const ru = {
     many: 'Показать передачу в виде QR-кодов: {count}',
     other: 'Показать передачу в виде QR-кодов: {count}',
   },
+  'settings.metadata.tracePointList': 'Точки записи',
   'settings.metadata.bf774e203130976f': 'Добавить точку записи',
   'settings.metadata.ed11479db97b1ec2': 'Отменить задачу на ноде',
   'settings.metadata.ce884b28082de708': 'Передать задачу ноде',

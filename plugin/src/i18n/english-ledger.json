@@ -28718,5 +28718,15 @@
       "es",
       "de"
     ]
+  },
+  "settings.metadata.tracePointList": {
+    "englishHash": "db6059a39c15b6ff11261d8def279b722c317be73ced438c61e02ff09d5ae9e8",
+    "context": "Record point list tool label in node tool settings",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

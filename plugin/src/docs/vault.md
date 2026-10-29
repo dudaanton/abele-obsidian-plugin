@@ -3411,3 +3411,8 @@ The program launch dialog remembers runtime arguments, the working folder and li
 environment variables per node folder and entry in device-local Obsidian storage.
 These preferences do not travel with vault files. An empty working folder asks the node
 to use the entry's nearest package folder, falling back to the selected folder.
+
+The device-local debugger workspace state retains each session's entry path alongside its
+source mappings and attachment identity. File points are routed by that entry's package,
+independently of the session being viewed. Points awaiting an attached process stay pending
+for their node folder during the plugin session.

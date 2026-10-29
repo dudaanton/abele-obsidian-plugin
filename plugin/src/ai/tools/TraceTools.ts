@@ -10,15 +10,19 @@ import { isAbsoluteFolder } from '@/debugger/trace/notesFolder'
 export const TRACE_AGENT_LINES = 80
 export const TRACE_AGENT_BYTES = 6 * 1024
 
-/** The recording the tools read: the open debugger session's, by default. */
+/** The recording the tools read, resolved by source or explicit process. */
 export interface TraceToolContext {
+  sessionId?: string
   rpc: TraceRpc
   projectId: string
   registrationId: string
   worktreeId?: string
   workspaceId?: string
   /** The newest run first. */
-  runs(): Promise<{ id: string; name: string; steps: number; state: string }[]>
+  runs(): Promise<
+    { id: string; name: string; steps: number; state: string; debugSessionId?: string }[]
+  >
+  listPoints?(): Promise<string>
   addPoint(
     file: string,
     line: number,
@@ -72,13 +76,28 @@ const stepLine = (s: WireStep) =>
     .filter(Boolean)
     .join(' · ')
 
-const RUN = { type: 'string', description: 'Run id from trace_runs; the newest run if omitted.' }
+const RUN = {
+  type: 'string',
+  description: 'Run id from trace_runs; the newest run of this process if omitted.',
+}
 const STEP = { type: 'string', description: 'Step id, e.g. t0042.' }
 const NAME = { type: 'string', description: 'The value name at that step, e.g. result.' }
 
-export function createTraceTools(resolve: () => TraceToolContext | undefined): AgentTool[] {
-  const context = () => {
-    const c = resolve()
+export function createTraceTools(
+  resolve: (params?: Record<string, unknown>) => TraceToolContext | undefined
+): AgentTool[] {
+  let lastSession: string | undefined
+  const context = (params: Record<string, unknown>) => {
+    const c = resolve({
+      ...(!params.run &&
+      !params.file &&
+      !params.session &&
+      params.process === undefined &&
+      lastSession
+        ? { session: lastSession }
+        : {}),
+      ...params,
+    })
     if (!c)
       throw new Error(
         'No debugger session that records runs is open. Use the node debugger tools to start or attach to a program, then retry.'
@@ -88,8 +107,14 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
   const runOf = async (c: TraceToolContext, params: Record<string, unknown>) => {
     const asked = str(params.run)
     if (asked) return asked
-    const newest = (await c.runs())[0]
-    if (!newest) throw new Error('No runs recorded in this project yet.')
+    const runs = await c.runs()
+    const newest = runs.find(
+      (r) => !c.sessionId || !r.debugSessionId || r.debugSessionId === c.sessionId
+    )
+    if (!newest)
+      throw new Error(
+        `No runs recorded for this process yet. Other runs: ${runs.map((r) => r.id).join(', ') || 'none'}. Specify run to read one.`
+      )
     return newest.id
   }
   const tool = (
@@ -104,9 +129,22 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
     label,
     category: 'Nodes',
     description,
-    parameters: { type: 'object', properties, required, additionalProperties: false },
+    parameters: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', description: 'Select the process that runs this source path.' },
+        ...properties,
+        session: {
+          type: 'string',
+          description: 'Explicit debugger session ID; required for ambiguous shared sources.',
+        },
+        process: { type: 'integer', minimum: 1, description: 'Explicit process PID.' },
+      },
+      required,
+      additionalProperties: false,
+    },
     execute: async (_id, params, _signal, ctx) => {
-      const c = context()
+      const c = context(params)
       const guard = await nodeProjectGuard(
         ctx?.session,
         name,
@@ -132,6 +170,7 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
         params
       )
       guard()
+      if (c.sessionId) lastSession = c.sessionId
       return text(result)
     },
   })
@@ -171,20 +210,43 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
       [],
       async (c, p) => {
         const run = await runOf(c, p)
-        const index =
-          typeof p.from === 'string' && /^t[0-9]+$/.test(p.from)
-            ? Number(p.from.slice(1)) - 1
-            : num(p.from)
+        let index = num(p.from)
+        if (typeof p.from === 'string' && /^t[0-9]+$/.test(p.from)) {
+          let offset = 0
+          for (;;) {
+            const page = await c.rpc.run(c.projectId, run, offset, TRACE_AGENT_LINES)
+            const found = page.steps.findIndex((step) => step.id === p.from)
+            if (found >= 0) {
+              index = offset + found
+              break
+            }
+            if (page.next === undefined || page.next <= offset) {
+              const others = (await c.runs()).filter((r) => r.id !== run).slice(0, 8)
+              throw new Error(
+                `Step ${p.from} is not in run ${run}. Other runs: ${others.map((r) => r.id).join(', ') || 'none'}. Specify run explicitly; trace_runs lists all runs.`
+              )
+            }
+            offset = page.next
+          }
+        }
         if (
           p.from !== undefined &&
           (index === undefined || !Number.isSafeInteger(index) || index < 0)
         )
           throw new Error('from must be a nonnegative step index or a step id such as t0008')
         const from = index ?? 0
+        const others = !p.run ? (await c.runs()).filter((r) => r.id !== run) : []
         const page = await c.rpc.run(c.projectId, run, from, TRACE_AGENT_LINES)
         const kind = str(p.kind)
         const steps = kind ? page.steps.filter((s) => s.kind === kind) : page.steps
-        const head = `${page.run.name} · ${page.run.steps} steps · ${page.run.state}`
+        const head = `${page.run.name} · ${page.run.steps} steps · ${page.run.state} · run ${run}${
+          others.length
+            ? ` · other runs: ${others
+                .slice(0, 8)
+                .map((r) => r.id)
+                .join(', ')}${others.length > 8 ? ' (trace_runs lists all)' : ''}`
+            : ''
+        }`
         const body = bounded(steps.map(stepLine), from)
         return `${head}\n${body}${page.next !== undefined && !body.includes('call again') ? `\n… more steps; call again with from: ${page.next}` : ''}`
       }
@@ -373,7 +435,7 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
     tool(
       'trace_point_add',
       'Add record point',
-      'Set a record point in the selected debug session. A source inside its granted node folder is attached automatically; no open file tab is required. Take named values (names in scope or expressions, `expr as name`) each time the program passes and let it go on. Optional when (condition) and note (why the point is there).',
+      'Set a record point in the process that runs the file, independently of the viewed session. Specify session or process for shared files. No open file tab is required. Take named values (names in scope or expressions, `expr as name`) each time the program passes and let it go on. Optional when (condition) and note (why the point is there).',
       {
         file: { type: 'string', description: 'The source path as the debugger shows it.' },
         line: { type: 'number' },
@@ -407,7 +469,7 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
     tool(
       'trace_point_remove',
       'Remove record point',
-      'Remove the record point and its breakpoint at the requested source line in the selected debug session. Requires the same edit access and approval as trace_point_add. Other points are kept.',
+      'Remove the record point and its breakpoint in the process that runs the file. Specify session or process for shared files. Requires the same edit access and approval as trace_point_add. Other points are kept.',
       { file: { type: 'string' }, line: { type: 'integer', minimum: 1 } },
       ['file', 'line'],
       async (c, p) => {
@@ -417,6 +479,17 @@ export function createTraceTools(resolve: () => TraceToolContext | undefined): A
         await c.removePoint(req(p.file), line)
         return `Record point removed at ${req(p.file)}:${line}.`
       }
+    ),
+    tool(
+      'trace_point_list',
+      'Record points',
+      'List record points in the process that runs file, or in an explicit session/process. Read-only.',
+      { file: { type: 'string' } },
+      [],
+      async (c) =>
+        bounded(
+          (c.listPoints ? await c.listPoints() : 'No record points in this session.').split('\n')
+        )
     ),
     tool(
       'trace_note',
