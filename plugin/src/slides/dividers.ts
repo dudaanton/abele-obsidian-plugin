@@ -10,9 +10,12 @@ let lastDeck = NO_DECK
 export function slideDividers(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
   const info = ctx.getSectionInfo(el)
   if (!info && isPrintMode(el) && ctx.frontmatter?.type === 'presentation') {
+    // Only the exported note owns page boundaries; embedded decks flow with its content.
+    const exportedDeck =
+      el.matches('.markdown-rendered') && el.parentElement?.classList.contains('print')
     for (const p of Array.from(el.querySelectorAll('p'))) {
       if (!/^\s*::slide(?:\{|::)/.test(p.textContent ?? '')) continue
-      p.classList.add('abele-print-slide-start')
+      if (exportedDeck) p.classList.add('abele-print-slide-start')
       replaceRenderedMarker(p, () => el.ownerDocument.win.createSpan())
     }
     return

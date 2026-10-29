@@ -162,6 +162,7 @@ describe.skipIf(!available)('PDF export of rendered note content', () => {
         tables: number[]
         drawing: boolean
         baseChart: boolean
+        slidePages: number[]
       }>(
         String.raw`(async () => {
       const obsidian = window.__abeleTest.rendering, remote = require('@electron/remote'), fs = require('fs')
@@ -202,11 +203,15 @@ describe.skipIf(!available)('PDF export of rendered note content', () => {
         fs.writeFileSync(prefix + '.html', content.outerHTML)
         const lib = await obsidian.loadPdfJs()
         const book = await lib.getDocument({data:new Uint8Array(pdf)}).promise
-        let text = ''; const ink = []; const colors = [false, false]
+        let text = ''; const ink = []; const colors = [false, false]; const slidePages = []
         try {
           for (let i=1; i<=book.numPages; i++) {
             const page = await book.getPage(i), viewport = page.getViewport({scale:1.5})
-            text += (await page.getTextContent()).items.map(item => item.str || '').join(' ') + '\n'
+            const pageText = (await page.getTextContent()).items.map(item => item.str || '').join(' ')
+            text += pageText + '\n'
+            for (const body of ['Sample first slide body', 'Sample second slide body']) {
+              if (pageText.replace(/\s/g, '').includes(body.replace(/\s/g, ''))) slidePages.push(i)
+            }
             const canvas = document.createElement('canvas'); canvas.width = viewport.width; canvas.height = viewport.height
             const ctx = canvas.getContext('2d')
             await page.render({canvasContext:ctx,canvas,viewport}).promise
@@ -221,7 +226,7 @@ describe.skipIf(!available)('PDF export of rendered note content', () => {
             ink.push(count)
             canvas.width = canvas.height = 0
           }
-          return {pages:book.numPages,text,diagrams,gallery,chrome,ink,controls,colors,tables,drawing,baseChart}
+          return {pages:book.numPages,text,diagrams,gallery,chrome,ink,controls,colors,tables,drawing,baseChart,slidePages}
         } finally { await book.destroy() }
       } finally {
         root?.remove(); style?.remove(); owner?.unload()
@@ -240,6 +245,8 @@ describe.skipIf(!available)('PDF export of rendered note content', () => {
       expect(result.tables).toEqual([65, 65, 65, 65])
       expect(result.drawing).toBe(true)
       expect(result.baseChart).toBe(true)
+      expect(result.slidePages).toHaveLength(2)
+      expect(result.slidePages[0]).toBe(result.slidePages[1])
       for (const text of [
         'Sample start',
         'Sample finish',

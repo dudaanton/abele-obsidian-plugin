@@ -46,6 +46,29 @@ it('prints presentation body without source directives when the host supplies no
   expect(root.textContent).toContain('Sample slide body')
 })
 
+it.each([false, true])(
+  'only paginates the exported presentation itself (embedded: %s)',
+  (embedded) => {
+    const print = document.body.appendChild(document.createElement('div'))
+    print.className = 'print'
+    const exported = print.appendChild(document.createElement('div'))
+    exported.className = 'markdown-rendered'
+    const root = embedded ? exported.appendChild(document.createElement('div')) : exported
+    if (embedded) root.className = 'markdown-embed markdown-rendered'
+    root.innerHTML =
+      '<p>::slide{layout=title}::</p><p>First body</p><hr><p>::slide{layout=content}::</p><p>Second body</p>'
+    slideDividers(root, {
+      frontmatter: { type: 'presentation' },
+      getSectionInfo: () => null,
+    } as unknown as MarkdownPostProcessorContext)
+    expect(root.querySelectorAll('.abele-print-slide-start')).toHaveLength(embedded ? 0 : 2)
+    expect(root.querySelector('hr')).not.toBeNull()
+    expect(root.textContent).not.toContain('::slide')
+    expect(root.textContent).toContain('First body')
+    expect(root.textContent).toContain('Second body')
+  }
+)
+
 it('draws a complete chart without layout or animation in the hidden export window', async () => {
   const root = document.body.appendChild(document.createElement('div'))
   root.className = 'print'
