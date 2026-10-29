@@ -350,6 +350,7 @@ async function sessionLifecycle(phone: boolean) {
     const actual=(await binding.connection.client.debugger.status(binding.sessionId)).snapshot;
     binding.controller.observe({observation:'current',snapshot:actual});
     if(actual.execution==='stopped') {
+      await until(()=>binding.controller.session.frames.length&&binding.controller.session.variables.length,'frames and scopes after failed watch');
       const go=document.querySelector('[aria-label="Continue (F5)"]');
       if(!go||go.hasAttribute('disabled'))throw Error('A real stop has no Continue');
     }

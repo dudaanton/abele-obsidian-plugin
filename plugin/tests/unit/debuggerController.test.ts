@@ -8,6 +8,39 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 import { DebuggerBreakpointRequestSchema } from '@abele/node-protocol'
+it('shows the evaluation diagnostic unchanged in the watch row and tooltip', () => {
+  const { model } = fixture()
+  const error = 'ReferenceError: sample_missing is not defined'
+  model.session.watches = [{ expression: 'sample_missing.field', error }]
+  const panel = mount(DebugPanel, { props: { session: model.session } })
+  const row = panel.get('.abele-debug-panel__value_error')
+  expect(row.text()).toBe(error)
+  expect(row.attributes('title')).toBe(error)
+  panel.unmount()
+})
+it('reloads stack and scopes after an uncertain evaluation returns a real new stop', async () => {
+  const { model, rpc, command } = fixture()
+  const base = rpc.getMockImplementation()!
+  rpc.mockImplementation(async (method, params) =>
+    method === 'debugger.v1.history'
+      ? { entries: [], truncated_before: 0 }
+      : method === 'debugger.v1.scopes'
+        ? { data: { items: [{ name: 'Local', handle: 'sample-scope' }] } }
+        : base(method, params)
+  )
+  await model.loadStack(false)
+  command.mockResolvedValueOnce(
+    receipt('outcome_unknown', {
+      code: 'dispatch_uncertain',
+      snapshot: snapshot({ stop_epoch: 5, event_seq: 12, state_revision: 8 }),
+    })
+  )
+  await model.watch('missing.field')
+  expect(model.session.status).toBe('paused')
+  expect(model.session.frames).toHaveLength(1)
+  expect(model.session.variables[0]).toMatchObject({ name: 'Local', handle: 'sample-scope' })
+  expect(command).toHaveBeenCalledOnce()
+})
 it('keeps explicitly inspected children when the same stopped scope is read again', async () => {
   const { model, rpc } = fixture()
   const base = rpc.getMockImplementation()!
@@ -35,7 +68,7 @@ it('keeps explicitly inspected children when the same stopped scope is read agai
   await model.loadStack(false)
   expect(model.session.variables[0].children).toBeUndefined()
 })
-it.each(['failed', 'rejected'])(
+it.each(['failed', 'rejected', 'outcome_unknown'])(
   'shows an asynchronous %s evaluation error in its watch row',
   async (outcome) => {
     const { model, rpc, command } = fixture()
@@ -68,7 +101,10 @@ it.each(['failed', 'rejected'])(
                   target_id: 'sample-target',
                   build_identity: 'matched',
                   payload_status: 'retained',
-                  requested_data: { code: 'sample evaluation failed' },
+                  requested_data: {
+                    code: 'dispatch_uncertain',
+                    message: 'sample evaluation failed',
+                  },
                 },
               ]
             : [],

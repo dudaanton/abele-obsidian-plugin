@@ -285,7 +285,7 @@
               :title="w.error || undefined"
               >{{
                 w.error
-                  ? nodeErrorWords(w.error)
+                  ? w.error
                   : w.value === undefined
                     ? ''
                     : !live || w.stale
@@ -330,7 +330,6 @@
 </template>
 
 <script setup lang="ts">
-import { nodeErrorWords } from '@/node/errorWords'
 import { formatFrameName } from './stackFormat'
 import { t } from '@/i18n'
 

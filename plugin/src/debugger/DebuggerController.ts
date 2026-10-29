@@ -1046,7 +1046,12 @@ export class DebuggerController {
       ) {
         const watch = this.session.watches.find((w) => w.expression === inspection.expression)
         if (watch) {
-          watch.error = receiptMessage(typeof data?.code === 'string' ? data.code : entry.outcome)
+          watch.error =
+            typeof data?.message === 'string' && data.message
+              ? data.message
+              : receiptMessage(
+                  typeof data?.code === 'string' ? data.code : watch.error || entry.outcome
+                )
           watch.stale =
             this.session.status !== 'paused' || entry.stop_epoch !== this.snapshot?.stop_epoch
         }
@@ -1389,14 +1394,15 @@ export class DebuggerController {
       }
       if (!this.current || generation !== this.serial) return
       this.observe({ observation: 'current', snapshot: result.snapshot })
-      const settled = result.outcome === 'completed' || result.outcome === 'failed'
+      // Outcome uncertainty concerns effects, not the authoritative execution snapshot.
+      // A real stop still has readable frames; refreshing them never repeats evaluation.
+      const settled = result.outcome !== 'pending'
       if (['failed', 'rejected', 'timed_out', 'outcome_unknown'].includes(result.outcome)) {
         const watch = this.session.watches.find((value) => value.expression === expression)
         if (watch) {
           watch.error = receiptMessage(result.code ?? result.outcome)
           watch.stale = false
         }
-        this.inspections.delete(operation_id)
       }
       if (settled && this.session.status === 'paused') {
         await this.loadStack(false, current.frame)
