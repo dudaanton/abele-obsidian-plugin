@@ -2010,7 +2010,13 @@ export class ObsidianFileSystem implements FileSystem {
     }
     if (scope) {
       if (await crossesSymlink(scope, (prefix) => this.isSymlink(prefix))) return
-      yield* this.directories.list()
+      if (this.prepareStartupInventory) {
+        const folders = (await this.physicalPaths(scope)).folders
+        yield* this.directories.list(
+          [...folders],
+          (path) => path === scope || path.startsWith(scope + '/')
+        )
+      } else yield* this.directories.list()
       return
     }
     const folders = (await this.physicalPaths()).folders

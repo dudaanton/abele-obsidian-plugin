@@ -65,8 +65,9 @@ type Measurement = {
   timeline: SyncStartupMark[]
   native: Record<string, number>
   ledgerRows: { native: Record<string, number>; indexedFileProbes: number; readonly: number; requests: number; yields: number; classifications: number }
-  afterList: { readonly: number; requests: number; gets: number; metadataGets: number }
+  afterList: { readonly: number; readwrite: number; requests: number; gets: number; metadataGets: number; lstat: number; readdir: number }
   fileList: { lstat: number; indexedFileProbes: number }
+  writes: { method: string; store: string }[]
 }
 const results: Measurement[] = []
 let measured: Promise<void> | undefined
@@ -239,6 +240,8 @@ async function measure() {
   )
   let host: TokenEngines | undefined
   let indexTimer: ReturnType<typeof setTimeout> | undefined
+  let restoreWriteSpies = () => {}
+  const writeOps: Measurement['writes'] = []
   try {
     // Exercise the parsed ignore policy on every nested file without excluding the
     // synced corpus. A missing rule makes the native fixture understate live path work.
@@ -315,6 +318,17 @@ async function measure() {
     })
     state.close()
     await storage.flush()
+    const originalPut = IDBObjectStore.prototype.put
+    const originalDelete = IDBObjectStore.prototype.delete
+    const putSpy = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (...args) {
+      writeOps.push({ method: 'put', store: this.name })
+      return Reflect.apply(originalPut, this, args)
+    })
+    const deleteSpy = vi.spyOn(IDBObjectStore.prototype, 'delete').mockImplementation(function (...args) {
+      writeOps.push({ method: 'delete', store: this.name })
+      return Reflect.apply(originalDelete, this, args)
+    })
+    restoreWriteSpies = () => { putSpy.mockRestore(); deleteSpy.mockRestore() }
     let timeline: SyncStartupTimeline
     const open = () =>
       new TokenEngines(f.app as never, f.ui, (key) => f.keys.get(key) ?? null, {
@@ -345,6 +359,7 @@ async function measure() {
         native: Object.fromEntries(counted.calls),
         indexedFileProbes,
         readonly: transactions.readonly,
+        readwrite: transactions.readwrite,
         requests: idbRequests.reduce((sum, spy) => sum + spy.mock.calls.length, 0),
         yields: metadataYields,
         classifications,
@@ -366,9 +381,12 @@ async function measure() {
           const end = snapshot()
           afterList = {
             readonly: end.readonly - afterListStart.readonly,
+            readwrite: end.readwrite - afterListStart.readwrite,
             requests: end.requests - afterListStart.requests,
             gets: end.gets - afterListStart.gets,
             metadataGets: end.metadataGets - afterListStart.metadataGets,
+            lstat: (end.native.lstat ?? 0) - (afterListStart.native.lstat ?? 0),
+            readdir: (end.native.readdir ?? 0) - (afterListStart.native.readdir ?? 0),
           }
         }
         if (mark.phase === 'reconcile:inventory:ledger-rows:begin') ledgerStart = snapshot()
@@ -393,6 +411,7 @@ async function measure() {
       counted.calls.clear()
       transactions.readonly = transactions.readwrite = 0
       stateGets = metadataGets = 0
+      writeOps.length = 0
       const started = performance.now()
       const cpu = process.cpuUsage(),
         diskBefore = diskWait.read(),
@@ -465,6 +484,7 @@ async function measure() {
         ledgerRows: ledgerRows!,
         afterList: afterList!,
         fileList: fileList!,
+        writes: [...writeOps],
         transactions: { ...transactions },
         classification: f.ui.activity.value[f.id]?.classification,
         cycles: cycleReceipts,
@@ -498,6 +518,7 @@ async function measure() {
     getSpy.mockRestore()
     getMetaSpy.mockRestore()
     budgetSpy.mockRestore()
+    restoreWriteSpies()
     for (const spy of idbRequests) spy.mockRestore()
     clearInterval(progress)
     await host?.close()
@@ -599,6 +620,15 @@ it('answers post-listing state lookups without one database round trip per file'
     expect(result.fileList.lstat).toBeLessThanOrEqual(64)
     expect(result.fileList.indexedFileProbes).toBe(0)
   }
+}, 240000)
+
+it('keeps no-change state writes constant and avoids file-entry writes', async () => {
+  await ensureMeasured()
+  const result = results.find((one) => !one.interrupted)!
+  console.log('restart writes', result.transactions, result.afterList.readwrite, result.writes.length)
+  expect(result.transactions.readwrite).toBeLessThanOrEqual(16)
+  expect(result.afterList.readwrite).toBeLessThanOrEqual(8)
+  expect(result.writes.filter((write) => write.store === 'entries')).toHaveLength(0)
 }, 240000)
 
 it('settles a 33000-file host restart and inspection within ten seconds with one verification per path', async () => {

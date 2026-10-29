@@ -81,8 +81,10 @@ export class VaultDirectories {
     return schema.parse(this.storage.loadLocalStorage(KEY) ?? [])
   }
   private save(records: z.infer<typeof schema>) {
+    const expected = JSON.stringify(records)
+    if (JSON.stringify(this.storage.loadLocalStorage(KEY) ?? []) === expected) return
     this.storage.saveLocalStorage(KEY, records)
-    if (JSON.stringify(this.storage.loadLocalStorage(KEY)) !== JSON.stringify(records))
+    if (JSON.stringify(this.storage.loadLocalStorage(KEY)) !== expected)
       throw new Error('Local directory identity was not stored')
   }
   private removals() {

@@ -1798,8 +1798,8 @@ it.each(['folder', 'group'] as const)(
           )
         ).toEqual([])
       }
-      if (kind === 'folder') expect(list).toHaveBeenCalled()
-      else expect(list).not.toHaveBeenCalled()
+      // A settled folder index supplies the scoped directory inventory without adapter walks.
+      expect(list).not.toHaveBeenCalled()
       expect(probe).toHaveBeenCalled()
       for (const [input, init] of transport.mock.calls)
         if (new URL(String(input)).pathname === '/v2/commit')

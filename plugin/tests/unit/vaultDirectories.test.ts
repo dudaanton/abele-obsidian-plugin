@@ -1,6 +1,16 @@
 import { expect, it, vi } from 'vitest'
 import { VaultDirectories } from '@/sync/vaultDirectories'
 
+it('does not save unchanged directory identities on another inventory', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const app = buildFakeVault([{ path: 'Sample/Nested/file.md', content: 'sample' }])
+  const dirs = new VaultDirectories(app.vault.adapter, app)
+  await Array.fromAsync(dirs.list())
+  const save = vi.spyOn(app, 'saveLocalStorage')
+  await Array.fromAsync(dirs.list())
+  expect(save.mock.calls.filter(([key]) => key === 'abele-sync-local-directories-v1')).toHaveLength(0)
+})
+
 it('loads existing directory identities once per advisory inventory, but reloads before effects', async () => {
   const { buildFakeVault } = await import('../helpers/fakeVault')
   const app = buildFakeVault([{ path: 'Shared/sub/sample.md', content: 'sample' }])
