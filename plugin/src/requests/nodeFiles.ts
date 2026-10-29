@@ -2,7 +2,8 @@ import { t } from '@/i18n'
 import { shallowRef } from 'vue'
 import type { NodeClient } from '@abele/node-client'
 import { NodeDocumentSource } from '@/node/NodeFilesModel'
-import { NodePathClientPort } from '@/node/NodePathClientPort'
+import { NodePathClientPort, pathPages } from '@/node/NodePathClientPort'
+import { untilAborted } from './lifetime'
 import type { PathTarget } from '@/node/NodePathModel'
 import type { RequestFilePort } from './FileCollections'
 import { parseRequestFile } from './files'
@@ -106,28 +107,65 @@ export class NodeRequestFiles implements RequestFilePort {
     }
   }
   async list() {
-    const target = await this.ready()
-    return this.fresh(() => this.readTree(target))
-  }
-  private async readTree(target: PathTarget) {
-    const out: string[] = []
-    const folders = ['']
-    for (let at = 0; at < folders.length; at++) {
-      let cursor: string | undefined
-      let revision: import('@abele/node-protocol').RepositoryRevision | undefined
-      do {
-        const page = await this.path.tree(target, folders[at], cursor, revision)
-        revision = page.revision
-        for (const entry of page.entries) {
-          if (entry.kind === 'folder') {
-            if (!/(^|\/)(\.git|node_modules|\.abele)(\/|$)/.test(entry.path))
-              folders.push(entry.path)
-          } else out.push(entry.path)
-        }
-        cursor = page.cursor ?? undefined
-      } while (cursor)
+    const controller = new AbortController()
+    const timer = window.setTimeout(
+      () =>
+        controller.abort(
+          new Error(
+            'Request file discovery did not finish within 5 seconds. Check the node connection and narrow the project folder, then retry http_requests.'
+          )
+        ),
+      5000
+    )
+    const signal = controller.signal
+    try {
+      const target = await untilAborted(this.ready(), signal)
+      return await this.fresh(() => this.findFiles(target, signal))
+    } finally {
+      window.clearTimeout(timer)
+      controller.abort(new Error('Request file discovery finished'))
     }
-    return out
+  }
+  private async findFiles(target: PathTarget, signal: AbortSignal) {
+    signal.throwIfAborted()
+    const revision =
+      target.kind === 'worktree'
+        ? (await untilAborted(this.client.repository.observe({ worktree_id: target.id }), signal))
+            .revision
+        : undefined
+    // Filename searches run on the node; unrelated directories cost no client round trips.
+    // Include collection markers and environment files as well as request sources.
+    const pages = await Promise.all(
+      ['.http', '.rest', '.bru', 'bruno.json', 'http-client'].map((query) =>
+        pathPages((cursor) => {
+          signal.throwIfAborted()
+          const options = {
+            query,
+            mode: 'filename' as const,
+            case_sensitive: false,
+            limit: 100,
+            cursor,
+          }
+          return untilAborted(
+            target.kind === 'worktree'
+              ? this.client.repository.search({
+                  ...options,
+                  worktree_id: target.id,
+                  revision,
+                  scope: 'repository',
+                })
+              : this.client.nodePath.search({ ...options, workspace_id: target.id }),
+            signal
+          )
+        })
+      )
+    )
+    return [...new Set(pages.flatMap((page) => page.map((entry) => entry.path)))].filter(
+      (path) =>
+        !/(^|\/)(\.git|node_modules|\.abele)(\/|$)/.test(path) &&
+        (/\.(http|rest|bru)$/i.test(path) ||
+          /(^|\/)(bruno\.json|http-client(?:\.private)?\.env\.json)$/.test(path))
+    )
   }
   async read(path: string) {
     await this.ready()

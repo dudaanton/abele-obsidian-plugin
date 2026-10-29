@@ -6,6 +6,47 @@ import { fakeNode, ports } from '../helpers/requestsFakeNode'
 
 afterEach(() => vi.useRealTimers())
 
+it('lists an empty large node project without walking its folders', async () => {
+  const { NodeRequestFiles } = await import('@/requests/nodeFiles')
+  const tree = vi.fn(async () => {
+    throw new Error('A large tree must not be walked')
+  })
+  const search = vi.fn(async () => ({
+    entries: [],
+    cursor: null,
+    incomplete: false,
+    omissions: [],
+  }))
+  const client = {
+    connected: true,
+    repository: {
+      worktrees: async () => ({
+        entries: [{ kind: 'root', worktree_id: 'sample-root' }],
+        cursor: null,
+      }),
+      observe: async () => ({ revision: {} }),
+      tree,
+      search,
+    },
+  }
+  const files = new NodeRequestFiles(
+    client as unknown as import('@abele/node-client').NodeClient,
+    { nodeId: 'sample-node', registrationId: 'sample-registration', projectId: 'sample-project' },
+    async () => {}
+  )
+  const node = fakeNode()
+  vi.spyOn(node.rpc, 'list').mockResolvedValue({
+    folder: 'Requests',
+    collections: [],
+    environments: [],
+  })
+  const model = new RequestsModel(node.rpc, 'sample-project', { ...ports(), files })
+  const tool = createRequestTools(() => ({ model, project: 'Sample' }))[0]!
+  expect((await tool.execute('sample-call', {})).content[0].text).toContain('No saved requests yet')
+  expect(tree).not.toHaveBeenCalled()
+  expect(search).toHaveBeenCalled()
+})
+
 it('ends a never-answering Requests list with a clear timeout', async () => {
   vi.useFakeTimers()
   const node = fakeNode()
