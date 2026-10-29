@@ -2,6 +2,19 @@ export function nodeFailureMessage(error: unknown, state: string, stderr: string
   return `${error instanceof Error ? error.message : String(error)}\nnode: ${state}\n${stderr.slice(-1200)}`
 }
 
+export async function cleanupCreatedViews(
+  workspace: {
+    getLeavesOfType(type: string): { id: string; detach(): void }[]
+    requestSaveLayout: { run(): unknown }
+  },
+  ids: readonly string[],
+  types: readonly string[]
+): Promise<void> {
+  for (const type of types)
+    for (const leaf of workspace.getLeavesOfType(type)) if (ids.includes(leaf.id)) leaf.detach()
+  await workspace.requestSaveLayout.run()
+}
+
 /** Runs in the active window, before switching away from its separately saved phone layout. */
 export async function cleanupDebugAttachViews(
   api: { DebuggerService: { instance: { destroy(): void } } },

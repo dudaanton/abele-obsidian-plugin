@@ -1,6 +1,7 @@
 import { afterEach, expect, it } from 'vitest'
 import { evalAsync } from './helpers/githubLive'
-import { evalRaw, reloadApp } from './helpers/obsidianCli'
+import { reloadApp } from './helpers/obsidianCli'
+import { cleanupCreatedViews } from './helpers/debugAttachLifecycle'
 import { withEmulatedPhone } from './helpers/emulatedPhone'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
@@ -15,12 +16,13 @@ const types = [
 ]
 let created: string[] = []
 
-afterEach(() => {
-  evalRaw(
-    `(()=>{const ids=${JSON.stringify(created)};for(const type of ${JSON.stringify(types)})for(const leaf of app.workspace.getLeavesOfType(type))if(ids.includes(leaf.id))leaf.detach();return true})()`
+function cleanup() {
+  evalAsync(
+    `(async()=>{await (${cleanupCreatedViews.toString()})(app.workspace,${JSON.stringify(created)},${JSON.stringify(types)});return true})()`
   )
   created = []
-})
+}
+afterEach(cleanup)
 
 async function scene(phone: boolean) {
   created = evalAsync<string[]>(`(async()=>{
@@ -67,5 +69,11 @@ it('restores readable headers and one Debug view after window and plugin reload'
   await scene(false)
 }, 180000)
 it('restores readable headers and one Debug view after phone window and plugin reload', async () => {
-  await withEmulatedPhone(() => scene(true))
+  await withEmulatedPhone(async () => {
+    try {
+      await scene(true)
+    } finally {
+      cleanup()
+    }
+  })
 }, 240000)

@@ -1,5 +1,38 @@
 import { expect, it, vi } from 'vitest'
-import { cleanupDebugAttachViews, nodeFailureMessage } from '../e2e/helpers/debugAttachLifecycle'
+import {
+  cleanupDebugAttachViews,
+  cleanupCreatedViews,
+  nodeFailureMessage,
+} from '../e2e/helpers/debugAttachLifecycle'
+
+it('closes only the reload test tabs and saves before leaving the current layout', async () => {
+  const events: string[] = []
+  const old = {
+    id: 'sample-old',
+    detach: () => {
+      events.push('old')
+    },
+  }
+  const created = {
+    id: 'sample-created',
+    detach: () => {
+      events.push('created')
+    },
+  }
+  await cleanupCreatedViews(
+    {
+      getLeavesOfType: () => [old, created],
+      requestSaveLayout: {
+        run: async () => {
+          events.push('save')
+        },
+      },
+    },
+    ['sample-created'],
+    ['sample-view']
+  )
+  expect(events).toEqual(['created', 'save'])
+})
 
 it('puts the assertion before node diagnostics', () => {
   const text = nodeFailureMessage(
