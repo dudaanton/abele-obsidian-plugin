@@ -31,6 +31,20 @@ export async function removeForgottenBreakpoints(
     controller.snapshot?.incarnation === target?.incarnation
   const isPaused = () => controller.session.status === 'paused'
   let heldEpoch: number | undefined
+  const initialStop = target?.threads.find(
+    (thread) => thread.thread_id === target.selected_thread_id
+  )?.stop
+  const hits = initialStop?.hit_breakpoint_ids ?? []
+  // The node can restore ordinary breakpoints before their record metadata. A stop
+  // caused solely by the points explicitly discarded in the ended session is ours
+  // to release after removing them; a mixed or unrelated stop stays paused.
+  if (
+    initialStop?.reason === 'breakpoint' &&
+    hits.length &&
+    isPaused() &&
+    hits.every((id) => points.some((point) => point.id === id))
+  )
+    heldEpoch = target.stop_epoch
   // Restored record points may fire on every timer tick. Hold execution while patching their
   // intent, rather than racing each capture's changing state fence or removing captures first.
   if (
@@ -76,7 +90,10 @@ export async function removeForgottenBreakpoints(
     if (controller.snapshot && !current()) throw new Error(t('node.error.generic'))
     if (next.trace?.points.some((record) => record.breakpoint_id === point.id))
       await next.trace.removePoint(point.id)
-    else await next.controller.removeBreakpoint(point.id)
+    else {
+      const receipt = await next.controller.removeBreakpoint(point.id)
+      if (receipt && receipt.outcome !== 'completed') throw new Error(t('node.error.generic'))
+    }
   }
   if (
     heldEpoch !== undefined &&

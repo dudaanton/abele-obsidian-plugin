@@ -4,6 +4,69 @@ import {
   removeForgottenBreakpoints,
   forgottenBreakpointLocations,
 } from '@/debugger/restoreBreakpoint'
+it.each(['pending', 'rejected', 'outcome_unknown'])(
+  'does not resume when forgotten breakpoint removal is %s',
+  async (outcome) => {
+    const command = vi.fn()
+    const controller = {
+      current: true,
+      session: { status: 'paused' },
+      command,
+      snapshot: {
+        stop_epoch: 7,
+        selected_thread_id: 1,
+        threads: [
+          { thread_id: 1, stop: { reason: 'breakpoint', hit_breakpoint_ids: ['sample-new'] } },
+        ],
+      },
+      knownBreakpoints: () => [{ id: 'sample-new', file: 'sample.ts', requestedLine: 5 }],
+      removeBreakpoint: vi.fn(async () => ({ outcome })),
+    }
+    await expect(
+      removeForgottenBreakpoints(undefined, { controller } as never, [
+        { file: 'sample.ts', requestedLine: 5 },
+      ])
+    ).rejects.toThrow()
+    expect(command).not.toHaveBeenCalled()
+  }
+)
+it.each([false, true])(
+  'resumes a restored forgotten stop only when every hit was removed (mixed: %s)',
+  async (mixed) => {
+    const session = { status: 'paused' }
+    const command = vi.fn(async () => {
+      session.status = 'running'
+    })
+    const next = {
+      controller: {
+        current: true,
+        session,
+        command,
+        snapshot: {
+          stop_epoch: 7,
+          selected_thread_id: 1,
+          threads: [
+            {
+              thread_id: 1,
+              stop: {
+                reason: 'breakpoint',
+                hit_breakpoint_ids: mixed ? ['sample-new', 'sample-other'] : ['sample-new'],
+              },
+            },
+          ],
+        },
+        knownBreakpoints: () => [{ id: 'sample-new', file: 'sample.ts', requestedLine: 5 }],
+        removeBreakpoint: vi.fn(async () => {}),
+      },
+      // The node restored the breakpoint before its record metadata, so it is a plain stop.
+      trace: { points: [], isRecordStop: () => false },
+    }
+    await removeForgottenBreakpoints(undefined, next as never, [
+      { file: 'sample.ts', requestedLine: 5 },
+    ])
+    expect(command.mock.calls).toEqual(mixed ? [] : [['continue']])
+  }
+)
 it.each([
   { changedStop: false, lateStop: false },
   { changedStop: true, lateStop: false },
