@@ -6,6 +6,8 @@ import { FIND_AND_REPLACE_VIEW_ID, FindAndReplaceView } from '@/bases/FindAndRep
 import { CALENDAR_VIEW_ID, CalendarView, calendarViewOptions } from '@/bases/CalendarView'
 import { TIMELINE_VIEW_ID, TimelineView, timelineViewOptions } from '@/bases/TimelineView'
 import type { Plugin } from 'obsidian'
+import { isPrintMode } from '@/markdown/printMode'
+import { PrintView } from '@/bases/PrintView'
 
 /** Startup section; called at its original lifecycle position. */
 export function registerBasesViews(plugin: Plugin) {
@@ -84,14 +86,20 @@ export function registerBasesViews(plugin: Plugin) {
   plugin.registerBasesView(FIND_AND_REPLACE_VIEW_ID, {
     name: 'Find and replace',
     icon: 'replace-all',
-    factory: (controller, containerEl) => new FindAndReplaceView(controller, containerEl),
+    factory: (controller, containerEl) =>
+      isPrintMode(containerEl)
+        ? new PrintView(controller, containerEl, FIND_AND_REPLACE_VIEW_ID)
+        : new FindAndReplaceView(controller, containerEl),
   })
 
   // The notes a base finds on a month, a week or a year, placed by a date property.
   plugin.registerBasesView(CALENDAR_VIEW_ID, {
     name: 'Calendar',
     icon: 'calendar-days',
-    factory: (controller, containerEl) => new CalendarView(controller, containerEl),
+    factory: (controller, containerEl) =>
+      isPrintMode(containerEl)
+        ? new PrintView(controller, containerEl, CALENDAR_VIEW_ID)
+        : new CalendarView(controller, containerEl),
     options: calendarViewOptions,
   })
 
@@ -99,13 +107,19 @@ export function registerBasesViews(plugin: Plugin) {
   plugin.registerBasesView(TIMELINE_VIEW_ID, {
     name: 'Timeline',
     icon: 'gantt-chart',
-    factory: (controller, containerEl) => new TimelineView(controller, containerEl),
+    factory: (controller, containerEl) =>
+      isPrintMode(containerEl)
+        ? new PrintView(controller, containerEl, TIMELINE_VIEW_ID)
+        : new TimelineView(controller, containerEl),
     options: timelineViewOptions,
   })
   plugin.registerBasesView(MAP_VIEW_ID, {
     name: t('maps.viewName'),
     icon: 'map',
-    factory: (controller, containerEl) => new MapView(controller, containerEl),
+    factory: (controller, containerEl) =>
+      isPrintMode(containerEl)
+        ? new PrintView(controller, containerEl, MAP_VIEW_ID)
+        : new MapView(controller, containerEl),
     options: mapViewOptions,
   })
 }

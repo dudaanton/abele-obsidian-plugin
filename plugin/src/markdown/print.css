@@ -1,0 +1,78 @@
+/* The hidden PDF window uses this class before Chromium enters print media. */
+.print .abele-print-gallery figure {
+  margin: 0 0 var(--p-spacing);
+  break-inside: avoid;
+}
+.print .abele-print-gallery img,
+.print .abele-print-chart > svg,
+.print .abele-mermaid-host > svg,
+.print .abele-print-map svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.print .abele-print-gallery figcaption {
+  color: var(--text-muted);
+  font-size: var(--font-smaller);
+}
+.print .abele-mermaid-host,
+.print .abele-chart-container,
+.print .abele-canvas-embed,
+.print .abele-print-map {
+  max-width: 100%;
+  break-inside: avoid;
+}
+.print .abele-print-view *,
+.print .abele-log__file-content--collapsed,
+.print .abele-github-snippet pre,
+.print .abele-github-snippet__code,
+.print .abele-card__description_clamped {
+  max-height: none !important;
+  overflow: visible !important;
+  -webkit-line-clamp: unset !important;
+}
+.print .abele-columns-controls,
+.print .abele-drawing-embed__actions,
+.print .abele-drawing-embed__handle,
+.print .abele-card__actions,
+.print .abele-list-section-header__actions,
+.print .abele-agent-view__foot,
+.print .abele-mermaid__bar,
+.print .abele-log__toggle,
+.print button:not(.abele-image-thumbnail):not(.abele-fold-heading),
+.print input:not([type='checkbox']),
+.print select,
+.print textarea,
+.print .abele-print-chrome button,
+.print .abele-print-chrome input,
+.print .abele-print-chrome select,
+.print .abele-print-chrome textarea,
+.print .clickable-icon {
+  display: none !important;
+}
+.print .abele-image-thumbnail {
+  display: block !important;
+}
+.print .abele-print-chrome .abele-card,
+.print .abele-print-chrome .abele-task {
+  break-inside: avoid;
+}
+.print .abele-columns {
+  max-width: 100%;
+  width: 100%;
+}
+.print .abele-column {
+  min-width: 0;
+  overflow: visible;
+}
+.print .abele-print-slide-start {
+  break-before: page;
+}
+.print .abele-print-base {
+  width: 100%;
+  table-layout: auto;
+  overflow-wrap: anywhere;
+}
+.print .abele-canvas-embed-picture {
+  max-height: none;
+}

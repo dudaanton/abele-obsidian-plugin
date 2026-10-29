@@ -1,4 +1,7 @@
 export const extra = {
+  'pdf.rowsFallback': 'Alle passenden Zeilen',
+  'pdf.includeHeaderFooter': 'Abele-Kopf- und Fußzeile beim PDF-Export einschließen',
+  'pdf.mapFallback': 'Kartenskizze (ohne Hintergrundkacheln)',
   'debug.disableRecordPoint': 'Aufzeichnungspunkt deaktivieren',
   'debug.enableRecordPoint': 'Aufzeichnungspunkt aktivieren',
 

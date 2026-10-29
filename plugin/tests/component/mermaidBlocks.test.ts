@@ -35,6 +35,22 @@ beforeEach(() => {
 })
 
 describe('mermaidPostProcessor', () => {
+  it('awaits a complete static diagram in the hidden print window without visibility', async () => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      }
+    )
+    const el = section('graph TD\nA-->B')
+    el.classList.add('print')
+    await mermaidPostProcessor(el, ctx)
+    expect(el.querySelector('svg')).not.toBeNull()
+    expect(el.querySelector('.abele-mermaid__controls')).toBeNull()
+    expect(el.querySelector('[style*="transform"]')).toBeNull()
+  })
+
   it.each(['mermaid', 'pele'])('replaces a %s block before the host draws it', async (language) => {
     const el = section('graph TD\nA-->B')
     el.querySelector('code')!.className = `language-${language}`

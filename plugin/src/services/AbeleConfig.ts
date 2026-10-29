@@ -85,6 +85,7 @@ export class AbeleConfig {
   public fullWidthSidebars: boolean
   public halfWidthSidebarsOnTablet: boolean
   public mermaidViewer: boolean
+  public pdfIncludeHeaderFooter: boolean
   public canvasViewer: boolean
   public editorSyntaxHighlight: boolean
   public propertyWidgets: boolean

@@ -7748,5 +7748,20 @@
     "englishHash": "3966ce611295b2a083078d752484ac2595c748e1a02287efaaf0c398f405e364",
     "context": "Debugger observation and run note progress",
     "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "pdf.includeHeaderFooter": {
+    "englishHash": "58a8de7800150af4e512d227307d8bfbb417987e67790e4b60b823e4c67edcb8",
+    "context": "PDF export setting and static map fallback caption",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "pdf.mapFallback": {
+    "englishHash": "3ccdc91a4f9f92e7167ecc7b1262a4ca15d4b14b9080bee6748f6083277aa91f",
+    "context": "PDF export setting and static map fallback caption",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "pdf.rowsFallback": {
+    "englishHash": "3cec1a95dd6b8f350048b17c895647f571e46456e7dff9334fb9513b098fa999",
+    "context": "Static PDF fallback for viewport-based Bases views",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
   }
 }

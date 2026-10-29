@@ -1,4 +1,7 @@
 export const extra = {
+  'pdf.rowsFallback': 'Все подходящие строки',
+  'pdf.includeHeaderFooter': 'Включать шапку и подвал Abele при экспорте в PDF',
+  'pdf.mapFallback': 'Схема карты (без фоновых тайлов)',
   'debug.disableRecordPoint': 'Отключить точку записи',
   'debug.enableRecordPoint': 'Включить точку записи',
 

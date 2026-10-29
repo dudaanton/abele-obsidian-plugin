@@ -1,6 +1,8 @@
 import { MarkdownPostProcessorContext, MarkdownRenderChild } from 'obsidian'
 import { parseMapBlock } from '@/helpers/mapConfig'
 import { renderMap, type MapHandle } from '@/helpers/mapRender'
+import { isPrintMode } from '@/markdown/printMode'
+import { printMap } from '@/markdown/printMap'
 
 /**
  * ```abele-map``` — a map in a note.
@@ -36,6 +38,10 @@ export function registerMapCodeblock(
       return
     }
 
+    if (isPrintMode(el)) {
+      printMap(el, parsed)
+      return
+    }
     const container = el.createDiv({ cls: 'abele-map' })
     container.style.height = `${parsed.height}px`
 

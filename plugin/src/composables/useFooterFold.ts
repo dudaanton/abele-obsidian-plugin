@@ -1,5 +1,6 @@
 import { computed, inject, provide, shallowRef, type ComputedRef, type InjectionKey } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
+import { PRINT_MODE } from '@/markdown/printMode'
 import {
   foldStateFrom,
   isFolded,
@@ -49,6 +50,8 @@ export interface Fold {
 }
 
 export function useFooterFold(section: FooterSection): Fold {
+  if (inject(PRINT_MODE, false))
+    return { enabled: false, collapsed: computed(() => false), toggle: () => {} }
   const card = inject(CARD_FOLDS, null)
   if (card) {
     const own = shallowRef<boolean | null>(null)

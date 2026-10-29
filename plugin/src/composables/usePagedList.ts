@@ -1,4 +1,5 @@
-import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { computed, hasInjectionContext, inject, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { PRINT_MODE } from '@/markdown/printMode'
 import { useIntersectionObserver } from '@vueuse/core'
 import { inViewNow } from '@/helpers/intersection'
 
@@ -59,6 +60,7 @@ export function usePagedList<T>(
   pageSize: number = DEFAULT_PAGE_SIZE,
   memory?: PageMemory
 ): PagedList<T> {
+  const printing = hasInjectionContext() && inject(PRINT_MODE, false)
   const visibleCount = ref(pageSize * Math.max(1, memory?.initial ?? 1))
   /** What was drawn when a search opened, given back when it closes; null with no search. */
   let beforeSearch: number | null = null
@@ -68,8 +70,10 @@ export function usePagedList<T>(
     })
 
   const all = computed(() => source())
-  const visible = computed(() => all.value.slice(0, visibleCount.value))
-  const hasMore = computed(() => all.value.length > visibleCount.value)
+  const visible = computed(() =>
+    printing ? Array.from(all.value) : all.value.slice(0, visibleCount.value)
+  )
+  const hasMore = computed(() => !printing && all.value.length > visibleCount.value)
   const total = computed(() => all.value.length)
 
   const showMore = (): void => {

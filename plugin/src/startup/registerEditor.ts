@@ -23,9 +23,12 @@ import { registerColumns } from '@/columns/register'
 import { installUntrustedGuard } from '@/markdown/renderUntrusted'
 import type { Plugin } from 'obsidian'
 import { registerCodeIndentGuides } from '@/codeIndent/register'
+import { printNoteChrome } from '@/markdown/printNoteChrome'
+import '@/markdown/print.css'
 
 /** Startup section; called at its original lifecycle position. */
 export function registerEditor(plugin: Plugin) {
+  plugin.registerMarkdownPostProcessor(printNoteChrome, 1000)
   registerCodeIndentGuides(plugin)
   installUntrustedGuard()
   registerCheckboxes(plugin)

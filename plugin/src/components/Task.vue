@@ -164,7 +164,8 @@ import { DISPLAY_DATE_FORMAT } from '@/constants/dates'
 import { areaCompactDate as compactDate } from '@/helpers/areaDateFormat'
 import { Task } from '@/entities/Task'
 import dayjs from 'dayjs'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, inject, onMounted, ref, watch } from 'vue'
+import { PRINT_MODE } from '@/markdown/printMode'
 import ObsidianIcon from './obsidian/Icon.vue'
 import ObsidianMarkdown from './obsidian/Markdown.vue'
 import EntryRow from './obsidian/EntryRow.vue'
@@ -209,7 +210,8 @@ const clockVisible = ref(true)
 const isVisible = useOwnerVisibility(taskEl, (visible) => {
   clockVisible.value = visible
 })
-const contentLoaded = ref(false)
+const printing = inject(PRINT_MODE, false)
+const contentLoaded = ref(printing)
 
 watch(
   isVisible,

@@ -72,6 +72,9 @@
       >
         <Checkbox :is-enabled="mermaidViewer" @toggle="toggleMermaidViewer" />
       </Setting>
+      <Setting :name="t('pdf.includeHeaderFooter')">
+        <Checkbox :is-enabled="pdfIncludeHeaderFooter" @toggle="togglePdfIncludeHeaderFooter" />
+      </Setting>
       <Setting
         :name="t('settings.OtherSettings.open_canvases_in_abele.0104f91b')"
         :desc="t('settings.OtherSettings.open_diagrams_in_the_read.b48fc66f')"
@@ -196,6 +199,12 @@ const pickMapStyle = async (value: string) => {
   await config.saveSettings()
 }
 const mermaidViewer = ref(config.mermaidViewer)
+const pdfIncludeHeaderFooter = ref(config.pdfIncludeHeaderFooter)
+const togglePdfIncludeHeaderFooter = async () => {
+  pdfIncludeHeaderFooter.value = !pdfIncludeHeaderFooter.value
+  config.pdfIncludeHeaderFooter = pdfIncludeHeaderFooter.value
+  await config.saveSettings()
+}
 const canvasViewer = ref(config.canvasViewer)
 const toggleCanvasViewer = async () => {
   canvasViewer.value = !canvasViewer.value

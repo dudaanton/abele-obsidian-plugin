@@ -9,7 +9,8 @@ import {
   TitleComponent,
   VisualMapComponent,
 } from 'echarts/components'
-import { CanvasRenderer } from 'echarts/renderers'
+import { CanvasRenderer, SVGRenderer } from 'echarts/renderers'
+import { isPrintMode } from '@/markdown/printMode'
 
 let registered = false
 function ensureRegistered() {
@@ -27,6 +28,7 @@ function ensureRegistered() {
     TitleComponent,
     VisualMapComponent,
     CanvasRenderer,
+    SVGRenderer,
   ])
   registered = true
 }
@@ -158,8 +160,47 @@ function buildTheme(doc: Document): Record<string, any> {
 /** Initialize an ECharts instance with the Obsidian theme applied */
 export function echartsInit(el: HTMLElement): EChartsType {
   ensureRegistered()
+  if (isPrintMode(el)) {
+    return init(
+      el,
+      { ...buildTheme(el.ownerDocument), animation: false },
+      {
+        renderer: 'svg',
+        width: el.clientWidth || 720,
+        height: el.clientHeight || Number.parseFloat(el.style.height) || 300,
+      }
+    )
+  }
   registerTheme(THEME_NAME, buildTheme(el.ownerDocument))
   return init(el, THEME_NAME)
+}
+
+/** SVG rendering needs neither a visible canvas nor an animation frame in the PDF window. */
+export function printChart(el: HTMLElement, option: Record<string, unknown>, height: number): void {
+  printChartWith(el, height, (chart) => chart.setOption({ ...option, animation: false }))
+}
+
+export function printChartWith(
+  el: HTMLElement,
+  height: number,
+  render: (chart: EChartsType) => void
+): void {
+  ensureRegistered()
+  const chart = init(null, buildTheme(el.ownerDocument), {
+    renderer: 'svg',
+    ssr: true,
+    width: el.clientWidth || 720,
+    height,
+  })
+  try {
+    render(chart)
+    chart.setOption({ animation: false })
+    const parsed = new DOMParser().parseFromString(chart.renderToSVGString(), 'image/svg+xml')
+    el.classList.add('abele-print-chart')
+    el.replaceChildren(el.ownerDocument.importNode(parsed.documentElement, true))
+  } finally {
+    chart.dispose()
+  }
 }
 
 /** Get current resolved Obsidian CSS color values for use in chart options */

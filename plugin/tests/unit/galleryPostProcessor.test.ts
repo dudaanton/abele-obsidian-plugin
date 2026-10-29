@@ -53,6 +53,32 @@ beforeEach(() => {
 })
 
 describe('a whole document, as MarkdownRenderer hands it over', () => {
+  it('prints every slider image eagerly without the application gallery mount', async () => {
+    const el = render(
+      '<p>::abele-gallery{layout=slider}::</p><p>![first](https://example.com/sample-a.png)</p><p>![last](https://example.com/sample-b.png)</p>'
+    )
+    // The host renders markdown images, rather than leaving their source in paragraphs.
+    el.querySelectorAll('p')[1].replaceChildren(
+      Object.assign(document.createElement('img'), {
+        src: 'https://example.com/sample-a.png',
+        alt: 'first',
+      })
+    )
+    el.querySelectorAll('p')[2].replaceChildren(
+      Object.assign(document.createElement('img'), {
+        src: 'https://example.com/sample-b.png',
+        alt: 'last',
+      })
+    )
+    el.classList.add('print')
+    await galleryPostProcessor(el, context())
+    const images = el.querySelectorAll('img')
+    expect(images).toHaveLength(2)
+    expect(Array.from(images).every((image) => image.loading !== 'lazy')).toBe(true)
+    expect(el.querySelector('.abele-print-gallery')).not.toBeNull()
+    expect(galleries()).toHaveLength(0)
+  })
+
   it('reads a marker directly in a tight checkbox list item without a paragraph wrapper', () => {
     const el = render(
       `<ul class="contains-task-list">\n<li data-task="" class="task-list-item"><input type="checkbox" class="task-list-item-checkbox">Sample <a class="internal-link">entry</a>.<br>\n::abele-gallery{height=160}::</li>\n</ul>\n<p>${EMBED('sample.png')}</p>`

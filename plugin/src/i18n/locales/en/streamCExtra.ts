@@ -1,4 +1,7 @@
 export const extra = {
+  'pdf.rowsFallback': 'All matching rows',
+  'pdf.includeHeaderFooter': 'Include Abele header and footer in PDF export',
+  'pdf.mapFallback': 'Map schematic (without background tiles)',
   'debug.disableRecordPoint': 'Disable record point',
   'debug.enableRecordPoint': 'Enable record point',
 

@@ -8,6 +8,7 @@ import { stepsOf } from './core/steps'
 import { openCanvas } from './opening'
 import { bindCanvasPicture } from './tap'
 import { CANVAS_IMAGE_VIEW_TYPE } from './imageOpening'
+import { trackPrintTask } from '@/markdown/printReady'
 
 const claimed = new WeakSet<HTMLElement>()
 export function embeddedCanvas(app: App, embed: HTMLElement, sourcePath: string): TFile | null {
@@ -77,7 +78,8 @@ export class CanvasEmbed extends MarkdownRenderChild {
     this.registerEvent(this.app.vault.on('modify', () => this.schedule()))
     this.registerEvent(this.app.vault.on('rename', () => this.schedule()))
     this.registerEvent(this.app.workspace.on('css-change', () => this.schedule()))
-    void this.refresh()
+    const ready = this.refresh()
+    trackPrintTask(this.embed, ready)
   }
   private schedule(): void {
     window.clearTimeout(this.timer)

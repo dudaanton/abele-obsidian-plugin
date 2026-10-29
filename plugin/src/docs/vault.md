@@ -9,6 +9,10 @@ Note frontmatter reads use `js-yaml` 4's default schema. An unquoted time such a
 `0755` are decimal (`755`), not legacy octal. Quote a numeric-looking value when its
 exact text, including leading zeros, matters.
 
+PDF exports omit Abele's note header and footer by default. The `pdfIncludeHeaderFooter`
+boolean in plugin settings includes them when enabled and travels in the Other settings
+section. Note-body blocks are exported regardless of this setting.
+
 ## Model reasoning settings
 
 Provider model configs in plugin settings retain an optional `reasoningDisabled` boolean.

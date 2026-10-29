@@ -128,6 +128,7 @@ const OTHER_KEYS = [
   'fullWidthSidebars',
   'halfWidthSidebarsOnTablet',
   'mermaidViewer',
+  'pdfIncludeHeaderFooter',
   'canvasViewer',
   'editorSyntaxHighlight',
   'propertyWidgets',

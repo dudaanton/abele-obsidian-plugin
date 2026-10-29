@@ -1,7 +1,8 @@
 <template><div ref="element" /></template>
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { echartsInit, type EChartsType } from '@/bases/echarts'
+import { echartsInit, printChartWith, type EChartsType } from '@/bases/echarts'
+import { isPrintMode } from '@/markdown/printMode'
 import { GlobalStore } from '@/stores/GlobalStore'
 
 const props = withDefaults(
@@ -44,6 +45,11 @@ function dispose() {
 }
 function render() {
   if (gone || !element.value) return
+  if (isPrintMode(element.value)) {
+    const el = element.value
+    printChartWith(el, el.clientHeight || Number.parseFloat(el.style.height) || 300, props.render)
+    return
+  }
   observe(element.value)
   // Measure now, not from a previous observer entry: a hidden leaf may have changed again.
   if (props.active === false || element.value.clientWidth <= 1 || element.value.clientHeight <= 1)

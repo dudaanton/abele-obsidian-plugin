@@ -37,7 +37,8 @@ import ObsidianMarkdown from './obsidian/Markdown.vue'
 import ObsidianIcon from './obsidian/Icon.vue'
 import { Log } from '@/entities/Log'
 import { DATE_FORMAT, DISPLAY_DATE_FORMAT } from '@/constants/dates'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, inject, onMounted, ref, watch } from 'vue'
+import { PRINT_MODE } from '@/markdown/printMode'
 import { extractDateFromFilename } from '@/helpers/datesHelper'
 import { useElementVisibility } from '@vueuse/core'
 
@@ -51,7 +52,7 @@ const MAX_LINES = 10
 
 const logEl = ref(null)
 const isVisible = useElementVisibility(logEl)
-const contentLoaded = ref(false)
+const contentLoaded = ref(inject(PRINT_MODE, false))
 const isExpanded = ref(false)
 
 const isCollapsible = computed(() => {

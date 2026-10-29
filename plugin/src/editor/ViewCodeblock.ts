@@ -2,6 +2,8 @@ import { MarkdownRenderChild, type MarkdownPostProcessorContext } from 'obsidian
 import AgentView from '@/components/chat/AgentView.vue'
 import { mountKit } from '@/components/obsidian/mount'
 import { VIEW_LANGUAGE } from '@/views/agentView'
+import { cleanViewHtml } from '@/views/agentView'
+import { isPrintMode } from '@/markdown/printMode'
 
 /**
  * ```abele-view``` — a view an agent wrote in HTML, in its answer or in a note it filled in. One
@@ -27,6 +29,14 @@ export function registerViewCodeblock(
   ) => void
 ): void {
   registerFn(VIEW_LANGUAGE, (source, el, ctx) => {
+    if (isPrintMode(el)) {
+      el.classList.add('abele-print-view')
+      const parsed = new DOMParser().parseFromString(cleanViewHtml(source), 'text/html')
+      el.replaceChildren(
+        ...Array.from(parsed.body.childNodes).map((node) => el.ownerDocument.importNode(node, true))
+      )
+      return
+    }
     const mounted = mountKit(el.createDiv(), AgentView, { html: source })
     ctx.addChild(new ViewRenderChild(el, mounted.unmount))
   })

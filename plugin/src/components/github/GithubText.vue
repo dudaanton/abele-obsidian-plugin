@@ -13,6 +13,8 @@ import { Component } from 'obsidian'
 import { retryImageThroughApi, type RepoFile } from '@/github/markdownLinks'
 import type { GithubClient } from '@/github/client'
 import { githubMarkdownClick, renderGithubMarkdown } from '@/github/safeMarkdown'
+import { isPrintMode } from '@/markdown/printMode'
+import { trackPrintTask } from '@/markdown/printReady'
 
 /**
  * Text written on GitHub — a comment, a description, a commit message, a quoted comment —
@@ -43,7 +45,8 @@ const objectUrls: string[] = []
 const render = async () => {
   if (!target.value || !component) return
   const mine = ++generation
-  const next = createDiv()
+  const next = target.value.ownerDocument.win.createDiv()
+  if (isPrintMode(target.value)) next.classList.add('print')
   await renderGithubMarkdown(next, props.text, props.repo, component, approvedImages)
   if (mine !== generation || !target.value) return
   for (const img of Array.from(next.querySelectorAll('img')))
@@ -56,7 +59,8 @@ const onClick = (event: MouseEvent) => githubMarkdownClick(event, {})
 onMounted(() => {
   component = new Component()
   component.load()
-  void render()
+  const task = render()
+  if (target.value) trackPrintTask(target.value, task)
 })
 
 watch(

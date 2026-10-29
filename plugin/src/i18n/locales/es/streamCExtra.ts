@@ -1,4 +1,7 @@
 export const extra = {
+  'pdf.rowsFallback': 'Todas las filas coincidentes',
+  'pdf.includeHeaderFooter': 'Incluir la cabecera y el pie de Abele al exportar a PDF',
+  'pdf.mapFallback': 'Esquema del mapa (sin mosaicos de fondo)',
   'debug.disableRecordPoint': 'Desactivar punto de registro',
   'debug.enableRecordPoint': 'Activar punto de registro',
 

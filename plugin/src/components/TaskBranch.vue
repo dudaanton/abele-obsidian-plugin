@@ -19,7 +19,8 @@
 
 <script setup lang="ts">
 // A task with its subtasks under it, as far down as they go; the list decides which are shown.
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
+import { PRINT_MODE } from '@/markdown/printMode'
 import TaskView from './Task.vue'
 import type { TaskTree } from '@/helpers/taskTree'
 import { progressOf } from '@/helpers/taskTree'
@@ -44,7 +45,8 @@ const parentNames = computed(() =>
 )
 
 const memory = useSubtasksOpen()
-const open = computed(() => memory.isOpen(props.node.path))
+const printing = inject(PRINT_MODE, false)
+const open = computed(() => printing || memory.isOpen(props.node.path))
 const toggle = () => memory.set(props.node.path, !open.value)
 </script>
 

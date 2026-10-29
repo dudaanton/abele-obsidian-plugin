@@ -90,6 +90,8 @@ export interface AbeleSettings {
   halfWidthSidebarsOnTablet?: boolean
   /** ```mermaid blocks drawn by the plugin's viewer, with zoom and full screen, not Obsidian's. */
   mermaidViewer?: boolean
+  /** Include note chrome in the host's PDF export; body content is always included. */
+  pdfIncludeHeaderFooter?: boolean
   /** Newly opened .canvas leaves use the read-only explanatory viewer. */
   canvasViewer?: boolean
   /** Fill fenced-code language gaps in Source and Live Preview using Obsidian's Prism. */
@@ -328,6 +330,7 @@ export const DEFAULT_SETTINGS: Required<Omit<AbeleSettings, 'secretStore'>> = {
   fullWidthSidebars: false,
   halfWidthSidebarsOnTablet: false,
   mermaidViewer: true,
+  pdfIncludeHeaderFooter: false,
   canvasViewer: true,
   editorSyntaxHighlight: true,
   propertyWidgets: true,

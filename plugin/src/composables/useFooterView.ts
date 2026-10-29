@@ -20,6 +20,7 @@ import {
   type FooterViewState,
 } from '@/helpers/footerView'
 import { FOOTER_FOLD } from './useFooterFold'
+import { PRINT_MODE } from '@/markdown/printMode'
 
 /**
  * How the lists under a note were left — pages drawn, tasks opened — kept as they change and
@@ -67,10 +68,11 @@ export function useFooterPages(section: FooterSection): RememberedPages {
 
 /** The timeline needs its open overdue fold before note-place restoration runs. */
 export function useFooterTimeline() {
+  const printing = inject(PRINT_MODE, false)
   const path = inject(FOOTER_FOLD, null)
   return {
     ...useFooterPages('calendar'),
-    overdueOpen: !!path && restoring() && timelineOverdueOf(current(), path()),
+    overdueOpen: printing || (!!path && restoring() && timelineOverdueOf(current(), path())),
     recordOverdue: (open: boolean) => {
       if (path) write(setTimelineOverdue(current(), path(), open))
     },
@@ -83,6 +85,7 @@ export function useFooterTimeline() {
  * outside a note's footer is always a list.
  */
 export function useFooterLogsView(): { initial: boolean; record: (calendar: boolean) => void } {
+  if (inject(PRINT_MODE, false)) return { initial: false, record: () => {} }
   const path = inject(FOOTER_FOLD, null)
   if (!path) return { initial: false, record: () => {} }
   return {
@@ -100,6 +103,7 @@ export function useFooterTasksView(): {
   initial: boolean
   record: (calendar: boolean) => void
 } {
+  if (inject(PRINT_MODE, false)) return { available: false, initial: false, record: () => {} }
   const path = inject(FOOTER_FOLD, null)
   if (!path) return { available: false, initial: false, record: () => {} }
   return {

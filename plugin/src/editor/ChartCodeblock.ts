@@ -2,6 +2,9 @@ import { MarkdownPostProcessorContext, MarkdownRenderChild, parseYaml } from 'ob
 import ChartBlock from '@/components/ChartBlock.vue'
 import { mountKit } from '@/components/obsidian/mount'
 import type { ChartConfig } from './chartOption'
+import { buildEchartsOption } from './chartOption'
+import { printChart } from '@/bases/echarts'
+import { isPrintMode } from '@/markdown/printMode'
 
 /** Keeps the chart for exactly as long as the render that drew it. */
 class ChartRenderChild extends MarkdownRenderChild {
@@ -28,6 +31,15 @@ function mountChart(
   ctx: MarkdownPostProcessorContext,
   props: { config?: ChartConfig; error?: string }
 ): void {
+  if (isPrintMode(el)) {
+    try {
+      if (props.error || !props.config) el.textContent = props.error ?? 'No series defined'
+      else printChart(el, buildEchartsOption(props.config), props.config.height || 300)
+    } catch (error) {
+      el.textContent = `Chart error: ${String(error)}`
+    }
+    return
+  }
   const mount = mountKit(el, ChartBlock, props)
   ctx.addChild(new ChartRenderChild(el, mount.unmount))
 }

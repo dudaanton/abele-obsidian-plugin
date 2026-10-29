@@ -1,0 +1,56 @@
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import type { MarkdownPostProcessorContext } from 'obsidian'
+import { registerChartCodeblock } from '@/editor/ChartCodeblock'
+import { registerMapCodeblock } from '@/editor/MapCodeblock'
+import { useVault } from '../helpers/testEnv'
+import { slideDividers } from '@/slides/dividers'
+
+afterEach(() => vi.unstubAllGlobals())
+
+beforeEach(() => {
+  useVault([])
+  vi.stubGlobal('createSvg', (tag: string) =>
+    document.createElementNS('http://www.w3.org/2000/svg', tag)
+  )
+  document.body.replaceChildren()
+})
+
+it('prints presentation body without source directives when the host supplies no source sections', () => {
+  const root = document.body.appendChild(document.createElement('div'))
+  root.className = 'print'
+  const marker = root.appendChild(document.createElement('p'))
+  marker.textContent = '::slide{layout=title}::'
+  root.appendChild(document.createElement('p')).textContent = 'Sample slide body'
+  slideDividers(root, {
+    frontmatter: { type: 'presentation' },
+    getSectionInfo: () => null,
+  } as unknown as MarkdownPostProcessorContext)
+  expect(root.textContent).not.toContain('::slide')
+  expect(root.textContent).toContain('Sample slide body')
+})
+
+it('draws a complete chart without layout or animation in the hidden export window', async () => {
+  const root = document.body.appendChild(document.createElement('div'))
+  root.className = 'print'
+  registerChartCodeblock((_language, render) => {
+    render('series:\n  - data: [1, 3, 2]', root, {
+      addChild() {},
+    } as unknown as MarkdownPostProcessorContext)
+  })
+  expect(root.querySelector('svg path')).not.toBeNull()
+  expect(root.querySelector('canvas')).toBeNull()
+})
+
+it('prints map coordinates and routes without relying on network tiles or WebGL', async () => {
+  const root = document.body.appendChild(document.createElement('div'))
+  root.className = 'print'
+  registerMapCodeblock((_language, render) => {
+    render('points:\n  - lat: 10\n    lon: 20\n    label: Sample place', root, {
+      addChild() {},
+    } as unknown as MarkdownPostProcessorContext)
+  })
+  expect(root.textContent).toContain('Sample place')
+  expect(root.textContent).toContain('10')
+  expect(root.querySelector('svg')).not.toBeNull()
+  expect(root.querySelector('canvas')).toBeNull()
+})

@@ -1,5 +1,6 @@
 import type { MarkdownPostProcessorContext } from 'obsidian'
 import { deckProperties, parseDeck } from './core/markdown'
+import { isPrintMode } from '@/markdown/printMode'
 
 let lastText = ''
 const NO_DECK = parseDeck('')
@@ -8,6 +9,14 @@ let lastDeck = NO_DECK
 /** Only source-positioned reading sections: a slide's renderer must not rewrite its own content. */
 export function slideDividers(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
   const info = ctx.getSectionInfo(el)
+  if (!info && isPrintMode(el) && ctx.frontmatter?.type === 'presentation') {
+    for (const p of Array.from(el.querySelectorAll('p'))) {
+      if (!/^\s*::slide(?:\{|::)/.test(p.textContent ?? '')) continue
+      p.classList.add('abele-print-slide-start')
+      replaceRenderedMarker(p, () => el.ownerDocument.win.createSpan())
+    }
+    return
+  }
   if (!info) return
   if (info.text !== lastText) {
     lastText = info.text

@@ -14,6 +14,11 @@ import 'obsidian'
 
 declare global {
   interface Window {
+    createSvg<K extends keyof SVGElementTagNameMap>(
+      tag: K,
+      o?: SvgElementInfo | string,
+      callback?: (el: SVGElementTagNameMap[K]) => void
+    ): SVGElementTagNameMap[K]
     createEl<K extends keyof HTMLElementTagNameMap>(
       tag: K,
       o?: DomElementInfo | string,

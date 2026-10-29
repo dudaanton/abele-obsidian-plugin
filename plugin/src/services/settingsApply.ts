@@ -229,6 +229,7 @@ export function applySettingsTo(
   config.halfWidthSidebarsOnTablet =
     settings?.halfWidthSidebarsOnTablet ?? DEFAULT_SETTINGS.halfWidthSidebarsOnTablet
   config.mermaidViewer = settings?.mermaidViewer ?? DEFAULT_SETTINGS.mermaidViewer ?? true
+  config.pdfIncludeHeaderFooter = settings?.pdfIncludeHeaderFooter ?? false
   config.canvasViewer = settings?.canvasViewer ?? DEFAULT_SETTINGS.canvasViewer ?? true
   config.editorSyntaxHighlight =
     settings?.editorSyntaxHighlight ?? DEFAULT_SETTINGS.editorSyntaxHighlight ?? true
@@ -329,6 +330,7 @@ export function exportSettingsOf(config: AbeleConfig, outOfSettings: boolean): A
     fullWidthSidebars: config.fullWidthSidebars,
     halfWidthSidebarsOnTablet: config.halfWidthSidebarsOnTablet,
     mermaidViewer: config.mermaidViewer,
+    pdfIncludeHeaderFooter: config.pdfIncludeHeaderFooter,
     canvasViewer: config.canvasViewer,
     editorSyntaxHighlight: config.editorSyntaxHighlight,
     propertyWidgets: config.propertyWidgets,

@@ -39,6 +39,7 @@ import {
 import { vaultUrl } from '@/helpers/vaultUrl'
 import { isDrawingFile, openDrawing } from './files'
 import type { Rect } from './items'
+import { trackPrintTask } from '@/markdown/printReady'
 
 const XHTML = 'http://www.w3.org/1999/xhtml'
 const HOST = 'abele-drawing-embed__source'
@@ -271,7 +272,8 @@ export class DrawingEmbed extends MarkdownRenderChild {
     })
     this.children.observe(this.embed, { childList: true })
     this.buttons()
-    void this.refresh()
+    const ready = this.refresh()
+    trackPrintTask(this.embed, ready)
     this.registerEvent(
       this.app.vault.on('modify', (f) => {
         if (f.path === this.file.path) void this.refresh()

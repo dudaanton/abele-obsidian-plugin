@@ -19,6 +19,8 @@ import { markUntrusted, renderUntrustedMarkdown } from '@/markdown/renderUntrust
 import { createRenderQueue } from '@/helpers/renderQueue'
 import { holdBackUnfinished, PENDING_LABEL } from '@/helpers/unfinishedBlock'
 import { offer, recordInto, stopRecording, take, type Part } from './markdownParts'
+import { isPrintMode } from '@/markdown/printMode'
+import { trackPrintTask } from '@/markdown/printReady'
 
 const props = defineProps<{
   text: string
@@ -160,7 +162,8 @@ const renderContent = async () => {
   // Built away from the page and swapped in. Emptying the element first left it with no height
   // until the render landed, which in a chat being streamed into collapses the scroll range
   // several times a second: the browser clamps the reader's position and drags them down.
-  const next = createDiv()
+  const next = target.value.ownerDocument.win.createDiv()
+  if (isPrintMode(target.value)) next.classList.add('print')
   const owner = component
   // Loaded on its own until it is the one on screen: a render still in flight when the
   // markdown goes is let go here, by this call, rather than by a parent that has already
@@ -304,15 +307,22 @@ onMounted(() => {
  * closed fired at an element that had gone.
  */
 const win = () => target.value?.win ?? host?.win ?? window
-const renderQueue = createRenderQueue(renderContent, {
-  now: () => Date.now(),
-  schedule(callback, delay) {
-    const owner = win()
-    const timer = owner.setTimeout(callback, delay)
-    return () => owner.clearTimeout(timer)
+const renderQueue = createRenderQueue(
+  () => {
+    const task = renderContent()
+    if (target.value) trackPrintTask(target.value, task)
+    return task
   },
-  error: (error) => console.error('[Abele] Markdown render failed', error),
-})
+  {
+    now: () => Date.now(),
+    schedule(callback, delay) {
+      const owner = win()
+      const timer = owner.setTimeout(callback, delay)
+      return () => owner.clearTimeout(timer)
+    },
+    error: (error) => console.error('[Abele] Markdown render failed', error),
+  }
+)
 
 watch(
   () => [

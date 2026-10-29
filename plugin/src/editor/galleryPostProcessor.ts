@@ -29,13 +29,7 @@ import {
   type GalleryTextBlock,
 } from '@/helpers/galleryUtils'
 import { genid } from '@/helpers/vueUtils'
-
-/** A section's place in its note, as reading mode reports it. */
-interface SectionInfo {
-  text: string
-  lineStart: number
-  lineEnd: number
-}
+import { isPrintMode } from '@/markdown/printMode'
 
 /** Every section of one note asks about the same text; parse it once per document. */
 let lastText = ''
@@ -49,7 +43,7 @@ function blocksIn(text: string): GalleryTextBlock[] {
 }
 
 export function galleryPostProcessor(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
-  const info = ctx.getSectionInfo(el) as SectionInfo | null
+  const info = ctx.getSectionInfo(el)
   const blocks = info ? blocksIn(info.text) : null
 
   if (info && blocks) {
@@ -72,6 +66,37 @@ export function galleryPostProcessor(el: HTMLElement, ctx: MarkdownPostProcessor
     const embeds = takeEmbeds(paragraph, marker, !block, el)
     const images = block ? block.images : embeds.map(entryOf).filter((e) => e !== null)
     marker.remove()
+    if (isPrintMode(el)) {
+      const container = paragraph.ownerDocument.win.createDiv()
+      container.className = 'abele-print-gallery'
+      for (const entry of images) {
+        const figure = container.appendChild(paragraph.ownerDocument.win.createEl('figure'))
+        const { app } = GlobalStore.getInstance()
+        const file =
+          entry.type === 'local'
+            ? app.metadataCache.getFirstLinkpathDest(entry.path, ctx.sourcePath)
+            : null
+        const src = file ? app.vault.getResourcePath(file) : entry.path
+        if (entry.mediaType === 'video') {
+          const link = figure.appendChild(paragraph.ownerDocument.win.createEl('a'))
+          link.href = src
+          link.textContent = entry.description || entry.path
+        } else {
+          const image = figure.appendChild(paragraph.ownerDocument.win.createEl('img'))
+          image.src = src
+          image.alt = entry.alt
+          image.loading = 'eager'
+        }
+        if (entry.description) {
+          figure.appendChild(paragraph.ownerDocument.win.createEl('figcaption')).textContent =
+            entry.description
+        }
+      }
+      if (paragraph.tagName === 'LI') paragraph.append(container)
+      else paragraph.before(container)
+      if (!(paragraph.textContent ?? '').trim() && !paragraph.querySelector('*')) paragraph.remove()
+      continue
+    }
     mount(paragraph, ctx, options, images)
   }
 }

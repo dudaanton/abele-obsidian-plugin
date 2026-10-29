@@ -1,4 +1,7 @@
 export const extra = {
+  'pdf.rowsFallback': 'Visas atbilstošās rindas',
+  'pdf.includeHeaderFooter': 'Iekļaut Abele galveni un kājeni PDF eksportā',
+  'pdf.mapFallback': 'Kartes shēma (bez fona kartes)',
   'debug.disableRecordPoint': 'Atspējot ieraksta punktu',
   'debug.enableRecordPoint': 'Iespējot ieraksta punktu',
 
