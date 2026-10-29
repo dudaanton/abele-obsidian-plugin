@@ -86,6 +86,7 @@
           :tree="panelOpen"
           :swap="!!compared && source?.identity.provider !== 'node'"
           :compare="canPinBase && !pin"
+          :pin-actions="shown.kind === 'blob'"
           @tree="setPanel(!panelOpen)"
           @compare="baseBar?.choose()"
           @swap="swapSides"

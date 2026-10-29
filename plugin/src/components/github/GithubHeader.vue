@@ -1,5 +1,9 @@
 <template>
-  <header ref="root" class="abele-github-header" :class="{ 'abele-github-header_path': crumbs }">
+  <header
+    ref="root"
+    class="abele-github-header"
+    :class="{ 'abele-github-header_path': crumbs, 'abele-github-header_file': pinActions }"
+  >
     <div class="abele-github-header__top">
       <DrawerViewSwitch
         icon="github"
@@ -161,7 +165,7 @@ import type { Label } from '@/github/api'
 import type { Crumb } from '@/github/tree/fileTree'
 import type { MetaPart } from '@/github/itemHead'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     repo: string
     title: string
@@ -184,6 +188,8 @@ withDefaults(
     swap?: boolean
     /** Offer to pin a version to compare the repository's files against. */
     compare?: boolean
+    /** A file keeps its actions and path visible together while reading. */
+    pinActions?: boolean
   }>(),
   {
     number: undefined,
@@ -215,16 +221,19 @@ const emit = defineEmits<{
   (e: 'open', url: string, pane: PaneType | false): void
 }>()
 
-// Only the path obscures a line jump, including when it wraps or theme fonts change.
+// Measure the pinned area, including wrapped actions and theme font changes.
 const root = ref<HTMLElement>()
 const path = ref<HTMLElement>()
-useResizeObserver(path, () => {
-  const head = root.value
-  head?.parentElement?.style.setProperty(
-    '--abele-github-header-height',
-    `${path.value?.getBoundingClientRect().height ?? 0}px`
-  )
-})
+useResizeObserver(
+  computed(() => (props.pinActions ? root.value : path.value)),
+  () => {
+    const head = root.value
+    head?.parentElement?.style.setProperty(
+      '--abele-github-header-height',
+      `${(props.pinActions ? head : path.value)?.getBoundingClientRect().height ?? 0}px`
+    )
+  }
+)
 
 /** GitHub's own colours for a state: open green, merged in the accent, closed red, draft grey. */
 const stateTone = (state: string) =>
@@ -256,6 +265,19 @@ const stateTone = (state: string) =>
     display: flex;
     flex-direction: column;
     gap: var(--size-4-2);
+  }
+}
+
+.abele-github-header.abele-github-header_file {
+  display: flex;
+  position: sticky;
+  top: calc(-1 * var(--size-4-3));
+  z-index: 2;
+  background: var(--background-primary);
+
+  > .abele-github-header__title {
+    position: static;
+    border-bottom: none;
   }
 }
 

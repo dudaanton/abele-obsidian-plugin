@@ -84,7 +84,7 @@ for (const mobile of [false, true]) {
           try {
             const root = leaf.view.containerEl
             const main = root.querySelector('.abele-github-layout__main')
-            const selector = ${JSON.stringify(kind === 'blob' ? '.abele-github-header__title' : '.abele-github-file[data-path="src/long.ts"] .abele-github-file__head')}
+            const selector = ${JSON.stringify(kind === 'blob' ? '.abele-github-header_file' : '.abele-github-file[data-path="src/long.ts"] .abele-github-file__head')}
             const head = await until(() => root.querySelector(selector) && root.querySelector('.abele-github-code__line_target') && root.querySelector(selector), 20000)
             if (!head) throw Error('File header and anchor did not load: ' + JSON.stringify({
               error: root.querySelector('.abele-github__error')?.textContent?.trim(),
@@ -152,7 +152,7 @@ for (const mobile of [false, true]) {
         120_000
       )
       it.each(['blob', 'tree'])(
-        '%s: only the path stays pinned and wide README content stays inside its boxes',
+        '%s: file controls or folder path stay pinned and wide README content stays inside its boxes',
         async (kind) => {
           const url = `${gh.web}/${kind}/main/src${kind === 'blob' ? '/README.md' : ''}`
           type Report = {
@@ -216,10 +216,10 @@ for (const mobile of [false, true]) {
               for (const distance of [700, 1100]) {
                 main.scrollTop = distance
                 await frame()
-                pathTops.push(path.getBoundingClientRect().top - main.getBoundingClientRect().top)
+                pathTops.push((${kind === 'blob'} ? header : path).getBoundingClientRect().top - main.getBoundingClientRect().top)
               }
               const top = main.getBoundingClientRect().top
-              const visible = [...header.querySelectorAll('*')].map(el => el.getBoundingClientRect()).filter(r => r.height && r.bottom > top && r.top < main.getBoundingClientRect().bottom)
+              const visible = [header, ...header.querySelectorAll('*')].map(el => el.getBoundingClientRect()).filter(r => r.height && r.bottom > top && r.top < main.getBoundingClientRect().bottom)
               const pinnedHeight = Math.max(...visible.map(r => r.bottom)) - top
               const controlsGone = controls.every(el => el.getBoundingClientRect().bottom <= top)
               const sideways = Math.max(main.scrollWidth - main.clientWidth, root.scrollWidth - root.clientWidth)
@@ -243,7 +243,7 @@ for (const mobile of [false, true]) {
               const controlsBack = controls.every(el => el.getBoundingClientRect().top >= top)
               const blame = ${kind === 'blob'} ? await probeBlame(root, header) :
                 { blameHit: true, blameReady: true, blameReachable: true, blameState: null }
-              return JSON.stringify({ width: innerWidth, sideways, pathTops, pinnedHeight, pathHeight: path.getBoundingClientRect().height,
+              return JSON.stringify({ width: innerWidth, sideways, pathTops, pinnedHeight, pathHeight: (${kind === 'blob'} ? header : path).getBoundingClientRect().height,
                 controlsGone, controlsBack, ...blame, tableScrolls, codeScrolls, imageFits })
             } finally { leaf.detach() }
           })()`,
@@ -255,7 +255,7 @@ for (const mobile of [false, true]) {
           expect.soft(report.sideways).toBe(0)
           for (const top of report.pathTops) expect.soft(Math.abs(top)).toBeLessThanOrEqual(1)
           expect.soft(report.pinnedHeight).toBeCloseTo(report.pathHeight, 0)
-          expect.soft(report.controlsGone).toBe(true)
+          expect.soft(report.controlsGone).toBe(kind === 'tree')
           expect(report.controlsBack).toBe(true)
           expect(report.blameHit, JSON.stringify(report.blameState)).toBe(true)
           expect(report.blameReady, JSON.stringify(report.blameState)).toBe(true)

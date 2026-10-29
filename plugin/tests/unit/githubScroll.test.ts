@@ -59,6 +59,27 @@ afterEach(() => {
 const find = () => target
 
 describe('pinning a target into view', () => {
+  it('keeps linked lines below the complete pinned file header', () => {
+    inner.classList.add('abele-github')
+    const header = inner.appendChild(document.createElement('header'))
+    header.classList.add(
+      'abele-github-header',
+      'abele-github-header_path',
+      'abele-github-header_file'
+    )
+    header.style.position = 'sticky'
+    header.style.top = '-12px'
+    header.getBoundingClientRect = () => rect(PANE_TOP - 12, 180)
+    const path = header.appendChild(document.createElement('h2'))
+    path.className = 'abele-github-header__title'
+    path.getBoundingClientRect = () => rect(PANE_TOP + 60, 40)
+    const blob = inner.appendChild(document.createElement('div'))
+    blob.className = 'abele-github-blob'
+    blob.appendChild(target)
+    pinIntoView(target, elementTop(find), { context: 96 })
+    expect(pane.scrollTop).toBe(800 - (180 - 12) - 96)
+    pane.dispatchEvent(new Event('wheel'))
+  })
   it('keeps a short file pane at its top when its linked line is already visible', () => {
     targetY = 250
     Object.defineProperty(pane, 'scrollHeight', { get: () => 524, configurable: true })

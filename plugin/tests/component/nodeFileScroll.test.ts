@@ -16,6 +16,18 @@ afterEach(() => {
   document.body.replaceChildren()
 })
 
+it('keeps the action header sticky in the main pane', async () => {
+  const host = document.body.createDiv({ cls: 'abele-node-main' })
+  const view = mount(FileView, {
+    attachTo: host,
+    props: { path: 'sample.ts', text: 'sample', mode: 'file' },
+  })
+  view.element.parentElement!.classList.add('abele-node-main')
+  await flushPromises()
+  expect(getComputedStyle(view.get('.abele-file-view__header').element).position).toBe('sticky')
+  view.unmount()
+})
+
 it.each(['file', 'diff'] as const)(
   'keeps a long %s card in a bounded scroll viewport',
   async (mode) => {

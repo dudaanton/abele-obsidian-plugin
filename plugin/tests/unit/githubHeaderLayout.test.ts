@@ -7,6 +7,15 @@ function css(component: string): string {
   return compileString(source.match(/<style lang="scss">([\s\S]*?)<\/style>/)![1]).css
 }
 
+it('pins file actions together with the breadcrumb over an opaque theme background', () => {
+  const header = css('github/GithubHeader').match(
+    /\.abele-github-header\.abele-github-header_file\s*\{([^}]+)\}/
+  )?.[1]
+  expect(header).toContain('position: sticky')
+  expect(header).toContain('background: var(--background-primary)')
+  expect(header).toContain('display: flex')
+})
+
 it('lets repository actions shrink and wrap inside a narrow header', () => {
   const actions = css('github/GithubHeader').match(
     /\.abele-github-header__actions\s*\{([^}]+)\}/

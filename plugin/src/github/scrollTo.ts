@@ -99,14 +99,14 @@ export function pinIntoView(from: Element, locate: Locate, options: PinOptions =
   const container = scrollParent(from)
   if (!container) return () => {}
 
-  // Keep targets below the pinned file-card header or repository path, including when it wraps.
+  // Keep targets below the pinned file-card header or repository header, including wrapping.
   const header = container.matches('.abele-file-view__file')
     ? container.querySelector<HTMLElement>(':scope > .abele-file-view__header')
     : from
         .closest('.abele-github-blob')
         ?.closest('.abele-github')
         ?.querySelector<HTMLElement>(
-          ':scope > .abele-github-header_path > .abele-github-header__title'
+          ':scope > .abele-github-header_file, :scope > .abele-github-header_path:not(.abele-github-header_file) > .abele-github-header__title'
         )
   const context = () => {
     if (!header) return o.context
