@@ -57,11 +57,7 @@ export async function removeForgottenBreakpoints(
     heldEpoch = target.stop_epoch
   // Restored record points may fire on every timer tick. Hold execution while patching their
   // intent, rather than racing each capture's changing state fence or removing captures first.
-  if (
-    next.trace &&
-    points.some((point) => next.trace.points.some((record) => record.breakpoint_id === point.id)) &&
-    (controller.session.status === 'running' || next.trace.isRecordStop())
-  ) {
+  if (next.trace && (controller.session.status === 'running' || next.trace.isRecordStop())) {
     let sent = 0
     let requestedPause = false
     for (let round = 0; round < 100; ++round) {
@@ -88,7 +84,7 @@ export async function removeForgottenBreakpoints(
           result.outcome !== 'rejected' ||
           result.dispatch !== 'not_dispatched' ||
           result.code !== 'stale_state' ||
-          ++sent >= 3
+          ++sent >= 8
         )
           throw new Error(t('node.error.generic'))
       }
@@ -99,8 +95,7 @@ export async function removeForgottenBreakpoints(
   }
   for (const point of points) {
     if (controller.snapshot && !current()) throw new Error(t('node.error.generic'))
-    if (next.trace?.points.some((record) => record.breakpoint_id === point.id))
-      await next.trace.removePoint(point.id)
+    if (next.trace) await next.trace.removePoint(point.id)
     else {
       const receipt = await next.controller.removeBreakpoint(point.id)
       if (receipt && receipt.outcome !== 'completed') throw new Error(t('node.error.generic'))

@@ -623,20 +623,27 @@ export class DebuggerController {
         current
       )
       // Recording can advance the state fence while disconnect is in flight. Only a
-      // confirmed non-dispatch may be rebased, once, against the same live target.
-      const fresh = result.snapshot
-      const original = invocation.snapshot
-      if (
-        current() &&
-        result.outcome === 'rejected' &&
-        result.dispatch === 'not_dispatched' &&
-        result.code === 'stale_state' &&
-        fresh.debug_session_id === original.debug_session_id &&
-        fresh.incarnation === original.incarnation &&
-        fresh.target.target_id === original.target.target_id &&
-        fresh.state_revision > original.state_revision &&
-        fresh.lifecycle === 'active'
-      ) {
+      // confirmed non-dispatch may be rebased against the same live target. Several captures
+      // can advance the fence during one disconnect; keep this bounded and require progress.
+      let revision = invocation.snapshot.state_revision
+      for (let attempt = 1; attempt < 8; ++attempt) {
+        const fresh = result.snapshot
+        const original = invocation.snapshot
+        if (
+          !(
+            current() &&
+            result.outcome === 'rejected' &&
+            result.dispatch === 'not_dispatched' &&
+            result.code === 'stale_state' &&
+            fresh.debug_session_id === original.debug_session_id &&
+            fresh.incarnation === original.incarnation &&
+            fresh.target.target_id === original.target.target_id &&
+            fresh.state_revision > revision &&
+            fresh.lifecycle === 'active'
+          )
+        )
+          break
+        revision = fresh.state_revision
         result = await this.ownerCommand(
           method,
           {
@@ -685,11 +692,14 @@ export class DebuggerController {
           : 'terminate'
       )
     return this.human(async (invocation) => {
-      const s = invocation.snapshot,
+      // Pause targets this process, not a particular stop. Retirement can span several
+      // record hits; take its fence at dispatch. Continue and stepping keep the clicked stop.
+      const dispatch = action === 'pause' ? this.invocation() : invocation
+      const s = dispatch.snapshot,
         thread = s.selected_thread_id ?? s.threads.find((t) => t.status === 'stopped')?.thread_id
       const method = action.startsWith('step-') ? 'step' : action
       const params = {
-        ...this.precondition(invocation),
+        ...this.precondition(dispatch),
         operation_id: crypto.randomUUID(),
         ...(method === 'step'
           ? {

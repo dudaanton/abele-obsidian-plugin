@@ -61,6 +61,36 @@ it('keeps disconnect unconfirmed when the node rejects it', async () => {
   expect(controller.session.detached).toBe(false)
 })
 
+it('fences Pause at dispatch after recording advanced during approval retirement', async () => {
+  const { controller, command, rpc, snapshot } = fixture()
+  let release!: (value: unknown) => void
+  rpc.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        release = resolve
+      })
+  )
+  controller.session.status = 'running'
+  const pausing = controller.command('pause')
+  await vi.waitFor(() => expect(rpc).toHaveBeenCalled())
+  controller.observe({
+    observation: 'current',
+    snapshot: {
+      ...snapshot,
+      state_revision: snapshot.state_revision + 1,
+    },
+  })
+  controller.session.status = 'running'
+  release({ proposals: [], truncated: false, next: null })
+  await pausing
+  expect(command).toHaveBeenCalledWith(
+    'pause',
+    expect.objectContaining({
+      expected_state_revision: snapshot.state_revision + 1,
+    })
+  )
+})
+
 it('rebases a non-dispatched detach when recording advanced the same session', async () => {
   const { controller, command, snapshot } = fixture()
   const completed = await command('detach', { operation_id: 'sample-operation' })
@@ -80,6 +110,27 @@ it('rebases a non-dispatched detach when recording advanced the same session', a
   await controller.command('stop')
   expect(command).toHaveBeenCalledTimes(2)
   expect(command.mock.calls[1][1]).toMatchObject({ expected_state_revision: fresh.state_revision })
+  expect(controller.session.status).toBe('exited')
+})
+
+it('keeps rebasing confirmed non-dispatched recording races until detach is accepted', async () => {
+  const { controller, command, snapshot } = fixture()
+  const completed = await command('detach', { operation_id: 'sample-operation' })
+  command.mockClear()
+  for (let step = 1; step <= 3; ++step)
+    command.mockResolvedValueOnce({
+      ...completed,
+      outcome: 'rejected',
+      dispatch: 'not_dispatched',
+      code: 'stale_state',
+      snapshot: { ...snapshot, state_revision: snapshot.state_revision + step },
+    } as never)
+  command.mockResolvedValueOnce({
+    ...completed,
+    snapshot: { ...snapshot, lifecycle: 'detached' },
+  } as never)
+  await controller.command('stop')
+  expect(command).toHaveBeenCalledTimes(4)
   expect(controller.session.status).toBe('exited')
 })
 
