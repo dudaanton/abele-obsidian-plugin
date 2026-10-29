@@ -8,6 +8,33 @@ import {
 } from '@abele/node-protocol'
 import { DebuggerController, debuggerKey, receiptMessage } from '@/debugger/DebuggerController'
 import { DebuggerBreakpointRequestSchema } from '@abele/node-protocol'
+it('keeps explicitly inspected children when the same stopped scope is read again', async () => {
+  const { model, rpc } = fixture()
+  const base = rpc.getMockImplementation()!
+  rpc.mockImplementation(async (method, params) =>
+    method === 'debugger.v1.scopes'
+      ? { data: { items: [{ name: 'Local', handle: 'sample-scope' }] } }
+      : base(method, params)
+  )
+  await model.loadStack(false)
+  model.session.variables[0].children = [{ name: 'sample', value: '42' }]
+  model.session.variables[0].handle = undefined
+  model.session.variables[0].value = '1 values'
+  await model.loadStack(false)
+  expect(model.session.variables[0].children).toEqual([{ name: 'sample', value: '42' }])
+  model.observe({
+    observation: 'current',
+    snapshot: snapshot({ stop_epoch: 3, event_seq: 9, state_revision: 5 }),
+  })
+  await model.loadStack(false)
+  expect(model.session.variables[0].children).toBeUndefined()
+  model.observe({
+    observation: 'current',
+    snapshot: snapshot({ stop_epoch: 4, event_seq: 10, state_revision: 6 }),
+  })
+  await model.loadStack(false)
+  expect(model.session.variables[0].children).toBeUndefined()
+})
 it.each(['failed', 'rejected'])(
   'shows an asynchronous %s evaluation error in its watch row',
   async (outcome) => {

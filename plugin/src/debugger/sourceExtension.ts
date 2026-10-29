@@ -34,21 +34,38 @@ export function mountDebugSource(
     /** The line whose record point is being set up under it. */
     editing = ref<number>(),
     revealed = ref(context.line)
+  const isLiveLocation = (line: number | undefined) => {
+    const binding = service.forSource(context.registrationId, context.conversationId)
+    const model = binding?.controller
+    const frame = model?.session.frames[model.session.frame]
+    return (
+      line !== undefined &&
+      !binding?.trace?.isRecordStop() &&
+      model?.session.status === 'paused' &&
+      frame?.line === line &&
+      (frame.file === context.path || frame.file === context.sourceId)
+    )
+  }
+  const liveRevealed = ref(isLiveLocation(context.line))
   const stopFrameWatch = watch(
     () => {
       void service.active.value
       const binding = service.forSource(context.registrationId, context.conversationId)
       if (binding) void binding.revision.value
-      return JSON.stringify([
+      return [
         binding?.controller.session.frame,
         binding?.controller.session.status,
         binding?.controller.snapshot?.stop_epoch,
         binding?.controller.snapshot?.incarnation,
-      ])
+      ]
     },
     (frame, previous) => {
+      if (!frame.some((value, index) => value !== previous[index])) return
       console.debug('[debugger] Source frame changed', context.path, previous, frame)
-      revealed.value = undefined
+      // Recorded-source navigation is not a live stop decoration. Keep it while recording
+      // advances epochs; a selected frame or a replacement target still takes precedence.
+      if (liveRevealed.value || frame[0] !== previous[0] || frame[3] !== previous[3])
+        revealed.value = undefined
     }
   )
   const unregister = service.registerSource(
@@ -165,6 +182,7 @@ export function mountDebugSource(
   return {
     reveal(line) {
       console.debug('[debugger] Source highlight', context.path, line)
+      liveRevealed.value = isLiveLocation(line)
       revealed.value = line
     },
     update(value) {

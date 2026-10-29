@@ -3,6 +3,49 @@ import { nextTick, ref } from 'vue'
 import { debuggerSnapshot } from '../fixtures/debugger'
 import { DebuggerService } from '@/debugger/DebuggerService'
 import { mountDebugSource } from '@/debugger/sourceExtension'
+it.each([3, 7])(
+  'keeps recorded location %s selected through transient record stops',
+  async (line) => {
+    const service = DebuggerService.instance
+    const binding = service.binding({
+      reference: { registrationId: 'sample-registration', sessionId: 'sample-chat' },
+      connection: { state: ref('connected'), client: {} },
+    } as never)
+    binding.controller.observe({ observation: 'current', snapshot: debuggerSnapshot() })
+    if (line === 7)
+      binding.trace = {
+        isRecordStop: () => true,
+        breakpoints: () => [],
+        dispose: () => {},
+      } as never
+    const host = document.createElement('div')
+    const handle = mountDebugSource(host, {
+      registrationId: 'sample-registration',
+      conversationId: 'sample-chat',
+      sourceId: 'sample-source',
+      debugSessionId: 'sample-debug',
+      incarnation: 'sample-incarnation',
+      path: 'sample.ts',
+      text: 'sample',
+    })
+    try {
+      handle.reveal(line)
+      binding.controller.session.status = 'running'
+      ++binding.revision.value
+      await nextTick()
+      expect(host.querySelector('[data-line]')?.getAttribute('data-line')).toBe(String(line))
+      binding.controller.observe({
+        observation: 'current',
+        snapshot: debuggerSnapshot({ stop_epoch: 5, event_seq: 10, state_revision: 6 }),
+      })
+      await nextTick()
+      expect(host.querySelector('[data-line]')?.getAttribute('data-line')).toBe(String(line))
+    } finally {
+      handle.destroy()
+      service.destroy()
+    }
+  }
+)
 it.each(['running', 'exited'] as const)(
   'clears a revealed stop when execution becomes %s',
   async (status) => {

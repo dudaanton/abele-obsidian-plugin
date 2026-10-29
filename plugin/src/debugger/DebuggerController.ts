@@ -1275,6 +1275,8 @@ export class DebuggerController {
       this.session.exitCode === undefined
     )
   }
+  private scopeHandles = new Map<string, string | null>()
+  private scopeStateRevision?: number
   private async loadScopes(index: number, invocation: Invocation) {
     const frame_handle = invocation.frameHandles[index]
     if (!frame_handle) return
@@ -1299,13 +1301,26 @@ export class DebuggerController {
       .loose()
       .parse(raw)
     if (!this.current || generation !== this.serial || this.snapshot.stop_epoch !== epoch) return
+    const retained =
+      this.loadedStackEpoch === epoch &&
+      this.scopeStateRevision === this.snapshot.state_revision &&
+      this.session.frame === index
+        ? this.session.variables
+        : []
     this.session.frame = index
     // No implicit getters, formatters or recursion. Scope handles need explicit inspection.
-    this.session.variables = result.data.items.map((s) => ({
-      name: s.name,
-      value: s.handle ? t('streamC.76eedf5e0f835b5e') : t('streamC.ca184496974204a0'),
-      handle: s.handle ?? undefined,
-    }))
+    this.session.variables = result.data.items.map(
+      (s) =>
+        (s.handle &&
+          this.scopeHandles.get(s.name) === s.handle &&
+          retained.find((value) => value.name === s.name)) || {
+          name: s.name,
+          value: s.handle ? t('streamC.76eedf5e0f835b5e') : t('streamC.ca184496974204a0'),
+          handle: s.handle ?? undefined,
+        }
+    )
+    this.scopeHandles = new Map(result.data.items.map((scope) => [scope.name, scope.handle]))
+    this.scopeStateRevision = this.snapshot.state_revision
     this.notify()
   }
   watch(expression: string, retained = false) {
