@@ -7,6 +7,7 @@ import { evalLong } from './helpers/obsidianCli'
 import { withEmulatedPhone } from './helpers/emulatedPhone'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
+import { transparentOccurrenceColor } from './helpers/occurrenceVisibility'
 
 targets('desktop')
 const shots = shotDir('abele-node-file-scroll')
@@ -27,7 +28,7 @@ function scrollProbe(shell: string, place: string, mode: string) {
             document.dispatchEvent(new Event("selectionchange"));
             await until(()=>document.querySelector(".abele-selection-bar_placed"),"Floating selection menu");
             if(root.querySelector(".abele-github-code__bar,.abele-github-selection"))throw Error("Inline selection bar remains");
-            const transparent=color=>!color||color==='transparent'||color.endsWith(', 0)')||color.endsWith('/ 0)');
+            const transparent=${transparentOccurrenceColor.toString()};
             const visibleOccurrence=()=>{
               const viewport=root.getBoundingClientRect();
               return [...root.querySelectorAll('.abele-code-occurrence')].find(mark=>{
