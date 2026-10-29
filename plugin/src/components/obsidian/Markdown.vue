@@ -19,7 +19,7 @@ import { markUntrusted, renderUntrustedMarkdown } from '@/markdown/renderUntrust
 import { createRenderQueue } from '@/helpers/renderQueue'
 import { holdBackUnfinished, PENDING_LABEL } from '@/helpers/unfinishedBlock'
 import { offer, recordInto, stopRecording, take, type Part } from './markdownParts'
-import { isPrintMode } from '@/markdown/printMode'
+import { isPrintMode, markPrintRoot } from '@/markdown/printMode'
 import { trackPrintTask } from '@/markdown/printReady'
 
 const props = defineProps<{
@@ -163,7 +163,10 @@ const renderContent = async () => {
   // until the render landed, which in a chat being streamed into collapses the scroll range
   // several times a second: the browser clamps the reader's position and drags them down.
   const next = target.value.ownerDocument.win.createDiv()
-  if (isPrintMode(target.value)) next.classList.add('print')
+  if (isPrintMode(target.value)) {
+    markPrintRoot(next)
+    next.classList.add('print')
+  }
   const owner = component
   // Loaded on its own until it is the one on screen: a render still in flight when the
   // markdown goes is let go here, by this call, rather than by a parent that has already

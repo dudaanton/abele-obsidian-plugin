@@ -13,7 +13,7 @@ import { Component } from 'obsidian'
 import { retryImageThroughApi, type RepoFile } from '@/github/markdownLinks'
 import type { GithubClient } from '@/github/client'
 import { githubMarkdownClick, renderGithubMarkdown } from '@/github/safeMarkdown'
-import { isPrintMode } from '@/markdown/printMode'
+import { isPrintMode, markPrintRoot } from '@/markdown/printMode'
 import { trackPrintTask } from '@/markdown/printReady'
 
 /**
@@ -46,7 +46,10 @@ const render = async () => {
   if (!target.value || !component) return
   const mine = ++generation
   const next = target.value.ownerDocument.win.createDiv()
-  if (isPrintMode(target.value)) next.classList.add('print')
+  if (isPrintMode(target.value)) {
+    markPrintRoot(next)
+    next.classList.add('print')
+  }
   await renderGithubMarkdown(next, props.text, props.repo, component, approvedImages)
   if (mine !== generation || !target.value) return
   for (const img of Array.from(next.querySelectorAll('img')))

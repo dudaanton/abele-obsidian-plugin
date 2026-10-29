@@ -18,6 +18,7 @@
  */
 import type { Component } from 'obsidian'
 import { renderUntrustedMarkdown, type RenderPolicy } from '@/markdown/renderUntrusted'
+import { isPrintMode, markPrintRoot } from '@/markdown/printMode'
 import { guardGithubImages } from './remoteImages'
 import { guardGithubMarkup } from './markupSafety'
 import { prepareMarkdown, finishCode } from '@/markdown/untrustedCode'
@@ -67,7 +68,8 @@ export async function renderGithubMarkdown(
   component: Component,
   approved?: Set<string>
 ): Promise<void> {
-  const next = createDiv()
+  const next = el.ownerDocument.win.createDiv()
+  if (isPrintMode(el)) markPrintRoot(next)
   await renderUntrustedMarkdown(next, text, component, '', githubPolicy(repo, approved))
   el.replaceChildren(...Array.from(next.childNodes))
 }
