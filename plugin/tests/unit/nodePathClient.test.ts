@@ -498,6 +498,35 @@ it('ignores repository invalidations belonging to another watched target', async
 })
 
 describe('independent file reads', () => {
+  it('preserves not_found after retrying a genuinely missing path once', async () => {
+    const f = fake()
+    const catalogue = await f.port.catalogue()
+    const missing = new ChannelError('not_found')
+    const request = vi.fn().mockRejectedValue(missing)
+    Object.assign(f.client, { request })
+    const blob = vi.spyOn(f.client.repository, 'blob').mockRejectedValue(missing)
+    await expect(f.port.file(catalogue.targets[0], 'missing/sample.ts')).rejects.toBe(missing)
+    expect(blob).toHaveBeenCalledOnce()
+    expect(request).toHaveBeenCalledOnce()
+  })
+  it.each(['unsafe_path', 'not_found'])(
+    'opens an explicit path after an ordinary %s response',
+    async (code) => {
+      const f = fake()
+      const catalogue = await f.port.catalogue()
+      const request = vi.fn(f.request)
+      Object.assign(f.client, { request })
+      vi.spyOn(f.client.repository, 'blob').mockRejectedValueOnce(
+        new ChannelError(code, 'Path excluded by folder policy')
+      )
+      const result = await f.port.file(catalogue.targets[0], 'generated/sample.ts')
+      expect(result.text).toBeTruthy()
+      expect(request).toHaveBeenCalledWith(
+        'repository.v1.blob',
+        expect.objectContaining({ path: 'generated/sample.ts', include_ignored: true })
+      )
+    }
+  )
   it('retries ordinary visibility after an ignored scan exceeds the limit', async () => {
     const f = fake()
     const catalogue = await f.port.catalogue()

@@ -445,8 +445,11 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
             (('code' in error && error.code === 'unsafe_path') ||
               ('message' in error && String(error.message).includes('unsafe_path')))
           )
-            throw new Error(
-              'The node excludes this path from file access, often because it is ignored or generated. Use a tracked source path, or change the node folder policy to include this source.'
+            throw Object.assign(
+              new Error(
+                'The node excludes this path from file access, often because it is ignored or generated. Use a tracked source path, or change the node folder policy to include this source.'
+              ),
+              { code: 'unsafe_path' }
             )
           throw error
         }
@@ -1130,7 +1133,9 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
                 repo.search({ worktree_id: id, revision: ref, ...query, cursor })
               )
             },
-            params.include_ignored === true
+            params.include_ignored === true,
+            true,
+            false
           )
         )
       }

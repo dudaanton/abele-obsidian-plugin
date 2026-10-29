@@ -15,6 +15,70 @@ import { nodeMutationKey } from '@/ai/tools/node/mutations'
 import { digest, hash, project, workspace, setup, setupGit } from '../helpers/nodeAgentFixture'
 
 describe('Obsidian chat node tools', () => {
+  it.each([
+    ['0.4.69', 'unsafe_path'],
+    ['0.4.70', 'unsafe_path'],
+    ['0.4.71', 'not_found'],
+    ['0.4.72', 'not_found'],
+  ])('reads an explicit ignored path on node %s', async (_version, code) => {
+    const f = setupGit()
+    const observe = f.repository.observe.getMockImplementation()!
+    let expanded = false
+    f.repository.observe.mockImplementation(async (params) => {
+      expanded = params.include_ignored === true
+      return observe(params)
+    })
+    const blob = f.repository.blob.getMockImplementation()!
+    f.repository.blob.mockImplementation(async (params) => {
+      if (!expanded) throw Object.assign(new Error('Path excluded by folder policy'), { code })
+      return blob(params)
+    })
+    await f.call('node_read', { path: 'generated/sample.ts' })
+    expect(f.repository.observe.mock.calls.map(([p]) => p.include_ignored)).toEqual([
+      undefined,
+      true,
+    ])
+  })
+  it.each(['unsafe_path', 'not_found'])(
+    'lists an explicit ignored directory after %s',
+    async (code) => {
+      const f = setupGit()
+      const page = { entries: [], cursor: null, incomplete: false, omissions: [] }
+      const tree = vi
+        .fn()
+        .mockRejectedValueOnce(Object.assign(new Error('Path excluded by folder policy'), { code }))
+        .mockResolvedValue(page)
+      Object.assign(f.repository, { tree })
+      await f.call('node_ls', { path: 'generated' })
+      expect(tree).toHaveBeenCalledTimes(2)
+      expect(f.repository.observe.mock.calls.map(([p]) => p.include_ignored)).toEqual([
+        undefined,
+        true,
+      ])
+    }
+  )
+  it.each(['node_read', 'node_ls'])(
+    '%s retries a missing explicit path once and preserves not_found',
+    async (name) => {
+      const f = setupGit()
+      const missing = Object.assign(new Error('Missing path'), { code: 'not_found' })
+      f.repository.blob.mockRejectedValue(missing)
+      Object.assign(f.repository, { tree: vi.fn().mockRejectedValue(missing) })
+      await expect(f.call(name, { path: 'missing/sample.ts' })).rejects.toBe(missing)
+      expect(f.repository.observe.mock.calls.map(([p]) => p.include_ignored)).toEqual([
+        undefined,
+        true,
+      ])
+    }
+  )
+  it('does not expand a search after a visibility failure', async () => {
+    const f = setupGit()
+    const missing = Object.assign(new Error('Missing path'), { code: 'not_found' })
+    Object.assign(f.repository, { search: vi.fn().mockRejectedValue(missing) })
+    await expect(f.call('node_search', { query: 'sample' })).rejects.toBe(missing)
+    expect(f.repository.observe).toHaveBeenCalledOnce()
+    expect(f.repository.observe).toHaveBeenCalledWith({ worktree_id: 'sample-tree' })
+  })
   it.each(['node_read', 'node_ls', 'node_search'])(
     '%s falls back when an explicit ignored scan exceeds the limit',
     async (name) => {

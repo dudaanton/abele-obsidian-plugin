@@ -4,22 +4,29 @@ const codeOf = (error: unknown): string =>
     : ''
 
 const invisible = (error: unknown) =>
-  ['ignored', 'excluded', 'not_visible', 'path_ignored', 'path_excluded', 'not_found'].includes(
-    codeOf(error)
-  )
+  [
+    'ignored',
+    'excluded',
+    'not_visible',
+    'path_ignored',
+    'path_excluded',
+    'not_found',
+    'unsafe_path',
+  ].includes(codeOf(error))
 
 /** Retry only visibility failures, never authority or transport failures. */
 export async function readWithIgnoredFallback<T>(
   path: string,
   read: (includeIgnored: boolean) => Promise<T>,
   explicit = false,
-  explain = true
+  explain = true,
+  retryInvisible = true
 ): Promise<T> {
   if (!explicit) {
     try {
       return await read(false)
     } catch (error) {
-      if (!invisible(error)) throw error
+      if (!retryInvisible || !invisible(error)) throw error
     }
   }
   try {
