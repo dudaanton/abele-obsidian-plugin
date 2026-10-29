@@ -286,6 +286,8 @@ export class TraceSession {
       return
     }
     const result = await this.debug.removeBreakpoint(id)
+    if (!result && this.debug.knownBreakpoints().some((point) => point.id === id))
+      throw new RecordPointSaveError('not_completed')
     if (
       result &&
       typeof result === 'object' &&

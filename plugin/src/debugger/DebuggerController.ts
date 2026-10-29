@@ -678,6 +678,7 @@ export class DebuggerController {
       this.observe({ observation: 'current', snapshot: result.snapshot })
       if (result.outcome !== 'completed') this.error = receiptMessage(result.code ?? result.outcome)
       this.notify()
+      return result
     })
   }
   setMode(mode: 'ask' | 'allow') {

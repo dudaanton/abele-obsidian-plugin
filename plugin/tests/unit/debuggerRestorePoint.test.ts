@@ -4,6 +4,53 @@ import {
   removeForgottenBreakpoints,
   forgottenBreakpointLocations,
 } from '@/debugger/restoreBreakpoint'
+it.each([
+  { changedStop: false, lateStop: false },
+  { changedStop: true, lateStop: false },
+  { changedStop: false, lateStop: true },
+])(
+  'holds a running record session steady and resumes only its own settled pause (%j)',
+  async ({ changedStop, lateStop }) => {
+    const session = { status: 'running' }
+    const snapshot = {
+      stop_epoch: 4,
+      selected_thread_id: 1,
+      threads: [{ thread_id: 1, stop: { reason: 'pause' } }],
+    }
+    const command = vi.fn(async (action: string) => {
+      if (action === 'pause') {
+        const stopped = () => {
+          session.status = 'paused'
+          snapshot.stop_epoch++
+        }
+        if (lateStop) window.setTimeout(stopped, 20)
+        else stopped()
+      } else session.status = 'running'
+      return { outcome: 'completed' }
+    })
+    const removePoint = vi.fn(async () => {
+      expect(session.status).toBe('paused')
+      if (changedStop) snapshot.stop_epoch++
+    })
+    const next = {
+      controller: {
+        current: true,
+        session,
+        snapshot,
+        command,
+        knownBreakpoints: () => [{ id: 'sample-new', file: 'sample.ts', requestedLine: 5 }],
+      },
+      trace: { points: [{ breakpoint_id: 'sample-new' }], isRecordStop: () => false, removePoint },
+    }
+    await removeForgottenBreakpoints(undefined, next as never, [
+      { file: 'sample.ts', requestedLine: 5 },
+    ])
+    expect(command.mock.calls.map(([action]) => action)).toEqual(
+      changedStop ? ['pause'] : ['pause', 'continue']
+    )
+    expect(removePoint).toHaveBeenCalledExactlyOnceWith('sample-new')
+  }
+)
 it('captures removed locations before a chat binding is reused for the new session', async () => {
   let known = [{ id: 'sample-old', file: 'src/sample.ts', requestedLine: 5 }]
   const removeBreakpoint = vi.fn(async () => {})

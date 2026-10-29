@@ -325,7 +325,10 @@ async function sessionLifecycle(phone: boolean) {
     let binding=service.active.value;
     const mark=await until(()=>marginAt(3),'source margin');mark.click();
     await until(()=>binding.controller.session.status==='paused','breakpoint stop',600);
-    const source=binding.controller.knownBreakpoints()[0].sourceId;
+    let source=binding.controller.knownBreakpoints()[0].sourceId;
+    // Remove the plain breakpoint while the stop is still stable, before the failed evaluate.
+    await binding.controller.removeAllBreakpoints();
+    await until(()=>!binding.controller.knownBreakpoints().length,'watch breakpoint removed');
     await binding.controller.watch('missingSample.field');
     await until(()=>binding.controller.session.watches[0]?.error,'watch error');
     // Read the authoritative state again: evaluating a failing watch must not hide a real stop.
@@ -340,9 +343,15 @@ async function sessionLifecycle(phone: boolean) {
     document.querySelector('.abele-debug-panel__value_error')?.scrollIntoView({block:'center'});
     await shot(${JSON.stringify(name + '-watch-error')});
     await binding.controller.unwatch('missingSample.field');
-    await binding.controller.removeAllBreakpoints();
-    if(binding.controller.session.status==='paused')await binding.controller.command('continue');
-    await until(()=>binding.controller.session.status==='running','continued');
+    // Older nodes can report Running while a failed evaluate left the adapter frozen. Detach
+    // releases that stop; all point-removal assertions below start from a fresh observation.
+    const watchedSession=binding.sessionId;
+    await binding.controller.command('stop');
+    document.querySelector('[aria-label="Attach to a running program"]').click();
+    const freshProgram=await until(()=>rows().find(r=>r.title.includes('src/serve.js')),'clean attach picker');freshProgram.el.click();
+    await until(()=>service.active.value?.sessionId!==watchedSession&&service.active.value?.trace&&service.active.value.controller.session.status==='running'&&(()=>{const pause=document.querySelector('.abele-debug-panel [aria-label^="Pause"]');return pause&&!pause.hasAttribute('disabled')})(),'clean session after failed watch',600);
+    binding=service.active.value;
+    source=await until(()=>binding.controller.mappedSource('src/serve.js')?.[0],'clean source mapping');
     if(document.querySelector('.abele-debug-source__line_here'))throw Error('Stop line survived Continue');
     if(${phone}){debugSplit.collapse();await wait(500)}
     await shot(${JSON.stringify(name + '-continued')});
@@ -366,10 +375,10 @@ async function sessionLifecycle(phone: boolean) {
       // A chat-owned session uses the picker; a folder-owned session can use its retained recipe.
       await until(()=>service.active.value?.sessionId!==old||rows().some(r=>r.title.includes('src/serve.js')),'reattach started',600);
       const offered=rows().find(r=>r.title.includes('src/serve.js'));if(offered)offered.el.click();
-      await until(()=>service.active.value?.sessionId!==old&&service.active.value?.controller.session.status==='running','new session selected',600);
+      await until(()=>service.active.value?.sessionId!==old&&service.active.value?.controller.session.status==='running'&&!service.active.value.controller.knownBreakpoints().length&&(()=>{const pause=document.querySelector('.abele-debug-panel [aria-label^="Pause"]');return pause&&!pause.hasAttribute('disabled')})(),'new session prepared with removed points',600);
       binding=service.active.value;attaches++;
       await wait(700);
-      if(binding.controller.session.status!=='running'||binding.controller.knownBreakpoints().length)throw Error('Removed point stopped the next attach: '+debugState());
+      if(binding.controller.session.status!=='running'||binding.controller.knownBreakpoints().length){require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+${JSON.stringify(name)}+'-reattach-failure.json',debugState());throw Error('Removed point stopped the next attach: '+debugState())}
       const texts=[...document.querySelectorAll('.abele-debug-panel .abele-tree-item__text')].map(e=>e.textContent);
       if(texts.some(t=>/^s[0-9]+:[0-9]+$/.test(t)))throw Error('Raw source id in point row');
       await shot(${JSON.stringify(name + '-reattached')}+'-'+i);

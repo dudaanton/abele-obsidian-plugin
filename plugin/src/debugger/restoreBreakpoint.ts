@@ -1,5 +1,6 @@
 import type { DebuggerController } from './DebuggerController'
 import type { DebuggerBinding } from './DebuggerService'
+import { t } from '@/i18n'
 
 export function forgottenBreakpointLocations(binding: DebuggerBinding | undefined) {
   if (!binding?.forgottenBreakpoints?.size) return []
@@ -16,15 +17,74 @@ export async function removeForgottenBreakpoints(
   removed = forgottenBreakpointLocations(previous)
 ) {
   if (!removed.length) return
-  for (const point of next.controller.knownBreakpoints()) {
-    if (
-      !removed.some((old) => old.file === point.file && old.requestedLine === point.requestedLine)
+  const points = next.controller
+    .knownBreakpoints()
+    .filter((point) =>
+      removed.some((old) => old.file === point.file && old.requestedLine === point.requestedLine)
     )
-      continue
+  if (!points.length) return
+  const controller = next.controller
+  const target = controller.snapshot
+  const current = () =>
+    controller.current &&
+    controller.snapshot?.debug_session_id === target?.debug_session_id &&
+    controller.snapshot?.incarnation === target?.incarnation
+  const isPaused = () => controller.session.status === 'paused'
+  let heldEpoch: number | undefined
+  // Restored record points may fire on every timer tick. Hold execution while patching their
+  // intent, rather than racing each capture's changing state fence or removing captures first.
+  if (
+    next.trace &&
+    points.some((point) => next.trace.points.some((record) => record.breakpoint_id === point.id)) &&
+    (controller.session.status === 'running' || next.trace.isRecordStop())
+  ) {
+    let sent = 0
+    let requestedPause = false
+    for (let round = 0; round < 100; ++round) {
+      if (!current()) throw new Error(t('node.error.generic'))
+      if (isPaused() && !next.trace.isRecordStop()) {
+        const snapshot = controller.snapshot
+        const stop = snapshot?.threads.find(
+          (thread) => thread.thread_id === snapshot.selected_thread_id
+        )?.stop
+        if (requestedPause && !stop) {
+          await new Promise((resolve) => window.setTimeout(resolve, 20))
+          continue
+        }
+        if (requestedPause && stop?.reason === 'pause') heldEpoch = snapshot?.stop_epoch
+        break
+      }
+      if (controller.session.status === 'running' && !requestedPause) {
+        const result = await controller.command('pause')
+        if (result && result.outcome === 'completed') requestedPause = true
+        // Retry only a proven non-dispatched state-fence rejection; never uncertain effects.
+        else if (
+          !result ||
+          result.outcome !== 'rejected' ||
+          result.dispatch !== 'not_dispatched' ||
+          result.code !== 'stale_state' ||
+          ++sent >= 3
+        )
+          throw new Error(t('node.error.generic'))
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 20))
+    }
+    if (controller.session.status !== 'paused' || next.trace.isRecordStop())
+      throw new Error(t('node.error.generic'))
+  }
+  for (const point of points) {
+    if (controller.snapshot && !current()) throw new Error(t('node.error.generic'))
     if (next.trace?.points.some((record) => record.breakpoint_id === point.id))
       await next.trace.removePoint(point.id)
     else await next.controller.removeBreakpoint(point.id)
   }
+  if (
+    heldEpoch !== undefined &&
+    current() &&
+    controller.snapshot?.stop_epoch === heldEpoch &&
+    controller.session.status === 'paused'
+  )
+    await controller.command('continue')
 }
 
 /** Re-attach carries intent, while an identical point already restored by the node stays one. */

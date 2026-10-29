@@ -2,6 +2,19 @@ import { describe, expect, it, vi } from 'vitest'
 import { TraceSession, type TraceBreakpoints } from '@/debugger/trace/TraceSession'
 import { TraceRpc } from '@/debugger/trace/wire'
 import type { DebuggerSnapshot } from '@abele/node-protocol'
+it('keeps record metadata if breakpoint removal returned without executing', async () => {
+  const node = fakeNode(),
+    debug = fakeDebugger([{ id: 'sample-record', line: 4 }])
+  const trace = new TraceSession(node.rpc, debug, () => {})
+  trace.points = [{ breakpoint_id: 'sample-record', take: ['value'] }]
+  vi.mocked(debug.removeBreakpoint).mockResolvedValue(undefined)
+  try {
+    await expect(trace.removePoint('sample-record')).rejects.toThrow()
+    expect(trace.points).toEqual([{ breakpoint_id: 'sample-record', take: ['value'] }])
+  } finally {
+    trace.dispose()
+  }
+})
 it.each(['detached', 'terminated', 'failed'] as const)(
   'removes an ended %s record point through local intent only',
   async (lifecycle) => {
