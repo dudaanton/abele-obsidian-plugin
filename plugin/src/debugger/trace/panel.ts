@@ -1,4 +1,6 @@
 import { t } from '@/i18n'
+import { javascriptLanguage } from '@codemirror/lang-javascript'
+import type { SyntaxNode } from '@lezer/common'
 // What the debugger's panel and a source's margin do about recording: menus, the runs folder,
 // the record point editor's moves. The panel and the margin stay presentational; this is their host.
 import { Menu, Notice } from 'obsidian'
@@ -270,31 +272,32 @@ export function browserMenu(event: MouseEvent) {
   menu.showAtMouseEvent(event)
 }
 
-/** Names a line of code offers to take: identifiers on it, keywords left out. */
+/** Runtime bindings visible at the start of the selected statement's line. */
 export function namesOnLine(text: string, line: number): string[] {
   const lines = text.split('\n')
-  const code = lines[line - 1] ?? ''
-  const keywords = new Set(
-    'const let var function return if else for while do switch case break continue new this typeof instanceof in of await async import export from default class extends super try catch finally throw true false null undefined void delete yield static get set as'.split(
-      ' '
-    )
-  )
+  if (line < 1 || line > lines.length) return []
+  const start = lines.slice(0, line - 1).reduce((n, s) => n + s.length + 1, 0)
+  const position = start + (lines[line - 1].match(/^\s*/)?.[0].length ?? 0)
+  const end = start + lines[line - 1].length
+  const tree = javascriptLanguage.parser.configure({ dialect: 'ts jsx' }).parse(text)
   const out: string[] = []
-  // The current statement often uses locals declared immediately above it. Offer those first,
-  // so a long call on the current line does not crowd them out of the eight suggestions.
-  for (let i = Math.max(0, line - 16); i < line - 1; i++) {
-    const declaration = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g
-    for (const match of lines[i]?.matchAll(declaration) ?? []) {
-      if (!out.includes(match[1])) out.push(match[1])
-    }
-  }
-  for (const m of code
-    .replace(/(["'`])(?:\\.|(?!\1).)*\1/g, '')
-    .replace(/\/\/.*$/, '')
-    .matchAll(/(?<![.\w$])[A-Za-z_$][\w$]*/g)) {
-    const name = m[0]
-    if (!keywords.has(name) && !out.includes(name)) out.push(name)
-    if (out.length >= 8) break
-  }
-  return out
+  const functions = /^(?:FunctionDeclaration|FunctionExpression|ArrowFunction|MethodDeclaration)$/
+  tree.iterate({
+    enter(ref) {
+      if (ref.name !== 'VariableDefinition' || ref.from > end) return
+      let scope: SyntaxNode | null = ref.node.parent
+      // Parameters belong to their function, declarations to the nearest lexical block.
+      while (
+        scope &&
+        scope.name !== 'Block' &&
+        scope.name !== 'Script' &&
+        !functions.test(scope.name)
+      )
+        scope = scope.parent
+      if (!scope || scope.from > position || scope.to < position) return
+      const name = text.slice(ref.from, ref.to)
+      if (!out.includes(name)) out.push(name)
+    },
+  })
+  return out.slice(-8)
 }

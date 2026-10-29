@@ -63,6 +63,23 @@ it.each([true, false])('names the record point in its enable action (%s)', (enab
   }
 })
 
+it('excludes locals from a callback that has ended', () => {
+  const text = `function total(items) {
+  const rate = 2
+  const amounts = items.map((entry) => {
+    const lineTotal = entry.price * rate
+    return lineTotal
+  })
+  const surge = rate + 1
+  return amounts.length + surge
+}`
+  const names = namesOnLine(text, 8)
+  expect(names).toEqual(expect.arrayContaining(['rate', 'surge', 'amounts', 'items']))
+  expect(names).not.toContain('entry')
+  expect(names).not.toContain('lineTotal')
+  expect(namesOnLine(text, 5)).toEqual(expect.arrayContaining(['entry', 'lineTotal', 'rate']))
+})
+
 it('offers declarations immediately above the selected line', () => {
   const text =
     'const rate = lookup(quote)\nconst surge = rate * 2\nconst deliveryFee = surge + 5\nreturn quote.total'
