@@ -613,7 +613,7 @@ export class DebuggerController {
     try {
       // The node fences prior work when this control arrives. Do not queue it behind the work
       // it is meant to stop, or wait for proposal retirement before dispatching it.
-      const result = await this.ownerCommand(
+      let result = await this.ownerCommand(
         method,
         {
           ...this.precondition(invocation),
@@ -621,6 +621,30 @@ export class DebuggerController {
         },
         current
       )
+      // Recording can advance the state fence while disconnect is in flight. Only a
+      // confirmed non-dispatch may be rebased, once, against the same live target.
+      const fresh = result.snapshot
+      const original = invocation.snapshot
+      if (
+        current() &&
+        result.outcome === 'rejected' &&
+        result.dispatch === 'not_dispatched' &&
+        result.code === 'stale_state' &&
+        fresh.debug_session_id === original.debug_session_id &&
+        fresh.incarnation === original.incarnation &&
+        fresh.target.target_id === original.target.target_id &&
+        fresh.state_revision > original.state_revision &&
+        fresh.lifecycle === 'active'
+      ) {
+        result = await this.ownerCommand(
+          method,
+          {
+            ...this.precondition({ ...invocation, snapshot: fresh }),
+            operation_id: crypto.randomUUID(),
+          },
+          current
+        )
+      }
       if (!current()) return
       if (
         result.snapshot.debug_session_id !== invocation.snapshot.debug_session_id ||

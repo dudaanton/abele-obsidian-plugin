@@ -61,6 +61,52 @@ it('keeps disconnect unconfirmed when the node rejects it', async () => {
   expect(controller.session.detached).toBe(false)
 })
 
+it('rebases a non-dispatched detach when recording advanced the same session', async () => {
+  const { controller, command, snapshot } = fixture()
+  const completed = await command('detach', { operation_id: 'sample-operation' })
+  command.mockClear()
+  const fresh = { ...snapshot, state_revision: snapshot.state_revision + 1 }
+  command.mockResolvedValueOnce({
+    ...completed,
+    snapshot: fresh,
+    outcome: 'rejected',
+    dispatch: 'not_dispatched',
+    code: 'stale_state',
+  } as never)
+  command.mockResolvedValueOnce({
+    ...completed,
+    snapshot: { ...fresh, lifecycle: 'detached' },
+  } as never)
+  await controller.command('stop')
+  expect(command).toHaveBeenCalledTimes(2)
+  expect(command.mock.calls[1][1]).toMatchObject({ expected_state_revision: fresh.state_revision })
+  expect(controller.session.status).toBe('exited')
+})
+
+it.each(['dispatched', 'possible', 'other-session', 'same-revision'])(
+  'does not retry detach with %s evidence',
+  async (evidence) => {
+    const { controller, command, snapshot } = fixture()
+    const completed = await command('detach', { operation_id: 'sample-operation' })
+    command.mockClear()
+    command.mockResolvedValueOnce({
+      ...completed,
+      outcome: 'rejected',
+      code: 'stale_state',
+      dispatch: evidence === 'dispatched' || evidence === 'possible' ? evidence : 'not_dispatched',
+      snapshot: {
+        ...snapshot,
+        incarnation: evidence === 'other-session' ? 'another-incarnation' : snapshot.incarnation,
+        state_revision: snapshot.state_revision + (evidence === 'same-revision' ? 0 : 1),
+      },
+    } as never)
+    if (evidence === 'other-session') await expect(controller.command('stop')).rejects.toThrow()
+    else await controller.command('stop')
+    expect(command).toHaveBeenCalledOnce()
+    expect(controller.session.status).toBe('lost')
+  }
+)
+
 it('can approve only the exact owner disconnect while the UI is already disconnected', async () => {
   const { controller, command, rpc } = fixture()
   const completed = await command('detach', { operation_id: 'sample-operation' })
