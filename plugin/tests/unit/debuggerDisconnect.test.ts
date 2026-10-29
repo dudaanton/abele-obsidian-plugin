@@ -113,6 +113,91 @@ it('rebases a non-dispatched detach when recording advanced the same session', a
   expect(controller.session.status).toBe('exited')
 })
 
+it('rebases Pause without repeating approval reads while recording advances at dispatch', async () => {
+  const { controller, command, rpc, snapshot } = fixture()
+  controller.session.status = 'running'
+  rpc.mockResolvedValue({ proposals: [], truncated: false, next: null })
+  command.mockImplementation(async (_method, params) => {
+    const attempt = command.mock.calls.length
+    return {
+      operation_id: (params as { operation_id: string }).operation_id,
+      acceptance: 'accepted',
+      dispatch: attempt <= 3 ? 'not_dispatched' : 'dispatched',
+      outcome: attempt <= 3 ? 'rejected' : 'completed',
+      ...(attempt <= 3 ? { code: 'stale_state' } : {}),
+      completed_at: '2025-01-01T00:00:00.000Z',
+      snapshot: {
+        ...snapshot,
+        state_revision: snapshot.state_revision + attempt,
+        event_seq: snapshot.event_seq + attempt,
+      },
+    }
+  })
+  const result = await controller.command('pause')
+  expect(result?.outcome).toBe('completed')
+  expect(command).toHaveBeenCalledTimes(4)
+  expect(rpc).toHaveBeenCalledOnce()
+  expect(command.mock.calls.map(([, params]) => (params as any).expected_state_revision)).toEqual([
+    4, 5, 6, 7,
+  ])
+  expect(new Set(command.mock.calls.map(([, params]) => (params as any).operation_id)).size).toBe(4)
+})
+
+it.each(['dispatched', 'possible', 'other-session', 'same-revision', 'ended', 'other-target'])(
+  'does not retry Pause with %s evidence',
+  async (evidence) => {
+    const { controller, command, rpc, snapshot } = fixture()
+    controller.session.status = 'running'
+    rpc.mockResolvedValue({ proposals: [], truncated: false, next: null })
+    command.mockResolvedValueOnce({
+      operation_id: 'sample-operation',
+      acceptance: 'accepted',
+      dispatch: evidence === 'dispatched' || evidence === 'possible' ? evidence : 'not_dispatched',
+      outcome: 'rejected',
+      code: 'stale_state',
+      completed_at: '2025-01-01T00:00:00.000Z',
+      snapshot: {
+        ...snapshot,
+        incarnation: evidence === 'other-session' ? 'another-incarnation' : snapshot.incarnation,
+        state_revision: snapshot.state_revision + (evidence === 'same-revision' ? 0 : 1),
+        lifecycle: evidence === 'ended' ? 'detached' : 'active',
+        target: {
+          ...snapshot.target,
+          target_id: evidence === 'other-target' ? 'another-target' : snapshot.target.target_id,
+        },
+      },
+    } as never)
+    await controller.command('pause')
+    expect(command).toHaveBeenCalledOnce()
+  }
+)
+
+it('bounds Pause rebasing when the recording never leaves a dispatch window', async () => {
+  const { controller, command, rpc, snapshot } = fixture()
+  controller.session.status = 'running'
+  rpc.mockResolvedValue({ proposals: [], truncated: false, next: null })
+  command.mockImplementation(
+    async (_method, params) =>
+      ({
+        operation_id: (params as { operation_id: string }).operation_id,
+        acceptance: 'accepted',
+        dispatch: 'not_dispatched',
+        outcome: 'rejected',
+        code: 'stale_state',
+        completed_at: '2025-01-01T00:00:00.000Z',
+        snapshot: {
+          ...snapshot,
+          state_revision: snapshot.state_revision + command.mock.calls.length,
+          event_seq: snapshot.event_seq + command.mock.calls.length,
+        },
+      }) as never
+  )
+  const result = await controller.command('pause')
+  expect(result?.outcome).toBe('rejected')
+  expect(controller.error).toBe('stale_state')
+  expect(command).toHaveBeenCalledTimes(8)
+})
+
 it('keeps rebasing confirmed non-dispatched recording races until detach is accepted', async () => {
   const { controller, command, snapshot } = fixture()
   const completed = await command('detach', { operation_id: 'sample-operation' })

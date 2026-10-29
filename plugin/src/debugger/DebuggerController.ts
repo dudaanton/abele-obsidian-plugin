@@ -709,7 +709,42 @@ export class DebuggerController {
           : {}),
       }
       const generation = this.serial
-      const result = DebuggerReceiptSchema.parse(await this.ownerCommand(method, params))
+      let result = DebuggerReceiptSchema.parse(await this.ownerCommand(method, params))
+      // Captures can advance again after dispatch. Pause still targets this process; rebase
+      // only proven non-dispatches here, without another round of approval retirement reads.
+      // Continue and stepping must retain the exact stop the person selected.
+      let revision = s.state_revision
+      for (let attempt = 1; action === 'pause' && attempt < 8; ++attempt) {
+        const fresh = result.snapshot
+        if (
+          !this.current ||
+          generation !== this.serial ||
+          result.outcome !== 'rejected' ||
+          result.dispatch !== 'not_dispatched' ||
+          result.code !== 'stale_state' ||
+          fresh.debug_session_id !== s.debug_session_id ||
+          fresh.incarnation !== s.incarnation ||
+          fresh.target.target_id !== s.target.target_id ||
+          fresh.state_revision <= revision ||
+          fresh.lifecycle !== 'active'
+        )
+          break
+        this.observe({ observation: 'current', snapshot: fresh })
+        if (
+          !this.matches(dispatch) ||
+          this.snapshot?.target.target_id !== s.target.target_id ||
+          this.snapshot.lifecycle !== 'active'
+        )
+          break
+        revision = this.snapshot.state_revision
+        console.debug('[debugger] Rebasing undispatched Pause', revision)
+        result = DebuggerReceiptSchema.parse(
+          await this.ownerCommand(method, {
+            ...this.precondition(),
+            operation_id: crypto.randomUUID(),
+          })
+        )
+      }
       if (!this.current || generation !== this.serial) return
       this.observe({ observation: 'current', snapshot: result.snapshot })
       if (result.outcome !== 'completed') this.error = receiptMessage(result.code ?? result.outcome)
