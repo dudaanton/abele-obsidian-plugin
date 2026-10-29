@@ -35,6 +35,20 @@ it.each(['detached', 'terminated', 'failed'] as const)(
   }
 )
 
+it('refuses to confirm removal when the owning node still lists the record point', async () => {
+  const node = fakeNode()
+  const debug = fakeDebugger([{ id: 'sample-point', line: 4 }])
+  const trace = new TraceSession(node.rpc, debug, () => {})
+  try {
+    await trace.savePoint('sample-source', 4, { take: ['sample'] })
+    vi.spyOn(node.rpc, 'setPoints').mockResolvedValue([...trace.points])
+    await expect(trace.removePoint('sample-point')).rejects.toThrow('could not be confirmed')
+    expect(trace.points.map((point) => point.breakpoint_id)).toContain('sample-point')
+  } finally {
+    trace.dispose()
+  }
+})
+
 it('does not restore a removed point from a refresh already in flight', async () => {
   const node = fakeNode()
   const debug = fakeDebugger([{ id: 'sample-point', line: 4 }])

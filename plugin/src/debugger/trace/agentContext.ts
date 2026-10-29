@@ -166,19 +166,30 @@ function traceContextFor(
         service.togglePendingBreakpoint(folder, file, line)
         return
       }
-      const source = service.sourceFor(binding, file) ?? binding.controller.mappedSource(file)?.[0]
-      const point = binding.controller
-        .knownBreakpoints()
-        .find(
-          (b) =>
-            b.sourceId === source &&
-            b.requestedLine === line &&
-            trace.points.some((p) => p.breakpoint_id === b.id)
-        )
-      if (!point) throw new Error(`No record point at ${file}:${line}`)
+      await trace.refreshPoints()
       guard()
       current()
-      await trace.removePoint(point.id)
+      const source = service.sourceFor(binding, file) ?? binding.controller.mappedSource(file)?.[0]
+      const atLine = (b: ReturnType<typeof binding.controller.knownBreakpoints>[number]) =>
+        (b.sourceId === source || b.file === file) && b.requestedLine === line
+      // Several adapter registrations can name the same requested location. Removing the
+      // person's point removes all of those, within its owning process.
+      const points = binding.controller
+        .knownBreakpoints()
+        .filter((b) => atLine(b) && trace.points.some((p) => p.breakpoint_id === b.id))
+      if (!points.length) throw new Error(`No record point at ${file}:${line}`)
+      for (const point of points) {
+        guard()
+        current()
+        await trace.removePoint(point.id)
+      }
+      current()
+      if (
+        binding.controller
+          .knownBreakpoints()
+          .some((b) => atLine(b) && trace.points.some((p) => p.breakpoint_id === b.id))
+      )
+        throw new Error(`Record point removal could not be confirmed at ${file}:${line}`)
     },
     writeNote: (runId) =>
       writeRunNote({ registrationId: binding.registrationId, projectId, runId }, trace.rpc),

@@ -185,6 +185,19 @@ export class TraceSession {
     this.points = points
   }
 
+  /** Read the owning process before an edit; a cached list can omit a late registration. */
+  async refreshPoints() {
+    const session = this.sessionId
+    const revision = this.pointsRevision
+    if (!session) throw new RecordPointSaveError('no_session')
+    const points = await this.rpc.points(session)
+    if (this.sessionId !== session || this.pointsRevision !== revision)
+      throw new RecordPointSaveError('session_changed')
+    ++this.pointsRevision
+    this.points = points
+    this.changed()
+  }
+
   /** Sets up a record point on a line: the point first, so a hit never comes before what to take,
    * then its breakpoint, kept when one is already there. */
   async savePoint(sourceId: string, line: number, edit: PointEdit) {
@@ -282,7 +295,7 @@ export class TraceSession {
 
   async removePoint(id: string) {
     const session = this.sessionId
-    if (!session) return
+    if (!session) throw new RecordPointSaveError('no_session')
     if (
       this.debug.disconnectRequested ||
       ['detached', 'terminated', 'failed'].includes(this.debug.snapshot?.lifecycle ?? '')
@@ -307,7 +320,11 @@ export class TraceSession {
       )
     await this.setPoints(session, [], [id])
     this.changed()
+    if (this.sessionId !== session || this.points.some((point) => point.breakpoint_id === id))
+      throw new RecordPointSaveError('not_removed')
     await this.refresh()
+    if (this.sessionId !== session || this.points.some((point) => point.breakpoint_id === id))
+      throw new RecordPointSaveError('not_removed')
   }
 
   async chooseFolder(folder: string) {

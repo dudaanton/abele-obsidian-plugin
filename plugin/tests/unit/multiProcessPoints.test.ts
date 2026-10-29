@@ -4,6 +4,11 @@ import { DebuggerService } from '@/debugger/DebuggerService'
 import { debuggerSnapshot } from '../fixtures/debugger'
 import type { FolderDebugOwner } from '@/debugger/owner'
 import { activeTraceContext } from '@/debugger/trace/agentContext'
+import { TraceSession } from '@/debugger/trace/TraceSession'
+import { TraceRpc, type WirePoint } from '@/debugger/trace/wire'
+import { createTraceTools } from '@/ai/tools/TraceTools'
+
+vi.mock('@/ai/tools/node/projectAccess', () => ({ nodeProjectGuard: vi.fn(async () => () => {}) }))
 
 const service = new DebuggerService()
 const target = {
@@ -55,6 +60,131 @@ it('keeps a mapped shared package source with its process for person points', ()
   expect(service.debugFor(target, 'packages/common/money.ts')?.sourceId).toBe('shared')
 })
 
+it.each([
+  { copies: 1, refused: false },
+  { copies: 2, refused: false },
+  { copies: 1, refused: true },
+])(
+  'removes the pending then attached sibling point: $copies registrations, node retains: $refused',
+  async ({ copies, refused }) => {
+    const orders = session('sample-orders', 'packages/orders/src/index.ts', 101)
+    const file = 'packages/rates/src/index.ts'
+    service.editPendingPoint(target, file, 7, { record: { take: ['rate'] } })
+    const rates = session('sample-rates', file, 102)
+    const saved = new Map<string, WirePoint[]>()
+    const request = vi.fn(async (method: string, p: any) => {
+      const id = p.debug_session_id
+      if (method === 'trace.v1.points.set') {
+        saved.set(id, [
+          ...(saved.get(id) ?? []).filter(
+            (point) =>
+              (refused || !p.remove.includes(point.breakpoint_id)) &&
+              !p.upsert.some((next: WirePoint) => next.breakpoint_id === point.breakpoint_id)
+          ),
+          ...p.upsert,
+        ])
+        return { points: saved.get(id) }
+      }
+      if (method === 'trace.v1.points.list') return { points: saved.get(id) ?? [] }
+      if (method === 'trace.v1.status')
+        return { folder: '/sample/runs', chosen: true, recording: null }
+      if (method === 'trace.v1.runs') return { folder: '/sample/runs', chosen: true, runs: [] }
+      throw Error(method)
+    })
+    for (const binding of [orders, rates]) {
+      binding.trace = new TraceSession(new TraceRpc(request), binding.controller, () => {})
+      vi.spyOn(binding.controller, 'setBreakpoint').mockImplementation(
+        async (id, sourceId, line) => {
+          binding.controller.observe({
+            observation: 'current',
+            snapshot: debuggerSnapshot({
+              ...binding.controller.snapshot,
+              state_revision: binding.controller.snapshot!.state_revision + 1,
+              breakpoints: [
+                {
+                  breakpoint_id: id,
+                  source_id: sourceId,
+                  line,
+                  resolved_line: line,
+                  resolved_column: null,
+                  message: null,
+                  status: 'verified',
+                },
+              ],
+            }),
+          })
+          return { outcome: 'completed' } as never
+        }
+      )
+      vi.spyOn(binding.controller, 'removeBreakpoint').mockImplementation(async (id) => {
+        binding.controller.observe({
+          observation: 'current',
+          snapshot: debuggerSnapshot({
+            ...binding.controller.snapshot,
+            state_revision: binding.controller.snapshot!.state_revision + 1,
+            breakpoints: binding.controller.snapshot!.breakpoints.filter(
+              (point) => point.breakpoint_id !== id
+            ),
+          }),
+        })
+        return { outcome: 'completed' } as never
+      })
+    }
+    await service.admitFile(target, file)
+    expect(service.pendingBreakpoints(target, file)).toEqual([])
+    expect(rates.trace!.points).toHaveLength(1)
+    if (copies === 2) {
+      const original = rates.controller.snapshot!.breakpoints[0]
+      rates.controller.observe({
+        observation: 'current',
+        snapshot: debuggerSnapshot({
+          ...rates.controller.snapshot,
+          state_revision: rates.controller.snapshot!.state_revision + 1,
+          breakpoints: [original, { ...original, breakpoint_id: 'sample-retained-copy' }],
+        }),
+      })
+      await rates.trace!.rpc.setPoints(
+        rates.sessionId!,
+        [{ breakpoint_id: 'sample-retained-copy', take: ['rate'] }],
+        []
+      )
+      // The late registration is on the node, but the viewed session's cache has not read it.
+      expect(rates.trace!.points).toHaveLength(1)
+    }
+    const live = DebuggerService.instance
+    live.select(rates)
+    vi.spyOn(live, 'folder').mockReturnValue(target)
+    vi.spyOn(live, 'fileBinding').mockImplementation(service.fileBinding.bind(service))
+    vi.spyOn(live, 'sourceFor').mockImplementation(service.sourceFor.bind(service))
+    const call = (name: string, params: Record<string, unknown>) =>
+      createTraceTools(activeTraceContext)
+        .find((tool) => tool.name === name)!
+        .execute('sample-call', params)
+    await call('trace_point_add', {
+      file: 'packages/orders/src/index.ts',
+      line: 2,
+      take: ['value'],
+    })
+    await call('trace_point_list', { file: 'packages/orders/src/index.ts' })
+    live.select(orders)
+    const removing = call('trace_point_remove', { file, line: 7, session: rates.sessionId })
+    if (refused) {
+      await expect(removing).rejects.toThrow('could not be confirmed')
+      expect(rates.trace!.points).toHaveLength(1)
+      expect(saved.get(rates.sessionId!)).toHaveLength(1)
+      return
+    }
+    const result = await removing
+    expect(result.content[0]).toMatchObject({ text: expect.stringContaining('removed') })
+    expect(rates.controller.removeBreakpoint).toHaveBeenCalledTimes(copies)
+    expect(orders.controller.removeBreakpoint).not.toHaveBeenCalled()
+    expect(orders.trace!.points).toHaveLength(1)
+    expect(saved.get(orders.sessionId!)).toHaveLength(1)
+    expect(rates.trace!.points).toEqual([])
+    expect(saved.get(rates.sessionId!)).toEqual([])
+  }
+)
+
 it('applies a pending point once when several source views admit the same mapped file', async () => {
   const file = 'packages/rates/src/index.ts'
   service.editPendingPoint(target, file, 4, { record: { take: ['rate'] } })
@@ -91,13 +221,16 @@ it('adds, lists and removes an explicit agent point in a mapped shared package',
     target
   )
   const savePoint = vi.fn(async () => ({ pending: false }))
-  const removePoint = vi.fn(async () => {})
+  const removePoint = vi.fn(async () => {
+    orders.trace!.points = []
+  })
   orders.trace = {
     projectId: target.projectId,
     rpc: {},
     points: [{ breakpoint_id: 'shared-point' }],
     savePoint,
     removePoint,
+    refreshPoints: vi.fn(async () => {}),
     dispose: vi.fn(),
   } as never
   vi.spyOn(orders.controller, 'knownBreakpoints').mockReturnValue([

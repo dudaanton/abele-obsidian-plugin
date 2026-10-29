@@ -436,9 +436,10 @@ it('keeps sibling service points pending, routes agent edits by file, and offers
       const listed=await call('trace_point_list',{file:'packages/orders/src/index.js'});
       if(!orders.trace.points.length)throw Error('agent point went to the viewed process');
       service.select(orders);
+      const beforeRemoval=(await rates.trace.rpc.points(rates.sessionId)).map(p=>p.breakpoint_id);
       const removed=await call('trace_point_remove',{file:'packages/rates/src/index.js',line:7,session:rates.sessionId});
       const remaining={local:rates.trace.points.map(p=>p.breakpoint_id),node:(await rates.trace.rpc.points(rates.sessionId)).map(p=>p.breakpoint_id)};
-      if(remaining.local.length||remaining.node.length)throw Error('agent removal not reflected: '+removed+' '+JSON.stringify(remaining));
+      if(remaining.local.length||remaining.node.length)throw Error('agent removal not reflected: '+JSON.stringify({before:beforeRemoval,...remaining})+' '+removed);
       if(orders.trace.points.length!==1)throw Error('removing rates changed orders');
       await call('trace_point_add',{file:'packages/rates/src/index.js',line:7,take:['surge']});
       await call('trace_point_list',{file:'packages/orders/src/index.js'});

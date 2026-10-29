@@ -19,6 +19,7 @@ const state = vi.hoisted(() => {
       points: [{ breakpoint_id: 'sample-point' }],
       savePoint: vi.fn(),
       removePoint: vi.fn(),
+      refreshPoints: vi.fn(async () => {}),
     },
   }
   const folder = {
@@ -142,10 +143,13 @@ it('rechecks chat permission after source admission before saving the point', as
 })
 
 it('removes only the point at the requested source line', async () => {
+  state.binding.trace.removePoint.mockImplementationOnce(async () => {
+    state.binding.trace.points = []
+  })
   const guard = vi.fn()
   await activeTraceContext()!.removePoint('src/sample.ts', 7, guard)
   expect(state.binding.trace.removePoint).toHaveBeenCalledExactlyOnceWith('sample-point')
-  expect(guard).toHaveBeenCalledTimes(2)
+  expect(guard).toHaveBeenCalledTimes(3)
   await expect(activeTraceContext()!.removePoint('src/sample.ts', 8)).rejects.toThrow(
     'No record point'
   )

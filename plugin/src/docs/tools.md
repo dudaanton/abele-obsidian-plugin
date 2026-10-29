@@ -1083,7 +1083,9 @@ default; `trace_mark`, `trace_point_add`, `trace_point_remove` and `trace_note` 
   is taken; an empty list takes nothing.
 - `trace_point_list(file?, session?, process?)` lists record points for the matching process, independently of the viewed session.
 - `trace_point_remove(file, line)` removes the record point and breakpoint at its requested
-  source line, keeping other points. It needs the same folder edit access and approval as adding a point.
+  source line, keeping other points. It reads the owning process's current registrations and removes
+  every registration for that requested line; an unconfirmed removal returns an error rather than success.
+  It needs the same folder edit access and approval as adding a point.
 - `trace_note(run?)` writes a note about the run into the folder named in Settings → Nodes
   (see [Vault](vault)) and answers with its path. Write your own account of the flow under its
   last heading with ordinary file tools, citing steps and paths as `t0042 · result · $.items[7]`.
