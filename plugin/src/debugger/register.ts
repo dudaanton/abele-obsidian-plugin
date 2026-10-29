@@ -156,7 +156,9 @@ function configureSessionActions(
           throw new Error('Reconnect to the debugger before restarting')
         await binding.controller.command('stop')
       }
-      const { StartResultSchema, registerSources, openSources } = await import('./startProgram')
+      const { StartResultSchema, registerSources, openSources, untilHeld } = await import(
+        './startProgram'
+      )
       const target = await debugTarget(presenter)
       if (!target) return
       const started = StartResultSchema.parse(
@@ -166,9 +168,9 @@ function configureSessionActions(
         })
       )
       const snapshot = await registerSources(presenter, started, target)
-      await openSources(presenter, started, snapshot.incarnation, target)
-      await showSession(presenter, started.debug_session_id)
       const next = DebuggerService.instance.binding(presenter, started.debug_session_id)
+      await next.open(started.debug_session_id)
+      if (carried.length) await untilHeld(next)
       await removeForgottenBreakpoints(binding, next, forgotten)
       for (const point of carried) {
         const source = started.sources.find((source) => source.path === point.file)
@@ -184,6 +186,10 @@ function configureSessionActions(
           })
         } else await restoreBreakpoint(next.controller, source.source_id, point)
       }
+      // Publish controls only after the new process has its points. A fast Continue must not
+      // run past them while Restart is still restoring the previous session's intent.
+      await openSources(presenter, started, snapshot.incarnation, target)
+      await showSession(presenter, started.debug_session_id)
     }
     if (binding.controller.snapshot?.target.process_ownership === 'external') {
       binding.rerun = undefined

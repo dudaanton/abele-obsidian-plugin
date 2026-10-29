@@ -102,7 +102,7 @@ export function carriedPoints(binding: DebuggerBinding): CarriedPoint[] {
 const HOLD_MS = 10_000
 
 /** Resolves once the session stands still (held, ended or cut off), or after HOLD_MS. */
-function untilHeld(binding: DebuggerBinding): Promise<void> {
+export function untilHeld(binding: DebuggerBinding): Promise<void> {
   const still = () =>
     binding.controller.session.status !== 'starting' &&
     binding.controller.session.status !== 'running'

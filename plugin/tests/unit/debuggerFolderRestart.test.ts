@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import { ref, nextTick } from 'vue'
 import { debuggerSnapshot } from '../fixtures/debugger'
 import type { FolderDebugOwner } from '@/debugger/owner'
 
@@ -78,6 +79,7 @@ function fixture(lifecycle: 'terminated' | 'detached' | 'failed' | 'connection-l
     ])
   )
   const controller = {
+    session: { status: 'exited' },
     snapshot: snapshots.get('sample-ended')!,
     current: true,
     observe: vi.fn(),
@@ -85,6 +87,7 @@ function fixture(lifecycle: 'terminated' | 'detached' | 'failed' | 'connection-l
     setBreakpoint: vi.fn(async () => {}),
   }
   const binding = {
+    revision: ref(0),
     controller,
     open: vi.fn(async (id: string) => {
       controller.snapshot = snapshots.get(id)!
@@ -171,6 +174,33 @@ it('restores record point metadata when reattaching a restarted program', async 
     hitCondition: '2',
   })
   expect(binding.controller.setBreakpoint).not.toHaveBeenCalled()
+})
+
+it('waits for the restarted process to stop before restoring its record points', async () => {
+  const { context, binding } = fixture('detached')
+  binding.retainedBreakpoints = [
+    { id: 'sample-point', file: 'sample.cjs', requestedLine: 5 } as never,
+  ]
+  const revision = ref(0)
+  const session = { status: 'running' }
+  Object.assign(binding, { revision })
+  Object.assign(binding.controller, { session })
+  const savePoint = vi.fn(async () => {})
+  Object.assign(binding, {
+    trace: { points: [{ breakpoint_id: 'sample-point', take: ['count'] }], savePoint },
+  })
+  await showSession(context, 'sample-ended')
+  f.select.mockClear()
+  const restarting = binding.rerun!()
+  await vi.waitFor(() => expect(binding.open).toHaveBeenCalledWith('sample-second'))
+  await nextTick()
+  expect(savePoint).not.toHaveBeenCalled()
+  expect(f.select).not.toHaveBeenCalled()
+  session.status = 'paused'
+  ++revision.value
+  await restarting
+  expect(savePoint).toHaveBeenCalledExactlyOnceWith('sample-source', 5, { take: ['count'] })
+  expect(f.select).toHaveBeenCalledOnce()
 })
 
 it.each(['owned', 'external'] as const)(
