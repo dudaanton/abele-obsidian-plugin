@@ -13,6 +13,7 @@ import { registerSnippetBlock } from '@/github/snippetCard'
 import { formatSnippet, parseSnippet, type SnippetBlock } from '@/github/snippetBlock'
 import { parseGithubUrl } from '@/github/urls'
 import { PULL, file, openTab as open } from '../helpers/githubTab'
+import { pickGithubFloatingAction } from '../helpers/githubFloatingSelection'
 import { useVault } from '../helpers/testEnv'
 
 const HOST = 'github.example.com'
@@ -231,12 +232,8 @@ describe('writing a card from a GitHub tab', () => {
     await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
 
     await clickLineNumber(wrapper, '.cm-lineNumbers', 2)
-    await clickLineNumber(wrapper, '.cm-lineNumbers', 3, true, 40)
-    await vi.waitFor(() => expect(wrapper.find('.abele-github-selection').exists()).toBe(true))
-    await wrapper
-      .findAll('.abele-github-selection button')
-      .find((b) => b.text() === 'Insert with code')!
-      .trigger('click')
+    await clickLineNumber(wrapper, '.cm-lineNumbers', 3, true)
+    await pickGithubFloatingAction('code')
     await vi.waitFor(() => expect(blockIn(note)).not.toBeNull())
 
     expect(blockIn(note)).toEqual({

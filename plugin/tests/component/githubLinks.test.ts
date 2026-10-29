@@ -8,8 +8,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { flushPromises, type VueWrapper } from '@vue/test-utils'
 import { MarkdownView, Notice, TFile } from 'obsidian'
+import { EditorView } from '@codemirror/view'
 import { diffAnchorHash } from '@/github/urls'
 import { ISSUE, PULL, file, openTab as open } from '../helpers/githubTab'
+import { pickGithubFloatingAction } from '../helpers/githubFloatingSelection'
 import { useVault } from '../helpers/testEnv'
 
 let writeText: ReturnType<typeof vi.fn>
@@ -156,20 +158,30 @@ describe('lines of a file', () => {
   it('link to the commit the file was read at, not the branch', async () => {
     const SHA = '0123456789abcdef0123456789abcdef01234567'
     const commits = vi.fn(() => ({ text: `${SHA}\n` }))
-    const { wrapper } = open('https://github.com/o/r/blob/main/src/app.ts#L2', {
+    const { wrapper, model } = open('https://github.com/o/r/blob/main/src/app.ts#L2', {
       '/repos/o/r/contents/src/app.ts': { text: 'one\ntwo\nthree\nfour' },
       '/repos/o/r/commits/main': commits,
     })
     await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
 
     await clickLineNumber(wrapper, '.cm-lineNumbers', 2)
-    // The bar now sits under line 2, between it and line 3.
-    await clickLineNumber(wrapper, '.cm-lineNumbers', 3, true, 40)
-    await vi.waitFor(() => expect(wrapper.find('.abele-github-selection').exists()).toBe(true))
-    expect(wrapper.find('.abele-github-selection__label').text()).toBe('Lines 2–3')
+    await clickLineNumber(wrapper, '.cm-lineNumbers', 3, true)
+    expect(model.screen.selection).toEqual({
+      path: 'src/app.ts',
+      label: 'Lines 2–3',
+      code: 'two\nthree',
+    })
+    // The DOM shim omits visual line breaks in Selection.toString(); assert exact endpoints.
+    const range = window.getSelection()!.getRangeAt(0)
+    const editor = EditorView.findFromDOM(wrapper.get('.cm-editor').element as HTMLElement)!
+    expect(editor.posAtDOM(range.startContainer, range.startOffset)).toBe(4)
+    expect(editor.posAtDOM(range.endContainer, range.endOffset)).toBe(13)
 
-    await press(wrapper, '.abele-github-selection button', 0)
-    await press(wrapper, '.abele-github-selection button', 0)
+    await pickGithubFloatingAction('link')
+    // Picking closes the floating menu, so select the same lines again for the cached link.
+    await clickLineNumber(wrapper, '.cm-lineNumbers', 2)
+    await clickLineNumber(wrapper, '.cm-lineNumbers', 3, true)
+    await pickGithubFloatingAction('link')
     expect(writeText.mock.calls.map((c) => c[0])).toEqual([
       `[o/r@0123456 · src/app.ts:2–3](https://github.com/o/r/blob/${SHA}/src/app.ts#L2-L3)`,
       `[o/r@0123456 · src/app.ts:2–3](https://github.com/o/r/blob/${SHA}/src/app.ts#L2-L3)`,

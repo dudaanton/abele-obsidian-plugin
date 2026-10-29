@@ -86,12 +86,20 @@ const CLICK_NUMBER = `
     if (!(await until(() => cell.isConnected && cell.getBoundingClientRect().height > 0 && placeInView(cell).inView)))
       throw Error('GitHub gutter did not scroll into view')
     const r = cell.getBoundingClientRect()
-    cell.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0,
+    const click=()=>cell.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0,
       clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }))
+    click()
+    if(gutter==='.cm-lineNumbers') {
+      // Repeating an action must select again; a click on an already picked line toggles it off.
+      if(window.getSelection()?.isCollapsed)click()
+      return !!(await until(() => document.querySelector('.abele-selection-bar_placed'), 5000))
+    }
     return !!(await until(() => scope.querySelector('.abele-github-selection'), 5000))
   }
   const press = (scope, text) => {
-    const b = [...scope.querySelectorAll('.abele-github-selection button')].find((x) => x.textContent.trim() === text)
+    const id={'Copy link':'link','Insert into note':'note','Insert with code':'code'}[text]
+    const b = document.querySelector('.abele-selection-bar_placed [data-action="'+id+'"]') ??
+      [...scope.querySelectorAll('.abele-github-selection button')].find((x) => x.textContent.trim() === text)
     b?.click()
     return !!b
   }
@@ -284,9 +292,11 @@ describe.skipIf(!available)('a GitHub tab', () => {
         press(root, 'Copy link')
         report.copied = await until(() => { const t = clipboard.readText(); return t !== kept && t.includes('src/app.ts') ? t : null }, 10000)
 
+        if (!(await clickNumber(root, '.cm-lineNumbers', 5))) return { error: 'no selection menu for note insertion' }
         press(root, 'Insert into note')
         report.link = !!(await until(() => note.view.editor.getValue().includes('src/app.ts:5]('), 10000))
 
+        if (!(await clickNumber(root, '.cm-lineNumbers', 5))) return { error: 'no selection menu for snippet insertion' }
         press(root, 'Insert with code')
         report.fenceReady = !!await until(() => note.view.editor.getValue().includes('abele-github'), 10000)
         report.editor = note.view.editor.getValue()

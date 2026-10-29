@@ -176,8 +176,8 @@ describe('selecting lines from the rendered file', () => {
     expect(marked(wrapper)).toEqual([])
   })
 
-  it('the selection stays when switching to the code, with its bar', async () => {
-    const { wrapper } = open(BASE, ROUTES)
+  it('the selection and its actions stay when switching to the code', async () => {
+    const { wrapper, model } = open(BASE, ROUTES)
     await vi.waitFor(() => expect(blocks(wrapper)).toHaveLength(6))
     await pick(wrapper, 2)
     await pick(wrapper, 3, true)
@@ -185,25 +185,32 @@ describe('selecting lines from the rendered file', () => {
     await switchTo(wrapper, 'Code')
     await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
     expect(markedLines(wrapper)).toEqual(['- one', '- two'])
-    await vi.waitFor(() =>
-      expect(wrapper.find('.abele-github-selection__label').text()).toBe('Lines 6–7')
-    )
+    expect(model.screen.selection).toEqual({
+      path: 'README.md',
+      label: 'Lines 6–7',
+      code: '- one\n- two',
+    })
+    expect(await model.screen.selectionChat!.link()).toEqual({
+      label: 'o/r@0123456 · README.md:6–7',
+      url: `https://github.com/o/r/blob/${SHA}/README.md?plain=1#L6-L7`,
+    })
+    expect(model.screen.selectionChat!.quote()).toEqual({ path: 'README.md', code: '- one\n- two' })
   })
 
   it('lines selected in the code show in the rendered file', async () => {
-    const { wrapper } = open(`${BASE}?plain=1`, ROUTES)
+    const { wrapper, model } = open(`${BASE}?plain=1`, ROUTES)
     await vi.waitFor(() => expect(wrapper.find('.cm-editor').exists()).toBe(true))
     // A click on line 10's number, where CodeMirror's 14 px estimate puts it.
     wrapper
       .find('.cm-lineNumbers')
       .element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientY: 14 * 9 + 7 }))
     await flushPromises()
-    expect(wrapper.find('.abele-github-selection__label').text()).toBe('Line 10')
+    expect(model.screen.selection).toEqual({ path: 'README.md', label: 'Line 10', code: 'npm i' })
 
     await switchTo(wrapper, 'Preview')
     await vi.waitFor(() => expect(blocks(wrapper)).toHaveLength(6))
     expect(marked(wrapper)).toEqual(['9'])
-    expect(wrapper.find('.abele-github-selection__label').text()).toBe('Line 10')
+    expect(model.screen.selection).toEqual({ path: 'README.md', label: 'Line 10', code: 'npm i' })
   })
 })
 
