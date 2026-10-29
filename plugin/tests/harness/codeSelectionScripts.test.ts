@@ -32,7 +32,7 @@ const scripts = [
   ...(['debugger', 'node-or-local', 'github'] as const).map((surface) =>
     openSelectionSource(surface, 'http://127.0.0.1:1234/acme/widgets/blob/main/src/app.ts')
   ),
-  ...(['ask', 'add', 'note'] as const).flatMap((action) => [
+  ...(['ask', 'add', 'note', 'code'] as const).flatMap((action) => [
     actionCoordinates(action),
     prepareSelectionAction(action),
     checkSelectionDestination(action),

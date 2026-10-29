@@ -1,4 +1,5 @@
 import { streamBLabel } from '@/i18n/streamBLabels'
+import { occurrences } from './occurrences'
 import { t } from '@/i18n'
 import { comparisonTheme } from './comparisonTheme'
 import { FIND_SKIP_ATTR } from './find/finder'
@@ -116,6 +117,7 @@ function mount(
   originalExtensions: Extension[] = []
 ): Viewer & { view: EditorView; retarget(line: number | null): void } {
   const configured: Extension[] = [
+    occurrences(),
     ...(comparison ? [comparisonTheme] : []),
     ...(comparison && !comparison.split ? workingComparison(comparison.original) : []),
     ...(onChange

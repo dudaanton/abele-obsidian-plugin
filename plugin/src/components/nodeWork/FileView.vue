@@ -263,7 +263,7 @@ async function draw() {
   viewer?.destroy()
   viewer = undefined
   if (code.value) {
-    viewer = mountCode(code.value, props.text, props.path, linkedRange.value)
+    viewer = mountCode(code.value, props.text, props.path, linkedRange.value, { floating: true })
     if (props.line) {
       const drawn = viewer
       unpin = pinIntoView(code.value, () => drawn.targetTop(), {

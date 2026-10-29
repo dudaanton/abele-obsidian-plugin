@@ -149,7 +149,9 @@ it.each([true, false])(
       .getComponent(SelectionBar)
       .props('actions')
       .map((a: { id: string }) => a.id)
-    expect(actions).toEqual(enabled ? ['ask', 'add', 'note', 'link'] : ['add', 'note', 'link'])
+    expect(actions).toEqual(
+      enabled ? ['ask', 'add', 'note', 'code', 'link'] : ['add', 'note', 'code', 'link']
+    )
     const line = view.get('.cm-line').element
     const range = document.createRange()
     range.selectNodeContents(line)
@@ -265,9 +267,44 @@ it('hands pending GitHub note snippets to the linker so it can handle a failed p
     global: { provide: { [LINKER as symbol]: linker } },
   })
   await flushPromises()
-  view.getComponent(SelectionBar).vm.$emit('pick', 'note', { text: 'sample', from: 1, to: 1 })
+  view.getComponent(SelectionBar).vm.$emit('pick', 'code', { text: 'sample', from: 1, to: 1 })
   expect(linker.insertSnippet).toHaveBeenCalledWith(expect.any(Promise))
   reject(new Error('Sample unavailable link'))
   await flushPromises()
   expect(failed).toHaveBeenCalled()
+})
+
+it('retains link insertion separately from insertion with code in the floating menu', async () => {
+  useVault([])
+  const link = {
+    url: 'https://github.com/sample/project/blob/main/sample.ts#L1',
+    label: 'sample.ts:1',
+  }
+  const linker = {
+    canAsk: () => true,
+    blobLink: vi.fn().mockResolvedValue(link),
+    insert: vi.fn(),
+    insertSnippet: vi.fn(),
+  }
+  view = mount(GithubBlob, {
+    props: {
+      text: 'const sample = 1',
+      file: {
+        host: 'github.com',
+        owner: 'sample',
+        repo: 'project',
+        ref: 'main',
+        path: 'sample.ts',
+      } as never,
+    },
+    global: { provide: { [LINKER as symbol]: linker } },
+  })
+  await flushPromises()
+  const bar = view.getComponent(SelectionBar)
+  bar.vm.$emit('pick', 'note', { text: 'sample', from: 1, to: 1 })
+  expect(linker.insert).toHaveBeenCalledWith(expect.any(Promise))
+  expect(await linker.insert.mock.calls[0][0]).toEqual(link)
+  expect(linker.insertSnippet).not.toHaveBeenCalled()
+  bar.vm.$emit('pick', 'code', { text: 'sample', from: 1, to: 1 })
+  expect(linker.insertSnippet).toHaveBeenCalledWith(expect.any(Promise))
 })

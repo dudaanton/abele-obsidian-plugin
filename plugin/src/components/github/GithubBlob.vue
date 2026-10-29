@@ -142,22 +142,12 @@
       @change="editText"
       @commit="(sha) => emit('open', source!.navigation.commit(sha))"
     >
-      <template #bar>
-        <GithubSelectionBar
-          v-if="linker && selected && !unsaved"
-          :linker="linker"
-          :label="linesLabel(selected)"
-          :link="selectedLink"
-          :snippet="selectedSnippet"
-          :quote="selectedQuote"
-        />
-      </template>
     </GithubCode>
     <SelectionBar
       v-if="linker && !unsaved && !documentNote"
       :scope="blobRoot"
       within=".cm-content"
-      :actions="linker.canAsk() ? [ASK, ADD, NOTE, LINK] : [ADD, NOTE, LINK]"
+      :actions="linker.canAsk() ? [ASK, ADD, NOTE, CODE, LINK] : [ADD, NOTE, CODE, LINK]"
       @pick="onWords"
     />
   </div>
@@ -182,7 +172,7 @@ import GithubCode from './GithubCode.vue'
 import GithubMarkdown from './GithubMarkdown.vue'
 import GithubSelectionBar from './GithubSelectionBar.vue'
 import SelectionBar, { type Selected } from '../obsidian/SelectionBar.vue'
-import { ADD, ASK, NOTE, LINK } from '../obsidian/selectionActions'
+import { ADD, ASK, NOTE, CODE, LINK } from '../obsidian/selectionActions'
 import { addGithubSelection } from '@/github/addSelection'
 import { LINKER } from '@/github/linking'
 import { codeSnippet } from '@/github/snippetBlock'
@@ -550,7 +540,8 @@ async function onWords(action: string, words: Selected) {
   if (action === 'ask') await linker.ask(link, { code: words.text, path })
   else if (action === 'add') await addGithubSelection(link, { code: words.text, path })
   else if (action === 'link') await linker.copy(link)
-  else if (action === 'note')
+  else if (action === 'note') await linker.insert(link)
+  else if (action === 'code')
     await linker.insertSnippet(link.then((resolved) => codeSnippet(resolved, path, text, span)))
 }
 

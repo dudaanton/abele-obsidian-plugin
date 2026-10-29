@@ -36,3 +36,11 @@ export const LINK: SelectionAction = {
     return t('kit.linkSelection')
   },
 }
+
+export const CODE: SelectionAction = {
+  id: 'code',
+  icon: 'file-code',
+  get tooltip() {
+    return t('streamB.insertWithCode.7226b2')
+  },
+}

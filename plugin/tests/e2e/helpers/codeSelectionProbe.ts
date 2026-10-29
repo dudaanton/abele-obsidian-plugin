@@ -149,6 +149,11 @@ export const readSelectionBar = codeSelectionScript(String.raw`
       cm:state.source?.view.containerEl.querySelector('.cm-editor')?.cmView?.view?.state.selection.main.toJSON?.()??null,
       drawers:[...document.querySelectorAll('.workspace-drawer.is-pinned,.workspace-drawer:not(.is-hidden),.modal-container')].map(el=>el.className)}));
   }
+  if(state.surface==='github'){
+    await until(()=>state.source.view.containerEl.querySelector('.abele-code-occurrence'),5000);
+    if(!state.source.view.containerEl.querySelector('.abele-code-occurrence'))throw Error('Other occurrences are not highlighted');
+    if(state.source.view.containerEl.querySelector('.abele-github-code__bar,.abele-github-selection'))throw Error('Inline selection bar remains');
+  }
   const box=bar.getBoundingClientRect();
   const actions=[...bar.querySelectorAll('[data-action]')].map(el=>({id:el.dataset.action,
     icon:el.querySelector('svg')?.innerHTML===state.linkSvg?'link':
@@ -171,7 +176,7 @@ export const selectionMenu = codeSelectionScript(String.raw`
   return JSON.stringify({items});
 `)
 
-export const prepareSelectionAction = (action: 'ask' | 'add' | 'note') =>
+export const prepareSelectionAction = (action: 'ask' | 'add' | 'note' | 'code') =>
   codeSelectionScript(String.raw`
   state.actionError=null;state.action=${JSON.stringify(action)};
   if(${JSON.stringify(action)}==='add'){
@@ -181,7 +186,7 @@ export const prepareSelectionAction = (action: 'ask' | 'add' | 'note') =>
     const input=await until(()=>{const input=api.composer();return input&&input.get()===''?input:null},8000);
     if(!input)throw Error('No empty owned add destination');input.set('Existing draft\n');
   }
-  if(${JSON.stringify(action)}==='note'){
+  if(['note','code'].includes(${JSON.stringify(action)})){
     await app.workspace.setActiveLeaf(state.note,{focus:true});
     state.note.view.editor.setValue('# Sample destination\n');
     state.note.view.editor.setCursor({line:1,ch:0});
@@ -190,7 +195,7 @@ export const prepareSelectionAction = (action: 'ask' | 'add' | 'note') =>
   return JSON.stringify({ready:true});
 `)
 
-export const checkSelectionDestination = (action: 'ask' | 'add' | 'note') =>
+export const checkSelectionDestination = (action: 'ask' | 'add' | 'note' | 'code') =>
   codeSelectionScript(String.raw`
   if(state.node&&${JSON.stringify(action)}==='ask'){
     const provider=await until(()=>[...document.querySelectorAll('.suggestion-item')].find(el=>el.textContent.includes('Fake (non-executing)')),8000);
@@ -202,8 +207,8 @@ export const checkSelectionDestination = (action: 'ask' | 'add' | 'note') =>
     const choice=await until(()=>[...document.querySelectorAll('.suggestion-item')].find(el=>el.textContent.includes(state.addTitle)),8000);
     if(!choice)throw Error('No owned chat in the node picker');choice.click();
   }
-  if(${JSON.stringify(action)}==='note'){
-    const text=await until(()=>{const text=state.note.view.editor.getValue();return text!==state.noteBefore&&text.includes(state.word)?text:null},8000);
+  if(['note','code'].includes(${JSON.stringify(action)})){
+    const text=await until(()=>{const text=state.note.view.editor.getValue();return text!==state.noteBefore&&text.includes(state.surface==='github'&&${JSON.stringify(action)}==='note'?'src/app.ts':state.word)?text:null},8000);
     if(!text)throw Error('Selected words never reached the note');
     return JSON.stringify({text});
   }

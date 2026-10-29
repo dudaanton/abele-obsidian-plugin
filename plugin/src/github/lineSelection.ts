@@ -22,6 +22,8 @@ import { Platform } from 'obsidian'
 import type { LineSpan } from './permalinks'
 
 export interface SelectionHooks {
+  /** Code files use the floating native-selection menu instead of a block widget. */
+  floating?: boolean
   /** Lines marked when the view opens — those a link named. They get no bar. */
   initial?: number[]
   /**
@@ -147,6 +149,19 @@ export function lineSelection(hooks: SelectionHooks): {
       next = { lines: [line], anchor: line, bar: true }
     }
     apply(view, next)
+    if (hooks.floating) {
+      const selection = view.dom.ownerDocument.getSelection()
+      selection?.removeAllRanges()
+      if (next.lines.length) {
+        const first = view.domAtPos(view.state.doc.line(next.lines[0]).from)
+        const last = view.domAtPos(view.state.doc.line(next.lines[next.lines.length - 1]).to)
+        const range = view.dom.ownerDocument.createRange()
+        range.setStart(first.node, first.offset)
+        range.setEnd(last.node, last.offset)
+        selection?.addRange(range)
+      }
+      view.dom.ownerDocument.dispatchEvent(new Event('selectionchange'))
+    }
     event.preventDefault()
     return true
   }
@@ -200,7 +215,7 @@ function build(state: EditorState, value: Selected, hooks: SelectionHooks): Deco
     .filter((n) => n >= 1 && n <= state.doc.lines)
     .sort((a, b) => a - b)
   const ranges = marks.map((n) => TARGET.range(state.doc.line(n).from))
-  if (value.bar && marks.length) {
+  if (!hooks.floating && value.bar && marks.length) {
     const last = marks[marks.length - 1]
     const widget = Decoration.widget({
       widget: new BarWidget(last, hooks.onBarHost),

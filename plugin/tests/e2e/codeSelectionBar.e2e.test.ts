@@ -128,7 +128,8 @@ for (const layout of ['desktop', 'emulateMobile'] as const) {
           { id: 'add', icon: 'message-square-plus' },
           { id: 'note', icon: 'file-input' },
         ]
-        if (surface === 'github') actions.push({ id: 'link', icon: 'link' })
+        if (surface === 'github')
+          actions.push({ id: 'code', icon: 'file-code' }, { id: 'link', icon: 'link' })
         expect(bar.actions).toEqual(actions)
         const shot = await run<{ saved: boolean; width: number; height: number }>(
           selectionShot(`/tmp/abele-code-selection/${layout}-${source.surface}-bar.png`)
@@ -146,7 +147,9 @@ for (const layout of ['desktop', 'emulateMobile'] as const) {
             /ask (here|the agent)|add to (the )?(open )?chat|insert.*note|copy.*link.*lines/i
           )
 
-        for (const action of ['ask', 'add', 'note'] as const) {
+        for (const action of (surface === 'github'
+          ? ['ask', 'add', 'note', 'code']
+          : ['ask', 'add', 'note']) as ('ask' | 'add' | 'note' | 'code')[]) {
           await run(prepareSelectionAction(action))
           await selectWords()
           await run(readSelectionBar)
@@ -155,7 +158,9 @@ for (const layout of ['desktop', 'emulateMobile'] as const) {
           const destination = await run<{ text: string; tabId?: string; addId?: string }>(
             checkSelectionDestination(action)
           )
-          expect(destination.text).toContain(selection.word)
+          expect(destination.text).toContain(
+            surface === 'github' && action === 'note' ? 'src/app.ts' : selection.word
+          )
           if (action === 'add') {
             expect(destination.text).toContain('Existing draft')
             expect(destination.tabId).toBe(destination.addId)

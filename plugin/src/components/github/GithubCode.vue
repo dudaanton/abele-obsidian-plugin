@@ -91,6 +91,7 @@ const barHost = shallowRef<HTMLElement | null>(null)
 const hasBar = ref(false)
 
 const selectionHooks = {
+  floating: true,
   onSelect: (span: LineSpan | null) => {
     hasBar.value = !!span
     emit('select', span)

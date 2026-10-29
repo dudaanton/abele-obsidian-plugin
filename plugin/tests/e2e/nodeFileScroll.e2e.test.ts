@@ -17,6 +17,21 @@ function scrollProbe(shell: string, place: string, mode: string) {
         const attached=!cdp.isAttached();if(attached)cdp.attach('1.3');
         try {
           root.scrollTop=0;await wait(100);
+          if(${JSON.stringify(mode === 'file' && place === 'tab')}) {
+            const content=root.querySelector(".cm-line"),walker=document.createTreeWalker(content,NodeFilter.SHOW_TEXT);
+            let text;while((text=walker.nextNode())&&!text.textContent.includes("sampleValue")){}
+            if(!text)throw Error("Selection fixture missing");
+            const at=text.textContent.indexOf("sampleValue"),range=document.createRange();
+            range.setStart(text,at);range.setEnd(text,at+11);
+            window.getSelection().removeAllRanges();window.getSelection().addRange(range);
+            document.dispatchEvent(new Event("selectionchange"));
+            await until(()=>root.querySelector(".abele-code-occurrence"),"Occurrence highlight");
+            await until(()=>document.querySelector(".abele-selection-bar_placed"),"Floating selection menu");
+            if(root.querySelector(".abele-github-code__bar,.abele-github-selection"))throw Error("Inline selection bar remains");
+            require("fs").writeFileSync(${JSON.stringify(resolve(shots, `${shell}-${place}-${mode}-selection.png`))},(await web.capturePage()).toPNG());
+            window.getSelection().removeAllRanges();document.dispatchEvent(new Event("selectionchange"));
+          }
+
           require('fs').writeFileSync(${JSON.stringify(resolve(shots, `${shell}-${place}-${mode}-before-scroll.png`))},(await web.capturePage()).toPNG());
           const r=root.getBoundingClientRect(),x=Math.round(r.left+r.width/2),y=Math.round(r.top+r.height*0.75);
           for(const delta of [480,37]) {
@@ -34,6 +49,10 @@ function scrollProbe(shell: string, place: string, mode: string) {
           await cdp.sendCommand('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
           await until(()=>root.scrollTop>0,'Touch scroll moves long content');
           root.scrollTop=(root.scrollHeight-root.clientHeight)/2;await wait(200);
+          if(${JSON.stringify(mode === 'file' && place === 'tab')}) {
+            const header=root.querySelector(".abele-file-view__header"),box=header.getBoundingClientRect(),viewport=root.getBoundingClientRect();
+            if(getComputedStyle(header).position!=="sticky"||box.top<viewport.top-1||box.bottom>viewport.bottom)throw Error("File action header scrolled away");
+          }
           require('fs').writeFileSync(${JSON.stringify(resolve(shots, `${shell}-${place}-${mode}-middle.png`))},(await web.capturePage()).toPNG());
           return 'wheel, trackpad and touch scrolled';
         } finally {
@@ -48,7 +67,7 @@ async function scenario(shell: string) {
     const project = resolve(node.state, '../sample-project')
     writeFileSync(
       resolve(project, 'long.ts'),
-      Array.from({ length: 400 }, (_, i) => `const row${i} = ${i}`).join('\n')
+      Array.from({ length: 400 }, (_, i) => `const row${i} = ${i} // sampleValue`).join('\n')
     )
     await evalLong(`(async()=>{${PAIRED_PRELUDE}
       const client=nodes.connection(${JSON.stringify(node.registration)}).client;
@@ -81,7 +100,7 @@ async function scenario(shell: string) {
     })()`)
     writeFileSync(
       resolve(workspacePath, 'long.ts'),
-      Array.from({ length: 400 }, (_, i) => `const row${i} = ${i}`).join('\n')
+      Array.from({ length: 400 }, (_, i) => `const row${i} = ${i} // sampleValue`).join('\n')
     )
     execFileSync('/usr/bin/git', ['-c', 'core.hooksPath=/dev/null', 'add', 'long.ts'], {
       cwd: workspacePath,
