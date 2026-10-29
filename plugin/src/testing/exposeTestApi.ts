@@ -126,6 +126,8 @@ import { embeddedViews, isEmbeddedEditorAvailable } from '@/editor/embeddedEdito
 import {
   TFile,
   Component,
+  Modal,
+  loadPdfJs,
   MarkdownRenderer,
   MarkdownPreviewRenderer,
   requestUrl,
@@ -248,6 +250,8 @@ interface AbeleTestApi {
   closeDesignCatalogue: typeof closeDesignCatalogue
   rendering: {
     Component: typeof Component
+    Modal: typeof Modal
+    loadPdfJs: typeof loadPdfJs
     MarkdownRenderer: typeof MarkdownRenderer
     MarkdownPreviewRenderer: typeof MarkdownPreviewRenderer
     renderUntrustedMarkdown: typeof renderUntrustedMarkdown
@@ -1107,6 +1111,8 @@ export function exposeTestApi(plugin: Plugin): void {
     chatHistoryPaths,
     rendering: {
       Component,
+      Modal,
+      loadPdfJs,
       MarkdownRenderer,
       MarkdownPreviewRenderer,
       renderUntrustedMarkdown,

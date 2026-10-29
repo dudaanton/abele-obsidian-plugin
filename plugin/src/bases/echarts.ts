@@ -166,7 +166,7 @@ export function echartsInit(el: HTMLElement): EChartsType {
       { ...buildTheme(el.ownerDocument), animation: false },
       {
         renderer: 'svg',
-        width: el.clientWidth || 720,
+        width: Math.min(el.clientWidth || 720, 720),
         height: el.clientHeight || Number.parseFloat(el.style.height) || 300,
       }
     )
@@ -196,7 +196,7 @@ export function printChartWith(
   render: (chart: EChartsType) => void
 ): void {
   ensureRegistered()
-  const width = el.clientWidth || 720
+  const width = Math.min(el.clientWidth || 720, 720)
   const chart = init(
     el,
     { ...buildTheme(el.ownerDocument), animation: false },

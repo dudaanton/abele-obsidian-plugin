@@ -87,8 +87,13 @@
 .print .abele-print-chart,
 .print .abele-print-chart > div {
   height: auto !important;
+  width: 100% !important;
   max-width: 100%;
   break-inside: avoid;
+}
+.print .abele-print-chart svg {
+  position: static !important;
+  width: 100%;
 }
 .print .abele-github-snippet pre {
   white-space: pre-wrap;

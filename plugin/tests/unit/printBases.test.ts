@@ -8,7 +8,17 @@ it('does not recreate a chart when export is unloaded during its query', async (
   const host = root.appendChild(document.createElement('div'))
   const update = vi.fn()
   let dispose = () => {}
-  printableBasesView({ type: 'abele-chart', onDataUpdated: update, data: { data: [] }, register: (callback: () => void) => { dispose = callback } } as unknown as BasesView, host)
+  printableBasesView(
+    {
+      type: 'abele-chart',
+      onDataUpdated: update,
+      data: { data: [] },
+      register: (callback: () => void) => {
+        dispose = callback
+      },
+    } as unknown as BasesView,
+    host
+  )
   const rendering = renderPrintBases(root)
   await Promise.resolve()
   dispose()
