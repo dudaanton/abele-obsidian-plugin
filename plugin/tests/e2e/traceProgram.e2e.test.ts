@@ -13,6 +13,7 @@ import { withEmulatedPhone } from './helpers/emulatedPhone'
 import { evalRaw } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
+import { nodeFailureMessage, parseDebugAttachResult } from './helpers/debugAttachLifecycle'
 targets('desktop')
 
 const SHOTS = shotDir('abele-trace')
@@ -20,18 +21,16 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 /** What the app answered, or why not, with what the node said on its way out. */
 function inApp<T>(script: string): T {
   try {
-    return evalAsync<T>(script)
+    return parseDebugAttachResult<T>(evalRaw(script))
   } catch (e) {
-    throw new Error(
-      `node: ${daemonExit || 'running'}\n${daemonErrors.slice(-1200)}\n${e instanceof Error ? e.message : String(e)}`
-    )
+    throw new Error(nodeFailureMessage(e, daemonExit || 'running', daemonErrors))
   }
 }
 const prelude = `const wait=ms=>new Promise(r=>setTimeout(r,ms)),until=async(fn,what,tries=300)=>{for(let i=0;i<tries;i++){const v=fn();if(v)return v;await wait(50)}throw Error('Did not converge: '+what+'; '+(document.querySelector('.workspace-leaf.mod-active')?.textContent??'').slice(0,400))};
 const api=window.__abeleTest,nodes=api.NodeService.getInstance(),chats=api.ChatService.getInstance();
 const shot=async name=>{await wait(300);const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+name+'.png',image.toPNG())};
 const item=title=>[...document.querySelectorAll('.menu-item')].find(i=>i.querySelector('.menu-item-title')?.textContent.trim()===title);
-const press=el=>{el.click()};
+const press=el=>{if(!el)throw Error('Missing control: '+new Error().stack);el.click()};
 const marginAt=(line,root)=>{const sel='button.abele-debug-source__point[aria-label^="Stop at line '+line+' "]';if(root)return root.querySelector(sel);return document.querySelector('.workspace-leaf.mod-active '+sel)??[...document.querySelectorAll(sel)].find(b=>b.offsetParent)};
 const recordPoint=async (line,takes,root)=>{
   const mark=await until(()=>marginAt(line,root),'margin of line '+line).catch(()=>{throw Error('no margin on line '+line+': '+JSON.stringify(app.workspace.getLeavesOfType('abele-node-file').map(l=>{const st=l.view.getState();return [st.path,!!st.debug,st.debug?.sourceId,l.containerEl.querySelectorAll('button.abele-debug-source__point').length]}))+' '+debugState())});
@@ -227,7 +226,8 @@ afterAll(async () => {
  */
 const RUN = (program: string, shots = '', via = 'Run a program') => `
   const previousProgramSession=api.DebuggerService.instance.active.value?.sessionId;
-  document.querySelector('.abele-node-chat [aria-label="More chat actions"]').click();
+  await chats.revealSidebar({focus:false});
+  press(await until(()=>document.querySelector('.abele-node-chat [aria-label="More chat actions"]'),'chat actions after source navigation'));
   await until(()=>item(${JSON.stringify(via)}),${JSON.stringify(via + ' in the menu')});
   ${shots ? `await shot(${JSON.stringify(shots + '-menu')});` : ''}
   press(item(${JSON.stringify(via)}));
@@ -240,7 +240,8 @@ const RUN = (program: string, shots = '', via = 'Run a program') => `
   if(stopAtStart?.getAttribute('aria-checked')==='false') press(stopAtStart);
   press(await until(()=>[...document.querySelectorAll('.modal.abele-modal button')].find(el=>el.textContent.trim()==='Run a program'),'launch options confirmation'));
   await until(()=>{const binding=api.DebuggerService.instance.active.value;return binding?.sessionId&&binding.sessionId!==previousProgramSession},'new debug session',600);
-  await until(()=>document.querySelector('[aria-label="Continue (F5)"]'),'debug panel',600);`
+  await until(()=>document.querySelector('[aria-label="Continue (F5)"]'),'debug panel',600);
+  await until(()=>!document.querySelector('.modal.abele-modal'),'launch options closed',600);`
 
 /** The call stack as the panel lists it, Node's own frames folded into one row. */
 const STACK = `
@@ -415,6 +416,14 @@ it('keeps sibling service points pending, routes agent edits by file, and offers
       press(await until(()=>item('Add record point'),'pending record menu'));
       await until(()=>document.querySelector('.abele-trace-point'),'pending point editor');
       const offers=[...document.querySelectorAll('.abele-trace-point__offer')].map(el=>el.textContent.trim());
+      const editor=document.querySelector('.abele-trace-point'),oldMax=editor.style.maxWidth;
+      try {
+        editor.style.maxWidth='170px';
+        await until(()=>editor.classList.contains('abele-trace-point_narrow'),'narrow editor layout');
+        const bounds=editor.getBoundingClientRect();
+        for(const input of editor.querySelectorAll('input')){const r=input.getBoundingClientRect();if(r.right>bounds.right+1||r.left<bounds.left-1)throw Error('Narrow point field clipped: '+input.getAttribute('aria-label'));}
+        await shot('trace-multiple-processes-scope-narrow-${layout}');
+      } finally { editor.style.maxWidth=oldMax; }
       await shot('trace-multiple-processes-scope-${layout}');
       const take=document.querySelector('.abele-trace-point [aria-label="Take surge"]');
       if(!take)throw Error('surge not offered: '+JSON.stringify(offers));

@@ -5,6 +5,7 @@
   <div
     ref="root"
     class="abele-trace-point"
+    :class="{ 'abele-trace-point_narrow': narrow }"
     role="group"
     :aria-label="t('streamC.f40baf3eaf35ae5a', { v1: String(line) })"
     @keydown.esc.prevent="emit('cancel')"
@@ -129,6 +130,12 @@ const save = () => {
 }
 
 const root = ref<HTMLElement>()
+const narrow = ref(false)
+let sizeObserver: ResizeObserver | undefined
+const measureWidth = () => {
+  const width = root.value?.getBoundingClientRect().width ?? 0
+  narrow.value = width > 0 && width <= 280
+}
 let keyWindow: Window | null = null
 const keydown = (event: KeyboardEvent) => {
   if (!root.value?.contains(event.target as Node) || event.isComposing) return
@@ -140,6 +147,11 @@ const keydown = (event: KeyboardEvent) => {
   else save()
 }
 onMounted(() => {
+  measureWidth()
+  if (typeof ResizeObserver !== 'undefined' && root.value) {
+    sizeObserver = new ResizeObserver(measureWidth)
+    sizeObserver.observe(root.value)
+  }
   keyWindow = root.value?.ownerDocument.defaultView ?? null
   keyWindow?.addEventListener('keydown', keydown, true)
   adding.value?.focus({ preventScroll: true })
@@ -148,7 +160,10 @@ onMounted(() => {
   root.value?.scrollIntoView({ block: 'nearest' })
   if (scroller && left !== undefined) scroller.scrollLeft = left
 })
-onBeforeUnmount(() => keyWindow?.removeEventListener('keydown', keydown, true))
+onBeforeUnmount(() => {
+  sizeObserver?.disconnect()
+  keyWindow?.removeEventListener('keydown', keydown, true)
+})
 </script>
 
 <style lang="scss">
@@ -166,6 +181,14 @@ onBeforeUnmount(() => keyWindow?.removeEventListener('keydown', keydown, true))
 .abele-trace-point__label {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
+}
+.abele-trace-point_narrow {
+  grid-template-columns: minmax(0, 1fr);
+
+  .abele-trace-point__take .multi-select-input {
+    flex-basis: auto;
+    min-width: 0;
+  }
 }
 .abele-trace-point__field {
   display: flex;

@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import TracePointEditor from '@/components/debugger/trace/TracePointEditor.vue'
 import TraceRunView from '@/components/debugger/trace/TraceRunView.vue'
 import TraceValueRow from '@/components/debugger/trace/TraceValueRow.vue'
@@ -7,6 +8,42 @@ import TraceStepDetail from '@/components/debugger/trace/TraceStepDetail.vue'
 import TraceTrail from '@/components/debugger/trace/TraceTrail.vue'
 import BreakpointMark from '@/components/debugger/BreakpointMark.vue'
 import type { TraceRun } from '@/components/debugger/trace/types'
+
+it('stacks the point editor labels in a narrow pane and restores rows when widened', async () => {
+  let width = 170
+  let resized!: () => void
+  const measure = vi
+    .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+    .mockImplementation(() => ({ width }) as DOMRect)
+  let disconnect = vi.fn()
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(private callback: () => void) {}
+      observe(target: HTMLElement) {
+        if (target.classList.contains('abele-trace-point')) {
+          resized = this.callback
+          disconnect = this.disconnect
+        }
+      }
+      disconnect = vi.fn()
+    }
+  )
+  const editor = mount(TracePointEditor, { props: { line: 4 } })
+  try {
+    await nextTick()
+    expect(editor.find('.abele-trace-point').classes()).toContain('abele-trace-point_narrow')
+    width = 600
+    resized()
+    await nextTick()
+    expect(editor.find('.abele-trace-point').classes()).not.toContain('abele-trace-point_narrow')
+  } finally {
+    editor.unmount()
+    measure.mockRestore()
+    vi.unstubAllGlobals()
+  }
+  expect(disconnect).toHaveBeenCalledOnce()
+})
 
 it('explains a followed value with no recorded matches', () => {
   const w = mount(TraceTrail, { props: { trail: { value: 'sample body', stops: [] }, steps: [] } })
