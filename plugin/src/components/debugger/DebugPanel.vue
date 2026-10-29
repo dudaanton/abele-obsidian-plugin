@@ -623,7 +623,9 @@ const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?
   flex: 0 0 auto;
   padding: var(--size-4-2) var(--size-4-3);
   height: auto;
-  position: relative;
+  position: sticky;
+  top: 0;
+  z-index: 2;
   background: var(--background-secondary);
 }
 .abele-debug-panel__buttons {
