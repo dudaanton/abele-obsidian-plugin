@@ -12,14 +12,18 @@ import { withEmulatedPhone } from './helpers/emulatedPhone'
 import { evalRaw } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
-import { cleanupDebugAttachViews, nodeFailureMessage } from './helpers/debugAttachLifecycle'
+import {
+  cleanupDebugAttachViews,
+  nodeFailureMessage,
+  parseDebugAttachResult,
+} from './helpers/debugAttachLifecycle'
 targets('desktop')
 
 const SHOTS = shotDir('abele-debug-attach')
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 function inApp<T>(script: string): T {
   try {
-    return evalAsync<T>(script)
+    return parseDebugAttachResult<T>(evalRaw(script))
   } catch (e) {
     throw new Error(nodeFailureMessage(e, daemonExit || 'running', daemonErrors))
   }
@@ -38,8 +42,15 @@ function onPhone<T>(probe: () => Promise<T>): Promise<T> {
     }
   })
 }
-const prelude = `const wait=ms=>new Promise(r=>setTimeout(r,ms)),until=async(fn,what,tries=300)=>{for(let i=0;i<tries;i++){const v=fn();if(v)return v;await wait(50)}throw Error('Did not converge: '+what+'; '+debugState())};
+const prelude = `const checkpoints=[];
+const wait=ms=>new Promise(r=>setTimeout(r,ms)),until=async(fn,what,tries=300)=>{for(let i=0;i<tries;i++){const v=fn();if(v)return v;await wait(50)}const state=debugState();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/convergence-'+Date.now()+'.json',JSON.stringify({what,state:JSON.parse(state),checkpoints},null,2));throw Error('Did not converge: '+what+'; '+state)};
 const api=window.__abeleTest,nodes=api.NodeService.getInstance(),chats=api.ChatService.getInstance();
+const checkpoint=(stage,binding=api.DebuggerService.instance.active.value)=>{
+  const c=binding?.controller,s=c?.snapshot;
+  const data={stage,id:binding?.sessionId,status:c?.session.status,error:c?.error,snapshot:s,known:c?.knownBreakpoints(),forgotten:[...(binding?.forgottenBreakpoints??[])],records:binding?.trace?.points};
+  const serialized=JSON.stringify(data);if(checkpoints.at(-1)?.serialized===serialized)return;
+  checkpoints.push({at:Date.now(),serialized,data:JSON.parse(serialized)});if(checkpoints.length>100)checkpoints.shift();
+};
 const shot=async name=>{await wait(300);const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+name+'.png',image.toPNG())};
 const item=title=>[...document.querySelectorAll('.menu-item')].find(i=>i.querySelector('.menu-item-title')?.textContent.trim()===title);
 const press=el=>{el.click()};
@@ -374,8 +385,10 @@ async function sessionLifecycle(phone: boolean) {
     for(const line of [3,4])await binding.trace.savePoint(source,line,{take:['ticks']});
     await app.workspace.revealLeaf(debugLeaf);
     if(${phone}){debugSplit.collapse();await wait(300);debugSplit.expand();await wait(700)}
+    checkpoint('before-recording-detach',binding);
     await binding.controller.command('stop');
     await until(()=>binding.controller.session.status==='exited','detached');
+    checkpoint('recording-detached',binding);
     if(document.querySelector('.abele-debug-source__line_here'))throw Error('Stop line survived Detach');
     if(document.querySelector('.abele-debug-panel__group .abele-status-dot_red'))throw Error('Detached session still recording');
     for(const line of [3,4]){
@@ -384,6 +397,7 @@ async function sessionLifecycle(phone: boolean) {
       await until(()=>!binding.trace.breakpoints().some(p=>p.line===line&&!binding.forgottenBreakpoints.has(binding.controller.knownBreakpoints().find(k=>k.line===line)?.id)),'point removed');
     }
     await shot(${JSON.stringify(name + '-detached')});
+    checkpoint('ended-points-removed',binding);
     let attaches=1;
     for(let i=0;i<4;i++){
       const old=binding.sessionId;
@@ -391,7 +405,7 @@ async function sessionLifecycle(phone: boolean) {
       // A chat-owned session uses the picker; a folder-owned session can use its retained recipe.
       await until(()=>service.active.value?.sessionId!==old||rows().some(r=>r.title.includes('src/serve.js')),'reattach started',600);
       const offered=rows().find(r=>r.title.includes('src/serve.js'));if(offered)offered.el.click();
-      await until(()=>service.active.value?.sessionId!==old&&service.active.value?.controller.session.status==='running'&&!service.active.value.controller.knownBreakpoints().length&&(()=>{const pause=document.querySelector('.abele-debug-panel [aria-label^="Pause"]');return pause&&!pause.hasAttribute('disabled')})(),'new session prepared with removed points',600);
+      await until(()=>{checkpoint('reattach-'+i);return service.active.value?.sessionId!==old&&service.active.value?.controller.session.status==='running'&&!service.active.value.controller.knownBreakpoints().length&&(()=>{const pause=document.querySelector('.abele-debug-panel [aria-label^="Pause"]');return pause&&!pause.hasAttribute('disabled')})()},'new session prepared with removed points',600);
       binding=service.active.value;attaches++;
       await wait(700);
       if(binding.controller.session.status!=='running'||binding.controller.knownBreakpoints().length){require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/'+${JSON.stringify(name)}+'-reattach-failure.json',debugState());throw Error('Removed point stopped the next attach: '+debugState())}

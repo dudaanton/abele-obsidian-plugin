@@ -610,6 +610,7 @@ export class DebuggerController {
     this.transport.cancelPending?.()
     this.notify()
     console.debug('[debugger] Disconnect requested', method, invocation.snapshot.debug_session_id)
+    console.debug('[debugger] Disconnect starting snapshot', JSON.stringify(invocation.snapshot))
     try {
       // The node fences prior work when this control arrives. Do not queue it behind the work
       // it is meant to stop, or wait for proposal retirement before dispatching it.
@@ -651,6 +652,7 @@ export class DebuggerController {
         result.snapshot.incarnation !== invocation.snapshot.incarnation
       )
         throw new Error(t('node.error.generic'))
+      console.debug('[debugger] Disconnect receipt', JSON.stringify(result))
       this.snapshot = result.snapshot
       if (result.outcome !== 'completed') {
         this.session.status = 'lost'

@@ -2,6 +2,15 @@ export function nodeFailureMessage(error: unknown, state: string, stderr: string
   return `${error instanceof Error ? error.message : String(error)}\nnode: ${state}\n${stderr.slice(-1200)}`
 }
 
+/** Debugger failures include stop/point evidence after the first few hundred characters. */
+export function parseDebugAttachResult<T>(raw: string): T {
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    throw new Error(`Not JSON from the app: ${raw}`)
+  }
+}
+
 export async function cleanupCreatedViews(
   workspace: {
     getLeavesOfType(type: string): { id: string; detach(): void }[]

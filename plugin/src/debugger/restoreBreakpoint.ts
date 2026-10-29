@@ -22,6 +22,16 @@ export async function removeForgottenBreakpoints(
     .filter((point) =>
       removed.some((old) => old.file === point.file && old.requestedLine === point.requestedLine)
     )
+  console.debug(
+    '[debugger] Discarded attach point reconciliation',
+    JSON.stringify({
+      sessionId: next.sessionId,
+      removed,
+      matched: points,
+      snapshot: next.controller.snapshot,
+      recordPoints: next.trace?.points,
+    })
+  )
   if (!points.length) return
   const controller = next.controller
   const target = controller.snapshot
@@ -70,6 +80,7 @@ export async function removeForgottenBreakpoints(
       }
       if (controller.session.status === 'running' && !requestedPause) {
         const result = await controller.command('pause')
+        console.debug('[debugger] Attach point hold receipt', JSON.stringify(result))
         if (result && result.outcome === 'completed') requestedPause = true
         // Retry only a proven non-dispatched state-fence rejection; never uncertain effects.
         else if (
@@ -100,8 +111,20 @@ export async function removeForgottenBreakpoints(
     current() &&
     controller.snapshot?.stop_epoch === heldEpoch &&
     controller.session.status === 'paused'
+  ) {
+    const result = await controller.command('continue')
+    console.debug('[debugger] Attach point release receipt', JSON.stringify(result))
+  }
+  console.debug(
+    '[debugger] Discarded attach point reconciliation ended',
+    JSON.stringify({
+      sessionId: next.sessionId,
+      heldEpoch,
+      snapshot: controller.snapshot,
+      remaining: controller.knownBreakpoints(),
+      error: controller.error,
+    })
   )
-    await controller.command('continue')
 }
 
 /** Re-attach carries intent, while an identical point already restored by the node stays one. */

@@ -3,7 +3,17 @@ import {
   cleanupDebugAttachViews,
   cleanupCreatedViews,
   nodeFailureMessage,
+  parseDebugAttachResult,
 } from '../e2e/helpers/debugAttachLifecycle'
+
+it('preserves the complete app failure including stop evidence beyond the first 400 characters', () => {
+  const raw =
+    'Error: Did not converge: ' +
+    'sample detail '.repeat(50) +
+    JSON.stringify({ execution: 'stopped', breakpoints: [], stop: { reason: 'pause' } })
+  expect(() => parseDebugAttachResult(raw)).toThrow(raw)
+  expect(parseDebugAttachResult('{"points":0}')).toEqual({ points: 0 })
+})
 
 it('closes only the reload test tabs and saves before leaving the current layout', async () => {
   const events: string[] = []
