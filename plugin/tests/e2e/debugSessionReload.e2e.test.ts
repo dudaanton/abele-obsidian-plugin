@@ -43,7 +43,7 @@ async function scene(phone: boolean) {
       let leaves=[];
       for(let i=0;i<200;i++) {
         leaves=${JSON.stringify(types)}.flatMap(type=>app.workspace.getLeavesOfType(type));
-        if(leaves.length>=4&&leaves.every(leaf=>!${JSON.stringify(types)}.includes(leaf.view.getDisplayText())))break;
+        if(leaves.length>=4&&leaves.every(leaf=>!${JSON.stringify(types)}.includes(leaf.view.getDisplayText())&&!${JSON.stringify(types)}.includes(leaf.tabHeaderInnerTitleEl?.textContent??leaf.view.getDisplayText())))break;
         await wait(50);
       }
       const debug=app.workspace.getLeavesOfType('abele-debug-view');
@@ -52,13 +52,13 @@ async function scene(phone: boolean) {
       if(${phone}&&(split===app.workspace.leftSplit||split===app.workspace.rightSplit)){split.collapse();await wait(300);split.expand();await wait(700)}
       const image=await require('@electron/remote').getCurrentWebContents().capturePage();
       require('fs').writeFileSync(${JSON.stringify(SHOTS + '/' + (phone ? 'phone' : 'desktop') + (pluginOnly ? '-plugin' : '-window') + '-reload.png')},image.toPNG());
-      return {titles:leaves.map(leaf=>leaf.tabHeaderInnerTitleEl?.textContent??leaf.view.getDisplayText()),debug:debug.length};
+      return {titles:leaves.map(leaf=>leaf.tabHeaderInnerTitleEl?.textContent??leaf.view.getDisplayText()),views:leaves.map(leaf=>({type:leaf.view.getViewType(),title:leaf.view.getDisplayText()})),debug:debug.length};
     })()`)
     expect(result.debug).toBe(1)
     expect(result.titles.length).toBeGreaterThanOrEqual(4)
     for (const title of result.titles) {
       expect(title.trim()).not.toBe('')
-      expect(types).not.toContain(title)
+      expect(types, JSON.stringify({ phone, pluginOnly, ...result })).not.toContain(title)
     }
   }
 }

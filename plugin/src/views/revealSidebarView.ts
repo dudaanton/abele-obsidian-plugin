@@ -19,7 +19,17 @@ export async function loadDeferredSidebarViews(
       if (!includeMainTabs && root !== workspace.leftSplit && root !== workspace.rightSplit) return
       try {
         await leaf.loadIfDeferred?.()
-        ;(leaf as WorkspaceLeaf & { updateHeader?: () => void }).updateHeader?.()
+        const restored = leaf as WorkspaceLeaf & {
+          updateHeader?: () => void
+          rebuildView?: () => Promise<void>
+        }
+        // An unloaded plugin leaves a placeholder with its view type as the title. It is not
+        // a deferred view, so loading it alone cannot recreate the newly registered view.
+        if (leaf.view && leaf.view.getDisplayText() === leaf.view.getViewType()) {
+          await restored.rebuildView?.()
+          await leaf.loadIfDeferred?.()
+        }
+        restored.updateHeader?.()
       } catch (error) {
         console.debug('[Abele] Deferred sidebar unavailable', error)
       }
