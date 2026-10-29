@@ -195,6 +195,15 @@ it('mounts and cleans up native live-preview widgets without changing the editor
 
 it('replaces a saved-preview embed with a native embed without rewriting or reloading its note', async () => {
   const s = await externalFileFixture()
+  let releaseDescription!: () => void
+  const descriptionReady = new Promise<void>((resolve) => {
+    releaseDescription = resolve
+  })
+  const describe = s.manager.describe.bind(s.manager)
+  const description = vi.spyOn(s.manager, 'describe').mockImplementationOnce(async (path) => {
+    await descriptionReady
+    return describe(path)
+  })
   try {
     const preview = 'data:image/jpeg;base64,c2FtcGxl'
     s.app.saveLocalStorage('abele-external-previews-v1', {
@@ -213,7 +222,9 @@ it('replaces a saved-preview embed with a native embed without rewriting or relo
     const open = vi.fn()
     const off = mountExternalEmbed(s.app as never, source, 'sample-note.md', s.manager, open)
     await flushPromises()
-    expect(source.querySelector('img')?.getAttribute('src')).toBe(preview)
+    // A description can still be waiting on IndexedDB after one event-loop turn.
+    releaseDescription()
+    await vi.waitFor(() => expect(source.querySelector('img')?.getAttribute('src')).toBe(preview))
     source.querySelector('img')!.click()
     expect(open).not.toHaveBeenCalled()
     expect(await s.app.vault.adapter.exists(s.path)).toBe(false)
@@ -228,6 +239,8 @@ it('replaces a saved-preview embed with a native embed without rewriting or relo
     source.remove()
     native.mockRestore()
   } finally {
+    releaseDescription()
+    description.mockRestore()
     s.close()
   }
 })
