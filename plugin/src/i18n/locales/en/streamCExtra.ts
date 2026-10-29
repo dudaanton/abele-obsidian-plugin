@@ -1,4 +1,7 @@
 export const extra = {
+  'debug.disableRecordPoint': 'Disable record point',
+  'debug.enableRecordPoint': 'Enable record point',
+
   'debug.writingRunNote': 'Writing a note about this run…',
   'debug.sessionEnded': 'Debug session ended. Start a new run.',
   'debug.newRun': 'Start a new run',

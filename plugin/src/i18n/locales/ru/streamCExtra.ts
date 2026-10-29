@@ -1,4 +1,7 @@
 export const extra = {
+  'debug.disableRecordPoint': 'Отключить точку записи',
+  'debug.enableRecordPoint': 'Включить точку записи',
+
   'debug.writingRunNote': 'Пишем заметку об этом запуске…',
   'debug.sessionEnded': 'Сеанс отладки завершён. Запустите программу заново.',
   'debug.newRun': 'Запустить заново',

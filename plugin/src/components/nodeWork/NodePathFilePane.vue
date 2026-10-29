@@ -281,7 +281,11 @@ function pendingMenu(line: number, event: MouseEvent) {
     }
     menu.addItem((item) =>
       item
-        .setTitle(t(point.enabled ? 'debug.disableBreakpoint' : 'debug.enableBreakpoint'))
+        .setTitle(
+          point.record
+            ? t(point.enabled ? 'debug.disableRecordPoint' : 'debug.enableRecordPoint')
+            : t(point.enabled ? 'debug.disableBreakpoint' : 'debug.enableBreakpoint')
+        )
         .setIcon('circle')
         .onClick(() =>
           service.editPendingPoint(target, doc.path, line, { enabled: !point.enabled })

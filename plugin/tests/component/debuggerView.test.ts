@@ -22,6 +22,17 @@ const session = (status: DebugSession['status']): DebugSession => ({
   mode: 'ask',
   seen: '10:00',
 })
+it('keeps debugger controls in their own normal-flow row', () => {
+  const wrapper = mount(DebugPanel, { props: { session: session('paused') } })
+  try {
+    expect(wrapper.find('.nav-header').exists()).toBe(false)
+    expect(
+      wrapper.get('.abele-debug-panel__toolbar').findAll('.nav-action-button').length
+    ).toBeGreaterThan(0)
+  } finally {
+    wrapper.unmount()
+  }
+})
 it('opens a selected caller frame and explains a library without source', async () => {
   const { shallowRef } = await import('vue')
   const service = DebuggerService.instance
@@ -156,7 +167,7 @@ it('renders exact approvals in the debug view without a chat', async () => {
   try {
     const card = w.getComponent(DebugActionCard)
     expect(
-      w.get('.nav-header').element.compareDocumentPosition(card.element) &
+      w.get('.abele-debug-panel__toolbar').element.compareDocumentPosition(card.element) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
     expect(card.text()).toContain('n > 0 && n < 4')

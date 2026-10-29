@@ -153,7 +153,11 @@ export function marginMenu(
   if (known)
     menu.addItem((item) =>
       item
-        .setTitle(known.enabled ? t('debug.disableBreakpoint') : t('debug.enableBreakpoint'))
+        .setTitle(
+          record
+            ? t(known.enabled ? 'debug.disableRecordPoint' : 'debug.enableRecordPoint')
+            : t(known.enabled ? 'debug.disableBreakpoint' : 'debug.enableBreakpoint')
+        )
         .setIcon(known.enabled ? 'circle-dashed' : 'circle')
         .setDisabled(!binding.controller.current)
         .onClick(

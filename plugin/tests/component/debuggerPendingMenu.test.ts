@@ -9,6 +9,42 @@ vi.mock('@/components/nodeWork/FileView.vue', () => ({
   default: { template: '<div><slot name="code" /></div>' },
 }))
 
+it('names a pending record point in its enable action', async () => {
+  const service = DebuggerService.instance
+  const target = {
+    registrationId: 'sample-registration',
+    nodeId: 'sample-node',
+    kind: 'folder',
+    id: 'sample-folder',
+  }
+  const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+  service.editPendingPoint(target as never, 'sample.js', 1, { record: { take: ['sample'] } })
+  const wrapper = mount(NodePathFilePane, {
+    attachTo: document.body,
+    props: {
+      model: {
+        target,
+        busy: ref(false),
+        error: ref(''),
+        mode: ref('file'),
+        document: ref({ target, path: 'sample.js', text: 'const sample = 1' }),
+      } as never,
+    },
+  })
+  try {
+    await flushPromises()
+    await wrapper
+      .get('button.abele-debug-source__point')
+      .trigger('contextmenu', { clientX: 10, clientY: 10 })
+    const menu = show.mock.instances.at(-1) as Menu
+    expect(menu.items.map((item) => item.title)).toContain('Disable record point')
+  } finally {
+    wrapper.unmount()
+    service.togglePendingBreakpoint(target as never, 'sample.js', 1)
+    show.mockRestore()
+  }
+})
+
 it('opens a populated pending menu on markers and line numbers without a session', async () => {
   const service = DebuggerService.instance
   const target = {

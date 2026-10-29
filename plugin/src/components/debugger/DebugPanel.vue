@@ -1,7 +1,7 @@
 <template>
   <div class="abele-debug-panel" :class="`abele-debug-panel_${session.status}`">
-    <div class="nav-header">
-      <div class="nav-buttons-container">
+    <div class="abele-debug-panel__toolbar">
+      <div class="abele-debug-panel__buttons">
         <DrawerViewSwitch icon="bug-play" :name="t('streamC.1a03bd2fd107c453')" />
         <Icon
           v-for="b in buttons"
@@ -619,14 +619,18 @@ const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?
   min-width: 0;
 }
 // The native phone drawer is narrower than a full row of debugger controls.
-.abele-debug-panel > .nav-header {
+.abele-debug-panel > .abele-debug-panel__toolbar {
+  flex: 0 0 auto;
+  padding: var(--size-4-2) var(--size-4-3);
   height: auto;
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  position: relative;
   background: var(--background-secondary);
 }
-.abele-debug-panel .nav-buttons-container {
+.abele-debug-panel__buttons {
+  display: flex;
+  position: static;
+  height: auto;
+  gap: var(--size-4-1);
   min-width: 0;
   flex-wrap: wrap;
 }

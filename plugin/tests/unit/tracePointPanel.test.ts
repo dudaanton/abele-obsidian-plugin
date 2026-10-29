@@ -1,6 +1,27 @@
 import { expect, it, vi } from 'vitest'
-import { savePoint, namesOnLine } from '@/debugger/trace/panel'
+import { savePoint, namesOnLine, marginMenu } from '@/debugger/trace/panel'
+import { Menu } from 'obsidian'
 import type { DebuggerBinding } from '@/debugger/DebuggerService'
+
+it.each([true, false])('names the record point in its enable action (%s)', (enabled) => {
+  const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+  const binding = {
+    trace: { pointAt: () => ({ id: 'sample-point' }) },
+    controller: {
+      current: true,
+      knownBreakpoints: () => [{ id: 'sample-point', sourceId: 'sample-source', line: 1, enabled }],
+    },
+  } as unknown as DebuggerBinding
+  try {
+    marginMenu(binding, 'sample-source', 1, new MouseEvent('contextmenu', { clientX: 1 }))
+    const menu = show.mock.instances.at(-1) as Menu
+    expect(menu.items.map((item) => item.title)).toContain(
+      enabled ? 'Disable record point' : 'Enable record point'
+    )
+  } finally {
+    show.mockRestore()
+  }
+})
 
 it('offers declarations immediately above the selected line', () => {
   const text =

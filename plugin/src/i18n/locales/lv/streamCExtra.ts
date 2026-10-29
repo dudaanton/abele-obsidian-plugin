@@ -1,4 +1,7 @@
 export const extra = {
+  'debug.disableRecordPoint': 'Atspējot ieraksta punktu',
+  'debug.enableRecordPoint': 'Iespējot ieraksta punktu',
+
   'debug.writingRunNote': 'Tiek rakstīta piezīme par šo izpildi…',
   'debug.sessionEnded': 'Atkļūdošanas sesija beigusies. Sāciet jaunu palaišanu.',
   'debug.newRun': 'Sākt jaunu palaišanu',

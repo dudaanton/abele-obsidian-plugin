@@ -1,10 +1,32 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { reactive } from 'vue'
 import DebugSource from '@/components/debugger/DebugSource.vue'
 
 afterEach(() => {
   document.body.replaceChildren()
+})
+
+it('sizes the inline point editor to the visible pane rather than a long source line', async () => {
+  const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(300)
+  const wrapper = mount(DebugSource, {
+    attachTo: document.body,
+    props: {
+      path: 'sample.ts',
+      text: 'const sample = ' + 'x'.repeat(500),
+      breakpoints: [],
+      editing: 1,
+    },
+  })
+  try {
+    await flushPromises()
+    const editor = wrapper.get('.abele-debug-source__point-editor').element as HTMLElement
+    expect(parseFloat(editor.style.width)).toBeGreaterThan(0)
+    expect(parseFloat(editor.style.width)).toBeLessThanOrEqual(300)
+  } finally {
+    wrapper.unmount()
+    width.mockRestore()
+  }
 })
 
 it('keeps a pending marker connected across equivalent marks and editor-only updates', async () => {

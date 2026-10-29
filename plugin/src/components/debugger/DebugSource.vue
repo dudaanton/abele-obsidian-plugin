@@ -204,18 +204,27 @@ class Tail extends WidgetType {
 }
 /** The block under a line where its record point is set up; the component is teleported in. */
 class EditorBlock extends WidgetType {
+  private observer?: ResizeObserver
   constructor(readonly line: number) {
     super()
   }
   eq(o: EditorBlock) {
     return o.line === this.line
   }
-  toDOM() {
+  toDOM(view: EditorView) {
     const el = createDiv({ cls: 'abele-debug-source__point-editor' })
+    const size = () => {
+      const gutters = view.scrollDOM.querySelector<HTMLElement>('.cm-gutters')?.offsetWidth ?? 0
+      el.style.width = `${Math.max(0, view.scrollDOM.clientWidth - gutters - 8)}px`
+    }
+    size()
+    this.observer = new ResizeObserver(size)
+    this.observer.observe(view.scrollDOM)
     queueMicrotask(() => (editorHost.value = el))
     return el
   }
   destroy(el: HTMLElement) {
+    this.observer?.disconnect()
     if (editorHost.value === el) editorHost.value = null
   }
   ignoreEvent() {
@@ -385,6 +394,9 @@ onBeforeUnmount(() => viewer?.destroy())
   }
 }
 .abele-debug-source .abele-debug-source__point-editor {
+  box-sizing: border-box;
+  position: sticky;
+  left: 0;
   padding: var(--size-4-2) var(--size-4-3);
   border-block: var(--border-width) solid var(--background-modifier-border);
   background-color: var(--background-secondary);

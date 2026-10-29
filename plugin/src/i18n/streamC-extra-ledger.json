@@ -1,4 +1,14 @@
 {
+  "debug.disableRecordPoint": {
+    "englishHash": "ffe902083b47ec9d20f4bbc5425c8b72db1cc047079ec96d599af7bd69bcf07d",
+    "context": "Debugger record-point menu action",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "debug.enableRecordPoint": {
+    "englishHash": "971576abc8f328fd69aa9640b498c2eec6a73721bb9672463447e73ea793f191",
+    "context": "Debugger record-point menu action",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
   "streamC.readerForward": {
     "englishHash": "1f7e34c9d11966ffa1963f8cad25a555dec25021fb3008a42d6cf2617d5fb66f",
     "context": "Reader footer action: return to the next reading place after going back",

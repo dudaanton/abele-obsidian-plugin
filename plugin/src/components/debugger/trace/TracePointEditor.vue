@@ -158,6 +158,9 @@ onBeforeUnmount(() => keyWindow?.removeEventListener('keydown', keydown, true))
   align-items: baseline;
   gap: var(--size-4-2) var(--size-4-3);
   max-width: 40em;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
   font-size: var(--font-ui-small);
 }
 .abele-trace-point__label {
@@ -175,6 +178,20 @@ onBeforeUnmount(() => keyWindow?.removeEventListener('keydown', keydown, true))
 .abele-trace-point__take .multi-select-input {
   font-family: var(--font-monospace);
   font-size: var(--font-ui-smaller);
+}
+.abele-trace-point__take {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.abele-trace-point .multi-select-pill {
+  max-width: 100%;
+}
+.abele-trace-point .multi-select-pill-content {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.abele-trace-point > .abele-obsidian-input {
+  min-width: 0;
 }
 .abele-trace-point__take .multi-select-input {
   flex: 1 1 8em;

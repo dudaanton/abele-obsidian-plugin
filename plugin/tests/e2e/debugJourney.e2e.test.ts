@@ -60,6 +60,13 @@ const recordPoint=async (line,takes,root,options={})=>{
   const pills=()=>[...document.querySelectorAll('.abele-trace-point .multi-select-pill-content')].map(p=>p.textContent.trim());
   // Says whether the editor was rebuilt under the typing (its input no longer in the page) or kept.
   await until(()=>takes.every(t=>pills().includes(t)),'takes listed').catch(()=>{throw Error('takes not listed: '+JSON.stringify({pills:pills(),editors:document.querySelectorAll('.abele-trace-point').length,inputKept:input.isConnected,typed:input.value,offered:[...document.querySelectorAll('.abele-trace-point__offer')].map(b=>b.textContent.trim())})+' '+debugState())});
+  const pointEditor=document.querySelector('.abele-trace-point');
+  pointEditor.scrollIntoView({block:'center'});await wait(150);
+  const pane=pointEditor.closest('.cm-scroller').getBoundingClientRect();
+  for(const el of [pointEditor,...pointEditor.querySelectorAll('.multi-select-pill,[aria-label="Keep (Enter)"],[aria-label="Leave as it was (Escape)"]')]){
+    const rect=el.getBoundingClientRect();
+    if(rect.left<Math.max(0,pane.left)-1||rect.right>Math.min(innerWidth,pane.right)+1)throw Error('Record editor overflows visible pane: '+JSON.stringify({left:rect.left,right:rect.right,pane:pane.right,width:innerWidth}));
+  }
   if(options.when){const field=document.querySelector('.abele-trace-point__code input');field.value=options.when;field.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('.abele-trace-point').scrollIntoView({block:'center'});if(options.shot)await shot(options.shot)}
   press(document.querySelector('.abele-trace-point [aria-label="Keep (Enter)"]'));
   // The first record point of a project asks once where its runs go: the offered folder.
@@ -406,6 +413,13 @@ it.each(['desktop', 'phone'])(
       visible('[aria-label="Caught exceptions"]').scrollIntoView({block:'center'});
       await shot(${JSON.stringify(name)}+'-exceptions');
       const frame=binding.controller.session.frames[binding.controller.session.frame],sourceId=api.DebuggerService.instance.debugFor(target,'src/journey.cjs').sourceId;
+      const debugView=visible('.abele-debug-view');debugView.scrollTop=0;await wait(150);
+      const toolbar=visible('.abele-debug-panel__toolbar').getBoundingClientRect();
+      const selector=debugView.querySelector('.abele-debug-view__sessions')?.getBoundingClientRect();
+      const program=visible('.abele-debug-panel__program').getBoundingClientRect();
+      if(selector&&selector.bottom>toolbar.top+1)throw Error('Session selector overlaps debugger controls');
+      if(toolbar.bottom>program.top+1)throw Error('Debugger controls overlap the frame row');
+      await shot(${JSON.stringify(name)}+'-controls-layout');
       const showPoints=()=>[...document.querySelectorAll('.abele-debug-panel__group')].find(g=>g.querySelector(':scope > .tree-item-self .abele-tree-item__text')?.textContent==='Breakpoints').scrollIntoView({block:'center'});
       await binding.controller.setBreakpoint('sample-controls',sourceId,frame.line);
       const bpMenu=async()=>{
@@ -455,6 +469,10 @@ it.each(['desktop', 'phone'])(
       await app.workspace.revealLeaf(sourceLeaf);app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();
       await recordPoint(frame.line,['next'],undefined,{when:'1 < 2 && "a" < "b"',menuShot:${JSON.stringify(name)}+'-gutter-menu',shot:${JSON.stringify(name)}+'-record-point-editor',approve:async()=>{await app.workspace.revealLeaf(debugLeaf);app.workspace.rightSplit.expand();noOwnerApproval()}});
       await until(()=>binding.trace.breakpoints().some(b=>b.kind==='record'&&b.when==='1 < 2 && "a" < "b"'),'conditional record point saved');
+      const recordMark=await until(()=>sourceLeaf.containerEl.querySelector('.abele-breakpoint-mark_record')?.closest('button'),'record marker');
+      recordMark.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:40,clientY:200}));
+      await until(()=>item('Disable record point'),'record-point menu label');
+      document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
       showPoints();
       await shot(${JSON.stringify(name)}+'-record-point');
       const watch=await until(()=>{const field=visible('.abele-debug-panel__add input');return field&&!field.disabled?field:null},'watch input ready');
@@ -474,7 +492,7 @@ it.each(['desktop', 'phone'])(
       if(!app.workspace.rightSplit.containerEl.offsetWidth){app.workspace.rightSplit.collapse();await wait(500);app.workspace.rightSplit.expand()}
       const watchField=await until(()=>visible('.abele-debug-panel__add input'),'watch visible for its picture');
       watchField.closest('.abele-debug-panel__group').scrollIntoView({block:'center'});
-      const stopBox=visible('[aria-label="Stop (Shift+F5)"]').getBoundingClientRect(),barBox=visible('.abele-debug-panel > .nav-header').getBoundingClientRect();
+      const stopBox=visible('[aria-label="Stop (Shift+F5)"]').getBoundingClientRect(),barBox=visible('.abele-debug-panel__toolbar').getBoundingClientRect();
       if(stopBox.right>barBox.right+1||stopBox.bottom>barBox.bottom+1||stopBox.top<0||stopBox.bottom>innerHeight)throw Error('Stop is outside the visible debugger toolbar');
       if(binding.controller.session.watches.find(w=>w.expression==='1 < 2 && "a" < "b"')?.stale)throw Error('Fresh watch is labelled as an old value');
       await shot(${JSON.stringify(name)}+'-watch');
@@ -928,7 +946,9 @@ it.each(['desktop', 'phone'] as const)(
   async (device) => {
     const gitPath = join(dir, 'sample-git-project-' + device)
     mkdirSync(join(gitPath, 'src'), { recursive: true })
-    writeFileSync(join(gitPath, 'src/app.cjs'), JS)
+    writeFileSync(join(gitPath, 'src/app.cjs'), JS + "\nrequire('./ignored.cjs')\n")
+    writeFileSync(join(gitPath, '.gitignore'), 'src/ignored.cjs\n')
+    writeFileSync(join(gitPath, 'src/ignored.cjs'), 'debugger;\nmodule.exports = 7\n')
     const git = (...args: string[]) => {
       const result = spawnSync(
         '/usr/bin/git',
@@ -952,7 +972,11 @@ it.each(['desktop', 'phone'] as const)(
     )
     const probe = async () => {
       openChat()
-      const result = await inAppLong<{ blame: boolean; symbols: boolean }>(`(async()=>{${prelude}
+      const result = await inAppLong<{
+        blame: boolean
+        symbols: boolean
+        ignored: boolean
+      }>(`(async()=>{${prelude}
       const registration=${JSON.stringify(registration)},client=nodes.connection(registration).client;
       const visible=selector=>[...document.querySelectorAll(selector)].find(el=>el.offsetParent);
       if(!await client.store.transaction(state=>state.installation_id))throw Error('Authenticated installation identity is missing');
@@ -987,7 +1011,17 @@ it.each(['desktop', 'phone'] as const)(
         await until(()=>[...document.querySelectorAll('.menu-item-title')].some(el=>el.textContent.includes('Find references to inspectItem')),'debug symbol menu');
         await shot('git-${device}-debug-symbol-menu');
         document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));
-        return {blame:true,symbols:true};
+        const target=leaf.view.getState().target,ignored=app.workspace.getLeaf('tab');
+        await ignored.setViewState({type:'abele-node-file',active:true,state:{kind:'file',target,path:'src/ignored.cjs'}});
+        await until(()=>ignored.containerEl.textContent.includes('module.exports = 7'),'ignored file opened by path');
+        await shot('git-${device}-ignored-path');ignored.detach();
+        await binding.controller.command('continue');
+        await until(()=>binding.controller.session.status==='paused'&&binding.controller.session.frames.some(f=>f.file==='src/ignored.cjs'),'stop in ignored source');
+        const stopped=await until(()=>app.workspace.getLeavesOfType('abele-node-file').find(l=>l.view.getState().path==='src/ignored.cjs'&&l.containerEl.querySelector('.abele-debug-source')),'ignored debugger source opened');
+        await app.workspace.revealLeaf(stopped);app.workspace.rightSplit.collapse();
+        await until(()=>stopped.containerEl.textContent.includes('module.exports = 7'),'ignored debugger source readable');
+        await shot('git-${device}-ignored-stop');
+        return {blame:true,symbols:true,ignored:true};
       } finally {
         if(binding?.controller.current&&binding.controller.session.status!=='exited')await binding.controller.command('stop');
         for(const leaf of app.workspace.getLeavesOfType('abele-node-file'))if(leaf.view.getState().target?.projectId===project.project_id)leaf.detach();
@@ -996,7 +1030,7 @@ it.each(['desktop', 'phone'] as const)(
         const previous=model.targets.value.find(t=>t.projectId===${JSON.stringify(folder.projectId)});if(previous)await model.selectTarget(previous);
       }
     })()`)
-      expect(result).toEqual({ blame: true, symbols: true })
+      expect(result).toEqual({ blame: true, symbols: true, ignored: true })
     }
     if (device === 'phone') await withEmulatedPhone(probe)
     else await probe()

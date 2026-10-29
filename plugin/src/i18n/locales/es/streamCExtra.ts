@@ -1,4 +1,7 @@
 export const extra = {
+  'debug.disableRecordPoint': 'Desactivar punto de registro',
+  'debug.enableRecordPoint': 'Activar punto de registro',
+
   'debug.writingRunNote': 'Escribiendo una nota sobre esta ejecución…',
   'debug.sessionEnded': 'La sesión de depuración terminó. Inicia una nueva ejecución.',
   'debug.newRun': 'Iniciar una nueva ejecución',

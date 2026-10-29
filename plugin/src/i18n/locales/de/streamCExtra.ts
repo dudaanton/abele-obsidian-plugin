@@ -1,4 +1,7 @@
 export const extra = {
+  'debug.disableRecordPoint': 'Aufzeichnungspunkt deaktivieren',
+  'debug.enableRecordPoint': 'Aufzeichnungspunkt aktivieren',
+
   'debug.writingRunNote': 'Notiz zu diesem Lauf wird geschrieben…',
   'debug.sessionEnded': 'Die Debugsitzung wurde beendet. Starte einen neuen Lauf.',
   'debug.newRun': 'Neuen Lauf starten',
