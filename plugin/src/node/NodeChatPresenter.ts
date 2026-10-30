@@ -226,10 +226,12 @@ export class NodeChatPresenter implements ChatPresentationSession {
       rememberMode: (mode) => rememberSessionOwnerMode(reference.nodeId, reference.sessionId, mode),
       report: (error) => this.report(error),
       open: (sessionId) => this.openSession?.(sessionId),
-      beforeStop: () =>
-        connection.client.store.transaction((s) =>
+      beforeStop: async () => {
+        await connection.client.store.transaction((s) =>
           setOwnerStopped((s as NodeClientState).delegation, reference.sessionId, true)
-        ),
+        )
+        for (const run of this.projection.value.activeRuns) this.rememberOwnerStop(run)
+      },
     })
     this.history = new NodeChatHistory(
       () => connection.client,
@@ -1300,6 +1302,18 @@ export class NodeChatPresenter implements ChatPresentationSession {
     await Promise.all(this.projection.value.activeRuns.map((run) => this.interrupt(run)))
   }
 
+  private rememberOwnerStop(runId: string): void {
+    const started = [...this.visibleEvents.values()]
+      .filter(
+        (event) =>
+          event.type === 'turn.started' && (event.data as { run_id?: string })?.run_id === runId
+      )
+      .sort((a, b) => a.seq - b.seq)
+      .at(-1)
+    if (started && this.projection.value.activeRuns.includes(runId))
+      this.ownerStoppedTurnStarts.add(started.seq)
+  }
+
   async interrupt(runId: string): Promise<void> {
     if (this.interruptingRuns.has(runId)) return
     this.interruptingRuns.add(runId)
@@ -1312,15 +1326,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         await this.connection.client.store.transaction((s) =>
           setOwnerStopped((s as NodeClientState).delegation, this.reference.sessionId, true)
         )
-        const started = [...this.visibleEvents.values()]
-          .filter(
-            (event) =>
-              event.type === 'turn.started' && (event.data as { run_id?: string })?.run_id === runId
-          )
-          .sort((a, b) => a.seq - b.seq)
-          .at(-1)
-        if (started && this.projection.value.activeRuns.includes(runId))
-          this.ownerStoppedTurnStarts.add(started.seq)
+        this.rememberOwnerStop(runId)
         await this.connection.client.interrupt(this.reference.sessionId, runId)
       } catch (error) {
         this.report(error)
