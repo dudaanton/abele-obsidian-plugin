@@ -130,6 +130,42 @@ describe('the list of servers', () => {
 })
 
 describe('adding one', () => {
+  it('stores literal credential headers in the keychain before saving the server', async () => {
+    const view = mountTab()
+    await buttonNamed(view, 'Add server').trigger('click')
+    await field(view, 'Name').find('input').setValue('Sample')
+    await field(view, 'URL').find('input').setValue('https://mcp.example.test/mcp')
+    await field(view, 'Headers')
+      .find('textarea')
+      .setValue('Authorization: Bearer invented-header-token\nX-Team: blue')
+    await buttonNamed(view, 'Save').trigger('click')
+    const [saved] = servers()
+    expect(JSON.stringify(saved)).not.toContain('invented-header-token')
+    expect(saved.headers['X-Team']).toBe('blue')
+    expect(McpService.getInstance().headersFor(saved)).toEqual({
+      Authorization: 'Bearer invented-header-token',
+      'X-Team': 'blue',
+    })
+    await view.find('.abele-card').trigger('click')
+    expect(field(view, 'Headers').find('textarea').element.value).not.toContain(
+      'invented-header-token'
+    )
+    const references = { ...saved.headers }
+    await buttonNamed(view, 'Save').trigger('click')
+    expect(servers()[0].headers).toEqual(references)
+    await view.find('.abele-card').trigger('click')
+    await field(view, 'Headers')
+      .find('textarea')
+      .setValue('Authorization: Bearer invented-replacement-token\nX-Team: green')
+    await buttonNamed(view, 'Save').trigger('click')
+    expect(JSON.stringify(servers()[0])).not.toContain('invented-replacement-token')
+    expect(McpService.getInstance().headersFor(servers()[0])).toEqual({
+      Authorization: 'Bearer invented-replacement-token',
+      'X-Team': 'green',
+    })
+    view.unmount()
+  })
+
   it('fetches its tools, shows them, and saves the server with them and its token', async () => {
     const fetchTools = vi.spyOn(McpService.getInstance(), 'fetchTools').mockResolvedValue(TOOLS)
     const view = mountTab()

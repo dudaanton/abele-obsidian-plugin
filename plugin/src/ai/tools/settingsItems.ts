@@ -9,6 +9,7 @@ import {
   HIDDEN_VALUE,
   SECRET_KEYS,
   isHidden,
+  isSecretSettingField,
   isRecord,
   itemLine,
   redact,
@@ -102,8 +103,8 @@ function itemPath(listPath: string, item: unknown, index: number): string {
     : `${listPath}.${index}`
 }
 
-function shown(value: unknown): string {
-  return JSON.stringify(redact(value))
+function shown(value: unknown, key = ''): string {
+  return JSON.stringify(redact(value, key))
 }
 
 /**
@@ -118,7 +119,7 @@ function checkPatch(
 ): string | null {
   for (const [key, next] of Object.entries(patch)) {
     const path = `${at}.${key}`
-    if (SECRET_KEYS.test(key) && next === HIDDEN_VALUE) continue
+    if (isSecretSettingField(key, at.split('.').at(-1)) && next === HIDDEN_VALUE) continue
     if (isHidden(path)) return `"${path}" holds a secret or a cache and is not writable.`
     if (next === null) continue
     const old = target[key]
@@ -137,13 +138,17 @@ function checkPatch(
 }
 
 /** A JSON merge patch: named fields replaced, objects merged into, `null` taking a field out. */
-function applyPatch(target: Record<string, unknown>, patch: Record<string, unknown>): void {
+function applyPatch(
+  target: Record<string, unknown>,
+  patch: Record<string, unknown>,
+  parentKey = ''
+): void {
   for (const [key, next] of Object.entries(patch)) {
-    if (SECRET_KEYS.test(key) && next === HIDDEN_VALUE) continue
+    if (isSecretSettingField(key, parentKey) && next === HIDDEN_VALUE) continue
     if (next === null) {
       delete target[key]
     } else if (isRecord(next) && isRecord(target[key])) {
-      applyPatch(target[key], next)
+      applyPatch(target[key], next, key)
     } else {
       target[key] = next
     }
@@ -176,8 +181,8 @@ export function updateItem(path: string, found: Resolved, patch: unknown): ItemR
     if (bad) return refused(bad)
   }
 
-  applyPatch(found.value, patch)
-  return { text: `${path} updated: ${shown(found.value)}`, changed: true }
+  applyPatch(found.value, patch, found.key)
+  return { text: `${path} updated: ${shown(found.value, found.key)}`, changed: true }
 }
 
 export function addItem(

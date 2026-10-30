@@ -3055,7 +3055,9 @@ export const de = {
   'settings.secrets.removeNamed':
     '{name} entfernen? Alle fetch-Aufrufe, die diesen Namen verwenden, funktionieren dann nicht mehr, und der gespeicherte Wert wird aus dem Schlüsselbund entfernt.',
   'settings.mcp.headersDescription':
-    'Ein Eintrag pro Zeile im Format Name: value. Verwende für ein Geheimnis {example}, einen Schlüssel unter KI → Allgemein → Gespeicherte Schlüssel, damit er nicht in der Einstellungsdatei steht.',
+    'Ein Eintrag pro Zeile im Format Name: value. Header mit Zugangsdaten werden automatisch im Schlüsselbund gespeichert. Du kannst auch {example} für einen Schlüssel unter KI → Allgemein → Gespeicherte Schlüssel verwenden.',
+  'settings.mcp.headerKeyMissing':
+    'Für diesen MCP-Header-Schlüssel ist auf diesem Gerät kein Wert vorhanden.',
   'settings.sync.presentation.e159b06187d369a0': 'Angehalten',
   'settings.sync.presentation.857a66dd7a6dfe32': ' · {completed} von {total}',
   'settings.sync.presentation.265ec42c10960f4e': ' · Braucht Aufmerksamkeit',

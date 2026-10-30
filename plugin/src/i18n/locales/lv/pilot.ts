@@ -3007,7 +3007,8 @@ export const lv = {
   'settings.secrets.removeNamed':
     'Vai noņemt {name}? Visi fetch izsaukumi, kas izmanto šo nosaukumu, pārstās darboties, un saglabātā vērtība tiks dzēsta no atslēgu saišķa.',
   'settings.mcp.headersDescription':
-    'Pa vienam katrā rindā formātā Name: value. Slepenai vērtībai izmantojiet {example}, atslēgu no sadaļas MI → Vispārīgi → Saglabātās atslēgas, lai tā nenonāktu iestatījumu failā.',
+    'Pa vienam katrā rindā formātā Name: value. Galvenes ar piekļuves datiem automātiski tiek saglabātas atslēgu saišķī. Var izmantot arī {example} atslēgai no sadaļas MI → Vispārīgi → Saglabātās atslēgas.',
+  'settings.mcp.headerKeyMissing': 'Šajā ierīcē nav šīs MCP galvenes atslēgas vērtības.',
   'settings.sync.presentation.e159b06187d369a0': 'Pauzēts',
   'settings.sync.presentation.857a66dd7a6dfe32': ' · {completed} no {total}',
   'settings.sync.presentation.265ec42c10960f4e': ' · Nepieciešama uzmanība',

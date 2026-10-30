@@ -2407,6 +2407,18 @@ each server's address, the headers sent to it, the name of the keychain slot hol
 (never the token), and a copy of its tool list from the last time it was fetched — names,
 descriptions and parameter schemas, as the server gave them. Nothing is written into the vault.
 
+Credential headers (Authorization, Cookie, API keys and token/secret/password headers,
+including vendor prefixes and any letter case) are moved into the keychain on save and once
+at startup or reload for old settings. Their complete values are replaced with
+`${abele_mcp_key:abele-mcp-header-…}` references. The server's transfer section declares these
+slots in `secretsOf`, alongside its bearer-token slot, so they participate in the synced key
+store, key catalog and encrypted transfers. Ordinary headers and named-key placeholders keep
+their existing form. A keychain failure keeps the old value available for retry; agent reads
+and transfers protect it independently of migration. A transfer without keys contains only
+references, including when exporting an unmigrated server; a transfer with keys includes the
+values in its encrypted secrets block. Incoming references require the usual local recipient
+confirmation; migrating a literal header preserves its already configured recipient locally.
+
 MCP entries in `ai.toolModes`, each agent's `toolModes`, and saved chat overrides use
 `mcp:` followed by the JSON pair `[server.id, originalToolName]`. Provider-facing names are
 only aliases, not permission keys. Renaming a server keeps these entries unchanged; settings

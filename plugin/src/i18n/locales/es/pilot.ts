@@ -3074,7 +3074,9 @@ export const es = {
   'settings.secrets.removeNamed':
     '¿Eliminar {name}? Las llamadas fetch que lo usen por su nombre dejarán de funcionar y el valor guardado se eliminará del llavero.',
   'settings.mcp.headersDescription':
-    'Uno por línea, con el formato Name: value. Escribe un secreto como {example}, una clave de IA → General → Claves guardadas, para que no aparezca en el archivo de ajustes.',
+    'Uno por línea, con el formato Name: value. Los encabezados con credenciales se guardan automáticamente en el llavero. También puedes usar {example} para una clave de IA → General → Claves guardadas.',
+  'settings.mcp.headerKeyMissing':
+    'Esta clave de encabezado MCP no tiene un valor en este dispositivo.',
   'settings.sync.presentation.e159b06187d369a0': 'En pausa',
   'settings.sync.presentation.857a66dd7a6dfe32': ' · {completed} de {total}',
   'settings.sync.presentation.265ec42c10960f4e': ' · Necesita atención',

@@ -27,6 +27,8 @@ import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
 import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
 import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
 import { isReservedSecretId } from '@/secrets/deviceSecret'
+import { isLiteralMcpCredential, mcpSecretIds, protectMcpHeaders } from '@/ai/mcp/headerSecrets'
+import type { McpServer } from '@/ai/mcp/types'
 import { migrateSyncSettings } from '@/sync/settings'
 import { attachmentRulesFrom } from '@/media/attachmentRules'
 import {
@@ -224,9 +226,7 @@ export const SECTIONS: Section[] = [
   // Each server travels with the tools it was last seen offering, so the other device tells
   // its agents the same thing without fetching first. There is no command to carry: servers are
   // only ever reached over HTTP. The token is in the keychain; the setting names it.
-  aiList('ai-mcp-servers', 'MCP servers', 'mcpServers', (s: Identified & { keyId?: string }) =>
-    s.keyId ? [s.keyId] : []
-  ),
+  aiList('ai-mcp-servers', 'MCP servers', 'mcpServers', mcpSecretIds),
   {
     ...aiList('ai-secrets', 'Stored keys', 'secrets', (s: Identified & { keyId?: string }) =>
       s.keyId ? [s.keyId] : []
@@ -570,6 +570,16 @@ export function buildPayload(
 ): TransferPayload {
   const secrets: Record<string, string> = {}
 
+  // A legacy file or unavailable keychain must not put credentials in an open export.
+  // Work on copies: choosing a transfer never changes the local settings or keychain.
+  entries = entries.map((entry) => {
+    if (entry.section !== 'ai-mcp-servers') return entry
+    const data = protectMcpHeaders(entry.data as McpServer, (id, value) => {
+      if (readSecret) secrets[id] = value
+    })
+    return { ...entry, data, secretIds: mcpSecretIds(data) }
+  })
+
   if (readSecret) {
     for (const entry of entries) {
       for (const id of entry.secretIds ?? []) {
@@ -588,7 +598,17 @@ export function buildPayload(
 
 /** Whether the payload holds anything that must not be readable off the screen. */
 export function needsCode(payload: TransferPayload): boolean {
-  return Object.keys(payload.secrets).length > 0 || payload.entries.some((entry) => entry.sensitive)
+  return (
+    Object.keys(payload.secrets).length > 0 ||
+    payload.entries.some(
+      (entry) =>
+        entry.sensitive ||
+        (entry.section === 'ai-mcp-servers' &&
+          Object.entries((entry.data as McpServer).headers ?? {}).some(([name, value]) =>
+            isLiteralMcpCredential(name, value)
+          ))
+    )
+  )
 }
 
 /** Imported executable controls require a deliberate local enable, even when unchanged. */

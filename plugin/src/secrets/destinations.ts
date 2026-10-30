@@ -4,20 +4,12 @@ import { basicCredentials } from './basicAuth'
 import { canAllowHttp, checkKeyTransport } from './keyTransport'
 import { IMAGE_API_DEFAULTS } from '@/ai/types'
 import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
-import { GlobalStore } from '@/stores/GlobalStore'
 import { secrets } from './SecretStore'
 import { FIREFLY_TOKEN_KEY_ID } from './legacy'
-import { DestinationPolicy, httpOrigin, type Destination } from './DestinationPolicy'
+import { httpOrigin, type Destination } from './DestinationPolicy'
+import { destinationPolicy as policy } from './destinationStorage'
+import { mcpSecretIds } from '@/ai/mcp/headerSecrets'
 export type { Destination } from './DestinationPolicy'
-
-const STORAGE_KEY = 'abele-key-destinations-v1'
-function policy(): DestinationPolicy {
-  const app = GlobalStore.getInstance().app
-  return new DestinationPolicy({
-    load: () => app.loadLocalStorage(STORAGE_KEY),
-    save: (value) => app.saveLocalStorage(STORAGE_KEY, value),
-  })
-}
 
 /** The configured recipient of every service key, excluding GitHub's separate transport. */
 export function keyDestinations(settings: AbeleSettings): Destination[] {
@@ -42,7 +34,7 @@ export function keyDestinations(settings: AbeleSettings): Destination[] {
       add(secret.keyId, secret.name || 'Saved key', origin)
   }
   for (const server of ai?.mcpServers ?? [])
-    add(server.keyId, server.name || 'MCP server', server.url)
+    for (const id of mcpSecretIds(server)) add(id, server.name || 'MCP server', server.url)
   for (const feed of settings.calendars?.feeds ?? []) {
     if (feed.source === 'caldav') add(feed.keyId, feed.name || 'Calendar', feed.server)
   }
@@ -115,7 +107,11 @@ export function checkRequestDestinations(
     const value = secrets().get(keyId)
     if (!value) continue
     const matchedBasic = basics.filter(({ credentials }) => credentials?.password === value)
-    if (headers.some((h) => h.includes(value)) || matchedBasic.length) {
+    if (
+      headers.some((h) => h.includes(value)) ||
+      basics.some(({ header }) => header === value) ||
+      matchedBasic.length
+    ) {
       checkKeyDestination(keyId, request.url, settings)
       carried.push(value)
       for (const { header, credentials } of matchedBasic) {
@@ -123,7 +119,7 @@ export function checkRequestDestinations(
         carried.push(
           header,
           header.replace(/^Basic[ \t]+/i, ''),
-          `${credentials!.username}:${value}`
+          `${credentials.username}:${value}`
         )
       }
       // Home-network transport consent is not consent for arbitrary other credentials.

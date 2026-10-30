@@ -1,6 +1,7 @@
 import { AbeleConfig, DEFAULT_SETTINGS } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '../types'
 import { deviceValue, deviceView, isDevicePath, reachesPrototype, ownKey } from './settingsDevice'
+import { isCredentialHeader } from '@/secrets/credentialHeaders'
 
 /**
  * How `read_settings` and `write_settings` find a setting: dotted paths into the live config,
@@ -49,6 +50,11 @@ const HIDDEN = [
 /** Key names that hold a secret wherever they turn up, however deep. */
 export const SECRET_KEYS = /^(apiKeyId|keyId|boundKeyId|apiKey|token|secret|password|secretStore)$/i
 
+/** Header names are credentials only inside headers, never in tool permission names. */
+export function isSecretSettingField(name: string, parentKey = ''): boolean {
+  return SECRET_KEYS.test(name) || (parentKey === 'headers' && isCredentialHeader(name))
+}
+
 /** What a secret reads as in anything returned, and what an echo of it is recognised by. */
 export const HIDDEN_VALUE = '<hidden>'
 
@@ -58,17 +64,18 @@ export function isHidden(path: string): boolean {
   // store as `secretStore` is.
   if (HIDDEN.some((hidden) => lower === hidden.toLowerCase())) return true
   if (HIDDEN.some((hidden) => lower.startsWith(`${hidden.toLowerCase()}.`))) return true
-  return path.split('.').some((segment) => SECRET_KEYS.test(segment))
+  const segments = path.split('.')
+  return segments.some((segment, index) => isSecretSettingField(segment, segments[index - 1]))
 }
 
 /** Everything a secret key holds, replaced — the shape stays, the value does not. */
-export function redact(value: unknown, key = ''): unknown {
-  if (SECRET_KEYS.test(key)) return value ? HIDDEN_VALUE : ''
+export function redact(value: unknown, key = '', parentKey = ''): unknown {
+  if (isSecretSettingField(key, parentKey)) return value ? HIDDEN_VALUE : ''
   if (Array.isArray(value)) return value.map((item) => redact(item))
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {}
     for (const [name, inner] of Object.entries(value as Record<string, unknown>)) {
-      out[name] = redact(inner, name)
+      out[name] = redact(inner, name, key)
     }
     return out
   }
@@ -80,24 +87,24 @@ export function redact(value: unknown, key = ''): unknown {
  * a list read, changed and written whole — keeps the secret it had rather than storing the
  * placeholder. Items of a list are matched by `id` where they have one, by place otherwise.
  */
-export function restoreHidden(next: unknown, prev: unknown): unknown {
+export function restoreHidden(next: unknown, prev: unknown, key = ''): unknown {
   if (Array.isArray(next)) {
     const before = Array.isArray(prev) ? prev : []
     return next.map((item, index) => {
       const id = isRecord(item) ? item.id : undefined
       const match =
         id !== undefined ? before.find((old) => isRecord(old) && old.id === id) : before[index]
-      return restoreHidden(item, match)
+      return restoreHidden(item, match, key)
     })
   }
   if (isRecord(next)) {
     const old = isRecord(prev) ? prev : {}
     for (const [name, inner] of Object.entries(next)) {
-      if (SECRET_KEYS.test(name) && inner === HIDDEN_VALUE) {
+      if (isSecretSettingField(name, key) && inner === HIDDEN_VALUE) {
         if (name in old) next[name] = old[name]
         else delete next[name]
       } else {
-        next[name] = restoreHidden(inner, old[name])
+        next[name] = restoreHidden(inner, old[name], name)
       }
     }
   }
@@ -143,8 +150,20 @@ export function resolve(path: string): Resolved | null {
   if (reachesPrototype(path)) return null
   const segments = path.split('.').filter(Boolean)
   if (segments.length === 0) return null
-  if (isDevicePath(path)) return { parent: {}, key: segments[segments.length - 1], value: deviceValue(path), parentPath: segments.slice(0, -1).join('.') }
-  if (path === 'sync') return { parent: {}, key: 'sync', value: { ...AbeleConfig.getInstance().sync, ...deviceView() }, parentPath: '' }
+  if (isDevicePath(path))
+    return {
+      parent: {},
+      key: segments[segments.length - 1],
+      value: deviceValue(path),
+      parentPath: segments.slice(0, -1).join('.'),
+    }
+  if (path === 'sync')
+    return {
+      parent: {},
+      key: 'sync',
+      value: { ...AbeleConfig.getInstance().sync, ...deviceView() },
+      parentPath: '',
+    }
 
   let parent: Resolved['parent'] | null = null
   let key = ''

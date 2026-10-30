@@ -950,6 +950,12 @@ syntax both have details that cannot be guessed.
 
 ## MCP servers
 
+Credential header values are kept in the keychain. `read_settings` hides Authorization,
+Cookie, API key and token/secret/password headers, including vendor-prefixed names, at every
+read depth, even before old settings have been migrated. Settings write previews and replies
+hide them too; ordinary headers remain readable. Internal `${abele_mcp_key:…}` references
+are resolved only for the server's configured, locally confirmed recipient.
+
 `mcp_<server>_<tool>` — one tool per tool of every MCP server the person connected in the
 settings (AI → MCP). They are not the plugin's own: each server names and describes its tools,
 and the description ends by saying which server it belongs to. `<server>` is the server's name

@@ -20140,7 +20140,7 @@
     ]
   },
   "settings.mcp.headersDescription": {
-    "englishHash": "2b27515e552f4f035e44bbcfc11520eee62d5eed0222b3c615a299758a1717eb",
+    "englishHash": "c76389f0bf3379610e1b59cee31be01d4739efdeffebaa3fd11f6f26e8c3ecdc",
     "context": "Settings control, explanatory text, or display-only metadata",
     "reviewedLocales": [
       "ru",
@@ -28722,6 +28722,16 @@
   "settings.metadata.tracePointList": {
     "englishHash": "db6059a39c15b6ff11261d8def279b722c317be73ced438c61e02ff09d5ae9e8",
     "context": "Record point list tool label in node tool settings",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "settings.mcp.headerKeyMissing": {
+    "englishHash": "a60878b896e5648facffe9afab9081f2a27de65337efc4bbaeaae854c0493a39",
+    "context": "Settings control, explanatory text, or display-only metadata",
     "reviewedLocales": [
       "ru",
       "lv",

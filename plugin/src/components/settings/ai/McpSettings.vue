@@ -90,6 +90,7 @@ import { mcpKeyId, notifyMcpPermissionReset } from '@/ai/mcp/settings'
 import { migrateMcpPermissions } from '@/ai/mcp/permissions'
 import { createMcpServer, type McpServer } from '@/ai/mcp/types'
 import { secrets } from '@/secrets/SecretStore'
+import { mcpSecretIds, protectMcpHeaders } from '@/ai/mcp/headerSecrets'
 import { keyDestinations, acceptIntroducedDestinations } from '@/secrets/destinations'
 
 const config = AbeleConfig.getInstance()
@@ -119,7 +120,7 @@ function persist(): void {
 }
 
 function save(server: McpServer, token?: string | null): void {
-  const next = { ...server }
+  const next = { ...protectMcpHeaders(server, (id, value) => secrets().set(id, value)) }
   if (token) {
     next.keyId = mcpKeyId(next.id)
     secrets().set(next.keyId, token)
@@ -155,7 +156,7 @@ function migrateToolModes(): void {
 
 function remove(id: string): void {
   const server = servers.value.find((s) => s.id === id)
-  if (server?.keyId) secrets().remove(server.keyId)
+  if (server) for (const id of mcpSecretIds(server)) secrets().remove(id)
   servers.value = servers.value.filter((s) => s.id !== id)
   pendingRemoval.value = null
   persist()

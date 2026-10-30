@@ -2938,7 +2938,8 @@ export const en = {
   'settings.secrets.removeNamed':
     'Remove {name}? Any fetch call referring to it by name will stop working, and the stored value is gone from the keychain.',
   'settings.mcp.headersDescription':
-    'One per line, as Name: value. Write a secret as {example}, a key kept under AI → General → Stored keys, so it stays out of the settings file.',
+    'One per line, as Name: value. Credential headers are saved in the keychain automatically. You can also use {example} for a key under AI → General → Stored keys.',
+  'settings.mcp.headerKeyMissing': 'This MCP header key has no value on this device.',
   'settings.sync.presentation.e159b06187d369a0': 'Paused',
   'settings.sync.presentation.857a66dd7a6dfe32': ' · {completed} of {total}',
   'settings.sync.presentation.265ec42c10960f4e': ' · Needs attention',

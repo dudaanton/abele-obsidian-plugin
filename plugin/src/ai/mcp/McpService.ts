@@ -7,6 +7,8 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { substituteSecrets } from '@/ai/tools/secretUtils'
 import { McpClient, type McpRequest } from './McpClient'
 import type { McpCallResult, McpServer, McpToolSnapshot } from './types'
+import { mcpHeaderKey } from './headerSecrets'
+import { t } from '@/i18n'
 
 export class McpService {
   private static instance: McpService | null = null
@@ -29,9 +31,13 @@ export class McpService {
   headersFor(server: McpServer, token?: string): Record<string, string> {
     const headers: Record<string, string> = {}
     for (const [name, value] of Object.entries(server.headers ?? {})) {
-      if (name.trim()) headers[name.trim()] = substituteSecrets(value, server.url)
+      const id = mcpHeaderKey(value)
+      const resolved = id ? keyFor(id, server.url, AbeleConfig.getInstance()) : value
+      if (id && !resolved) throw new Error(t('settings.mcp.headerKeyMissing'))
+      if (name.trim()) headers[name.trim()] = substituteSecrets(resolved, server.url)
     }
-    const bearer = token ?? (server.keyId ? keyFor(server.keyId, server.url, AbeleConfig.getInstance()) : '')
+    const bearer =
+      token ?? (server.keyId ? keyFor(server.keyId, server.url, AbeleConfig.getInstance()) : '')
     if (bearer) headers.Authorization = `Bearer ${bearer}`
     return headers
   }

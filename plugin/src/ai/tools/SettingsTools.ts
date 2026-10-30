@@ -353,7 +353,7 @@ function setValue(
 
   // A value read, changed and written back whole still reads `<hidden>` where a keychain id
   // was; that id stays rather than being replaced by the placeholder.
-  const next = restoreHidden(parsed, found.value)
+  const next = restoreHidden(parsed, found.value, found.key)
   const before = JSON.stringify(redact(found.value, found.key))
   // An agent's list and the single fields that mirror its first entry are written together.
   if (isInterceptorKey(found.key) && isAgent(found.parent)) {

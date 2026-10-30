@@ -15,8 +15,8 @@ export interface McpServer {
   /** Keychain id of a token sent as `Authorization: Bearer`. Empty for none. */
   keyId: string
   /**
-   * Further headers, sent as written. A value may name a stored key as `${abele_key:name}`,
-   * which is how a secret other than a bearer token stays out of the settings file.
+   * Further headers, sent as written. Literal credentials are kept in the keychain and
+   * replaced by `${abele_mcp_key:id}`. A value may also name a key as `${abele_key:name}`.
    */
   headers: Record<string, string>
   /**
