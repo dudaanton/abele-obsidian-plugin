@@ -1401,11 +1401,14 @@ Ordinary vault chats with node access accept the same formats. Paths must stay i
 accessible node folder. Relative paths prefer the current folder when several are available;
 use an explicit scoped link when the destination could otherwise be ambiguous.
 Relative paths are rooted at the node folder, never the vault.
-For an unambiguous link to paste into another chat, use the file selection's copy-link action.
+For an unambiguous link to paste into a chat, note or canvas, use the file selection's copy-link action.
 The link is `abele-node-code:` followed by URI-encoded JSON with `scope` equal to
 `[node_id, project_id, "worktree", worktree_id]`, `path`, `line`, and `endLine`.
-For plain folders use `"workspace"` and its workspace ID. Links only open within the receiving
-chat's node access. GitHub links continue to address their original revisions.
+For plain folders use `"workspace"` and its workspace ID. Clicking a portable link anywhere in
+Obsidian opens the node file view at those lines using the owner's access on the current device;
+the receiving chat does not need node access. An unavailable node, folder or file shows an error
+inside Obsidian. Opening a link does not grant the agent access. GitHub links continue to address
+their original revisions.
 
 ### Manager command and integration tools
 

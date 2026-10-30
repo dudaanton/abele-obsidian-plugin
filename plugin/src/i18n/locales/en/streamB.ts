@@ -1,4 +1,6 @@
 export const streamB = {
+  'streamB.invalidNodeCodeLink':
+    'This node code link is invalid. Copy the link again from the node.',
   'streamB.showAsCode': 'Show as code',
   'streamB.showRendered': 'Show rendered',
   'streamB.fileEmpty': 'This file is empty.',

@@ -1,6 +1,29 @@
 import type { PathTarget } from './NodePathModel'
 
 const prefix = 'abele-node-code:'
+export const isNodeCodeLink = (resource: string): boolean =>
+  resource.trim().toLowerCase().startsWith(prefix)
+
+/** A portable citation identifies a place independently of any chat's grants. */
+export function nodeCodeLinkTarget(resource: string): PathTarget | undefined {
+  if (!isNodeCodeLink(resource)) return
+  try {
+    const parsed = JSON.parse(decodeURIComponent(resource.trim().slice(prefix.length)))
+    if (!Array.isArray(parsed.scope) || parsed.scope.length !== 4) return
+    const [nodeId, projectId, kind, id] = parsed.scope
+    if (
+      ![nodeId, projectId, id].every(
+        (value) => typeof value === 'string' && value.length > 0 && value.length <= 128
+      ) ||
+      !['worktree', 'workspace'].includes(kind)
+    )
+      return
+    const target: PathTarget = { nodeId, projectId, kind, id, registrationId: '' }
+    return resolveNodeCodeLink(resource, target) ? target : undefined
+  } catch {
+    return
+  }
+}
 export interface CodeDestination {
   path: string
   line?: number
@@ -40,8 +63,8 @@ export function resolveNodeCodeLink(
 ): CodeDestination | undefined {
   try {
     let destination: CodeDestination
-    if (resource.startsWith(prefix)) {
-      const parsed = JSON.parse(decodeURIComponent(resource.slice(prefix.length)))
+    if (isNodeCodeLink(resource)) {
+      const parsed = JSON.parse(decodeURIComponent(resource.trim().slice(prefix.length)))
       if (!target || JSON.stringify(parsed.scope) !== JSON.stringify(identity(target))) return
       destination = { path: parsed.path, line: parsed.line, endLine: parsed.endLine ?? parsed.line }
       if (parsed.match !== undefined) {

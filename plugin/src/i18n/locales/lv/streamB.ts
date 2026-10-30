@@ -1,4 +1,6 @@
 export const streamB = {
+  'streamB.invalidNodeCodeLink':
+    'Šī mezgla koda saite nav derīga. Vēlreiz nokopējiet saiti no mezgla.',
   'streamB.showAsCode': 'Rādīt kodu',
   'streamB.showRendered': 'Rādīt formatētu',
   'streamB.fileEmpty': 'Šis fails ir tukšs.',

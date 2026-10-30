@@ -1,5 +1,25 @@
-/** Local note/heading links remain local; external links can only open web or mail. */
+import { isNodeCodeLink } from '@/node/codeLinks'
+
+/** Retain portable citations before render-specific URL rewriting can discard them. */
+export function preserveNodeCodeLinks(root: HTMLElement): void {
+  for (const el of Array.from(root.querySelectorAll('a,area'))) {
+    const resource = [el.getAttribute('data-href'), el.getAttribute('href')].find(
+      (value) => value && isNodeCodeLink(value)
+    )
+    if (resource) {
+      el.setAttribute('data-node-resource', resource)
+      el.setAttribute('href', '#')
+      el.removeAttribute('data-href')
+      el.removeAttribute('target')
+      el.removeAttribute('rel')
+      el.classList.remove('external-link')
+    }
+  }
+}
+
+/** Local and node links stay in Obsidian; external links can only open web or mail. */
 export function guardExternalLinks(root: HTMLElement): void {
+  preserveNodeCodeLinks(root)
   for (const el of Array.from(root.querySelectorAll('a,area'))) {
     const internal = el.classList.contains('internal-link')
     for (const attr of Array.from(el.attributes)) {

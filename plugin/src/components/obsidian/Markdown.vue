@@ -11,6 +11,7 @@
 import { GlobalStore } from '@/stores/GlobalStore'
 import { nodeMarkdownClick, nodeMarkdownPolicy } from '@/node/markdown'
 import { prepareNodeCodeLinks } from '@/node/markdown'
+import { isNodeCodeLink } from '@/node/codeLinks'
 import { NODE_CODE_LINK_OPENER, type CodeLinkOpener } from '@/node/codeLinkContext'
 import { inject } from 'vue'
 import { Component, Keymap, MarkdownRenderer } from 'obsidian'
@@ -65,6 +66,8 @@ const resourcePolicy = () => {
       const opener = (props.resourceOpener ?? codeOpener) as CodeLinkOpener
       if (!opener.canOpen) return
       for (const link of Array.from(root.querySelectorAll('a[data-node-resource]'))) {
+        // Portable citations are owner navigation, independent of this chat's grants.
+        if (isNodeCodeLink(link.getAttribute('data-node-resource') ?? '')) continue
         let allowed = false
         try {
           allowed = opener.canOpen(link.getAttribute('data-node-resource') ?? '')

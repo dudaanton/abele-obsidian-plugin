@@ -1,4 +1,5 @@
 export const streamB = {
+  'streamB.invalidNodeCodeLink': 'Ссылка на код ноды повреждена. Скопируйте её с ноды заново.',
   'streamB.showAsCode': 'Показать код',
   'streamB.showRendered': 'Показать текст',
   'streamB.fileEmpty': 'Файл пуст.',

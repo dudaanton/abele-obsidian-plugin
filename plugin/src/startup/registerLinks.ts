@@ -6,9 +6,11 @@ import { runAfterSync } from '@/helpers/runAfterSync'
 import { handleProtocolAction } from '@/helpers/protocolHandler'
 import { handleLinkAction } from '@/helpers/linkHandler'
 import type { Plugin } from 'obsidian'
+import { registerNodeCodeLinks } from '@/node/registerCodeLinks'
 
 /** Startup section; called at its original lifecycle position. */
 export function registerLinks(plugin: Plugin) {
+  registerNodeCodeLinks(plugin)
   // Register protocol handler for obsidian://abele
   // Routes to link handler when "name" param is present, otherwise to protocol action
   plugin.registerObsidianProtocolHandler('abele', (params) => {

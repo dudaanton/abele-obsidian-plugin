@@ -1,4 +1,6 @@
 export const streamB = {
+  'streamB.invalidNodeCodeLink':
+    'Dieser Link zum Knotencode ist ungültig. Kopieren Sie den Link erneut vom Knoten.',
   'streamB.showAsCode': 'Als Code anzeigen',
   'streamB.showRendered': 'Formatiert anzeigen',
   'streamB.fileEmpty': 'Diese Datei ist leer.',

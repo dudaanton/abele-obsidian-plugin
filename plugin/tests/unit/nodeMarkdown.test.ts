@@ -1,12 +1,66 @@
 import { expect, it, vi } from 'vitest'
 // The renderer adapter uses Obsidian's window-local DOM helpers.
-import 'obsidian'
+import { Component, MarkdownRenderer } from 'obsidian'
 import { nodeMarkdownClick, nodeMarkdownPolicy } from '@/node/markdown'
-import { markUntrusted, untrustedGuard } from '@/markdown/renderUntrusted'
+import { markUntrusted, renderUntrustedMarkdown, untrustedGuard } from '@/markdown/renderUntrusted'
 import { useVault } from '../helpers/testEnv'
 import { guardExternalLinks } from '@/markdown/externalLinks'
 import { nodeCodeLink } from '@/node/codeLinks'
 import { finishCode, ZWSP } from '@/markdown/untrustedCode'
+import { githubPolicy } from '@/github/safeMarkdown'
+
+it('keeps portable node citations navigable in Markdown without a chat opener', () => {
+  const root = document.createElement('div')
+  const resource = nodeCodeLink(
+    {
+      nodeId: 'node',
+      registrationId: 'local',
+      projectId: 'project',
+      kind: 'workspace',
+      id: 'space',
+    },
+    'src/sample.ts',
+    { start: 3, end: 7 }
+  )
+  const link = root.createEl('a', { attr: { href: resource } })
+  guardExternalLinks(root)
+  expect(link.getAttribute('data-node-resource')).toBe(resource)
+  expect(link.getAttribute('href')).toBe('#')
+})
+
+it('retains node destinations before a repository Markdown policy rewrites URLs', async () => {
+  useVault([])
+  const root = document.createElement('div')
+  const resource = nodeCodeLink(
+    {
+      nodeId: 'node',
+      registrationId: 'local',
+      projectId: 'project',
+      kind: 'workspace',
+      id: 'space',
+    },
+    'src/sample.ts',
+    { start: 3, end: 7 }
+  )
+  const render = vi
+    .spyOn(MarkdownRenderer, 'render')
+    .mockImplementation(async (_app, _text, el) => {
+      el.createEl('a', { text: 'source', attr: { href: resource } })
+    })
+  try {
+    await renderUntrustedMarkdown(
+      root,
+      'source',
+      new Component(),
+      '',
+      githubPolicy({ host: 'example.test', owner: 'sample', repo: 'sample', ref: 'main', path: '' })
+    )
+    expect(root.querySelector('a')?.getAttribute('data-node-resource')).toBe(resource)
+    expect(root.querySelector('a')?.getAttribute('href')).not.toContain('abele-node-code:')
+  } finally {
+    render.mockRestore()
+  }
+})
 
 it('links bare inline paths while retaining the inline-code guard through processing', () => {
   const root = document.createElement('div')
