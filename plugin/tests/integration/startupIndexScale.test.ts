@@ -68,6 +68,10 @@ it('starts a synced 33k indexed vault without content reads or a per-file disk w
       JSON.stringify({ ...entry, identity: await fs.fileIdentity!(entry.path) })
     )
   content.mockClear()
+  const keys = vi.spyOn(fs, 'pathKey')
+  for await (const _ of fs.list()) void _
+  expect(keys.mock.calls.length).toBeLessThanOrEqual(count + 128)
+  keys.mockRestore()
   const stats = vi.spyOn(app.vault.adapter, 'stat')
   const lists = vi.spyOn(app.vault.adapter, 'list')
   const transfers = vi.fn(() => {

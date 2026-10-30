@@ -74,6 +74,33 @@ it('waits for stable engine idle before publishing the startup idle mark', async
   }
 })
 
+it('marks startup idle with a settled long automatic cycle before the observer stops', async () => {
+  const wire = await server('Notes/sample.md', 'remote')
+  const fetch = wire.fetch
+  wire.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const route = new URL(
+      typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    ).pathname
+    if (route === '/v2/connection')
+      await new Promise((resolve) => setTimeout(resolve, 650))
+    return fetch(input, init)
+  })
+  const marks: string[] = []
+  const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+    startupMark: (phase) => marks.push(phase),
+  })
+  try {
+    await one.runtime.start()
+    await vi.waitFor(() => expect(one.runtime.engine.status.state).toBe('idle'), {
+      timeout: 4000,
+    })
+    expect(marks).toContain('idle')
+    expect(marks.indexOf('reconcile:report:end')).toBeLessThan(marks.indexOf('idle'))
+  } finally {
+    await one.runtime.close()
+  }
+})
+
 it('does not mark startup idle while a deletion awaits a decision', async () => {
   const wire = await server('Notes/sample.md', 'remote')
   const marks: string[] = []

@@ -2557,7 +2557,10 @@ export class ObsidianFileSystem implements FileSystem {
     const mutations = folderMutations(this.app.vault)
     await mutations.settled()
     const revision = mutations.revision
-    const indexed = new Set<string>()
+    const indexedExact = new Set<string>()
+    let indexedKeys: Set<string> | undefined
+    const indexed = () =>
+      (indexedKeys ??= new Set([...indexedExact].map((path) => this.pathKey(path))))
     const withinScope = (path: string) => this.withinFileScope(path)
     const files =
       this.discovery && this.discovery.roots.length === 0 && this.indexReady()
@@ -2574,7 +2577,8 @@ export class ObsidianFileSystem implements FileSystem {
         if (!actual || actual.type !== 'file') continue
         if (actual.size === file.stat.size && stamp(actual.mtime) === stamp(file.stat.mtime))
           this.awaitingIndex.delete(file.path)
-        indexed.add(this.pathKey(file.path))
+        indexedExact.add(file.path)
+        indexedKeys?.add(this.pathKey(file.path))
         yield {
           path: file.path,
           size: actual.size,
@@ -2583,7 +2587,8 @@ export class ObsidianFileSystem implements FileSystem {
         }
         continue
       }
-      indexed.add(this.pathKey(file.path))
+      indexedExact.add(file.path)
+      indexedKeys?.add(this.pathKey(file.path))
       yield {
         path: file.path,
         size: file.stat.size,
@@ -2606,15 +2611,20 @@ export class ObsidianFileSystem implements FileSystem {
       if (pause !== undefined) await pause
       if (!withinScope(path) || !this.inventoryVisible(path)) continue
       if (this.discovery && !this.discovery.includes(path)) continue
-      if (indexed.has(this.pathKey(path)) || path.startsWith(`${this.configDir}/`)) {
+      if (
+        indexedExact.has(path) ||
+        path.startsWith(`${this.configDir}/`) ||
+        indexed().has(this.pathKey(path))
+      ) {
         continue
       }
       // stat alone on a case-folding disk would keep a phantom Report.md after a rename to
       // report.md. List its parent for the actual spelling, and never yield both names.
       const actual = await this.spellingOnDisk(path)
       const info = actual === null || !withinScope(actual) ? null : await this.fileAt(actual)
-      if (info !== null && !indexed.has(this.pathKey(info.path))) {
-        indexed.add(this.pathKey(info.path))
+      if (info !== null && !indexed().has(this.pathKey(info.path))) {
+        indexedExact.add(info.path)
+        indexedKeys?.add(this.pathKey(info.path))
         yield info
       }
       if ((info === null || actual !== path) && !this.app.vault.getFileByPath(path))
