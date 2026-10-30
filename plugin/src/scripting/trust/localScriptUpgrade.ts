@@ -5,6 +5,7 @@ import { TRUST_KEY } from '../ScriptTrust'
 import { trustStateFrom, verdictOf } from '../trustState'
 import { assertNoScriptContextHold, SCRIPT_CONTEXT_HOLD_FILE } from './scriptContextHold'
 import { SCRIPT_SENTINEL, SCRIPT_TRUST_KEY } from './scriptTrustStorage'
+import { agentScriptWaiting } from './agentScriptWrites'
 
 /** Exact versions already allowed here before the first managed sync. Never a vault file. */
 export const LOCAL_SCRIPT_UPGRADE_KEY = 'abele-script-local-upgrade'
@@ -53,7 +54,8 @@ export async function preserveLocalScriptVersions(app: App): Promise<void> {
       const sha = await sha256(new Uint8Array(await app.vault.adapter.readBinary(file)))
       // When checking was off these local versions were executable already. When on,
       // only the exact approved 1.x versions survive; unknown bytes are not grandfathered.
-      if (verdictOf(state, file, sha) === 'confirmed') versions.push({ path: file, sha })
+      if (verdictOf(state, file, sha) === 'confirmed' && !agentScriptWaiting(app, file, sha))
+        versions.push({ path: file, sha })
     }
   }
   if (folder && (await app.vault.adapter.exists(folder))) await visit(folder)

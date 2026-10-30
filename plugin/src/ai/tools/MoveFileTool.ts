@@ -5,8 +5,12 @@ import { appOf } from '../toolContext'
 import { scopeOf } from '../toolContext'
 import { toSafeVaultPath, describeRename } from '@/helpers/pathsHelpers'
 import { TFile } from 'obsidian'
+import { noteFileToolScriptCopy } from '@/scripting/trust/fileToolScriptWrite'
 
-export function createMoveFileTool(opts?: { skipScope?: boolean }): AgentTool {
+export function createMoveFileTool(opts?: {
+  skipScope?: boolean
+  scriptAuthor?: boolean
+}): AgentTool {
   return {
     name: 'mv',
     label: 'Move/Rename File',
@@ -49,6 +53,8 @@ export function createMoveFileTool(opts?: { skipScope?: boolean }): AgentTool {
         if (!app.vault.getAbstractFileByPath(parent)) await app.vault.createFolder(parent)
       }
       signal?.throwIfAborted()
+      if (!opts?.scriptAuthor && safeTo.endsWith('.js'))
+        await noteFileToolScriptCopy(app, file.path, safeTo, await app.vault.read(file))
       await app.fileManager.renameFile(file, safeTo)
       if (!opts?.skipScope) scopeOf(ctx).addFile(safeTo)
       scopeOf(ctx).invalidate()

@@ -7,8 +7,12 @@ import { scopeOf } from '../toolContext'
 import { toSafeVaultPath, describeRename } from '@/helpers/pathsHelpers'
 import { TFile } from 'obsidian'
 import { chatCopyBytes } from '../chatText'
+import { noteFileToolScriptCopy } from '@/scripting/trust/fileToolScriptWrite'
 
-export function createCopyFileTool(opts?: { skipScope?: boolean }): AgentTool {
+export function createCopyFileTool(opts?: {
+  skipScope?: boolean
+  scriptAuthor?: boolean
+}): AgentTool {
   return {
     name: 'cp',
     label: 'Copy File',
@@ -47,6 +51,7 @@ export function createCopyFileTool(opts?: { skipScope?: boolean }): AgentTool {
       const content = chatCopyBytes(file.path, file.basename, await app.vault.readBinary(file))
       signal?.throwIfAborted()
       // Ordinary attachments keep their bytes; a chat never exports its private fields.
+      if (!opts?.scriptAuthor) await noteFileToolScriptCopy(app, file.path, safeTo, content)
       assertExternalDestinationAvailable(app, safeTo)
       await app.vault.createBinary(safeTo, content)
       scopeOf(ctx).invalidate()

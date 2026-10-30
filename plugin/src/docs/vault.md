@@ -212,6 +212,19 @@ conservatively protected until explicit disconnect preparation exists. Old direc
 can still delete IndexedDB without opening it; the surviving marker makes a new client refuse
 empty bootstrap, not magically undo that unsupported old deletion.
 
+## Agent-authored script approvals
+
+Vault-scoped device-local storage `abele-agent-script-writes` holds `{paths, hashes, approved}`:
+arrays of executable paths touched by agent file tools, SHA-256 hashes of their full contents,
+and exact hashes approved by the owner or an explicitly authorized script-tool run. It is
+independent of `abele-script-trust` and its optional foreign-script switch. Holds are saved
+before filesystem writes; hashes retain holds through renames and copies. Path holds also cover
+mutations whose final bytes are not known beforehand. Records survive plugin reloads and are
+never bootstrapped from an agent-written file, synced, or exported as settings. Owner editor
+saves and explicit review approve exact contents. Pending versions are excluded from the
+pre-sync local-script upgrade snapshot. Missing storage writes and damaged records stop the
+operation; disabling foreign-script checking does not clear these holds.
+
 ## Selection-script menu settings
 
 Plugin `data.json` stores independent ordered lists at `reader.selectionScripts` (books) and

@@ -18,6 +18,7 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { isScriptPath } from './scriptPath'
 import { noteManagedLocalScriptWrite } from './trust/localScriptWrite'
+import { confirmAgentScript } from './trust/agentScriptWrites'
 import {
   armedWith,
   armsFromSettings,
@@ -233,9 +234,10 @@ export class ScriptTrust {
 
 /** Shorthand for the write sites: record a write made on this device, never throw over it. */
 export async function noteLocalScriptWrite(path: string, text: string): Promise<void> {
+  const app = GlobalStore.getInstance().app
+  if (app && path.endsWith('.js')) confirmAgentScript(app, await sha256(text))
   try {
     await ScriptTrust.getInstance().noteLocalWrite(path, text)
-    const app = GlobalStore.getInstance().app
     if (app && isScriptPath(path)) await noteManagedLocalScriptWrite(app, path, text)
   } catch (err) {
     console.error('[ScriptTrust] could not record a local write', err)

@@ -5,9 +5,12 @@ import { appOf } from '../toolContext'
 import { scopeOf } from '../toolContext'
 import { toSafeVaultPath, describeRename } from '@/helpers/pathsHelpers'
 import { contentHash } from '../readGuard'
-import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
+import { noteFileToolScriptWrite } from '@/scripting/trust/fileToolScriptWrite'
 
-export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool {
+export function createCreateFileTool(opts?: {
+  skipScope?: boolean
+  scriptAuthor?: boolean
+}): AgentTool {
   return {
     name: 'create',
     label: 'Create File',
@@ -50,7 +53,7 @@ export function createCreateFileTool(opts?: { skipScope?: boolean }): AgentTool 
         }
       }
       signal?.throwIfAborted()
-      await noteLocalScriptWrite(safePath, content)
+      await noteFileToolScriptWrite(app, safePath, content, opts?.scriptAuthor)
       signal?.throwIfAborted()
       assertExternalDestinationAvailable(app, safePath)
       await app.vault.create(safePath, content)

@@ -169,16 +169,16 @@ describe('scripts from elsewhere', () => {
     expect(service.verdict(one())).toBe('confirmed')
   })
 
-  it('counts a script the agent wrote or edited with its file tools as written here', async () => {
+  it('counts writes made by an authorized script through its file API as written here', async () => {
     const { createWriteFileTool } = await import('@/ai/tools/WriteFileTool')
     const { createEditFileTool } = await import('@/ai/tools/EditFileTool')
-    await createWriteFileTool({ skipScope: true }).execute('w', {
+    await createWriteFileTool({ skipScope: true, scriptAuthor: true }).execute('w', {
       path: 'Scripts/one.js',
       content: SCRIPT('One', "return 'agent'"),
     })
     await service.discover()
     expect(service.verdict(one())).toBe('confirmed')
-    await createEditFileTool({ skipScope: true }).execute('e', {
+    await createEditFileTool({ skipScope: true, scriptAuthor: true }).execute('e', {
       path: 'Scripts/one.js',
       old_string: "'agent'",
       new_string: "'agent again'",

@@ -15,6 +15,13 @@ Scripts run inside Obsidian with full access to your vault, so they are off unti
 in **Settings → Abele → Scripts → General** and choose the folder they live in. Only run scripts
 you have read or trust.
 
+Scripts an agent creates or edits wait for you to approve that exact version in the script
+library. This also applies to lint rules, startup scripts and automations, even when checking
+scripts from other devices is off. Approving a file write only saves the file. You can separately
+approve the script's own tool call or set that script tool to **Auto** to let the agent activate
+its code. A later edit needs approval again or another authorized script-tool run. Scripts you
+write yourself keep working as before.
+
 ## Archives
 
 Script `unzip()` keeps every extracted file inside its target folder. An archive with an

@@ -6,6 +6,7 @@ import { nanoid } from 'nanoid'
 import { prepareSecretRequest, redactSecrets, type SecretRequest } from './secretUtils'
 import { BASIC_AUTH_PARAMETER } from '@/secrets/basicAuth'
 import { createImportedBinary } from '@/media/importImageFile'
+import { noteAgentScriptWrite } from '@/scripting/trust/agentScriptWrites'
 
 function extFromContentType(contentType: string): string | null {
   if (contentType.includes('heic')) return 'heic'
@@ -112,6 +113,7 @@ async function downloadToVault(
     counter++
   }
 
+  await noteAgentScriptWrite(app, targetPath, response.arrayBuffer)
   const saved = await createImportedBinary(
     app,
     targetPath,

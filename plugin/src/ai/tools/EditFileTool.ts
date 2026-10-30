@@ -4,9 +4,12 @@ import { EDIT_DESCRIPTION } from './fileToolDescriptions'
 import { appOf, scopeOf } from '../toolContext'
 import { TFile } from 'obsidian'
 import { contentHash } from '../readGuard'
-import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
+import { noteFileToolScriptWrite } from '@/scripting/trust/fileToolScriptWrite'
 
-export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
+export function createEditFileTool(opts?: {
+  skipScope?: boolean
+  scriptAuthor?: boolean
+}): AgentTool {
   return {
     name: 'edit',
     label: 'Edit File',
@@ -45,7 +48,7 @@ export function createEditFileTool(opts?: { skipScope?: boolean }): AgentTool {
       // A function, not the string: in a replacement string `$&` and `$'` are patterns, not text.
       const updated = content.replace(old_string, () => new_string)
       signal?.throwIfAborted()
-      await noteLocalScriptWrite(file.path, updated)
+      await noteFileToolScriptWrite(app, file.path, updated, opts?.scriptAuthor)
       signal?.throwIfAborted()
       await app.vault.modify(file, updated)
       return {

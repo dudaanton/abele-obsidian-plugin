@@ -5,6 +5,9 @@ import type { FormField, ScriptParam } from '@/scripting/types'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { checkPickerAnswers } from '@/scripting/formPickers'
 import { formatPick, notesMatching } from '@/helpers/noteFilter'
+import { appOf } from '../toolContext'
+import { agentScriptWaiting } from '@/scripting/trust/agentScriptWrites'
+import { noteLocalScriptWrite, sha256 } from '@/scripting/ScriptTrust'
 
 export function createScriptTools(): AgentTool[] {
   const service = ScriptService.getInstance()
@@ -16,6 +19,18 @@ export function createScriptTools(): AgentTool[] {
     description: script.meta.description || `Run the "${script.meta.name}" script.`,
     parameters: buildJsonSchema(script.meta.params),
     execute: async (_id, params, signal, ctx) => {
+      // Approval of a file write is not execution authority. Only this script's own
+      // approved call or explicit Auto mode may activate an agent-authored version.
+      const app = appOf(ctx)
+      const bytes = await app.vault.adapter.readBinary(script.path)
+      const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+      if (agentScriptWaiting(app, script.path, await sha256(source))) {
+        const name = `script_${scriptSlug(script.meta.name)}`
+        if (!(ctx?.approved === true || ctx?.session?.getToolMode(name) === 'auto'))
+          throw new Error('This exact script version needs device-local approval')
+        signal?.throwIfAborted()
+        await noteLocalScriptWrite(script.path, source)
+      }
       const outcome = await service.executeForAgent(script.path, params, signal, ctx)
       return { content: [{ type: 'text', text: describe(outcome) }] }
     },

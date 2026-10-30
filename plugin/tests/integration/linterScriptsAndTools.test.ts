@@ -14,6 +14,7 @@ import { LinterService } from '@/linter/LinterService'
 import { linterSettingsFrom } from '@/linter/settings'
 import { createLintTool, createLintFixTool } from '@/ai/tools/LintTools'
 import { createScriptTools } from '@/ai/tools/ScriptTool'
+import { createCreateFileTool } from '@/ai/tools/CreateFileTool'
 import { useVault } from '../helpers/testEnv'
 import type { FakeApp } from '../helpers/fakeVault'
 
@@ -155,6 +156,29 @@ describe('a lint script only reads', () => {
 })
 
 describe('the agent tools', () => {
+  it('does not execute a lint rule created with ordinary file-write permission', async () => {
+    const marker = vi.fn()
+    vi.stubGlobal('__sampleLintExecuted', marker)
+    try {
+      await createCreateFileTool().execute('create-rule', {
+        path: 'Scripts/agent-rule.js',
+        content: `// @name Agent rule
+// @lint
+globalThis.__sampleLintExecuted()
+function check() { return [] }
+`,
+      })
+      await ScriptService.getInstance().discover()
+      await createLintTool().execute('lint-note', { path: 'Notes/good.md' })
+      expect(marker).not.toHaveBeenCalled()
+      await expect(ScriptService.getInstance().definition('Scripts/agent-rule.js')).rejects.toThrow(
+        /confirm|approval/
+      )
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('lint lists what the rules find, grouped by folder and note', async () => {
     const out = text(await createLintTool().execute('1', { path: 'Notes' }))
     expect(out).toMatch(/^Linted 2 notes with \d+ rules: \d+ issues in 1 notes, \d+ fixable\./)

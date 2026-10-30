@@ -178,7 +178,7 @@ export function buildScriptContext(opts: {
     for (const path of paths) if (path) opts.onWrite(path)
   }
 
-  const skipScope = { skipScope: true }
+  const skipScope = { skipScope: true, scriptAuthor: true }
   const readTool = createReadFileTool(skipScope)
   const editTool = createEditFileTool(skipScope)
   const writeTool = createWriteFileTool(skipScope)

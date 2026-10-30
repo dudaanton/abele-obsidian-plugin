@@ -5,10 +5,11 @@ import { NUMBERS_NOT_TEXT, READ_FIRST_WRITE } from './fileToolDescriptions'
 import { appOf, scopeOf } from '../toolContext'
 import { TFile } from 'obsidian'
 import { contentHash } from '../readGuard'
-import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
+import { noteFileToolScriptWrite } from '@/scripting/trust/fileToolScriptWrite'
 
 export function createWriteFileTool(opts?: {
   skipScope?: boolean
+  scriptAuthor?: boolean
   expectedContent?: string
 }): AgentTool {
   return {
@@ -42,9 +43,8 @@ export function createWriteFileTool(opts?: {
       if (!(file instanceof TFile)) throw new Error(`File not found: ${path}`)
       guardChatWrite(file.path)
       const old = await app.vault.read(file)
-      // Written on this device: a script stays confirmed here; see `ScriptTrust.ts`.
       signal?.throwIfAborted()
-      await noteLocalScriptWrite(file.path, content)
+      await noteFileToolScriptWrite(app, file.path, content, opts?.scriptAuthor)
       signal?.throwIfAborted()
       if (opts?.expectedContent !== undefined) {
         await app.vault.process(file, (current) => {

@@ -9,7 +9,8 @@ import { getEditorForFile } from '@/helpers/vaultUtils'
 import { TFile } from 'obsidian'
 import { contentHash } from '../readGuard'
 import { READ_FIRST_EDIT } from './fileToolDescriptions'
-import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
+import { noteFileToolScriptWrite } from '@/scripting/trust/fileToolScriptWrite'
+import { noteAgentScriptWrite } from '@/scripting/trust/agentScriptWrites'
 
 interface ActionParam {
   type:
@@ -27,7 +28,10 @@ interface ActionParam {
   directory?: string
 }
 
-export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
+export function createReplaceTool(opts?: {
+  skipScope?: boolean
+  scriptAuthor?: boolean
+}): AgentTool {
   return {
     name: 'replace',
     label: 'Replace',
@@ -114,6 +118,7 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
       let newContent: string | null = null
 
       // Read current frontmatter
+      if (!opts?.scriptAuthor) await noteAgentScriptWrite(app, file.path)
       let frontmatter: Record<string, any> = {}
       await app.fileManager.processFrontMatter(file, (fm) => {
         signal?.throwIfAborted()
@@ -160,7 +165,7 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
         const raw = await app.vault.read(file)
         const updated = replaceNoteBody(raw, newContent)
         signal?.throwIfAborted()
-        await noteLocalScriptWrite(file.path, updated)
+        await noteFileToolScriptWrite(app, file.path, updated, opts?.scriptAuthor)
         signal?.throwIfAborted()
         await app.vault.modify(file, updated)
       }
@@ -176,6 +181,8 @@ export function createReplaceTool(opts?: { skipScope?: boolean }): AgentTool {
       // Move/rename
       if (newPath !== path) {
         signal?.throwIfAborted()
+        if (!opts?.scriptAuthor)
+          await noteAgentScriptWrite(app, newPath, await app.vault.read(file))
         assertExternalDestinationAvailable(app, newPath)
         await app.fileManager.renameFile(file, newPath)
       }

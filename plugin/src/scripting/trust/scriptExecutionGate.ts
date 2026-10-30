@@ -27,6 +27,7 @@ import {
   type ScriptProvenance,
 } from './ScriptProvenance'
 import type { ParsedScript } from '../types'
+import { agentScriptWaiting, confirmAgentScript } from './agentScriptWrites'
 
 export interface ScriptApprovalRequest {
   path: string
@@ -53,6 +54,12 @@ const localContexts = new WeakMap<ParsedScript, { connection: string; outside: b
 
 /** Synchronous final fence: no awaited read separates policy validation from compilation. */
 export function assertScriptContext(app: App, script: ParsedScript): void {
+  assertScriptConnectionContext(app, script)
+  if (agentScriptWaiting(app, script.path, script.hash))
+    throw new Error('This exact script version needs device-local approval')
+}
+
+function assertScriptConnectionContext(app: App, script: ParsedScript): void {
   assertNoScriptContextHold(storageOf(app))
   if (!permissions.has(script)) throw new Error('Script has no checked execution snapshot')
   const permission = permissions.get(script)
@@ -141,6 +148,17 @@ async function checkedScriptForExecution(
   // A script outside every sync connection's folder is not consulted against sync at all.
   const outside = scriptOutsideEverySyncScope(storageOf(app), path)
   const bytes = await read()
+  const fullHash = await sha256(bytes)
+  if (agentScriptWaiting(app, path, fullHash) && !confirm)
+    throw new Error('This exact script version needs device-local approval')
+  let acceptedHash: string | undefined
+  const prompt = confirm
+  if (prompt)
+    confirm = async (request) => {
+      const accepted = await prompt(request)
+      if (accepted) acceptedHash = request.sha
+      return accepted
+    }
   let trust: Awaited<ReturnType<typeof scriptTrustFor>>
   let recovered: ManagedScript | null = null
   try {
@@ -305,9 +323,39 @@ async function checkedScriptForExecution(
     const source = decode(bytes)
     const meta = parseScriptHeader(source)
     if (!meta) throw new Error('Current script has no name header')
-    const script = { path, meta, code: extractScriptBody(source), commandId: '' }
+    const script = { path, meta, code: extractScriptBody(source), commandId: '', hash: fullHash }
     permissions.set(script, permission)
     if (!permission) localContexts.set(script, { connection, outside })
+    assertScriptConnectionContext(app, script)
+    if (agentScriptWaiting(app, path, fullHash)) {
+      if (acceptedHash !== fullHash) {
+        if (
+          !confirm ||
+          !(await confirm({
+            path,
+            sha: fullHash,
+            source,
+            identity: permission
+              ? { binding: permission.binding, fileId: permission.fileId }
+              : {
+                  binding: {
+                    localVault: 'local',
+                    endpoint: 'local:',
+                    vaultId: 'local',
+                    principal: 'local',
+                    facet: 'personal',
+                    grantId: null,
+                  },
+                  fileId: null,
+                },
+          }))
+        )
+          throw new Error('This exact script version needs device-local approval')
+      }
+      if (!equal(bytes, await read())) throw new Error('Script changed while its approval was open')
+      assertScriptConnectionContext(app, script)
+      confirmAgentScript(app, fullHash)
+    }
     assertScriptContext(app, script)
     if (versionToRemember !== null) {
       // Persist only AFTER the final synchronous context fence, never from an invalidated

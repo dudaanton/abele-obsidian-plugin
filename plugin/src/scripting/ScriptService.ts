@@ -24,6 +24,7 @@ import { type SelectionLaunchTarget, type SelectionLaunchOutcome } from './runFr
 import { ref } from 'vue'
 import { scriptForExecution } from './trust/scriptExecutionGate'
 import { showScriptApproval } from './trust/scriptApprovalPrompt'
+import { agentScriptWaiting, confirmAgentScript } from './trust/agentScriptWrites'
 
 /**
  * Who asks for a run with a person right there, having just chosen the script: a script from
@@ -386,6 +387,8 @@ export class ScriptService {
 
   /** Whether this version of the script may run on this device; see `ScriptTrust.ts`. */
   verdict(script: ParsedScript): TrustVerdict {
+    if (agentScriptWaiting(GlobalStore.getInstance().app, script.path, script.hash))
+      return 'waiting'
     const trust = ScriptTrust.getInstance()
     // Armed by the settings only against an index that has been read: armed against an empty
     // one, every script would wait.
@@ -412,6 +415,7 @@ export class ScriptService {
   /** Vouches for exactly this version — the one shown, the one that runs. */
   confirm(script: ParsedScript): void {
     if (!script.hash) return
+    confirmAgentScript(GlobalStore.getInstance().app, script.hash)
     ScriptTrust.getInstance().confirm({
       path: script.path,
       hash: script.hash,
@@ -521,7 +525,8 @@ export class ScriptService {
         s.meta.enabled !== false &&
         !s.meta.lint &&
         !s.meta.interceptor &&
-        this.verdict(s) === 'confirmed'
+        (this.verdict(s) === 'confirmed' ||
+          agentScriptWaiting(GlobalStore.getInstance().app, s.path, s.hash))
     )
   }
 

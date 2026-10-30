@@ -86,6 +86,7 @@ export class ScriptExecutor {
       'return { check: typeof check === "function" ? check : undefined, ' +
       'fix: typeof fix === "function" ? fix : undefined }'
     // The user's own script, as `execute` runs it; see there.
+    assertScriptContext(GlobalStore.getInstance().app, script)
     return compile(`${script.code}\n;${declared}`)(ctx)
   }
 

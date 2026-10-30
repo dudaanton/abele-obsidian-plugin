@@ -6,7 +6,7 @@ import { scopeOf } from '../toolContext'
 import { normalizePath } from 'obsidian'
 import { SCRIPT_API_DOCS } from '@/scripting/apiDocs'
 import { SCRIPT_VIEW_DOCS } from '@/scripting/view/viewDocs'
-import { noteLocalScriptWrite } from '@/scripting/ScriptTrust'
+import { noteAgentScriptWrite } from '@/scripting/trust/agentScriptWrites'
 
 export function createScriptApiDocsTool(): AgentTool {
   return {
@@ -72,7 +72,7 @@ export function createCreateScriptTool(): AgentTool {
         throw new Error(`Script already exists: ${path}. Use edit tool to modify it.`)
       }
 
-      await noteLocalScriptWrite(path, content)
+      await noteAgentScriptWrite(app, path, content)
       assertExternalDestinationAvailable(app, path)
       await app.vault.create(path, content)
       scopeOf(ctx).addFile(path)

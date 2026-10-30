@@ -1160,6 +1160,15 @@ order.http`), method, address as written and last status, and the environments.
 A script the person has written is a tool an agent can call by name, with its declared
 parameters.
 
+Writing code with `create`, `write`, `edit`, `replace` or `create_script` does not approve its
+execution. Agent-written JavaScript, including code copied, moved or downloaded into a script,
+waits for the owner to approve its exact full-file SHA-256. Lint, startup and automations cannot
+activate it, even with foreign-script checking off. Review it in the script library, or run its
+own `script_<name>` tool with explicit approval or that tool's Auto permission. Approval of a
+file-writing call, including `create_script`, grants no execution permission. A later edit needs
+a fresh approval or another explicitly authorized script-tool run. Existing owner scripts and
+file operations inside already authorized scripts keep working.
+
 A script may stop partway and ask for more than its parameters — a form the person would fill
 in. Called from a chat there is nobody to show that form to, so it comes back instead: the
 script tool answers with the fields and a `run_id`, and the run stays alive holding the question
