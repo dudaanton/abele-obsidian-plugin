@@ -31,7 +31,8 @@ it('publishes an offline deletion beside edits and a folder rename in a settled 
   const root = await disk.realpath(await disk.mkdtemp(join(tmpdir(), 'sample-stopped-scope-')))
   const server = await v2Server()
   const factory = new IDBFactory()
-  const counted = countedDisk()
+  const contentReads: string[] = []
+  const counted = countedDisk((path) => contentReads.push(path))
   desktopFsPort(counted.port)
   const timers = ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] as const
   const previous = timers.map((key) => Object.getOwnPropertyDescriptor(window, key))
@@ -83,6 +84,7 @@ it('publishes an offline deletion beside edits and a folder rename in a settled 
     device = await nativeTokenFixture(app, token, globalThis.fetch, factory)
     expect((await livePaths(user.token)).has('Sample/Z-Removed.md')).toBe(true)
     await device.host.close()
+    contentReads.length = 0
 
     const size = files[0], time = files[1], removed = files[3]
     await disk.writeFile(join(root, size), 'a larger replacement with different bytes')
@@ -131,6 +133,8 @@ it('publishes an offline deletion beside edits and a folder rename in a settled 
     const live = await livePaths(user.token)
     expect(stableReasons.length).toBeGreaterThan(0)
     expect(stableReasons).not.toContain('pending-event')
+    expect(device.ui.activity.value[device.id]?.reconciliation?.phase).not.toBe('review')
+    expect(contentReads.filter((path) => path.endsWith('/Sample/Notes/Stable.md'))).toHaveLength(0)
     expect(live.has(removed)).toBe(false)
     expect(await app.vault.adapter.exists(removed)).toBe(false)
     expect(live.has(size)).toBe(true)
