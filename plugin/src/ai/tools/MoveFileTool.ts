@@ -38,6 +38,7 @@ export function createMoveFileTool(opts?: { skipScope?: boolean }): AgentTool {
       assertExternalDestinationAvailable(app, safeTo)
       const file = app.vault.getAbstractFileByPath(from)
       if (!(file instanceof TFile)) throw new Error(`File not found: ${from}`)
+      guardChatWrite(file.path)
       if (app.vault.getAbstractFileByPath(safeTo)) {
         throw new Error(`Destination exists: ${safeTo}`)
       }

@@ -1,6 +1,6 @@
 import type { ChatMessage } from './types'
 import { findDefaultLeaf, getPathToLeaf } from './chatTree'
-import { parseChat } from './ChatLog'
+import { parseChat, parseChatMetadata } from './ChatLog'
 
 /** A chat log's extension — chats, comments and delegated runs alike. */
 export const CHAT_EXTENSION = 'abchat'
@@ -28,8 +28,30 @@ export function displayChatTitle(title: string, messages: ChatMessage[]): string
   return title || firstQuestion(messages)
 }
 
-export function isChatLog(path: string): boolean {
-  return path.toLowerCase().endsWith(`.${CHAT_EXTENSION}`)
+/** A renamed log keeps its privacy boundary, including legacy JSON chat files. */
+export function isChatLog(path: string, content?: string): boolean {
+  return (
+    path.toLowerCase().endsWith(`.${CHAT_EXTENSION}`) ||
+    (!!content &&
+      content.trimStart().startsWith('{') &&
+      parseChatMetadata(content.trimStart())?.type === 'abele-chat')
+  )
+}
+
+/** Agent copies carry the same transcript as read; ordinary files keep their exact bytes. */
+export function chatCopyBytes(path: string, name: string, bytes: ArrayBuffer): ArrayBuffer {
+  if (!isChatLog(path)) {
+    // Inspect a short prefix before decoding a possible JSON log. Streaming avoids a partial
+    // UTF-8 whitespace character at the boundary hiding a log; a blank prefix needs more.
+    const prefix = new TextDecoder()
+      .decode(new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 256)), { stream: true })
+      .trimStart()
+    if (prefix && !prefix.startsWith('{')) return bytes
+  }
+  const content = new TextDecoder().decode(bytes)
+  return isChatLog(path, content)
+    ? new TextEncoder().encode(chatForAgent(content, name)).buffer
+    : bytes
 }
 
 /** Same ceiling as a text file attached to a message. */
@@ -101,7 +123,7 @@ export function renderLines(lines: ChatLine[], perLine?: number): string {
  * to, and says that the start was cut.
  */
 export function chatForAgent(content: string, name: string): string {
-  const parsed = parseChat(content)
+  const parsed = parseChat(content.trimStart())
   if (parsed.metadata?.type !== 'abele-chat') return `[Not a chat: ${name}]`
 
   const title = parsed.metadata.title || name

@@ -1,4 +1,7 @@
 export const chat = {
+  'chat.copyFullLog': 'Vollständiges Chatprotokoll kopieren (enthält private Daten)',
+  'chat.fullLogCopied': 'Vollständiges Chatprotokoll in die Zwischenablage kopiert',
+  'chat.fullLogCopyFailed': 'Das vollständige Chatprotokoll konnte nicht kopiert werden',
   'chatTree.agentBranch': 'Agenten-Branch · {id}',
   'chatTree.nodeNone': 'Der Agent hat keinen Zugriff auf einen Node.',
   'chatTree.addNodeFolder': 'Node-Ordner hinzufügen',

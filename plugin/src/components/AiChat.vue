@@ -637,6 +637,7 @@ import { revealAnchor, captureSelectionLink } from '@/ai/openChat'
 import { ScriptService } from '@/scripting/ScriptService'
 import ChatBindingState from './ChatBindingState.vue'
 import { selectionMenu } from '@/scripting/selectionMenuScripts'
+import { copyFullChatLog } from '@/ai/chatOwnerExport'
 import { captureChatScriptTarget, chatScriptAction } from '@/scripting/runFromChat'
 import { discoverSkills } from '@/ai/tools/SkillTool'
 import { isChatLog } from '@/ai/chatText'
@@ -2379,6 +2380,14 @@ const headerOverflowActions = computed<HeaderAction[]>(() => [
         },
         { id: 'debug', label: t('streamB.copyDebugData.866a72'), icon: 'bug', section: 'file' },
         {
+          id: 'export',
+          label: t('chat.copyFullLog'),
+          icon: 'copy',
+          section: 'file',
+          disabled: !session.value?.currentChatFile.value,
+          reason: t('streamB.nothingWrittenYet.9aea7a'),
+        },
+        {
           id: 'delete',
           label: t('streamB.deleteChat.93291d'),
           icon: 'trash-2',
@@ -2450,6 +2459,14 @@ const onHeaderOverflowAction = (id: string) => {
       break
     case 'debug':
       showDebug()
+      break
+    case 'export':
+      if (session.value) {
+        void copyFullChatLog(session.value).then(
+          () => new Notice(t('chat.fullLogCopied')),
+          () => new Notice(t('chat.fullLogCopyFailed'))
+        )
+      }
       break
     case 'delete':
       if (session.value?.currentChatFile.value) {

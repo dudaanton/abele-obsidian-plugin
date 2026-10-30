@@ -14,6 +14,7 @@ import { fakeChatSession } from '../helpers/fakeChatSession'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
+import { serializeChat } from '@/ai/ChatLog'
 vi.mock('@/components/ChatArtifacts.vue', () => ({
   default: {
     props: ['session'],
@@ -107,6 +108,7 @@ describe('the compact chat header', () => {
       ['agents', ''],
       ['reload', 'file'],
       ['debug', 'file'],
+      ['export', 'file'],
       ['delete', 'danger'],
     ])
     overflow.vm.$emit('action', 'setup')
@@ -137,6 +139,41 @@ describe('the compact chat header', () => {
       ])
     )
     expect(actions.some((a) => a.id === 'artifacts')).toBe(false)
+  })
+  it('copies the full log only after the owner selects its separate menu action', async () => {
+    const raw = serializeChat({
+      metadata: { type: 'abele-chat', title: 'Sample', created: '2026-01-01' },
+      messages: [
+        {
+          id: 'a',
+          role: 'assistant',
+          content: 'Answer',
+          thinking: 'PRIVATE_REASONING',
+          timestamp: 1,
+        },
+      ],
+      internalMessages: [],
+    })
+    const app = useVault([{ path: 'Sample.abchat', raw }])
+    const save = vi.fn(async () => {})
+    active.value = fakeChatSession({
+      kind: 'chat',
+      overrides: {
+        currentChatFile: ref(app.vault.getAbstractFileByPath('Sample.abchat')),
+        saveForRelease: save,
+      },
+    }) as ChatSession
+    const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+    view = mountChat()
+    const overflow = view.findComponent(SheetHeaderActions)
+    expect(overflow.props('actions').find((a) => a.id === 'export')).toMatchObject({
+      label: 'Copy full chat log (includes private data)',
+      disabled: false,
+    })
+    expect(copy).not.toHaveBeenCalled()
+    overflow.vm.$emit('action', 'export')
+    await vi.waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith(raw))
+    expect(save).toHaveBeenCalledOnce()
   })
 })
 

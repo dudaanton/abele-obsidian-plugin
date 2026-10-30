@@ -1,4 +1,7 @@
 export const chat = {
+  'chat.copyFullLog': 'Kopēt pilnu sarunas žurnālu (ietver privātus datus)',
+  'chat.fullLogCopied': 'Pilns sarunas žurnāls nokopēts starpliktuvē',
+  'chat.fullLogCopyFailed': 'Neizdevās nokopēt pilnu sarunas žurnālu',
   'chatTree.agentBranch': 'Aģenta zars · {id}',
   'chatTree.nodeNone': 'Aģentam nav piekļuves mezgliem.',
   'chatTree.addNodeFolder': 'Pievienot mezgla mapi',

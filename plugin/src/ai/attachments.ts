@@ -110,6 +110,10 @@ export async function resolveAttachmentsForApi(
     } else {
       try {
         const whole = await app.vault.read(file)
+        if (isChatLog(file.path, whole)) {
+          parts.push({ type: 'text', text: chatForAgent(whole, file.basename) })
+          continue
+        }
         let content =
           file.extension === 'canvas'
             ? JSON.stringify(canvasOutline(parseCanvasFile(whole), { detail: 'full' }), null, 2)

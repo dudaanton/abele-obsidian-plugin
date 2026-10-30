@@ -6,6 +6,7 @@ import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import { guardChatWrite } from '@/ai/tools/chatWriteGuard'
 import { toSafeVaultPath } from '@/helpers/pathsHelpers'
 import { buildZip, validateZipEntries, ZIP_LIMITS } from './zip'
+import { chatCopyBytes } from '@/ai/chatText'
 
 export interface ZipRequest {
   path: string
@@ -197,7 +198,7 @@ export async function createVaultZip(value: unknown, context: VaultZipContext): 
         checkSources()
         if (bytes.byteLength !== source.size)
           throw new Error('Selected file size changed during ZIP creation')
-        return new Uint8Array(bytes)
+        return new Uint8Array(chatCopyBytes(source.path, source.file.basename, bytes))
       },
       publish: async (bytes) => {
         checkDestination()

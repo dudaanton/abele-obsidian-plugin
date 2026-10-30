@@ -69,7 +69,7 @@ export function createReadFileTool(opts?: {
       // A chat log is every note its own agent read and every result its tools returned. An
       // agent that can reach one — only with the whole vault open, since no scope takes a chat
       // log in — reads what was said in it and nothing more, as if it had been attached.
-      if (isChatLog(file.path)) {
+      if (isChatLog(file.path, content)) {
         return { content: [{ type: 'text', text: chatForAgent(content, file.basename) }] }
       }
       const start = params.start_line as number | undefined

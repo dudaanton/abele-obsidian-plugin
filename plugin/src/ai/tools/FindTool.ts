@@ -186,7 +186,7 @@ export function createFindTool(opts?: { skipScope?: boolean; compact?: boolean }
                 const raw = await app.vault.cachedRead(file as any)
                 signal?.throwIfAborted()
                 // Match what `read` shows, never a chat's private tool results.
-                const text = isChatLog(p) ? chatForAgent(raw, p) : raw
+                const text = isChatLog(file.path, raw) ? chatForAgent(raw, p) : raw
                 const body = getNoteBody(text)
                 return contentCriteria.every((c) => c.checkContentCriterion(body))
               })

@@ -6,12 +6,14 @@ import { appOf } from '../toolContext'
 import { scopeOf } from '../toolContext'
 import { toSafeVaultPath, describeRename } from '@/helpers/pathsHelpers'
 import { TFile } from 'obsidian'
+import { chatCopyBytes } from '../chatText'
 
 export function createCopyFileTool(opts?: { skipScope?: boolean }): AgentTool {
   return {
     name: 'cp',
     label: 'Copy File',
-    description: 'Copy a file to a new location. Source must be in workspace scope.',
+    description:
+      'Copy a file to a new location. Source must be in workspace scope. Chat logs copy only the conversation text available through read, regardless of the destination extension.',
     parameters: {
       type: 'object',
       properties: {
@@ -42,9 +44,9 @@ export function createCopyFileTool(opts?: { skipScope?: boolean }): AgentTool {
       if (app.vault.getAbstractFileByPath(safeTo)) {
         throw new Error(`Destination exists: ${safeTo}`)
       }
-      const content = await app.vault.readBinary(file)
+      const content = chatCopyBytes(file.path, file.basename, await app.vault.readBinary(file))
       signal?.throwIfAborted()
-      // Copy the bytes, never a text-decoded version of an image or other attachment.
+      // Ordinary attachments keep their bytes; a chat never exports its private fields.
       assertExternalDestinationAvailable(app, safeTo)
       await app.vault.createBinary(safeTo, content)
       scopeOf(ctx).invalidate()

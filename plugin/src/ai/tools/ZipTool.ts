@@ -6,7 +6,7 @@ export function createZipTool(): AgentTool {
     name: 'zip',
     label: 'Create ZIP',
     description:
-      'Create a new .zip archive from explicitly selected context-visible files, preserving raw bytes. Optional entry names choose virtual subfolders/renames; defaults preserve vault hierarchy. No folders, globs, overwrite or automatic renaming. Any inaccessible source rejects the whole request; approval only authorizes creation, never source access.',
+      'Create a new .zip archive from explicitly selected context-visible files, preserving raw bytes except chat logs, which include only the conversation text available through read. Optional entry names choose virtual subfolders/renames; defaults preserve vault hierarchy. No folders, globs, overwrite or automatic renaming. Any inaccessible source rejects the whole request; approval only authorizes creation, never source access.',
     parameters: {
       type: 'object',
       additionalProperties: false,

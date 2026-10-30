@@ -675,6 +675,11 @@ at rest, and are not canonical history. Re-enrollment uses a fresh cache namespa
 Agent `zip` stores an ordinary binary `.zip` file at the explicitly requested new path, creating
 missing parents through normal vault APIs. There is no archive sidecar, new note type, settings
 schema or source mutation. Entry names describe virtual archive hierarchy, not vault scope.
+Ordinary file bytes are preserved. A chat log entry contains only its readable conversation
+transcript, even when the source or entry has another extension; private fields stay in the
+source chat. Agent `cp` uses the same projection. The owner can copy the complete saved log to
+the clipboard with **Copy full chat log** in the chat header menu; no agent tool enables that
+export, and the `.abchat` storage format is unchanged.
 The successful tool result and rewind record refer to the saved output. ZIP outputs are
 not added to the chat touched-file list, which still includes only Markdown and scripts;
 packing does not fabricate text diffs or mark source contents as read by the model. Rewind

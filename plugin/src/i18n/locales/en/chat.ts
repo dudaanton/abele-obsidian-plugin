@@ -1,4 +1,7 @@
 export const chat = {
+  'chat.copyFullLog': 'Copy full chat log (includes private data)',
+  'chat.fullLogCopied': 'Full chat log copied to clipboard',
+  'chat.fullLogCopyFailed': 'Could not copy the full chat log',
   'chatTree.agentBranch': "Agent's branch · {id}",
   'chatTree.nodeNone': "The agent can't reach a node.",
   'chatTree.addNodeFolder': 'Add a node folder',
@@ -6,10 +9,11 @@ export const chat = {
   'chatTree.noNodeFolders': 'No folders on the connected nodes.',
   'chatTree.allBranches': 'all branches',
   'chatTree.saveAsDefault': "Save as {agent}'s default",
-  'chatTree.saveAsDefaultTip': "New chats with {agent} start with this access, tools and asking",
+  'chatTree.saveAsDefaultTip': 'New chats with {agent} start with this access, tools and asking',
   'chatTree.savedAsDefault': "Saved as {agent}'s default",
   'chatTree.nodeEditRun': 'Read, edit and run commands',
-  'chatTree.nodeStillAsks': "{node} still asks before commands: it doesn't allow running without asking.",
+  'chatTree.nodeStillAsks':
+    "{node} still asks before commands: it doesn't allow running without asking.",
   'chatTree.permissionNodes': 'Which changes ask first, in the vault and in node folders.',
   'chatTree.hideFolder': 'Hide folder',
   'chatTree.hideFolderAndClose': 'Hide folder and close its chats',

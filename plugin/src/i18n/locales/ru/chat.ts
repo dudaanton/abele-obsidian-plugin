@@ -1,4 +1,7 @@
 export const chat = {
+  'chat.copyFullLog': 'Скопировать полный журнал чата (включая приватные данные)',
+  'chat.fullLogCopied': 'Полный журнал чата скопирован в буфер обмена',
+  'chat.fullLogCopyFailed': 'Не удалось скопировать полный журнал чата',
   'chatTree.agentBranch': 'Ветка агента · {id}',
   'chatTree.nodeNone': 'Агенту не доступны ноды.',
   'chatTree.addNodeFolder': 'Добавить папку ноды',

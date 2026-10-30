@@ -763,5 +763,14 @@
   },
   "chatTree.agentBranch": {
     "englishHash": "4816d0b92db4a587ed433320cc733929068e4a26dfe9d0cc80cac1e3a7e04a22"
+  },
+  "chat.copyFullLog": {
+    "englishHash": "61e508cbf44ecaf5250dfad10b7c125bd73594ea47f7b56bfed00b1b23c32b37"
+  },
+  "chat.fullLogCopied": {
+    "englishHash": "c682b4c0c2a65c95aaed23e99a8f32731d1cb15c68f5c6f2572155a3c877be7d"
+  },
+  "chat.fullLogCopyFailed": {
+    "englishHash": "20ba7673237a60f61abc22515982b3e7d405dadc5f7b3f1d2a7426fb1b5a26c9"
   }
 }

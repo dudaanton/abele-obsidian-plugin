@@ -68,7 +68,9 @@ output outside readable scope, but never widens source access. Successful creati
 output only to the originating caller's scope; delegated scope ceilings remain authoritative.
 Confirm all asks, Allow edits/Allow all admits creation, and unattended callers cannot ask.
 
-Raw binary, text BOMs and line endings are preserved. Virtual names use `/` separators and NFC
+Ordinary files preserve raw binary, text BOMs and line endings. Chat logs, including logs
+renamed to another extension, contain only the same conversation transcript as `read`; an
+entry rename never authorizes exporting private chat fields. Virtual names use `/` separators and NFC
 Unicode; absolute/traversal paths, duplicate canonical names and file/directory-prefix conflicts
 reject. Case-distinct entries remain distinct, but can conflict when extracted on a
 case-insensitive filesystem. Repeated sources with distinct entry names are allowed. Existing
@@ -497,6 +499,13 @@ step picture. A single click or tap opens the image viewer; a double click or ta
 - `find` searches by name, property or content and takes structured criteria, not just a word.
 - A chat file (`.abchat`) is never in a scope. With the whole vault open, `read` on one returns
   only what was said in it, and `find` matches content against that — never against the log.
+  Renamed chat logs are also recognized by their contents. Reading or attaching one still
+  includes only the active conversation's text: no tool results, node data, reasoning or
+  attachments. `cp` and ZIP entries contain that same transcript, regardless of the destination
+  name or extension; repeated copies and moves cannot restore the omitted fields. Ordinary
+  files and attachments keep their exact bytes. File tools cannot move or write `.abchat`
+  files. Only the person can copy a full log, including private data, through **Copy full chat
+  log** in the chat's header menu; approving a file tool is not approval for a full export.
 - `workspace` says what is open right now; `open` puts a file in front of the person.
 - `screenshot` and `inspect_view` take either a `path` (a note) or a `view` (a script view, by
   its tab title or script name). A view is photographed as it is on screen: the visible part
