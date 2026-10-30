@@ -2700,7 +2700,14 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
         'Access, tools and chat settings',
         ...(label === 'chat' ? ['Files from this chat'] : []),
         'Agents',
-        ...(label === 'chat' ? ['Reload from file', 'Copy debug data', 'Delete chat'] : []),
+        ...(label === 'chat'
+          ? [
+              'Reload from file',
+              'Copy debug data',
+              'Copy full chat log (includes private data)',
+              'Delete chat',
+            ]
+          : []),
       ])
       expect(header?.unreachable).toEqual([])
       expect(header?.clipped).toEqual([])
