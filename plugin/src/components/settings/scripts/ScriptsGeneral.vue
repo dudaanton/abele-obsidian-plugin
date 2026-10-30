@@ -97,7 +97,6 @@ const confirmForeign = computed(() => {
 const waitingCount = computed(() => {
   void trust.version.value
   void ScriptService.getInstance().scriptList.value
-  if (!confirmForeign.value) return 0
   return ScriptService.getInstance().waitingScripts().length
 })
 

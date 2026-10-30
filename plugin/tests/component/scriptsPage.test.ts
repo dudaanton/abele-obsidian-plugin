@@ -21,7 +21,9 @@ import Setting from '@/components/obsidian/Setting.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import { AbeleConfig, type HeaderButtonDefinition } from '@/services/AbeleConfig'
 import { ScriptService } from '@/scripting/ScriptService'
-import { ScriptTrust } from '@/scripting/ScriptTrust'
+import { ScriptTrust, sha256 } from '@/scripting/ScriptTrust'
+import { GlobalStore } from '@/stores/GlobalStore'
+import { noteAgentScriptWrite } from '@/scripting/trust/agentScriptWrites'
 import ScriptsGeneral from '@/components/settings/scripts/ScriptsGeneral.vue'
 import type { ParsedScript } from '@/scripting/types'
 import { useVault } from '../helpers/testEnv'
@@ -261,6 +263,24 @@ describe('the library', () => {
 describe('scripts from other devices', () => {
   beforeEach(() => {
     ScriptTrust.reset()
+  })
+
+  it('shows pending agent code with foreign checking off and clears it after exact approval', async () => {
+    const source = '// @name Archive\nreturn "sample result"\n'
+    const script = { ...archive, hash: await sha256(source), source }
+    const service = ScriptService.getInstance()
+    vi.spyOn(service, 'getAll').mockReturnValue([script])
+    service.scriptList.value = [script]
+    service.setConfirmForeign(false)
+    await noteAgentScriptWrite(GlobalStore.getInstance().app, script.path, source)
+    const library = mount(ScriptLibrary, { global: { stubs: STUBS } })
+    const general = mount(ScriptsGeneral, { global: { stubs: STUBS } })
+    expect(cardTitled(library, 'Archive').text()).toContain('Waiting to be confirmed')
+    expect(general.find('.abele-scripts-waiting').exists()).toBe(true)
+    service.confirm(script)
+    await nextTick()
+    expect(cardTitled(library, 'Archive').text()).not.toContain('Waiting to be confirmed')
+    expect(general.find('.abele-scripts-waiting').exists()).toBe(false)
   })
 
   it('marks a script that waits to be confirmed, and offers to review it', async () => {

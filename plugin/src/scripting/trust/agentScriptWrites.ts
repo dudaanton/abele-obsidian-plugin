@@ -1,8 +1,10 @@
 import type { App } from 'obsidian'
 import { sha256 } from '@abele/sync-sdk/core'
+import { ref } from 'vue'
 
 /** Device-local authority, independent of the optional foreign-script setting. */
 export const AGENT_SCRIPT_WRITES_KEY = 'abele-agent-script-writes'
+const version = ref(0)
 interface AgentScriptWrites {
   paths: string[]
   hashes: string[]
@@ -27,9 +29,11 @@ function save(app: App, value: AgentScriptWrites): void {
   app.saveLocalStorage(AGENT_SCRIPT_WRITES_KEY, value)
   if (JSON.stringify(app.loadLocalStorage(AGENT_SCRIPT_WRITES_KEY)) !== JSON.stringify(value))
     throw new Error('Agent script approvals were not persisted')
+  version.value++
 }
 
 export function agentScriptWaiting(app: App, path: string, hash?: string): boolean {
+  void version.value
   const value = state(app)
   return (
     (value.paths.includes(path) || (!!hash && value.hashes.includes(hash))) &&

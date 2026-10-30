@@ -215,7 +215,7 @@ export class ScriptTrust {
   }
 
   /**
-   * This device is writing `text` to `path` — the code editor, the plugin, an agent's tool.
+   * The owner or an authorized script is writing `text` to `path` on this device.
    * Anything that is not a script, or written while checking is off, is not recorded.
    */
   async noteLocalWrite(path: string, text: string): Promise<void> {
@@ -232,7 +232,7 @@ export class ScriptTrust {
   }
 }
 
-/** Shorthand for the write sites: record a write made on this device, never throw over it. */
+/** Owner authoring must persist its exact approval; optional sync bookkeeping is best effort. */
 export async function noteLocalScriptWrite(path: string, text: string): Promise<void> {
   const app = GlobalStore.getInstance().app
   if (app && path.endsWith('.js')) confirmAgentScript(app, await sha256(text))
