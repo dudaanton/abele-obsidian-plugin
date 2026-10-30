@@ -5,6 +5,189 @@ import { NodeClientStore } from '@/node/NodeClientStore'
 import { NodeManagerController } from '@/node/NodeManagerController'
 import { ChannelError } from '@abele/channel-protocol'
 
+const contextTarget = { worktree_id: 'sample-tree' }
+const integrationParams = {
+  source_worktree_id: 'sample-source',
+  source_branch: 'work/sample',
+  target_branch: 'main',
+  expected_source_head: 'a'.repeat(40),
+  expected_target_head: 'b'.repeat(40),
+}
+const submitContext = (
+  controller: NodeManagerController,
+  kind: 'command' | 'integration',
+  operation: string
+) =>
+  controller[kind](
+    'sample-parent',
+    { ...contextTarget, ...(kind === 'command' ? { command: 'pwd' } : integrationParams) },
+    operation,
+    undefined,
+    'ask',
+    'Check the sample target.'
+  )
+const legacyCreateId = async (kind: 'command' | 'integration') => {
+  const hash = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(JSON.stringify(['sample-parent', contextTarget]))
+  )
+  return (
+    (kind === 'integration' ? 'integration-context-' : 'context-') +
+    Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('')
+  )
+}
+
+it.each(['command', 'integration'] as const)(
+  'recovers a legacy cached %s create refusal on the next call and reuses the success',
+  async (kind) => {
+    const f = fixture(true, kind)
+    const base = await legacyCreateId(kind)
+    try {
+      await f.store.transaction((s) => {
+        const request = {
+          method: `${kind}.context.v1.create`,
+          params: { parent_chat_id: 'sample-parent', ...contextTarget },
+        }
+        ;(s.operationRequests ??= {})[base] = request
+        s.results[base] = { error: 'resource_busy', request }
+      })
+      const restored = new NodeManagerController(f.client, f.store)
+      await expect(submitContext(restored, kind, 'sample-recovered')).resolves.toMatchObject({
+        context_id: 'sample-context',
+      })
+      const creates = () =>
+        f.request.mock.calls.filter(([method]) => method === `${kind}.context.v1.create`)
+      expect(creates()).toHaveLength(1)
+      expect(creates()[0][2]).not.toBe(base)
+      expect(await f.store.read((s) => s.results[base]?.error)).toBe('resource_busy')
+      await submitContext(new NodeManagerController(f.client, f.store), kind, 'sample-later')
+      expect(creates()).toHaveLength(1)
+    } finally {
+      f.store.close()
+    }
+  }
+)
+
+it.each(['command', 'integration'] as const)(
+  'preserves a live %s create refusal message for the agent and owner, then retries with a new identity',
+  async (kind) => {
+    const f = fixture(true, kind)
+    const original = f.request.getMockImplementation()!
+    let refused = true
+    f.request.mockImplementation(async (method, params, operation) => {
+      if (method === `${kind}.context.v1.create` && refused) {
+        refused = false
+        throw new ChannelError('resource_busy', 'The target connection is being repaired.')
+      }
+      return original(method, params, operation)
+    })
+    try {
+      await expect(submitContext(f.controller, kind, 'sample-action')).rejects.toThrow(
+        'The target connection is being repaired.'
+      )
+      const card = (await f.controller.cards('sample-parent'))[0]
+      expect(card.run.reason).toContain('The target connection is being repaired.')
+      expect(card.run.state).toBe('failed')
+      expect(card.prompts).toEqual([])
+      expect(
+        f.request.mock.calls.filter(([method]) => method === `${kind}.context.v1.prepare`)
+      ).toHaveLength(0)
+      await submitContext(new NodeManagerController(f.client, f.store), kind, 'sample-action')
+      const ids = f.request.mock.calls
+        .filter(([method]) => method === `${kind}.context.v1.create`)
+        .map(([, , operation]) => operation)
+      expect(ids).toHaveLength(2)
+      expect(new Set(ids).size).toBe(2)
+      expect((await f.controller.cards('sample-parent'))[0].run.session_id).toBe('sample-stream')
+    } finally {
+      f.store.close()
+    }
+  }
+)
+
+it('retries an uncertain context create with the same identity after a controller restart', async () => {
+  const f = fixture()
+  const original = f.request.getMockImplementation()!
+  let lost = true
+  f.request.mockImplementation(async (method, params, operation) => {
+    if (method === 'command.context.v1.create' && lost) {
+      lost = false
+      throw new ChannelError('outcome_unknown')
+    }
+    return original(method, params, operation)
+  })
+  try {
+    await expect(submitContext(f.controller, 'command', 'sample-action')).rejects.toThrow(
+      'outcome_unknown'
+    )
+    const pending = await f.store.read((s) => s.outbox.map((e) => e.operation_id))
+    expect(pending).toHaveLength(1)
+    await submitContext(new NodeManagerController(f.client, f.store), 'command', 'sample-action')
+    const ids = f.request.mock.calls
+      .filter(([method]) => method === 'command.context.v1.create')
+      .map(([, , operation]) => operation)
+    expect(ids).toEqual([pending[0], pending[0]])
+  } finally {
+    f.store.close()
+  }
+})
+
+it('retains a later uncertain create attempt when older error evidence is evicted', async () => {
+  const f = fixture()
+  const original = f.request.getMockImplementation()!
+  let attempt = 0
+  f.request.mockImplementation(async (method, params, operation) => {
+    if (method === 'command.context.v1.create') {
+      if (++attempt === 1) throw new ChannelError('resource_busy')
+      if (attempt === 2) throw new ChannelError('outcome_unknown')
+    }
+    return original(method, params, operation)
+  })
+  try {
+    await expect(submitContext(f.controller, 'command', 'sample-first')).rejects.toThrow(
+      'resource_busy'
+    )
+    await expect(submitContext(f.controller, 'command', 'sample-next')).rejects.toThrow(
+      'outcome_unknown'
+    )
+    const first = f.request.mock.calls.find(
+      ([method]) => method === 'command.context.v1.create'
+    )![2]!
+    await f.store.transaction((s) => {
+      delete s.results[first]
+      delete s.operationRequests?.[first]
+    })
+    await submitContext(new NodeManagerController(f.client, f.store), 'command', 'sample-next')
+    const ids = f.request.mock.calls
+      .filter(([method]) => method === 'command.context.v1.create')
+      .map(([, , operation]) => operation)
+    expect(ids).toHaveLength(3)
+    expect(ids[1]).not.toBe(ids[0])
+    expect(ids[2]).toBe(ids[1])
+  } finally {
+    f.store.close()
+  }
+})
+
+it('shares one fresh create attempt between concurrent calls after a known refusal', async () => {
+  const f = fixture()
+  const base = await legacyCreateId('command')
+  try {
+    await f.store.transaction((s) => {
+      s.results[base] = { error: 'resource_busy' }
+    })
+    await Promise.all([
+      submitContext(f.controller, 'command', 'sample-one'),
+      submitContext(new NodeManagerController(f.client, f.store), 'command', 'sample-two'),
+    ])
+    expect(
+      f.request.mock.calls.filter(([method]) => method === 'command.context.v1.create')
+    ).toHaveLength(1)
+  } finally {
+    f.store.close()
+  }
+})
+
 it('keeps the submitted retry alias stable after an uncertain scoped preparation', async () => {
   const f = fixture()
   const original = f.request.getMockImplementation()!
@@ -351,7 +534,7 @@ it.each(['ask', 'bypass'] as const)(
   }
 )
 
-function fixture(supported = true) {
+function fixture(supported = true, kind: 'command' | 'integration' = 'command') {
   const store = new NodeClientStore(crypto.randomUUID(), new IDBFactory())
   const client = new NodeClient(
     { url: 'ws://localhost:7777/channel', profile: 'local-token-v1', token: 'sample-token' },
@@ -379,7 +562,8 @@ function fixture(supported = true) {
     session_id: 'sample-stream',
     context_id: 'sample-context',
     permission_mode: 'ask',
-    method: 'command.v1.run',
+    method: kind === 'integration' ? 'git.v1.integrate' : 'command.v1.run',
+    ...(kind === 'integration' ? { stream_id: 'sample-stream' } : {}),
     state: 'pending_approval',
     stdout: '',
     stderr: '',
@@ -387,33 +571,37 @@ function fixture(supported = true) {
     stderr_truncated: false,
     approval,
   }
-  const request = vi.fn(async (method: string, params: Record<string, unknown>) => {
-    if (method === 'project.list') return []
-    if (method === 'node.describe')
-      return {
-        capabilities: {
-          capabilities: { command_context_v1: { status: supported ? 'supported' : 'unsupported' } },
-        },
-      }
-    if (method === 'command.context.v1.enable') return { enabled: true }
-    if (method === 'command.context.v1.create')
-      return {
-        context_id: 'sample-context',
-        parent_chat_id: 'sample-parent',
-        stream_id: 'sample-stream',
-        worktree_id: 'sample-tree',
-      }
-    if (method === 'command.context.v1.prepare')
-      return {
-        ...run,
-        permission_mode: params.permission_mode,
-        ...(params.permission_mode === 'bypass' ? { state: 'running', approval: null } : {}),
-      }
-    if (method === 'command.context.v1.status') return run
-    if (method === 'command.context.v1.execute')
-      return { ...approval, state: 'resolved', choice: params.choice }
-    return {}
-  })
+  const request = vi.fn(
+    async (method: string, params: Record<string, unknown>, _operation?: string) => {
+      if (method === 'project.list') return []
+      if (method === 'node.describe')
+        return {
+          capabilities: {
+            capabilities: {
+              [`${kind}_context_v1`]: { status: supported ? 'supported' : 'unsupported' },
+            },
+          },
+        }
+      if (method === `${kind}.context.v1.enable`) return { enabled: true }
+      if (method === `${kind}.context.v1.create`)
+        return {
+          context_id: 'sample-context',
+          parent_chat_id: 'sample-parent',
+          stream_id: 'sample-stream',
+          worktree_id: 'sample-tree',
+        }
+      if (method === `${kind}.context.v1.prepare`)
+        return {
+          ...run,
+          permission_mode: params.permission_mode,
+          ...(params.permission_mode === 'bypass' ? { state: 'running', approval: null } : {}),
+        }
+      if (method === `${kind}.context.v1.status`) return run
+      if (method === `${kind}.context.v1.execute`)
+        return { ...approval, state: 'resolved', choice: params.choice }
+      return {}
+    }
+  )
   Object.assign(client, { channel: { request } })
   vi.spyOn(client, 'subscribe').mockResolvedValue(undefined as never)
   vi.spyOn(client, 'head').mockResolvedValue(0)

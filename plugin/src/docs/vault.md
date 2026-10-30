@@ -3364,6 +3364,12 @@ justifications, readable target labels in request display metadata, and their re
 known preparation refusal is terminal without a synthetic approval; legacy local pending
 refusals project as failed cards. These are recovery records, not transferable execution
 grants. Integration context receipts include their journal stream identity; their create operation namespace is separate from command creation. Reconnecting reuses exact operations; interrupted commands are never blindly replayed.
+Context creation attempts retain the original parent-and-target operation identity as their
+base. After a definite refusal, a later call adds a numbered `-attempt-` suffix in the existing
+request and receipt collections. Admission chooses the latest retained attempt atomically,
+including pending requests, so reconnects and concurrent calls reuse an uncertain attempt.
+Successful attempts are reused; old cached create refusals need no manual reset. The records
+keep their existing format, and refused-attempt receipts are not overwritten.
 
 The installation-local IndexedDB node cache stores client metadata separately from each
 stream's journal. Legacy single-record caches migrate atomically on opening. Session streams

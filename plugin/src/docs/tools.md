@@ -1480,6 +1480,11 @@ For context commands `session_id` identifies the context journal, not a provider
 never pass it to session APIs. Status, cancel and reconnect replay use context APIs
 with the original parent binding. A failed preparation is reported as not submitted
 for execution; lost preparation receipts retain their operation ID and unknown outcome.
+If context creation was definitely refused, the next call creates a fresh attempt automatically,
+including for refusals cached by older plugin versions. A successful context is reused.
+An uncertain creation keeps its exact operation ID across retries and reconnects; do not
+replace it with another action to work around a lost reply. Refusals retain the node's
+diagnostic message for both the tool response and the owner card.
 In Ask, a refusal before the node creates an approval retains one failed request card
 with the exact requested command, folder and readable refusal reason, without approval controls.
 After fixing the stated problem, a new command request gets its own exact node approval.

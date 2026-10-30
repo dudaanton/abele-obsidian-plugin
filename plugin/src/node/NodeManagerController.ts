@@ -12,7 +12,7 @@ import {
   type IntegrationContextRun,
 } from '@abele/node-protocol'
 import { z } from 'zod'
-import type { NodeClientStore } from './NodeClientStore'
+import type { NodeClientState, NodeClientStore } from './NodeClientStore'
 import { openWindow, catchUp } from './sessionWindow'
 import { reduceTranscript } from './NodeTranscriptReducer'
 import { pendingOwnerPrompts, promptAnswerStates } from './promptAnswers'
@@ -93,6 +93,29 @@ export function managerCapability(description: unknown, capability: string): boo
   return parsed.success && parsed.data.capabilities.capabilities[capability]?.status === 'supported'
 }
 
+/** Advance only after a known refusal; pending and successful attempts keep their identity. */
+function contextCreateAttempt(state: NodeClientState, base: string): string {
+  const prefix = `${base}-attempt-`
+  let attempt = 0
+  // Include pending requests and retained receipts: older failed attempts may have been evicted.
+  const identities = new Set([
+    ...Object.keys(state.operationRequests ?? {}),
+    ...Object.keys(state.results),
+    ...state.outbox.map((entry) => entry.operation_id),
+  ])
+  for (const id of identities) {
+    if (!id.startsWith(prefix)) continue
+    const suffix = id.slice(prefix.length)
+    const value = Number(suffix)
+    if (Number.isSafeInteger(value) && value > attempt && String(value) === suffix) attempt = value
+  }
+  const current = attempt ? `${prefix}${attempt}` : base
+  const error = state.results[current]?.error
+  // A node's diagnostic can mention a connection or timeout without making its refusal uncertain.
+  if (!error || uncertainReceiptError(error.split(':', 1)[0])) return current
+  return `${prefix}${attempt + 1}`
+}
+
 /** Exact durable operations; owner prompt answers are deliberately a separate UI API. */
 export class NodeManagerController {
   /** Owner UI checks this again immediately before approving a prepared action. */
@@ -126,8 +149,10 @@ export class NodeManagerController {
     request?: Record<string, unknown>
   ) {
     const params = validateParams(method, raw) as Record<string, unknown>
-    await this.store.transaction((s) => {
+    operation = await this.store.transaction((s) => {
       guard()
+      if (/^(command|integration)\.context\.v1\.create$/.test(method))
+        operation = contextCreateAttempt(s, operation)
       const previous = s.operationRequests?.[operation]
       const pending = s.outbox.find((e) => e.operation_id === operation)
       const known = previous ?? pending
@@ -151,6 +176,7 @@ export class NodeManagerController {
         ;(s.operationRequests ??= {})[operation] = { method, params }
         s.outbox.push({ operation_id: operation, method, params })
       }
+      return operation
     })
     await this.client.flush()
     const receipt = await this.store.read((s) => s.results[operation])
