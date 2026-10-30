@@ -777,11 +777,12 @@ export async function judgeDeletesCooperatively(args, scheduling) {
       } else if (file.endsWith('/reconciliation.js')) {
         code = replaceOnce(
           code,
-          'for await (const info of fs.list()) {\n        await work.step();\n        disk.set(info.path, info);\n    }',
+          'for await (const info of fs.list()) {\n        const checkpoint = work.step();\n        if (checkpoint)\n            await checkpoint;\n        disk.set(info.path, info);\n    }',
           `const replayEntries = retiredEntries ? null : await additiveReplayEntries(fs, state, scheduling);
     if (replayEntries === null) {
       for await (const info of fs.list()) {
-        await work.step();
+        const checkpoint = work.step();
+        if (checkpoint) await checkpoint;
         disk.set(info.path, info);
       }
     } else {
@@ -905,8 +906,8 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         )
         code = replaceOnce(
           code,
-          'for (const child of await fs.listChildren(parent)) {\n                await work.step();\n                result.add(child);',
-          'for (const child of await inventoryChildren(fs, parent, path)) {\n                await work.step();\n                result.add(child);'
+          'for (const child of await fs.listChildren(parent)) {\n                const checkpoint = work.step();\n                if (checkpoint)\n                    await checkpoint;\n                result.add(child);',
+          'for (const child of await inventoryChildren(fs, parent, path)) {\n                const checkpoint = work.step();\n                if (checkpoint) await checkpoint;\n                result.add(child);'
         )
       } else if (file.endsWith('/pullPlace.js')) {
         code = replaceOnce(

@@ -564,6 +564,55 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     }
   }
 
+  /** One bounded read for the SDK's pull-write page, including explicit missing keys. */
+  async getMetaMany(keys: readonly string[]): Promise<ReadonlyMap<string, string | null>> {
+    this.assertRecovery()
+    const result = new Map<string, string | null>()
+    if (keys.length === 0) return result
+    const readPage = async (names: readonly string[]): Promise<Map<string, string | null>> => {
+      const rows = await this.read('cannot read plugin metadata batch', [META], async (tx) =>
+        Promise.all(names.map((key) => wait<MetaRow | undefined>(tx.objectStore(META).get(own(key)))))
+      )
+      return new Map(names.map((key, index) => {
+        const row = rows[index]
+        const value = row === undefined ? null : row.value
+        if (value !== null && typeof value !== 'string')
+          throw new EngineError('io', `the stored ${key} is not a string`)
+        return [key, value] as [string, string | null]
+      }))
+    }
+    let known: Set<string> | null = null
+    if (this.normalizationCache && !this.transactionPending && keys.every((key) => key.startsWith(PULL_WRITE))) {
+      let inventory = this.pullWrites
+      if (!inventory) {
+        const loading = this.metadataKeys(PULL_WRITE).then((names) => {
+          const loaded = new Set(names)
+          if (this.pullWrites === loading) this.pullWrites = loaded
+          return loaded
+        })
+        this.pullWrites = inventory = loading
+      }
+      known = inventory instanceof Set ? inventory : await inventory.catch((error) => {
+        if (this.pullWrites === inventory) this.pullWrites = null
+        throw error
+      })
+      // A commit while the inventory was loading invalidates its absence proof.
+      if (this.pullWrites !== inventory && this.pullWrites !== known) known = null
+    }
+    for (let offset = 0; offset < keys.length; offset += 256) {
+      const page = keys.slice(offset, offset + 256)
+      if (known && this.pullWrites !== known) known = null
+      const pending = known ? page.filter((key) => known.has(key)) : page
+      let values = pending.length ? await readPage(pending) : new Map<string, string | null>()
+      if (known && this.pullWrites !== known) {
+        known = null
+        values = await readPage(page)
+      }
+      for (const key of page) result.set(key, values.get(key) ?? null)
+    }
+    return result
+  }
+
   private async readMeta(key: string): Promise<string | null> {
     const value = await this.metaValue(own(key))
     if (value === null) return null

@@ -1,6 +1,5 @@
 {
-  "$comment": "What plugin/scripts/repo-guard.mjs lets into the repository. Adding an entry here is how something is allowed on purpose — see docs/Repository guard.md.",
-
+  "$comment": "What plugin/scripts/repo-guard.mjs lets into the repository. Adding an entry here is how something is allowed on purpose \u2014 see docs/Repository guard.md.",
   "$layout": "Every directory named here may hold only the entries listed; a new file or folder beside them fails until it is added. Directories not named here are not checked this way.",
   "layout": {
     ".": [
@@ -16,8 +15,12 @@
       "release.sh",
       "versions.json"
     ],
-    ".githooks": ["pre-commit"],
-    ".github": ["workflows"],
+    ".githooks": [
+      "pre-commit"
+    ],
+    ".github": [
+      "workflows"
+    ],
     "plugin": [
       ".gitignore",
       ".npmrc",
@@ -50,17 +53,21 @@
       "vendor"
     ]
   },
-
   "maxBytes": 1048576,
-
   "$allow": "Globs (** crosses folders, * does not). large: files over maxBytes. images: where pictures and videos may live. junk: paths the junk rules would refuse. homePaths: files that may name a real home directory.",
   "allow": {
-    "large": ["assets/abele_preview.jpg"],
-    "images": ["assets/**", "docs/**", "plugin/tests/fixtures/**"],
+    "large": [
+      "assets/abele_preview.jpg"
+    ],
+    "images": [
+      "assets/**",
+      "docs/**",
+      "plugin/tests/fixtures/**"
+    ],
     "junk": [
       "plugin/vendor/node/*.tgz",
       "plugin/vendor/sync/abele-sync-sdk-0.3.1.tgz",
-      "plugin/vendor/sync/abele-sync-sdk-0.3.11.tgz"
+      "plugin/vendor/sync/abele-sync-sdk-0.3.12.tgz"
     ],
     "homePaths": []
   }

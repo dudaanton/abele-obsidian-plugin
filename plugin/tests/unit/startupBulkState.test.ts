@@ -102,6 +102,62 @@ it('answers 33000 settled path lookups without a promise chain per row', async (
   }
 })
 
+it('batches pull-write metadata with ordered missing keys and coherent writes', async () => {
+  const state = await IndexedDbStateStore.open(new IDBFactory(), 'sample-batch-metadata')
+  vi.stubGlobal('IDBKeyRange', IDBKeyRange)
+  const get = vi.spyOn(IDBObjectStore.prototype, 'get')
+  const pass = Symbol.for('abele.sync.normalization-pass-v1')
+  const keys = Array.from({ length: 33000 }, (_, i) => `pull-write:sample-${i}`)
+  try {
+    await Reflect.get(state, pass).call(state, async () => {
+      const batch = state.getMetaMany!(keys)
+      expect(batch).toBeDefined()
+      const values = await batch
+      expect([...values.keys()]).toEqual(keys)
+      expect([...values.values()].every((value) => value === null)).toBe(true)
+      expect(get.mock.calls.length).toBeLessThanOrEqual(256)
+      await state.setMeta(keys[10], 'pending')
+      const changed = await state.getMetaMany!([keys[10], keys[11]])
+      expect([...changed]).toEqual([[keys[10], 'pending'], [keys[11], null]])
+      await expect(state.transaction(async (tx) => {
+        await tx.setMeta(keys[11], 'rolled-back')
+        throw new Error('rollback')
+      })).rejects.toThrow('rollback')
+      expect([...await state.getMetaMany!([keys[10], keys[11]])]).toEqual([
+        [keys[10], 'pending'], [keys[11], null],
+      ])
+    })
+  } finally {
+    get.mockRestore()
+    vi.unstubAllGlobals()
+    state.close()
+  }
+})
+
+it('reads mixed metadata in one bounded transaction and rejects a corrupt value', async () => {
+  const state = await IndexedDbStateStore.open(new IDBFactory(), 'sample-mixed-batch')
+  const get = vi.spyOn(IDBObjectStore.prototype, 'get')
+  try {
+    await state.setMeta('sample-one', 'present')
+    get.mockClear()
+    expect([...await state.getMetaMany(['sample-missing', 'sample-one'])]).toEqual([
+      ['sample-missing', null], ['sample-one', 'present'],
+    ])
+    expect(get).toHaveBeenCalledTimes(2)
+    const db = Reflect.get(state, 'db') as IDBDatabase
+    const tx = db.transaction('meta', 'readwrite')
+    tx.objectStore('meta').put({ key: 'plugin:sample-one', value: 17 })
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    await expect(state.getMetaMany(['sample-missing', 'sample-one'])).rejects.toThrow(/not a string/)
+  } finally {
+    get.mockRestore()
+    state.close()
+  }
+})
+
 it('loads entries once per pass and retires the snapshot after writes and rollback', async () => {
   const state = await IndexedDbStateStore.open(new IDBFactory(), 'sample-startup-bulk')
   const read = async () => {

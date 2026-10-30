@@ -65,7 +65,7 @@ type Measurement = {
   timeline: SyncStartupMark[]
   native: Record<string, number>
   ledgerRows: { native: Record<string, number>; indexedFileProbes: number; readonly: number; requests: number; yields: number; classifications: number }
-  afterList: { readonly: number; readwrite: number; requests: number; gets: number; metadataGets: number; lstat: number; readdir: number }
+  afterList: { readonly: number; readwrite: number; requests: number; gets: number; metadataGets: number; metadataBatches: number; metadataBatchKeys: number; lstat: number; readdir: number }
   fileList: { lstat: number; indexedFileProbes: number }
   writes: { method: string; store: string }[]
 }
@@ -170,7 +170,9 @@ async function measure() {
     vi.spyOn(IDBObjectStore.prototype, 'openCursor'),
   ]
   let stateGets = 0,
-    metadataGets = 0
+    metadataGets = 0,
+    metadataBatches = 0,
+    metadataBatchKeys = 0
   const getEntry = IndexedDbStateStore.prototype.get
   const getMetadata = IndexedDbStateStore.prototype.getMeta
   const getSpy = vi.spyOn(IndexedDbStateStore.prototype, 'get').mockImplementation(function (...args) {
@@ -180,6 +182,12 @@ async function measure() {
   const getMetaSpy = vi.spyOn(IndexedDbStateStore.prototype, 'getMeta').mockImplementation(function (...args) {
     metadataGets++
     return getMetadata.apply(this, args)
+  })
+  const getMetaMany = IndexedDbStateStore.prototype.getMetaMany
+  const getMetaManySpy = getMetaMany && vi.spyOn(IndexedDbStateStore.prototype, 'getMetaMany').mockImplementation(function (...args) {
+    metadataBatches++
+    metadataBatchKeys += args[0].length
+    return getMetaMany.apply(this, args)
   })
   let metadataYields = 0
   const metadataRow = SyncTaskBudget.prototype.metadataRow
@@ -365,6 +373,8 @@ async function measure() {
         classifications,
         gets: stateGets,
         metadataGets,
+        metadataBatches,
+        metadataBatchKeys,
       })
       timeline.subscribe((mark) => {
         marks.push(mark)
@@ -385,6 +395,8 @@ async function measure() {
             requests: end.requests - afterListStart.requests,
             gets: end.gets - afterListStart.gets,
             metadataGets: end.metadataGets - afterListStart.metadataGets,
+            metadataBatches: end.metadataBatches - afterListStart.metadataBatches,
+            metadataBatchKeys: end.metadataBatchKeys - afterListStart.metadataBatchKeys,
             lstat: (end.native.lstat ?? 0) - (afterListStart.native.lstat ?? 0),
             readdir: (end.native.readdir ?? 0) - (afterListStart.native.readdir ?? 0),
           }
@@ -523,6 +535,7 @@ async function measure() {
     classification.mockRestore()
     getSpy.mockRestore()
     getMetaSpy.mockRestore()
+    getMetaManySpy?.mockRestore()
     budgetSpy.mockRestore()
     restoreWriteSpies()
     for (const spy of idbRequests) spy.mockRestore()
@@ -621,8 +634,12 @@ it('answers post-listing state lookups without one database round trip per file'
   await ensureMeasured()
   for (const result of results) {
     console.log('native post-listing state', result.afterList, result.fileList)
-    expect(result.afterList.requests).toBeLessThanOrEqual(256)
-    expect(result.afterList.readonly).toBeLessThanOrEqual(256)
+    expect(result.afterList.requests).toBeLessThanOrEqual(64)
+    expect(result.afterList.readonly).toBeLessThanOrEqual(64)
+    expect(result.afterList.metadataGets).toBeLessThanOrEqual(64)
+    expect(result.afterList.metadataBatches).toBeGreaterThan(0)
+    expect(result.afterList.metadataBatches).toBeLessThanOrEqual(256)
+    expect(result.afterList.metadataBatchKeys).toBeGreaterThanOrEqual(33000)
     expect(result.fileList.lstat).toBeLessThanOrEqual(64)
     expect(result.fileList.indexedFileProbes).toBe(0)
   }
