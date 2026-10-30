@@ -237,6 +237,31 @@ describe('node response compatibility', () => {
     expect(bounded.safeParse([{ value: 1 }, { value: 2 }]).success).toBe(false)
   })
 
+  it('reads repository status through merged schemas with getter-backed catchalls', async () => {
+    const c = client()
+    const request = vi.spyOn(c, 'request').mockResolvedValue({
+      entries: [{ path: 'sample.ts', index: 'M', worktree: ' ', future: true }],
+      cursor: null,
+      incomplete: false,
+      omissions: [],
+      future: true,
+    })
+    const params = {
+      worktree_id: 'sample-worktree',
+      revision: { kind: 'commit' as const, commit: 'a'.repeat(40) },
+    }
+    await expect(c.repository.status(params)).resolves.toMatchObject({
+      entries: [{ path: 'sample.ts' }],
+    })
+    request.mockResolvedValue({
+      entries: [{ path: 42, index: 'M', worktree: ' ' }],
+      cursor: null,
+      incomplete: false,
+      omissions: [],
+    })
+    await expect(c.repository.status(params)).rejects.toThrow()
+  })
+
   it('keeps default factories lazy and their objects independent between responses', () => {
     let calls = 0
     const schema = responseSchema(

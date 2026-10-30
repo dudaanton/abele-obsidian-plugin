@@ -24,7 +24,7 @@
  export interface RecordTransport {
 --- a/packages/channel-protocol/src/response.ts
 +++ b/packages/channel-protocol/src/response.ts
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,49 @@
 +import { z } from 'zod'
 +
 +const responses = new WeakMap<z.ZodType, z.ZodType>()
@@ -62,7 +62,14 @@
 +    Object.assign(def, { getter: () => responseSchema(getter() as z.ZodType) })
 +  }
 +  if (schema instanceof z.ZodObject && schema.def.catchall instanceof z.ZodNever)
-+    Object.assign(def, { catchall: undefined })
++    // Merged object definitions expose catchall as a getter without a setter.
++    // Replace the descriptor on the clone; never assign through the original accessor.
++    Object.defineProperty(def, 'catchall', {
++      value: undefined,
++      writable: true,
++      enumerable: true,
++      configurable: true,
++    })
 +  const result = z.core.clone(schema, def)
 +  responses.set(schema, result)
 +  return result

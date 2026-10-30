@@ -27,7 +27,9 @@ Apply these source patches in order, from the release archive's root, before bui
    it at SDK receiving boundaries, including event validation and transcript replay.
    It clones and caches Zod schemas, recursively ignores additional object fields, and
    retains known-field checks, refinements and collection limits. Shared schemas and
-   outgoing requests remain strict. Normal incoming response/event/welcome envelopes
+   outgoing requests remain strict. Cloning preserves lazy default factories and replaces
+   getter-backed catchalls on merged schemas without mutating their originals.
+   Normal incoming response/event/welcome envelopes
    use this compatibility view; authentication requests and outgoing encoding stay strict.
    It also describes the optional `context.run_id` emitted by the live session runtime.
 

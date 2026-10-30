@@ -3,10 +3,10 @@
     "id": "@abele/channel-protocol@0.0.0",
     "name": "@abele/channel-protocol",
     "version": "0.0.0",
-    "size": 10293,
-    "unpackedSize": 45519,
-    "shasum": "d3f55d0ad354c09743d8da74f2acbef85e22f924",
-    "integrity": "sha512-72iqKu8JZ4vDwqN7OfJ4YkQdhSpG/HFjC16IEb2QZM3InptlI9M0J5TuIv85P92PrPPNmkJfZdUY12us71x0ww==",
+    "size": 10449,
+    "unpackedSize": 45921,
+    "shasum": "1f0701393ff1e697561142f181de53655179fc6e",
+    "integrity": "sha512-96Wco9fklVNML3YXtPKaC527I0gVGvbF02hzJlfqkZpycbNqBoi+VKkWuWjMTjFtKLUAiEVxw36guK3K3sCrUQ==",
     "filename": "abele-channel-protocol-0.0.0.tgz",
     "files": [
       {
@@ -61,12 +61,12 @@
       },
       {
         "path": "dist/response.js",
-        "size": 2019,
+        "size": 2322,
         "mode": 420
       },
       {
         "path": "dist/response.js.map",
-        "size": 1801,
+        "size": 1900,
         "mode": 420
       },
       {
