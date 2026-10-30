@@ -42,6 +42,8 @@ function codeLinkAt(event: MouseEvent): string | undefined {
 
 /** Capture before native and component handlers; even invalid citations never reach the OS. */
 export function registerNodeCodeLinks(plugin: Plugin): void {
+  // Minimal startup hosts may not provide DOM registration.
+  if (typeof plugin.registerDomEvent !== 'function') return
   const documents = new WeakSet<Document>()
   const openedOnDown = new WeakSet<EventTarget>()
   const handle = (event: MouseEvent) => {
@@ -65,7 +67,8 @@ export function registerNodeCodeLinks(plugin: Plugin): void {
       plugin.registerDomEvent(doc, type, handle, { capture: true })
   }
   listen(document)
-  plugin.app.workspace.iterateAllLeaves((leaf) => listen(leaf.view.containerEl.ownerDocument))
+  if (typeof plugin.app.workspace.iterateAllLeaves === 'function')
+    plugin.app.workspace.iterateAllLeaves((leaf) => listen(leaf.view.containerEl.ownerDocument))
   plugin.registerEvent(
     plugin.app.workspace.on('window-open', (_workspace, win) => listen(win.document))
   )

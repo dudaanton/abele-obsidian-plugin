@@ -45,11 +45,11 @@ const resource = nodeCodeLink(target, 'src/sample.ts', { start: 3, end: 7 })
 const cleanups: (() => void)[] = []
 let windowOpened: (_workspace: unknown, win: { document: Document }) => void
 
-function register() {
+function register(withLeafIteration = true) {
   registerNodeCodeLinks({
     app: {
       workspace: {
-        iterateAllLeaves: vi.fn(),
+        ...(withLeafIteration ? { iterateAllLeaves: vi.fn() } : {}),
         on: (_name: string, callback: typeof windowOpened) => {
           windowOpened = callback
         },
@@ -84,6 +84,24 @@ it('opens an owner citation using this device registration without any chat scop
     ...target,
     registrationId: 'current-device-registration',
   })
+})
+
+it('keeps main-window navigation available without optional leaf enumeration', async () => {
+  register(false)
+  const link = document.body.createEl('a', { attr: { href: resource } })
+  const evt = new MouseEvent('click', { bubbles: true, cancelable: true })
+  link.dispatchEvent(evt)
+  expect(evt.defaultPrevented).toBe(true)
+  await vi.waitFor(() => expect(mocks.open).toHaveBeenCalledOnce())
+  expect(windowOpened).toBeTypeOf('function')
+})
+
+it('leaves minimal startup hosts without DOM registration untouched', () => {
+  const registerEvent = vi.fn()
+  expect(() =>
+    registerNodeCodeLinks({ app: { workspace: {} }, registerEvent } as unknown as Plugin)
+  ).not.toThrow()
+  expect(registerEvent).not.toHaveBeenCalled()
 })
 
 it.each([
