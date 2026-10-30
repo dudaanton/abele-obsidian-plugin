@@ -1,4 +1,8 @@
-import { openChatSetup, waitForUiMatch } from '../helpers/chatProbeInteractions'
+import {
+  openChatSetup,
+  revealNativeMenuItem,
+  waitForUiMatch,
+} from '../helpers/chatProbeInteractions'
 /**
  * Every dialog of the chat, and the icon picker, on a phone.
  *
@@ -265,6 +269,7 @@ interface Screen {
     unreachable: string[]
     clipped: string[]
     findOpened: boolean
+    deleteOpened: boolean
   }
   /** Where the picture went. */
   shot: string
@@ -464,7 +469,7 @@ const probeScript = `(async () => {
   }
 
   const headerActions = async (label, root) => {
-    const entry = { direct: [], overflow: [], unreachable: [], clipped: [], findOpened: false }
+    const entry = { direct: [], overflow: [], unreachable: [], clipped: [], findOpened: false, deleteOpened: false }
     const reachable = (el) => {
       const r = el.getBoundingClientRect()
       return r.width > 0 && r.height > 0 && r.left >= 0 && r.right <= window.innerWidth &&
@@ -483,15 +488,34 @@ const probeScript = `(async () => {
     await until(() => document.querySelector('.menu'), 3000)
     const menu = document.querySelector('.menu')
     await screen(label + ' header menu', menu, menu)
+    const reveal = (item, popup = menu) => (${revealNativeMenuItem.toString()})(popup, item)
     for (const item of menu.querySelectorAll('.menu-item')) {
       const title = item.querySelector('.menu-item-title')?.textContent.trim()
       entry.overflow.push(title)
-      if (!reachable(item)) entry.unreachable.push(title)
+      if (!reveal(item)) entry.unreachable.push(title)
+    }
+    await screen(label + ' header menu bottom', menu, menu)
+    const deleteItem = [...menu.querySelectorAll('.menu-item')].find(item =>
+      item.querySelector('.menu-item-title')?.textContent.trim() === 'Delete chat')
+    if (deleteItem && reveal(deleteItem)) {
+      deleteItem.click()
+      const dialog = await until(() => [...document.querySelectorAll('.modal')].find(el =>
+        el.querySelector('.modal-title')?.textContent.trim() === 'Delete chat'), 3000)
+      entry.deleteOpened = !!dialog
+      const cancel = dialog && [...dialog.querySelectorAll('button')].find(button => button.textContent.trim() === 'Cancel')
+      if (!cancel) throw new Error('No cancel action in the chat deletion confirmation')
+      cancel.click()
+      await until(() => !dialog.isConnected, 3000)
+      more.click()
+      await until(() => document.querySelector('.menu'), 3000)
+      await wait(400)
     }
     // Execute an overflow action rather than sending Escape to the document: that also
     // dismisses the mobile sidebar and would leave later pictures on the underlying pane.
-    const findItem = [...menu.querySelectorAll('.menu-item')].find(item =>
+    const findMenu = document.querySelector('.menu')
+    const findItem = [...findMenu.querySelectorAll('.menu-item')].find(item =>
       item.querySelector('.menu-item-title')?.textContent.trim() === 'Find in this chat')
+    if (!reveal(findItem, findMenu)) throw new Error('The find action cannot be tapped after scrolling the menu')
     findItem.click()
     entry.findOpened = !!(await until(() => root.querySelector('.abele-chat-find'), 3000))
     root.querySelector('[aria-label="Close the find bar (Esc)"]')?.click()
@@ -2709,9 +2733,10 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
             ]
           : []),
       ])
-      expect(header?.unreachable).toEqual([])
+      expect(header?.unreachable, JSON.stringify(report[label + ' header menu'])).toEqual([])
       expect(header?.clipped).toEqual([])
       expect(header?.findOpened).toBe(true)
+      expect(header?.deleteOpened).toBe(label === 'chat')
       expect(report[label + ' header menu']?.error).toBe('')
       expect(report[label + ' header menu']?.over).toEqual([])
     }
