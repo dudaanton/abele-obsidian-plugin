@@ -210,6 +210,8 @@ export class NodeChatPresenter implements ChatPresentationSession {
   private dirty = false
   private readonly unusableArtifacts = new Set<string>()
   private readonly interruptingRuns = new Set<string>()
+  /** Local Stop evidence belongs to one turn; long-lived processes reuse their run id. */
+  private readonly ownerStoppedTurnStarts = new Set<number>()
   private readonly backgroundStoppedRuns = new Set<string>()
   private endBackgroundTurn?: () => void
   private readonly titleAbort = new AbortController()
@@ -469,7 +471,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         }
         if (this.destroyed) return
         this.firstKept.value = visible[0]?.seq ?? firstKept
-        const projection = reduceTranscript(hydrated)
+        const projection = reduceTranscript(hydrated, this.ownerStoppedTurnStarts)
         for (const [id, letter] of Object.entries(letters)) {
           if (letter.sessionId !== this.reference.sessionId) continue
           const result = receipts[id]?.result as { input_id?: string } | undefined
@@ -1310,6 +1312,15 @@ export class NodeChatPresenter implements ChatPresentationSession {
         await this.connection.client.store.transaction((s) =>
           setOwnerStopped((s as NodeClientState).delegation, this.reference.sessionId, true)
         )
+        const started = [...this.visibleEvents.values()]
+          .filter(
+            (event) =>
+              event.type === 'turn.started' && (event.data as { run_id?: string })?.run_id === runId
+          )
+          .sort((a, b) => a.seq - b.seq)
+          .at(-1)
+        if (started && this.projection.value.activeRuns.includes(runId))
+          this.ownerStoppedTurnStarts.add(started.seq)
         await this.connection.client.interrupt(this.reference.sessionId, runId)
       } catch (error) {
         this.report(error)

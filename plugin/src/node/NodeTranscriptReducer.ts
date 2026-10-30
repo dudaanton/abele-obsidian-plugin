@@ -44,7 +44,10 @@ export interface NodeTranscript {
 }
 
 /** The journal is canonical. Projection is disposable; replay never executes a plugin tool. */
-export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscript {
+export function reduceTranscript(
+  events: readonly JournalEvent[],
+  ownerStoppedTurnStarts: ReadonlySet<number> = new Set()
+): NodeTranscript {
   const messages = new Map<string, ChatMessage>()
   const obsidianCalls = new Map<string, { name: string; args: unknown; run: string; seq: number }>()
   const callKey = (name: string, args: unknown, run: string): string =>
@@ -61,6 +64,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
   const runInputs = new Map<string, string>()
   const messageRuns = new Map<string, string>()
   const turnStarts = new Map<string, number>()
+  const missingStopReasons = new Map<string, NonNullable<ChatMessage['sessionMark']>>()
   const interruptions: { run: string; from: number; to: number }[] = []
   const artifacts: NodeTranscript['artifacts'] = []
   const unknown: JournalEvent[] = []
@@ -228,6 +232,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
     if (event.type === 'turn.completed') boundaryTurn = ''
     touchedTools = []
     if (event.type === 'turn.started' || event.type === 'run.started') {
+      missingStopReasons.delete(currentRun)
       turnStarts.set(currentRun, sequence)
       const ids = Array.isArray(data.input_ids) ? data.input_ids.map(String) : []
       for (const id of ids) inputs.set(id, 'delivered')
@@ -243,6 +248,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       }
     }
     if (event.type === 'turn.completed' || event.type === 'run.interrupted') {
+      missingStopReasons.delete(currentRun)
       if (data.outcome === 'interrupted' || event.type === 'run.interrupted') {
         const from = turnStarts.get(currentRun) ?? 0
         interruptions.push({ run: currentRun, from, to: sequence })
@@ -254,9 +260,22 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
         }
         if (event.type === 'turn.completed') {
           const line = message(`stopped:${event.seq}`, 'system')
-          line.sessionMark = { kind: 'notice', level: 'info', text: t('streamB.nodeStopped') }
+          const reason = text('terminal_reason')
+          const ownerStopped = reason === 'stopped_by_owner' || ownerStoppedTurnStarts.has(from)
+          line.sessionMark = {
+            kind: 'notice',
+            level: 'info',
+            text: t(ownerStopped ? 'streamB.nodeStopped' : 'streamB.nodeRunEnded'),
+            ...(!ownerStopped && reason ? { detail: reason } : {}),
+          }
+          if (!ownerStopped && !reason) missingStopReasons.set(currentRun, line.sessionMark)
         }
       }
+    }
+    if (event.type === 'session.process' && data.state === 'exited') {
+      const mark = missingStopReasons.get(currentRun)
+      if (mark && text('reason')) mark.detail = text('reason')
+      missingStopReasons.delete(currentRun)
     }
     if (
       event.type === 'session.process' &&

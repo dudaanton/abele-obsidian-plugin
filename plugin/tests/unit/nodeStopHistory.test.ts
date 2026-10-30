@@ -2,6 +2,15 @@ import { expect, it } from 'vitest'
 import type { JournalEvent } from '@abele/channel-protocol'
 import { reduceTranscript } from '@/node/NodeTranscriptReducer'
 
+const interruptedTurn = (reason: string | null) => [
+  event(1, 'turn.started', { turn_id: 'sample-turn' }),
+  event(2, 'turn.completed', {
+    turn_id: 'sample-turn',
+    outcome: 'interrupted',
+    terminal_reason: reason,
+  }),
+]
+
 const event = (seq: number, type: string, data: Record<string, unknown>): JournalEvent => ({
   kind: 'event',
   node_id: 'sample-node',
@@ -11,6 +20,65 @@ const event = (seq: number, type: string, data: Record<string, unknown>): Journa
   actor: { kind: 'node' },
   at: '2025-01-01T00:00:00.000Z',
   data: { run_id: 'sample-run', ...data },
+})
+
+it('attributes an interruption to the owner only with explicit evidence', () => {
+  expect(
+    reduceTranscript(interruptedTurn('stopped_by_owner')).messages.at(-1)?.sessionMark?.text
+  ).toBe('Stopped by you')
+})
+
+it.each([
+  'process_lost',
+  'node_restart',
+  'codex_process_inventory_unavailable',
+  'process_exited',
+  'future_reason',
+  null,
+])('uses a resumable neutral line for node-side interruption %s', (reason) => {
+  const projection = reduceTranscript(interruptedTurn(reason))
+  expect(projection.messages.at(-1)?.sessionMark).toEqual({
+    kind: 'notice',
+    level: 'info',
+    text: 'The agent run ended on the node',
+    ...(reason ? { detail: reason } : {}),
+  })
+  expect(projection.activeRuns).toEqual([])
+  // Interrupted turns retain the existing attention state and accept another turn.
+  expect(projection.state).toBe('needs-attention')
+  expect(
+    reduceTranscript([
+      ...interruptedTurn(reason),
+      event(3, 'turn.started', { turn_id: 'next-turn' }),
+      event(4, 'turn.completed', { outcome: 'success' }),
+    ]).state
+  ).toBe('idle')
+})
+
+it('uses a following process reason only for the matching interrupted turn with no reason', () => {
+  const projection = reduceTranscript([
+    ...interruptedTurn(null),
+    event(3, 'session.process', { state: 'exited', run_id: 'other-run', reason: 'unrelated' }),
+    event(4, 'session.process', { state: 'exited', reason: 'process_lost' }),
+  ])
+  expect(projection.messages.find((m) => m.id === 'stopped:2')?.sessionMark?.detail).toBe(
+    'process_lost'
+  )
+  expect(
+    reduceTranscript([
+      ...interruptedTurn('node_restart'),
+      event(3, 'session.process', { state: 'exited', reason: 'process_exited' }),
+    ]).messages.at(-1)?.sessionMark?.detail
+  ).toBe('node_restart')
+})
+
+it('does not attach a later turn process exit to an earlier interruption', () => {
+  const projection = reduceTranscript([
+    ...interruptedTurn(null),
+    event(3, 'turn.started', { turn_id: 'next-turn' }),
+    event(4, 'session.process', { state: 'exited', reason: 'process_lost' }),
+  ])
+  expect(projection.messages.find((m) => m.id === 'stopped:2')?.sessionMark?.detail).toBeUndefined()
 })
 
 it('describes stopping with a pending approval as interrupted rather than denied', () => {

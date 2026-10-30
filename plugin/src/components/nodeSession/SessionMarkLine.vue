@@ -33,7 +33,7 @@
 import NodeErrorText from '@/components/NodeErrorText.vue'
 import { t } from '@/i18n'
 import { presentUiField } from '@/i18n/streamBErrors'
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watchEffect } from 'vue'
 import { setTooltip } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import Markdown from '../obsidian/Markdown.vue'
@@ -69,14 +69,15 @@ const said = computed(() => {
     : t('chat.compacted')
 })
 const label = ref<HTMLElement>()
-onMounted(() => {
+watchEffect(() => {
   const tip = [
+    props.mark.detail,
     props.mark.focus && t('chat.keptFocus', { focus: props.mark.focus }),
     props.summary && (open.value ? t('chat.hideSummary') : t('chat.showSummary')),
   ]
     .filter(Boolean)
     .join('\n')
-  if (label.value && tip) setTooltip(label.value, tip)
+  if (label.value) setTooltip(label.value, tip)
 })
 </script>
 

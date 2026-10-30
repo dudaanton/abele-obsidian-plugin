@@ -86,6 +86,8 @@ export interface SessionMark {
   focus?: string
   /** What woke it, in words: «npm test finished · 12 passed». */
   text?: string
+  /** Diagnostic evidence shown on hover, separate from the plain notice text. */
+  detail?: string
 }
 
 /** One step of the plan an agent keeps while it works. */

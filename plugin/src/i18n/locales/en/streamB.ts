@@ -95,6 +95,7 @@ export const streamB = {
   'streamB.nodeHistoryRestored': 'Chat history restored. Files unchanged.',
   'streamB.nodeHistoryFilesRestored': 'Chat history restored with the confirmed file changes.',
   'streamB.nodeStopped': 'Stopped by you',
+  'streamB.nodeRunEnded': 'The agent run ended on the node',
   'streamB.nodeStartFailed': 'The agent could not start: {reason}.',
   'streamB.nodeTestAgent': 'Test agent',
   'streamB.nodeDefaultAccount': 'Node default account',

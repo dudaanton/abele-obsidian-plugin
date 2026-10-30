@@ -87,6 +87,31 @@ it('starts audio on a remote run event and releases it once after completion gra
   expect(audio.stop).toHaveBeenCalledOnce()
 })
 
+it('remembers stopping one legacy turn without attributing later turns to the owner', async () => {
+  const f = await chat()
+  await f.event('turn.started', 'sample-run', { turn_id: 'first-turn' })
+  await f.presenter.interrupt('sample-run')
+  await f.event('turn.completed', 'sample-run', {
+    turn_id: 'first-turn',
+    outcome: 'interrupted',
+    terminal_reason: null,
+  })
+  expect(f.presenter.projection.value.messages.at(-1)?.sessionMark?.text).toBe('Stopped by you')
+  await f.presenter.refresh()
+  expect(f.presenter.projection.value.messages.at(-1)?.sessionMark?.text).toBe('Stopped by you')
+  await f.event('turn.started', 'sample-run', { turn_id: 'next-turn' })
+  await f.event('turn.completed', 'sample-run', {
+    turn_id: 'next-turn',
+    outcome: 'interrupted',
+    terminal_reason: null,
+  })
+  expect(
+    f.presenter.projection.value.messages
+      .filter((m) => m.sessionMark)
+      .map((m) => m.sessionMark?.text)
+  ).toEqual(['Stopped by you', 'The agent run ended on the node'])
+})
+
 it('keeps audio for an active run waiting on approval, not just the running presentation state', async () => {
   const f = await chat()
   await f.event('run.started')

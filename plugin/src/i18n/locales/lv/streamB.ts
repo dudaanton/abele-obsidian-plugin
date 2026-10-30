@@ -96,6 +96,7 @@ export const streamB = {
   'streamB.nodeHistoryRestored': 'Čata vēsture atjaunota. Faili nav mainīti.',
   'streamB.nodeHistoryFilesRestored': 'Čata vēsture atjaunota ar apstiprinātajām failu izmaiņām.',
   'streamB.nodeStopped': 'Jūs apturējāt',
+  'streamB.nodeRunEnded': 'Aģenta darbība mezglā beidzās',
   'streamB.nodeStartFailed': 'Aģentu neizdevās palaist: {reason}.',
   'streamB.nodeTestAgent': 'Testa aģents',
   'streamB.nodeDefaultAccount': 'Mezgla noklusējuma konts',

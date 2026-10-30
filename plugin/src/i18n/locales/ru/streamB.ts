@@ -97,6 +97,7 @@ export const streamB = {
   'streamB.nodeHistoryFilesRestored':
     'История чата восстановлена с подтверждёнными изменениями файлов.',
   'streamB.nodeStopped': 'Остановлено вами',
+  'streamB.nodeRunEnded': 'Работа агента завершилась на ноде',
   'streamB.nodeStartFailed': 'Не удалось запустить агента: {reason}.',
   'streamB.nodeTestAgent': 'Тестовый агент',
   'streamB.nodeDefaultAccount': 'Аккаунт узла по умолчанию',

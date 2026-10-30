@@ -99,6 +99,7 @@ export const streamB = {
   'streamB.nodeHistoryFilesRestored':
     'Historial del chat restaurado con los cambios de archivos confirmados.',
   'streamB.nodeStopped': 'Detenido por ti',
+  'streamB.nodeRunEnded': 'La ejecución del agente terminó en el nodo',
   'streamB.nodeStartFailed': 'El agente no pudo iniciarse: {reason}.',
   'streamB.nodeTestAgent': 'Agente de prueba',
   'streamB.nodeDefaultAccount': 'Cuenta predeterminada del nodo',

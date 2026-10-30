@@ -102,6 +102,7 @@ export const streamB = {
   'streamB.nodeHistoryFilesRestored':
     'Chatverlauf mit den bestätigten Dateiänderungen wiederhergestellt.',
   'streamB.nodeStopped': 'Von dir gestoppt',
+  'streamB.nodeRunEnded': 'Der Agentenlauf auf dem Knoten wurde beendet',
   'streamB.nodeStartFailed': 'Der Agent konnte nicht starten: {reason}.',
   'streamB.nodeTestAgent': 'Testagent',
   'streamB.nodeDefaultAccount': 'Standardkonto des Knotens',
