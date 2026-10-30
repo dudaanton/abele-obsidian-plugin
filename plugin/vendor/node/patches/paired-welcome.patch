@@ -1,29 +1,25 @@
 --- a/packages/node-client/src/paired.ts
 +++ b/packages/node-client/src/paired.ts
-@@ -251,7 +251,9 @@
+@@ -251,7 +251,8 @@
        if (auth.kind !== 'authenticated' || auth.installation_id !== device.installation_id)
          throw new ChannelError('unauthorized')
        await transport.send(FrameCodec.encode({ kind: 'hello', version: { major: 0, minor: 0 } }))
 -      const welcome = await next()
-+      // The signed node has authenticated this device. Its discovery record uses
-+      // the normal record bound; provider capabilities can exceed auth_bytes.
++      // The authenticated discovery record uses the normal record bound.
 +      const welcome = await next(LIMITS.record_bytes)
        if (
          welcome.kind !== 'welcome' ||
          welcome.node_id !== device.node_id ||
-@@ -268,7 +270,10 @@
+@@ -268,7 +269,7 @@
    private async handshake<T>(
      device: PairedDevice,
      invite: PairingInvite | undefined,
 -    finish: (transport: RecordTransport, next: () => Promise<RecordFrame>) => Promise<T>,
-+    finish: (
-+      transport: RecordTransport,
-+      next: (maxBytes?: number) => Promise<RecordFrame>
-+    ) => Promise<T>,
++    finish: (transport: RecordTransport, next: (maxBytes?: number) => Promise<RecordFrame>) => Promise<T>,
      deviceName?: string
    ): Promise<T> {
      let transport: RecordTransport | undefined,
-@@ -293,11 +298,14 @@
+@@ -293,11 +294,14 @@
            }
            checkDeadline()
            const iterator = transport.receive()[Symbol.asyncIterator]()

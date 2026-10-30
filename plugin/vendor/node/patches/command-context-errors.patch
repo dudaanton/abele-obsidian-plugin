@@ -1,6 +1,7 @@
 --- a/packages/node-client/src/index.ts
 +++ b/packages/node-client/src/index.ts
-@@ -882,4 +882,6 @@
+@@ -881,7 +881,9 @@
+             ['disconnected', 'outcome_unknown', 'storage_unavailable'].includes(e.code)
            )
              throw e
 -          error = e.code
@@ -8,3 +9,5 @@
 +            ? `${e.code}: ${e.message}`
 +            : e.code
          }
+         // Failure here intentionally retains the same operation ID for reconnect/retry.
+         await this.store.transaction((s) => {

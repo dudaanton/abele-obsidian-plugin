@@ -1,6 +1,6 @@
 --- a/packages/channel-client/src/index.ts
 +++ b/packages/channel-client/src/index.ts
-@@ -277,6 +277,7 @@
+@@ -327,6 +327,7 @@
          ? Number((params as { timeout_ms?: number } | null)?.timeout_ms ?? 60000)
          : 0
        const ms =

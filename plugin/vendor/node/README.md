@@ -5,11 +5,18 @@ since v0.4.47, so the earlier local delegation-reasons patch is no longer applie
 
 ## Current browser payloads
 
-All four packages are built from the clean AbeleNode **v0.4.72** release archive,
-using Zod 4.6.6 and TypeScript 5.9.3 (ES2022, ES modules). This refresh includes all
-four browser packages, not just the two client packages. The channel-client tarball
-is byte-identical to the previous patched payload because its source did not change.
-The lockfile and `integrity.json` record the exact packaged bytes.
+All four packages are built from AbeleNode security branch commit
+`5c2a2bdc4db04f79da83cd614d062234c8aa8147` (based on v0.4.72),
+using the six source patches below, Zod 4.6.6 and TypeScript 5.9.3.
+The lockfile and `integrity.json` record the exact rebuilt bytes.
+
+Local connections use `local-proof-v1`: the client verifies the server proof before
+sending the saved token. This requires a coordinated daemon/plugin upgrade; there
+is no auth-first fallback. Existing `local-token-v1` targets, tokens, node IDs,
+installation IDs and durable stores are preserved. The saved token hash grants
+server-proof authority; this does not provide encryption, defeat a live relay or
+protect against another process running as the same OS user. Paired connections
+retain their existing authentication path.
 
 Apply these source patches in order, from the release archive's root, before building:
 
