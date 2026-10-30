@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import { testNodeProvidersEnabled } from './providers'
 import type { ToolPermissions } from './toolPermissions'
 import type { Prompt } from '@abele/node-client'
@@ -55,7 +56,9 @@ export const DelegationStorageSchema = z
           parentId: z.string().min(1).max(128),
           input: RetainedTaskInputSchema,
           request,
-          child: z.custom<Delegation>((v) => DelegationSchema.safeParse(v).success).optional(),
+          child: z
+            .custom<Delegation>((v) => responseSchema(DelegationSchema).safeParse(v).success)
+            .optional(),
           cancelled: z.boolean().optional(),
           ownerStopped: z.boolean().optional(),
           cancelSettled: z.boolean().optional(),
@@ -66,7 +69,9 @@ export const DelegationStorageSchema = z
           followupMailboxSeq: z.number().int().nonnegative().optional(),
           followupAcceptedSeq: z.number().int().nonnegative().optional(),
           status: z
-            .custom<DelegationStatus>((v) => DelegationStatusSchema.safeParse(v).success)
+            .custom<DelegationStatus>(
+              (v) => responseSchema(DelegationStatusSchema).safeParse(v).success
+            )
             .optional(),
         })
         .strict()

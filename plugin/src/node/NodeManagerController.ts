@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import type { Prompt, NodeClient } from '@abele/node-client'
 import {
   ManagerRunSchema,
@@ -34,12 +35,12 @@ function runUpdate(raw: unknown, current: Run) {
     'context_id' in raw &&
     raw.context_id === current.context_id
   )
-    return ContextRunSchema.safeParse({
+    return responseSchema(ContextRunSchema).safeParse({
       ...('stream_id' in current ? { stream_id: current.stream_id } : {}),
       ...raw,
       approval: 'approval' in raw ? raw.approval : current.approval,
     })
-  return RunSchema.safeParse(raw)
+  return responseSchema(RunSchema).safeParse(raw)
 }
 
 function outputTail(value: string, capacity: number): { text: string; truncated: boolean } {
@@ -60,13 +61,15 @@ export const ManagerOperationSchema = z
     parent: z.string(),
     method: z.string(),
     params: z.record(z.string(), z.unknown()),
-    run: z.custom<Run>((value) => RunSchema.safeParse(value).success).optional(),
+    run: z.custom<Run>((value) => responseSchema(RunSchema).safeParse(value).success).optional(),
     observedSeq: z.number().optional(),
     notified: z.boolean().optional(),
     stopped: z.boolean().optional(),
     justification: z.string().max(200).optional(),
     request: z.record(z.string(), z.unknown()).optional(),
-    fallback: z.custom<Prompt>((value) => PromptSchema.safeParse(value).success).optional(),
+    fallback: z
+      .custom<Prompt>((value) => responseSchema(PromptSchema).safeParse(value).success)
+      .optional(),
   })
   .strict()
 export type ManagerOperation = z.infer<typeof ManagerOperationSchema>
@@ -253,7 +256,7 @@ export class NodeManagerController {
       const contextOperation =
         (kind === 'integration' ? 'integration-context-' : 'context-') +
         Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('')
-      const context = CommandContextSchema.parse(
+      const context = responseSchema(CommandContextSchema).parse(
         await this.contextOperation(
           parent,
           `${kind}.context.v1.create`,
@@ -289,7 +292,7 @@ export class NodeManagerController {
         })
         if (matching) operation = legacyAlias
       }
-      const run = ContextRunSchema.parse(
+      const run = responseSchema(ContextRunSchema).parse(
         await this.contextOperation(
           parent,
           prepareMethod,
@@ -358,7 +361,7 @@ export class NodeManagerController {
   }
   /** Only mounted owner controls call this; never an agent tool. */
   async answer(parent: string, raw: Prompt, choice: 'allow' | 'deny') {
-    const prompt = PromptSchema.parse(raw)
+    const prompt = responseSchema(PromptSchema).parse(raw)
     if (prompt.session_id === 'unsubmitted-command') {
       await this.store.transaction((s) => {
         const entry = s.managerOperations?.[prompt.run_id]
@@ -379,11 +382,13 @@ export class NodeManagerController {
     }
     const entry = await this.ownedContext(parent, prompt.session_id, prompt.run_id)
     if (!entry) throw new Error('Run does not belong to this parent chat')
-    const run = ContextRunSchema.parse(await this.status(parent, prompt.session_id, prompt.run_id))
+    const run = responseSchema(ContextRunSchema).parse(
+      await this.status(parent, prompt.session_id, prompt.run_id)
+    )
     const approvalGuard =
       choice === 'allow' && this.canApprove ? await this.canApprove(parent, run) : undefined
     if (approvalGuard === false) throw new Error(t('node.manager.permissionChanged'))
-    const approval = PromptSchema.parse(run.approval)
+    const approval = responseSchema(PromptSchema).parse(run.approval)
     if (approval.prompt_id !== prompt.prompt_id || approval.action_digest !== prompt.action_digest)
       throw new Error('stale_approval')
     await this.enableContexts(contextKind(run))
@@ -411,7 +416,7 @@ export class NodeManagerController {
     return this.store.read(
       (s) =>
         Object.entries(s.managerOperations ?? {}).flatMap(([operation, entry]) => {
-          const parsed = ContextRunSchema.safeParse(s.results[operation]?.result)
+          const parsed = responseSchema(ContextRunSchema).safeParse(s.results[operation]?.result)
           return entry.parent === parent &&
             parsed.success &&
             parsed.data.session_id === session &&
@@ -435,7 +440,7 @@ export class NodeManagerController {
     if (!owned) return undefined
     return this.store.read((s) => {
       for (const receipt of Object.values(s.results)) {
-        const context = CommandContextSchema.safeParse(receipt.result)
+        const context = responseSchema(CommandContextSchema).safeParse(receipt.result)
         if (
           context.success &&
           context.data.context_id === owned.run.context_id &&
@@ -478,7 +483,7 @@ export class NodeManagerController {
     const entries = await this.store.transaction((s) => {
       for (const [operation, entry] of Object.entries(s.managerOperations ?? {})) {
         if (entry.run?.session_id !== 'unsubmitted-command') continue
-        const receipt = RunSchema.safeParse(s.results[operation]?.result)
+        const receipt = responseSchema(RunSchema).safeParse(s.results[operation]?.result)
         if (receipt.success) retainedRun(entry, receipt.data, true)
       }
       return Object.entries(s.managerOperations ?? {}).filter(
@@ -533,7 +538,7 @@ export class NodeManagerController {
       const context = await this.ownedContext(parent, input.session_id, input.run_id)
       if (context) {
         await this.enableContexts(contextKind(context.run))
-        return RunSchema.parse(
+        return responseSchema(RunSchema).parse(
           await this.contextOperation(
             parent,
             `${contextKind(context.run)}.context.v1.cancel`,
@@ -623,7 +628,7 @@ export class NodeManagerController {
         })
       throw new Error(nodeErrorDetails(receipt.error))
     }
-    const run = RunSchema.parse(receipt.result)
+    const run = responseSchema(RunSchema).parse(receipt.result)
     if (
       method === 'command.v1.cancel' &&
       !['pending_approval', 'running', 'outcome_unknown'].includes(run.state)
@@ -646,7 +651,7 @@ export class NodeManagerController {
       })
     const owned = await this.store.read((s) =>
       Object.entries(s.managerOperations ?? {}).some(([id, entry]) => {
-        const receipt = RunSchema.safeParse(s.results[id]?.result)
+        const receipt = responseSchema(RunSchema).safeParse(s.results[id]?.result)
         return (
           entry.parent === parent &&
           receipt.success &&
@@ -659,7 +664,7 @@ export class NodeManagerController {
     const before = await this.store.read((s) => s.cursors[session] ?? 0)
     const context = await this.ownedContext(parent, session, run)
     if (context) await this.enableContexts(contextKind(context.run))
-    let status = RunSchema.parse(
+    let status = responseSchema(RunSchema).parse(
       await this.client.request(
         context ? `${contextKind(context.run)}.context.v1.status` : 'command.v1.status',
         context
@@ -676,7 +681,7 @@ export class NodeManagerController {
         if (update.success && update.data.run_id === run) status = update.data
       }
       for (const [operation, entry] of Object.entries(s.managerOperations ?? {})) {
-        const receipt = RunSchema.safeParse(s.results[operation]?.result)
+        const receipt = responseSchema(RunSchema).safeParse(s.results[operation]?.result)
         if (
           entry.parent === parent &&
           receipt.success &&
@@ -696,7 +701,7 @@ export class NodeManagerController {
     if (!nextOperation || operation === nextOperation) throw new Error('idempotency_mismatch')
     const original = await this.store.read((state) => ({
       entry: state.managerOperations?.[operation],
-      receipt: ManagerRunSchema.safeParse(state.results[operation]?.result),
+      receipt: responseSchema(ManagerRunSchema).safeParse(state.results[operation]?.result),
     }))
     const entry = original.entry
     if (!entry || entry.parent !== parent || !original.receipt.success)
@@ -715,7 +720,7 @@ export class NodeManagerController {
     if (!this.client.connected) return
     const entries = await this.store.transaction((s) =>
       Object.entries(s.managerOperations ?? {}).flatMap(([operation, entry]) => {
-        const receipt = RunSchema.safeParse(s.results[operation]?.result)
+        const receipt = responseSchema(RunSchema).safeParse(s.results[operation]?.result)
         return receipt.success && entry.method !== 'command.v1.cancel'
           ? [{ parent: entry.parent, run: retainedRun(entry, receipt.data, true) }]
           : []
@@ -746,7 +751,7 @@ export class NodeManagerController {
     return this.store.read((s) =>
       Object.entries(s.managerOperations ?? {}).flatMap(([operation, entry]) => {
         if (entry.parent !== parent || entry.method === 'command.v1.cancel') return []
-        const receipt = RunSchema.safeParse(s.results[operation]?.result)
+        const receipt = responseSchema(RunSchema).safeParse(s.results[operation]?.result)
         if (!receipt.success && !entry.run) return []
         let run = receipt.success ? retainedRun(entry, receipt.data) : entry.run!
         if (run.session_id === 'unsubmitted-command' && run.state === 'pending_approval')
@@ -781,7 +786,7 @@ export class NodeManagerController {
         if (entry.fallback?.state === 'pending')
           prompts.set(entry.fallback.prompt_id, entry.fallback)
         if ('approval' in run && run.approval) {
-          const approval = PromptSchema.parse(run.approval)
+          const approval = responseSchema(PromptSchema).parse(run.approval)
           prompts.set(approval.prompt_id, approval)
         }
         for (const prompt of transcript.prompts) {

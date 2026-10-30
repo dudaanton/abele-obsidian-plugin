@@ -13,6 +13,10 @@ Private keys and pending invitation secrets live in device-local IndexedDB; see 
 They never appear in settings transfer, notes or the synced secret store. Pairing and node-key
 recovery require human confirmation, never a vault-tool action or automatic pin replacement.
 
+The browser client follows AbeleNode 0.4.72. Incoming responses and journal payloads accept
+additional optional object fields, including nested ones, while validating known values and
+bounds. Outgoing method arguments remain strict; response compatibility grants no new authority.
+
 Claude/pi availability and feature gates come from `node.describe`. A ready trusted managed
 workspace is required for real execution. Tools and select/input/confirm/trust questions use
 exact durable prompts; no blanket grants, local tool fallback, steering, or automatic replay of

@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import { z } from 'zod'
 import {
   FileWriteSchema,
@@ -36,8 +37,8 @@ export const FileDraftSchema = z
     result: z
       .custom<DraftReceipt>(
         (value) =>
-          FileMutationResultSchema.safeParse(value).success ||
-          RepositoryMutationResultSchema.safeParse(value).success
+          responseSchema(FileMutationResultSchema).safeParse(value).success ||
+          responseSchema(RepositoryMutationResultSchema).safeParse(value).success
       )
       .optional(),
     error: z.string().optional(),

@@ -1,0 +1,1217 @@
+--- a/packages/channel-protocol/src/index.ts
++++ b/packages/channel-protocol/src/index.ts
+@@ -1,6 +1,8 @@
+ import { WireTimestampSchema } from './timestamp.js'
+ export { WireTimestampSchema, WireOffsetTimestampSchema } from './timestamp.js'
+ import { z } from 'zod'
++import { responseSchema } from './response.js'
++export { responseSchema } from './response.js'
+ import { PairedRecordSchemas, type PublicKey } from './paired.js'
+ export * from './paired.js'
+
+@@ -134,7 +136,11 @@
+   },
+   decode(bytes: Uint8Array): RecordFrame {
+     if (bytes.byteLength > LIMITS.record_bytes) throw new ChannelError('record_too_large')
+-    return RecordSchema.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)))
++    const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
++    const schema = ['response', 'event', 'welcome', 'authenticated', 'pong'].includes(value?.kind)
++      ? responseSchema(RecordSchema)
++      : RecordSchema
++    return schema.parse(value)
+   },
+ }
+ export interface RecordTransport {
+--- a/packages/channel-protocol/src/response.ts
++++ b/packages/channel-protocol/src/response.ts
+@@ -0,0 +1,42 @@
++import { z } from 'zod'
++
++const responses = new WeakMap<z.ZodType, z.ZodType>()
++
++/**
++ * A receiving boundary: ignore additional object fields, recursively, while retaining
++ * known-field validation, limits and refinements. Never use this for outgoing requests.
++ * Cloning keeps shared protocol schemas (including request/response shapes) strict.
++ */
++export function responseSchema<T extends z.ZodType>(schema: T): T {
++  const cached = responses.get(schema)
++  if (cached) return cached as T
++  const copy = (value: unknown): unknown => {
++    if (value instanceof z.ZodType) return responseSchema(value)
++    if (Array.isArray(value)) return value.map(copy)
++    if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
++      const properties = Object.getOwnPropertyDescriptors(value)
++      for (const [key, property] of Object.entries(properties)) {
++        if ('value' in property) property.value = copy(property.value)
++        else if (property.get && key !== 'defaultValue') {
++          const get = property.get
++          property.get = () => copy(get.call(value))
++        }
++      }
++      // Zod's defaultValue getter calls its factory at parse time and creates fresh
++      // objects. Preserve it verbatim instead of invoking it while cloning a schema.
++      return Object.defineProperties({}, properties)
++    }
++    return value
++  }
++  const def = copy(schema.def) as typeof schema.def
++  // Lazy children are evaluated only after their parent has entered the cache.
++  if (schema instanceof z.ZodLazy) {
++    const getter = schema.def.getter
++    Object.assign(def, { getter: () => responseSchema(getter() as z.ZodType) })
++  }
++  if (schema instanceof z.ZodObject && schema.def.catchall instanceof z.ZodNever)
++    Object.assign(def, { catchall: undefined })
++  const result = z.core.clone(schema, def)
++  responses.set(schema, result)
++  return result
++}
+--- a/packages/node-protocol/src/live.ts
++++ b/packages/node-protocol/src/live.ts
+@@ -75,6 +75,8 @@
+   .strict()
+ export const SessionContextSchema = z
+   .object({
++    // Live state retains the run that supplied the most recent context sample.
++    run_id: id.optional(),
+     total_tokens: z.number().nullable(),
+     max_tokens: z.number().nullable(),
+     percentage: z.number().nullable(),
+--- a/packages/node-protocol/src/schemas.ts
++++ b/packages/node-protocol/src/schemas.ts
+@@ -1,4 +1,4 @@
+-import { WireTimestampSchema } from '@abele/channel-protocol'
++import { WireTimestampSchema, responseSchema } from '@abele/channel-protocol'
+ import { z } from 'zod'
+ import { NodeLogMethodSchemas } from './node-log.js'
+ import { ChatMethodSchemas } from './chat.js'
+@@ -260,7 +260,9 @@
+ /** Unknown optional events are retained; known permission/content semantics are validated. */
+ export const NodeEventSchema = EventSchema.superRefine((event, ctx) => {
+   if (!Object.hasOwn(EventPayloads, event.type)) return
+-  const result = EventPayloads[event.type as keyof typeof EventPayloads].safeParse(event.data)
++  const result = responseSchema(EventPayloads[event.type as keyof typeof EventPayloads]).safeParse(
++    event.data
++  )
+   if (!result.success)
+     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid known event payload' })
+ })
+--- a/packages/node-protocol/src/session-update-replay.ts
++++ b/packages/node-protocol/src/session-update-replay.ts
+@@ -1,3 +1,4 @@
++import { responseSchema } from '@abele/channel-protocol'
+ import { claudeSessionUpdates } from './claude-updates.js'
+ import { piSessionUpdates } from './pi-updates.js'
+ import { acpSessionUpdates } from './acp-updates.js'
+@@ -30,7 +31,7 @@
+   if (type === 'session.update' || !Object.hasOwn(mappers, provider)) return []
+   try {
+     return mappers[provider]!(type, data).filter(
+-      (update) => SessionUpdateEventSchema.safeParse({ update }).success
++      (update) => responseSchema(SessionUpdateEventSchema).safeParse({ update }).success
+     )
+   } catch {
+     return []
+@@ -43,7 +44,7 @@
+  */
+ export function sessionUpdatesOf(event: JournalEvent): SessionUpdate[] {
+   if (event.type === 'session.update') {
+-    const parsed = SessionUpdateEventSchema.safeParse(event.data)
++    const parsed = responseSchema(SessionUpdateEventSchema).safeParse(event.data)
+     return parsed.success && isKnownSessionUpdate(parsed.data.update) ? [parsed.data.update] : []
+   }
+   const data = event.data as Record<string, unknown> | null
+--- a/packages/node-client/src/chat.ts
++++ b/packages/node-client/src/chat.ts
+@@ -1,3 +1,4 @@
++import { responseSchema } from '@abele/channel-protocol'
+ import {
+   ChatMethodSchemas,
+   ChatCheckpointSchema,
+@@ -13,7 +14,7 @@
+     private rpc: (method: string, params: unknown, operation?: string) => Promise<unknown>
+   ) {}
+   async checkpoints(session_id: string, options: Omit<ChatCheckpointsRequest, 'session_id'> = {}) {
+-    return ChatCheckpointSchema.array().parse(
++    return responseSchema(ChatCheckpointSchema.array()).parse(
+       await this.rpc(
+         'chat.checkpoints',
+         ChatMethodSchemas['chat.checkpoints'].parse({ ...options, session_id })
+@@ -21,7 +22,7 @@
+     )
+   }
+   async preview(session_id: string, checkpoint_id: string) {
+-    return ChatPreviewSchema.parse(
++    return responseSchema(ChatPreviewSchema).parse(
+       await this.rpc(
+         'chat.preview',
+         ChatMethodSchemas['chat.preview'].parse({ session_id, checkpoint_id })
+@@ -29,7 +30,7 @@
+     )
+   }
+   async restore(request: ChatRestoreRequest, operation = globalThis.crypto.randomUUID()) {
+-    return ChatRestoreResultSchema.parse(
++    return responseSchema(ChatRestoreResultSchema).parse(
+       await this.rpc('chat.restore', ChatMethodSchemas['chat.restore'].parse(request), operation)
+     )
+   }
+--- a/packages/node-client/src/debugger.ts
++++ b/packages/node-client/src/debugger.ts
+@@ -1,3 +1,4 @@
++import { responseSchema } from '@abele/channel-protocol'
+ import {
+   DebuggerMethodSchemas,
+   DebuggerControlMethodSchemas,
+@@ -28,7 +29,8 @@
+
+ /** Parse requested_data from a completed variables history entry. Child handles
+  * expire when the stop changes; refresh scopes after stale_handle. */
+-export const parseDebuggerVariables = (data: unknown) => DebuggerVariablesResultSchema.parse(data)
++export const parseDebuggerVariables = (data: unknown) =>
++  responseSchema(DebuggerVariablesResultSchema).parse(data)
+
+ type Methods = typeof DebuggerMethodSchemas
+ type Input<M extends keyof Methods> = Methods[M]['_input']
+@@ -53,9 +55,9 @@
+  * All debugger calls are online-only; uncertain commands are never resent. */
+ export class DebuggerClient {
+   async accessRequests() {
+-    return DebuggerAccessRequestSchema.array()
+-      .max(128)
+-      .parse(await this.rpc('debugger.v1.access.requests', {}))
++    return responseSchema(DebuggerAccessRequestSchema.array().max(128)).parse(
++      await this.rpc('debugger.v1.access.requests', {})
++    )
+   }
+   async decideAccess(request_id: string, decision: 'allow' | 'deny') {
+     const method = 'debugger.v1.access.decide'
+@@ -64,14 +66,12 @@
+   async grants(
+     params: (typeof DebuggerControlMethodSchemas)['debugger.v1.grant.list']['_input'] = {}
+   ) {
+-    return DebuggerGrantSchema.array()
+-      .max(16)
+-      .parse(
+-        await this.rpc(
+-          'debugger.v1.grant.list',
+-          DebuggerControlMethodSchemas['debugger.v1.grant.list'].parse(params)
+-        )
++    return responseSchema(DebuggerGrantSchema.array().max(16)).parse(
++      await this.rpc(
++        'debugger.v1.grant.list',
++        DebuggerControlMethodSchemas['debugger.v1.grant.list'].parse(params)
+       )
++    )
+   }
+   revokeGrant(grant_id: string) {
+     return this.rpc(
+@@ -160,7 +160,7 @@
+   async status(debug_session_id: string) {
+     const generation = this.generation
+     try {
+-      const result = DebuggerSnapshotResultSchema.parse(
++      const result = responseSchema(DebuggerSnapshotResultSchema).parse(
+         await this.rpc('debugger.v1.status', { debug_session_id })
+       )
+       this.observed(result.snapshot, generation)
+@@ -175,22 +175,22 @@
+     }
+   }
+   async exitInfo(debug_session_id: string) {
+-    return DebuggerExitInfoResultSchema.parse(
++    return responseSchema(DebuggerExitInfoResultSchema).parse(
+       await this.rpc('debugger.v1.exitInfo', { debug_session_id })
+     )
+   }
+   async sessionInfo(debug_session_id: string) {
+-    return DebuggerSessionInfoResultSchema.parse(
++    return responseSchema(DebuggerSessionInfoResultSchema).parse(
+       await this.rpc('debugger.v1.sessionInfo', { debug_session_id })
+     )
+   }
+   async sources(debug_session_id: string) {
+-    return DebuggerSourcesResultSchema.parse(
++    return responseSchema(DebuggerSourcesResultSchema).parse(
+       await this.rpc('debugger.v1.sources', { debug_session_id })
+     )
+   }
+   async breakpointLocations(params: Input<'debugger.v1.breakpointLocations'>) {
+-    return DebuggerLocationsInspectionSchema.parse(
++    return responseSchema(DebuggerLocationsInspectionSchema).parse(
+       await this.rpc(
+         'debugger.v1.breakpointLocations',
+         DebuggerControlMethodSchemas['debugger.v1.breakpointLocations'].parse(params)
+@@ -198,7 +198,7 @@
+     ).data
+   }
+   async sourceStatus(params: Input<'debugger.v1.sourceStatus'>) {
+-    return DebuggerSourceStatusInspectionSchema.parse(
++    return responseSchema(DebuggerSourceStatusInspectionSchema).parse(
+       await this.rpc(
+         'debugger.v1.sourceStatus',
+         DebuggerControlMethodSchemas['debugger.v1.sourceStatus'].parse(params)
+@@ -206,7 +206,7 @@
+     ).data
+   }
+   async replay(params: Input<'debugger.v1.replay'>) {
+-    const result = DebuggerReplayResultSchema.parse(
++    const result = responseSchema(DebuggerReplayResultSchema).parse(
+       await this.rpc(
+         'debugger.v1.replay',
+         DebuggerMethodSchemas['debugger.v1.replay'].parse(params)
+@@ -218,19 +218,19 @@
+   }
+   /** Starts a program of a chat's folder under the debugger; the owner's act, never resent. */
+   async start(params: (typeof DebuggerStartSchema)['_input']) {
+-    return DebuggerStartResultSchema.parse(
++    return responseSchema(DebuggerStartResultSchema).parse(
+       await this.rpc('debugger.v1.start', DebuggerStartSchema.parse(params))
+     )
+   }
+   /** Admits files opened after startup. Owner-only, online-only. */
+   async addSources(params: (typeof DebuggerAddSourcesSchema)['_input']) {
+-    return DebuggerAddSourcesResultSchema.parse(
++    return responseSchema(DebuggerAddSourcesResultSchema).parse(
+       await this.rpc('debugger.v1.addSources', DebuggerAddSourcesSchema.parse(params))
+     )
+   }
+   /** Paths of compiled programs and root npm scripts available in the owner's folder. */
+   async launchTargets(owner: string | (typeof DebuggerLaunchTargetsSchema)['_input']) {
+-    return DebuggerLaunchTargetsResultSchema.parse(
++    return responseSchema(DebuggerLaunchTargetsResultSchema).parse(
+       await this.rpc(
+         'debugger.v1.launchTargets',
+         DebuggerLaunchTargetsSchema.parse(
+@@ -242,7 +242,7 @@
+
+   /** Node.js programs on the node's machine waiting for a debugger on loopback, for a chat. */
+   async programs(owner: string | (typeof DebuggerProgramsSchema)['_input']) {
+-    return DebuggerProgramsResultSchema.parse(
++    return responseSchema(DebuggerProgramsResultSchema).parse(
+       await this.rpc(
+         'debugger.v1.programs',
+         DebuggerProgramsSchema.parse(typeof owner === 'string' ? { conversation_id: owner } : owner)
+@@ -250,17 +250,15 @@
+     )
+   }
+   async sessions(params: Input<'debugger.v1.sessions'>) {
+-    return DebuggerSnapshotSchema.array()
+-      .max(128)
+-      .parse(
+-        await this.rpc(
+-          'debugger.v1.sessions',
+-          DebuggerMethodSchemas['debugger.v1.sessions'].parse(params)
+-        )
++    return responseSchema(DebuggerSnapshotSchema.array().max(128)).parse(
++      await this.rpc(
++        'debugger.v1.sessions',
++        DebuggerMethodSchemas['debugger.v1.sessions'].parse(params)
+       )
++    )
+   }
+   async restart(params: (typeof DebuggerControlMethodSchemas)['debugger.v1.restart']['_input']) {
+-    return DebuggerStartResultSchema.parse(
++    return responseSchema(DebuggerStartResultSchema).parse(
+       await this.rpc(
+         'debugger.v1.restart',
+         DebuggerControlMethodSchemas['debugger.v1.restart'].parse(params)
+@@ -269,7 +267,7 @@
+   }
+   /** Attaches to one of them; the owner's act, never resent. Detaching leaves it running. */
+   async attach(params: (typeof DebuggerAttachProgramSchema)['_input']) {
+-    return DebuggerStartResultSchema.parse(
++    return responseSchema(DebuggerStartResultSchema).parse(
+       await this.rpc('debugger.v1.attachProgram', DebuggerAttachProgramSchema.parse(params))
+     )
+   }
+@@ -278,7 +276,7 @@
+     const generation = this.generation
+     const schema = DebuggerControlMethodSchemas[`debugger.v1.${method}`]
+     try {
+-      const result = DebuggerReceiptSchema.parse(
++      const result = responseSchema(DebuggerReceiptSchema).parse(
+         await this.rpc(`debugger.v1.${method}`, schema.parse(params))
+       )
+       this.observed(result.snapshot, generation)
+@@ -291,7 +289,7 @@
+   }
+   async wait(params: Input<'debugger.v1.wait'>) {
+     const generation = this.generation
+-    const result = DebuggerWaitResultSchema.parse(
++    const result = responseSchema(DebuggerWaitResultSchema).parse(
+       await this.rpc('debugger.v1.wait', DebuggerMethodSchemas['debugger.v1.wait'].parse(params))
+     )
+     if (result.snapshot) this.observed(result.snapshot, generation)
+@@ -301,7 +299,7 @@
+   }
+   async sleep(params: Input<'debugger.v1.sleep'>) {
+     const generation = this.generation
+-    const result = DebuggerWaitResultSchema.parse(
++    const result = responseSchema(DebuggerWaitResultSchema).parse(
+       await this.rpc('debugger.v1.sleep', DebuggerMethodSchemas['debugger.v1.sleep'].parse(params))
+     )
+     if (result.snapshot) this.observed(result.snapshot, generation)
+--- a/packages/node-client/src/index.ts
++++ b/packages/node-client/src/index.ts
+@@ -1,3 +1,4 @@
++import { responseSchema } from '@abele/channel-protocol'
+ import {
+   ChannelError,
+   FrameCodec,
+@@ -299,7 +300,7 @@
+     const parsed: { event: JournalEvent; entry: (typeof batch)[number] }[] = []
+     for (const entry of batch) {
+       try {
+-        parsed.push({ event: NodeEventSchema.parse(entry.raw), entry })
++        parsed.push({ event: responseSchema(NodeEventSchema).parse(entry.raw), entry })
+       } catch (error) {
+         entry.reject(error)
+       }
+@@ -390,7 +391,7 @@
+   async listSessions(after_id?: string) {
+     const result = await this.request('session.list', { ...(after_id ? { after_id } : {}) })
+     if (!Array.isArray(result)) throw new ChannelError('invalid_result')
+-    return result.map((r) => SessionSchema.parse(r))
++    return result.map((r) => responseSchema(SessionSchema).parse(r))
+   }
+   private async mutation(method: string, params: unknown, operation?: string) {
+     if (!this.connected) throw new ChannelError('disconnected')
+@@ -407,7 +408,7 @@
+     provider: 'fake' | 'claude' | 'pi' = 'fake',
+     settings?: SessionSettings
+   ) {
+-    return SessionSchema.parse(
++    return responseSchema(SessionSchema).parse(
+       await this.mutation('session.create', {
+         title,
+         provider,
+@@ -418,7 +419,7 @@
+   }
+   /** Model and permission mode switch the running process; effort and account restart it when idle. */
+   async configureSession(session_id: string, settings: SessionSettings, operation?: string) {
+-    return SessionSchema.parse(
++    return responseSchema(SessionSchema).parse(
+       await this.mutation(
+         'session.configure',
+         MethodSchemas['session.configure'].parse({ session_id, settings }),
+@@ -432,7 +433,7 @@
+     options: { focus?: string; continue?: boolean } = {},
+     operation?: string
+   ) {
+-    return TurnAdmissionResultSchema.parse(
++    return responseSchema(TurnAdmissionResultSchema).parse(
+       await this.mutation(
+         'session.compact',
+         MethodSchemas['session.compact'].parse({ session_id, ...options }),
+@@ -446,13 +447,15 @@
+   }
+   /** Fresh child-chat owner gesture only. Never expose through model/controller adapters. */
+   async restartSessionByOwner(params: SessionOwnerRestartRequest, operation?: string) {
+-    return TurnAdmissionResultSchema.parse(
++    return responseSchema(TurnAdmissionResultSchema).parse(
+       await this.mutation('session.owner_restart', params, operation)
+     )
+   }
+   /** The agent's "/" commands as it last reported them; render each update with sessionUpdatesOf. */
+   async sessionCommands(session_id: string) {
+-    return SessionCommandsSchema.parse(await this.request('session.commands', { session_id }))
++    return responseSchema(SessionCommandsSchema).parse(
++      await this.request('session.commands', { session_id })
++    )
+   }
+   /** A command runs as an ordinary message, queued and delivered like any other. */
+   runCommand(
+@@ -473,11 +476,13 @@
+     )
+   }
+   async sessionState(session_id: string) {
+-    return LiveSessionStateSchema.parse(await this.request('session.state', { session_id }))
++    return responseSchema(LiveSessionStateSchema).parse(
++      await this.request('session.state', { session_id })
++    )
+   }
+   /** Rename a chat's display title without altering provider-native identity. */
+   async renameSession(session_id: string, title: string, operation?: string) {
+-    return SessionSchema.parse(
++    return responseSchema(SessionSchema).parse(
+       await this.mutation(
+         'session.rename',
+         MethodSchemas['session.rename'].parse({ session_id, title }),
+@@ -487,7 +492,7 @@
+   }
+   /** Delete only an idle chat. The node retains its audit journal and receipt. */
+   async deleteSession(session_id: string, operation?: string) {
+-    return SessionDeletedSchema.parse(
++    return responseSchema(SessionDeletedSchema).parse(
+       await this.mutation(
+         'session.delete',
+         MethodSchemas['session.delete'].parse({ session_id }),
+@@ -500,19 +505,23 @@
+   }
+   /** Human/owner approval surface only. Never register this method as a model tool. */
+   async approveDelegationGrant(params: DelegationGrantRequest): Promise<DelegationGrant> {
+-    return DelegationGrantSchema.parse(
++    return responseSchema(DelegationGrantSchema).parse(
+       await this.mutation('delegation.grant.create', DelegationGrantRequestSchema.parse(params))
+     )
+   }
+   async revokeDelegationGrant(grant_id: string): Promise<DelegationGrant> {
+-    return DelegationGrantSchema.parse(await this.mutation('delegation.grant.revoke', { grant_id }))
++    return responseSchema(DelegationGrantSchema).parse(
++      await this.mutation('delegation.grant.revoke', { grant_id })
++    )
+   }
+   /** A stable delegation_key survives retries. With delegation_without_grant, supply parent_id instead of grant_id. */
+   async createDelegation(params: DelegationCreateRequest): Promise<Delegation> {
+-    return DelegationSchema.parse(await this.mutation('delegation.create', params))
++    return responseSchema(DelegationSchema).parse(await this.mutation('delegation.create', params))
+   }
+   async delegationStatus(delegation_id: string): Promise<DelegationStatus> {
+-    return DelegationStatusSchema.parse(await this.request('delegation.status', { delegation_id }))
++    return responseSchema(DelegationStatusSchema).parse(
++      await this.request('delegation.status', { delegation_id })
++    )
+   }
+   async sendDelegation(
+     delegation_id: string,
+@@ -521,7 +530,7 @@
+     expected_target?: ExpectedExecutionTarget,
+     retainedOperationId?: string
+   ): Promise<DelegationSendResult> {
+-    return DelegationSendResultSchema.parse(
++    return responseSchema(DelegationSendResultSchema).parse(
+       await this.mutation(
+         'delegation.send',
+         { delegation_id, text, observed_seq, ...(expected_target ? { expected_target } : {}) },
+@@ -533,14 +542,16 @@
+     return this.mutation('delegation.delete', { delegation_id })
+   }
+   async cancelDelegation(delegation_id: string): Promise<Delegation> {
+-    return DelegationSchema.parse(await this.mutation('delegation.cancel', { delegation_id }))
++    return responseSchema(DelegationSchema).parse(
++      await this.mutation('delegation.cancel', { delegation_id })
++    )
+   }
+   /** Uses the existing atomic event/cursor storage and reconnect replay, independent of child history. */
+   subscribeDelegation(delegation: Pick<Delegation, 'mailbox_stream_id'>) {
+     return this.subscribe(delegation.mailbox_stream_id)
+   }
+   async getSession(session_id: string) {
+-    return SessionSchema.parse(await this.request('session.get', { session_id }))
++    return responseSchema(SessionSchema).parse(await this.request('session.get', { session_id }))
+   }
+   interrupt(session_id: string, run_id: string) {
+     return this.mutation('session.interrupt', { session_id, run_id })
+@@ -549,10 +560,12 @@
+     return this.mutation('input.cancel', { session_id, input_id })
+   }
+   async detachSession(session_id: string) {
+-    return SessionSchema.parse(await this.mutation('session.detach', { session_id }))
++    return responseSchema(SessionSchema).parse(
++      await this.mutation('session.detach', { session_id })
++    )
+   }
+   async registerProject(path: string, trust: 'untrusted' | 'trusted', exact_root?: boolean) {
+-    return ProjectSchema.parse(
++    return responseSchema(ProjectSchema).parse(
+       await this.mutation('project.register', {
+         path,
+         trust,
+@@ -561,22 +574,22 @@
+     )
+   }
+   async setProjectClaudePermissions(project_id: string, use_repository_permissions: boolean) {
+-    return ProjectSchema.parse(
++    return responseSchema(ProjectSchema).parse(
+       await this.mutation('project.claude_permissions', { project_id, use_repository_permissions })
+     )
+   }
+   async setProjectCodexPermissions(project_id: string, network_enabled: boolean) {
+-    return ProjectSchema.parse(
++    return responseSchema(ProjectSchema).parse(
+       await this.mutation('project.codex_permissions', { project_id, network_enabled })
+     )
+   }
+   async listProjects(after_id?: string) {
+     const result = await this.request('project.list', { ...(after_id ? { after_id } : {}) })
+     if (!Array.isArray(result)) throw new ChannelError('invalid_result')
+-    return result.map((r) => ProjectSchema.parse(r))
++    return result.map((r) => responseSchema(ProjectSchema).parse(r))
+   }
+   async listFiles(workspace_id: string, path = '', after?: string, limit = 256) {
+-    return FilePageSchema.parse(
++    return responseSchema(FilePageSchema).parse(
+       await this.request('workspace.files', {
+         workspace_id,
+         path,
+@@ -586,7 +599,9 @@
+     )
+   }
+   async statFile(workspace_id: string, path: string) {
+-    return FileEntrySchema.parse(await this.request('workspace.stat', { workspace_id, path }))
++    return responseSchema(FileEntrySchema).parse(
++      await this.request('workspace.stat', { workspace_id, path })
++    )
+   }
+   /** Persist the exact version/body/operation before sending, even offline. Never allocate a second save on timeout. */
+   async writeFile(params: FileWrite, retainedOperationId?: string) {
+@@ -600,25 +615,27 @@
+     return { operation_id }
+   }
+   async readRecovery(workspace_id: string, recovery_path: string, offset = 0, length = 131072) {
+-    return ContentChunkSchema.parse(
++    return responseSchema(ContentChunkSchema).parse(
+       await this.request('workspace.recovery.read', { workspace_id, recovery_path, offset, length })
+     )
+   }
+   async fileMutationResult(operation_id: string) {
+     const receipt = await this.operationResult(operation_id)
+     if (receipt?.error) throw new ChannelError(receipt.error)
+-    return receipt ? FileMutationResultSchema.parse(receipt.result) : undefined
++    return receipt ? responseSchema(FileMutationResultSchema).parse(receipt.result) : undefined
+   }
+   async readFile(workspace_id: string, path: string) {
+-    return FileContentSchema.parse(await this.request('workspace.read', { workspace_id, path }))
++    return responseSchema(FileContentSchema).parse(
++      await this.request('workspace.read', { workspace_id, path })
++    )
+   }
+   async readContent(workspace_id: string, content_id: string, offset = 0, length = 131072) {
+-    return ContentChunkSchema.parse(
++    return responseSchema(ContentChunkSchema).parse(
+       await this.request('workspace.content', { workspace_id, content_id, offset, length })
+     )
+   }
+   async captureDiff(workspace_id: string, mode: DiffMode = 'head', commit?: string) {
+-    return DiffSnapshotSchema.parse(
++    return responseSchema(DiffSnapshotSchema).parse(
+       await this.request('workspace.diff.capture', {
+         workspace_id,
+         mode,
+@@ -627,17 +644,17 @@
+     )
+   }
+   async getDiff(workspace_id: string, diff_id: string) {
+-    return DiffSnapshotSchema.parse(
++    return responseSchema(DiffSnapshotSchema).parse(
+       await this.request('workspace.diff.get', { workspace_id, diff_id })
+     )
+   }
+   async readDiff(workspace_id: string, diff_id: string, offset = 0, length = 131072) {
+-    return ContentChunkSchema.parse(
++    return responseSchema(ContentChunkSchema).parse(
+       await this.request('workspace.diff.read', { workspace_id, diff_id, offset, length })
+     )
+   }
+   async showFile(workspace_id: string, commit: string, path: string) {
+-    return FileContentSchema.parse(
++    return responseSchema(FileContentSchema).parse(
+       await this.request('workspace.show', { workspace_id, commit, path })
+     )
+   }
+@@ -671,24 +688,24 @@
+   async reviewResult(operation_id: string) {
+     const receipt = await this.operationResult(operation_id)
+     if (receipt?.error) throw new ChannelError(receipt.error)
+-    return receipt ? ReviewResultSchema.parse(receipt.result) : undefined
++    return receipt ? responseSchema(ReviewResultSchema).parse(receipt.result) : undefined
+   }
+   /** Owner-only project browsing opt-in; never expose this mutation as a model tool. */
+   async setRepositorySettings(
+     params: import('@abele/node-protocol').RepositoryParams<'project.repository_settings'>
+   ) {
+-    return RepositorySettingsSchema.parse(
++    return responseSchema(RepositorySettingsSchema).parse(
+       await this.mutation('project.repository_settings', params)
+     )
+   }
+   /** The project's browsing opt-in as it stands; a node older than this answers unsupported_method. */
+   async getRepositorySettings(project_id: string) {
+-    return RepositorySettingsSchema.parse(
++    return responseSchema(RepositorySettingsSchema).parse(
+       await this.request('project.repository_settings.get', { project_id })
+     )
+   }
+   async getProject(project_id: string) {
+-    return ProjectSchema.parse(await this.request('project.get', { project_id }))
++    return responseSchema(ProjectSchema).parse(await this.request('project.get', { project_id }))
+   }
+   async removeProject(project_id: string) {
+     const result = await this.mutation('project.remove', { project_id })
+@@ -704,7 +721,7 @@
+     return { project_id, removed: true as const }
+   }
+   async createWorkspace(project_id: string, base_ref = 'HEAD', branch?: string) {
+-    return WorkspaceJobResultSchema.parse(
++    return responseSchema(WorkspaceJobResultSchema).parse(
+       await this.mutation('workspace.create', {
+         project_id,
+         base_ref,
+@@ -718,24 +735,30 @@
+       ...(after_id ? { after_id } : {}),
+     })
+     if (!Array.isArray(result)) throw new ChannelError('invalid_result')
+-    return result.map((r) => WorkspaceSchema.parse(r))
++    return result.map((r) => responseSchema(WorkspaceSchema).parse(r))
+   }
+   async getWorkspace(workspace_id: string) {
+-    return WorkspaceSchema.parse(await this.request('workspace.get', { workspace_id }))
++    return responseSchema(WorkspaceSchema).parse(
++      await this.request('workspace.get', { workspace_id })
++    )
+   }
+   async removeWorkspace(workspace_id: string) {
+-    return WorkspaceJobResultSchema.parse(await this.mutation('workspace.remove', { workspace_id }))
++    return responseSchema(WorkspaceJobResultSchema).parse(
++      await this.mutation('workspace.remove', { workspace_id })
++    )
+   }
+   async workspaceStatus(workspace_id: string, offset = 0, limit = 256) {
+-    return WorkspaceStatusSchema.parse(
++    return responseSchema(WorkspaceStatusSchema).parse(
+       await this.request('workspace.status', { workspace_id, offset, limit })
+     )
+   }
+   async workspaceDiff(workspace_id: string) {
+-    return WorkspaceDiffSchema.parse(await this.request('workspace.diff', { workspace_id }))
++    return responseSchema(WorkspaceDiffSchema).parse(
++      await this.request('workspace.diff', { workspace_id })
++    )
+   }
+   async getJob(job_id: string) {
+-    return JobSchema.parse(await this.request('job.get', { job_id }))
++    return responseSchema(JobSchema).parse(await this.request('job.get', { job_id }))
+   }
+   async listJobs(project_id?: string, after_id?: string) {
+     const result = await this.request('job.list', {
+@@ -743,7 +766,7 @@
+       ...(after_id ? { after_id } : {}),
+     })
+     if (!Array.isArray(result)) throw new ChannelError('invalid_result')
+-    return result.map((r) => JobSchema.parse(r))
++    return result.map((r) => responseSchema(JobSchema).parse(r))
+   }
+   async send(
+     session_id: string,
+@@ -773,7 +796,7 @@
+   async sendResult(operation_id: string): Promise<TurnAdmissionResult | undefined> {
+     const receipt = await this.operationResult(operation_id)
+     if (receipt?.error) throw new ChannelError(receipt.error)
+-    return receipt ? TurnAdmissionResultSchema.parse(receipt.result) : undefined
++    return receipt ? responseSchema(TurnAdmissionResultSchema).parse(receipt.result) : undefined
+   }
+   async prompts(session_id: string, after_id?: string, state?: Prompt['state']) {
+     const result = await this.request('prompt.list', {
+@@ -782,7 +805,7 @@
+       ...(state ? { state } : {}),
+     })
+     if (!Array.isArray(result)) throw new ChannelError('invalid_result')
+-    return result.map((r) => PromptSchema.parse(r))
++    return result.map((r) => responseSchema(PromptSchema).parse(r))
+   }
+   /** Reconnect scan for pending questionnaires across this vault's node sessions. */
+   async pendingQuestionnaires(vault_id: string, after_id?: string) {
+@@ -792,7 +815,7 @@
+     })
+     if (!Array.isArray(result)) throw new ChannelError('invalid_result')
+     return result.map((raw) => {
+-      const prompt = PromptSchema.parse(raw)
++      const prompt = responseSchema(PromptSchema).parse(raw)
+       if (prompt.kind !== 'questionnaire') throw new ChannelError('invalid_result')
+       return prompt
+     })
+@@ -829,7 +852,7 @@
+     const receipt = await this.operationResult(id)
+     if (!receipt) throw new ChannelError('outcome_unknown')
+     if (receipt.error) throw new ChannelError(receipt.error)
+-    return PromptSchema.parse(receipt.result)
++    return responseSchema(PromptSchema).parse(receipt.result)
+   }
+   private async enqueue(method: string, params: unknown, retainedOperationId?: string) {
+     if (method.startsWith('debugger.v1.')) throw new ChannelError('debugger_online_only')
+@@ -881,7 +904,7 @@
+             ['disconnected', 'outcome_unknown', 'storage_unavailable'].includes(e.code)
+           )
+             throw e
+-          error = (/^(command|integration)\.context\.v1\./).test(entry.method)
++          error = /^(command|integration)\.context\.v1\./.test(entry.method)
+             ? `${e.code}: ${e.message}`
+             : e.code
+         }
+--- a/packages/node-client/src/lsp.ts
++++ b/packages/node-client/src/lsp.ts
+@@ -1,3 +1,4 @@
++import { responseSchema } from '@abele/channel-protocol'
+ import {
+   LspMethodSchemas,
+   LspLocationsResultSchema,
+@@ -10,7 +11,8 @@
+ } from '@abele/node-protocol'
+ type Methods = typeof LspMethodSchemas
+ export type LspRoot =
+-  { workspace_id: string; worktree_id?: never } | { worktree_id: string; workspace_id?: never }
++  | { workspace_id: string; worktree_id?: never }
++  | { worktree_id: string; workspace_id?: never }
+ type Position = { line: number; character: number }
+ /** Online-only calls; cancellation IDs are scoped by the node to the authenticated installation. */
+ export class LspClient {
+@@ -33,13 +35,15 @@
+     }
+   }
+   async status(root?: LspRoot) {
+-    return LspStatusSchema.parse(await this.call('lsp.v1.status', root ?? {}))
++    return responseSchema(LspStatusSchema).parse(await this.call('lsp.v1.status', root ?? {}))
+   }
+   async install(languages: string[], signal?: AbortSignal) {
+-    return LspInstallResultSchema.parse(await this.call('lsp.v1.install', { languages }, signal))
++    return responseSchema(LspInstallResultSchema).parse(
++      await this.call('lsp.v1.install', { languages }, signal)
++    )
+   }
+   async open(root: LspRoot, path: string, text?: string, version?: number, signal?: AbortSignal) {
+-    return LspOpenResultSchema.parse(
++    return responseSchema(LspOpenResultSchema).parse(
+       await this.call('lsp.v1.open', { ...root, path, text, version }, signal)
+     )
+   }
+@@ -47,27 +51,27 @@
+     return this.call('lsp.v1.close', { ...root, path })
+   }
+   async definition(root: LspRoot, path: string, position: Position, signal?: AbortSignal) {
+-    return LspLocationsResultSchema.parse(
++    return responseSchema(LspLocationsResultSchema).parse(
+       await this.call('lsp.v1.definition', { ...root, path, position }, signal)
+     ).locations
+   }
+   async references(root: LspRoot, path: string, position: Position, signal?: AbortSignal) {
+-    return LspLocationsResultSchema.parse(
++    return responseSchema(LspLocationsResultSchema).parse(
+       await this.call('lsp.v1.references', { ...root, path, position }, signal)
+     ).locations
+   }
+   async diagnostics(root: LspRoot, path: string, signal?: AbortSignal) {
+-    return LspDiagnosticsResultSchema.parse(
++    return responseSchema(LspDiagnosticsResultSchema).parse(
+       await this.call('lsp.v1.diagnostics', { ...root, path }, signal)
+     ).diagnostics
+   }
+   async hover(root: LspRoot, path: string, position: Position, signal?: AbortSignal) {
+-    return LspHoverResultSchema.parse(
++    return responseSchema(LspHoverResultSchema).parse(
+       await this.call('lsp.v1.hover', { ...root, path, position }, signal)
+     )
+   }
+   async symbols(root: LspRoot, path: string, signal?: AbortSignal) {
+-    return LspSymbolsResultSchema.parse(
++    return responseSchema(LspSymbolsResultSchema).parse(
+       await this.call('lsp.v1.symbols', { ...root, path }, signal)
+     )
+   }
+--- a/packages/node-client/src/node-path.ts
++++ b/packages/node-client/src/node-path.ts
+@@ -1,3 +1,4 @@
++import { responseSchema } from '@abele/channel-protocol'
+ import {
+   NodePathMethodSchemas,
+   MethodSchemas,
+@@ -40,16 +41,20 @@
+     return this.mutation(method, NodePathMethodSchemas[method].parse(params), operation)
+   }
+   async trust(params: NodePathParams<'project.trust'>, operation?: string) {
+-    return ProjectSchema.parse(await this.mutate('project.trust', params, operation))
++    return responseSchema(ProjectSchema).parse(
++      await this.mutate('project.trust', params, operation)
++    )
+   }
+   async execution(params: NodePathParams<'project.execution'>, operation?: string) {
+-    return ExecutionGrantSchema.parse(await this.mutate('project.execution', params, operation))
++    return responseSchema(ExecutionGrantSchema).parse(
++      await this.mutate('project.execution', params, operation)
++    )
+   }
+   async createSession(
+     params: z.input<(typeof MethodSchemas)['session.create']>,
+     operation?: string
+   ) {
+-    return SessionSchema.parse(
++    return responseSchema(SessionSchema).parse(
+       await this.mutation(
+         'session.create',
+         MethodSchemas['session.create'].parse(params),
+@@ -58,24 +63,30 @@
+     )
+   }
+   async sessionWorktreeGet(params: NodePathParams<'session.worktree.get'>) {
+-    return SessionTargetSchema.parse(await this.call('session.worktree.get', params))
++    return responseSchema(SessionTargetSchema).parse(
++      await this.call('session.worktree.get', params)
++    )
+   }
+   async sessionWorktreeSet(params: NodePathParams<'session.worktree.set'>, operation?: string) {
+-    return SessionTargetSetSchema.parse(
++    return responseSchema(SessionTargetSetSchema).parse(
+       await this.mutate('session.worktree.set', params, operation)
+     )
+   }
+   async directories(params: NodePathParams<'filesystem.v1.directories'> = {}) {
+-    return DirectoryPageSchema.parse(await this.call('filesystem.v1.directories', params))
++    return responseSchema(DirectoryPageSchema).parse(
++      await this.call('filesystem.v1.directories', params)
++    )
+   }
+   async mkdir(params: NodePathParams<'filesystem.v1.mkdir'>, operation?: string) {
+-    return DirectoryCreatedSchema.parse(await this.mutate('filesystem.v1.mkdir', params, operation))
++    return responseSchema(DirectoryCreatedSchema).parse(
++      await this.mutate('filesystem.v1.mkdir', params, operation)
++    )
+   }
+   async register(
+     params: z.input<(typeof ResourceMethodSchemas)['project.register']>,
+     operation?: string
+   ) {
+-    return ProjectSchema.parse(
++    return responseSchema(ProjectSchema).parse(
+       await this.mutation(
+         'project.register',
+         ResourceMethodSchemas['project.register'].parse(params),
+@@ -84,24 +95,28 @@
+     )
+   }
+   async gitInit(params: NodePathParams<'project.git_init'>, operation?: string) {
+-    return ProjectSchema.parse(await this.mutate('project.git_init', params, operation))
++    return responseSchema(ProjectSchema).parse(
++      await this.mutate('project.git_init', params, operation)
++    )
+   }
+   async worktreeSelection(
+     params: NodePathParams<'project.worktree_selection'>,
+     operation?: string
+   ) {
+-    return WorktreeSelectionSchema.parse(
++    return responseSchema(WorktreeSelectionSchema).parse(
+       await this.mutate('project.worktree_selection', params, operation)
+     )
+   }
+   async divergence(params: NodePathParams<'repository.v1.divergence'>) {
+-    return DivergenceSchema.parse(await this.call('repository.v1.divergence', params))
++    return responseSchema(DivergenceSchema).parse(
++      await this.call('repository.v1.divergence', params)
++    )
+   }
+   async fileMove(
+     params: NodePathParams<'workspace.file.move'> | NodePathParams<'repository.v1.file.move'>,
+     operation?: string
+   ) {
+-    return FileOperationResultSchema.parse(
++    return responseSchema(FileOperationResultSchema).parse(
+       await this.mutate(
+         'worktree_id' in params ? 'repository.v1.file.move' : 'workspace.file.move',
+         params,
+@@ -111,9 +126,10 @@
+   }
+   async fileDirectory(
+     params:
+-      NodePathParams<'workspace.file.directory'> | NodePathParams<'repository.v1.file.directory'>
++      | NodePathParams<'workspace.file.directory'>
++      | NodePathParams<'repository.v1.file.directory'>
+   ) {
+-    return DirectoryManifestSchema.parse(
++    return responseSchema(DirectoryManifestSchema).parse(
+       await this.call(
+         'worktree_id' in params ? 'repository.v1.file.directory' : 'workspace.file.directory',
+         params
+@@ -124,7 +140,7 @@
+     params: NodePathParams<'workspace.file.copy'> | NodePathParams<'repository.v1.file.copy'>,
+     operation?: string
+   ) {
+-    return FileOperationResultSchema.parse(
++    return responseSchema(FileOperationResultSchema).parse(
+       await this.mutate(
+         'worktree_id' in params ? 'repository.v1.file.copy' : 'workspace.file.copy',
+         params,
+@@ -136,7 +152,7 @@
+     params: NodePathParams<'workspace.file.remove'> | NodePathParams<'repository.v1.file.remove'>,
+     operation?: string
+   ) {
+-    return FileOperationResultSchema.parse(
++    return responseSchema(FileOperationResultSchema).parse(
+       await this.mutate(
+         'worktree_id' in params ? 'repository.v1.file.remove' : 'workspace.file.remove',
+         params,
+@@ -148,7 +164,7 @@
+     params: NodePathParams<'workspace.file.mkdir'> | NodePathParams<'repository.v1.file.mkdir'>,
+     operation?: string
+   ) {
+-    return FileOperationResultSchema.parse(
++    return responseSchema(FileOperationResultSchema).parse(
+       await this.mutate(
+         'worktree_id' in params ? 'repository.v1.file.mkdir' : 'workspace.file.mkdir',
+         params,
+@@ -160,7 +176,7 @@
+     params: z.input<(typeof ResourceMethodSchemas)['workspace.create']>,
+     operation?: string
+   ) {
+-    return WorkspaceJobResultSchema.parse(
++    return responseSchema(WorkspaceJobResultSchema).parse(
+       await this.mutation(
+         'workspace.create',
+         ResourceMethodSchemas['workspace.create'].parse(params),
+@@ -172,18 +188,22 @@
+     params: NodePathParams<'repository.v1.worktree.delete'>,
+     operation?: string
+   ) {
+-    return WorktreeDeletionSchema.parse(
++    return responseSchema(WorktreeDeletionSchema).parse(
+       await this.mutate('repository.v1.worktree.delete', params, operation)
+     )
+   }
+   async search(params: NodePathParams<'workspace.search'>) {
+-    return RepositorySearchPageSchema.parse(await this.call('workspace.search', params))
++    return responseSchema(RepositorySearchPageSchema).parse(
++      await this.call('workspace.search', params)
++    )
+   }
+   async watch(params: NodePathParams<'workspace.watch'>) {
+-    return RepositoryWatchSchema.parse(await this.call('workspace.watch', params))
++    return responseSchema(RepositoryWatchSchema).parse(await this.call('workspace.watch', params))
+   }
+   async unwatch(params: NodePathParams<'workspace.unwatch'>) {
+-    return RepositoryUnwatchSchema.parse(await this.call('workspace.unwatch', params))
++    return responseSchema(RepositoryUnwatchSchema).parse(
++      await this.call('workspace.unwatch', params)
++    )
+   }
+ }
+ export type { NodePathMethod, NodePathParams } from '@abele/node-protocol'
+--- a/packages/node-client/src/repository-git.ts
++++ b/packages/node-client/src/repository-git.ts
+@@ -1,3 +1,4 @@
++import { responseSchema } from '@abele/channel-protocol'
+ import {
+   RepositoryGitMethodSchemas,
+   RepositoryGitResultSchemas,
+@@ -27,7 +28,9 @@
+       RepositoryGitMethodSchemas[method].parse(params),
+       operation
+     )
+-    return RepositoryGitResultSchemas[method].parse(result) as RepositoryGitResult<M>
++    return responseSchema(RepositoryGitResultSchemas[method]).parse(
++      result
++    ) as RepositoryGitResult<M>
+   }
+   stage(params: RepositoryGitParams<'repository.v1.git.stage'>, operation?: string) {
+     return this.write('repository.v1.git.stage', params, operation)
+@@ -65,7 +68,7 @@
+     return this.write('repository.v1.git.create_branch', params, operation)
+   }
+   async info(params: RepositoryGitParams<'repository.v1.git.info'>) {
+-    return RepositoryGitResultSchemas['repository.v1.git.info'].parse(
++    return responseSchema(RepositoryGitResultSchemas['repository.v1.git.info']).parse(
+       await this.request(
+         'repository.v1.git.info',
+         RepositoryGitMethodSchemas['repository.v1.git.info'].parse(params)
+--- a/packages/node-client/src/repository.ts
++++ b/packages/node-client/src/repository.ts
+@@ -1,3 +1,4 @@
++import { responseSchema } from '@abele/channel-protocol'
+ import { ChannelError } from '@abele/channel-protocol'
+ import {
+   RepositoryMethodSchemas,
+@@ -47,7 +48,7 @@
+   /** Owner-only identity approval. Never expose this or saves directly as model tools. */
+   async editing(params: RepositoryParams<'repository.v1.editing'>) {
+     if (!this.durable) throw new Error('durable_client_required')
+-    return RepositoryEditingSchema.parse(
++    return responseSchema(RepositoryEditingSchema).parse(
+       await this.durable.mutation(
+         'repository.v1.editing',
+         RepositoryMethodSchemas['repository.v1.editing'].parse(params)
+@@ -55,7 +56,9 @@
+     )
+   }
+   async editingStatus(params: RepositoryParams<'repository.v1.editing.get'>) {
+-    return RepositoryEditingSchema.parse(await this.call('repository.v1.editing.get', params))
++    return responseSchema(RepositoryEditingSchema).parse(
++      await this.call('repository.v1.editing.get', params)
++    )
+   }
+   write(params: RepositoryParams<'repository.v1.write'>, retainedOperationId?: string) {
+     if (!this.durable) throw new Error('durable_client_required')
+@@ -77,63 +80,93 @@
+     if (!this.durable) throw new Error('durable_client_required')
+     const receipt = await this.durable.result(operation_id)
+     if (receipt?.error) throw new ChannelError(receipt.error)
+-    return receipt ? RepositoryMutationResultSchema.parse(receipt.result) : undefined
++    return receipt
++      ? responseSchema(RepositoryMutationResultSchema).parse(receipt.result)
++      : undefined
+   }
+   async readRecovery(params: RepositoryParams<'repository.v1.recovery.read'>) {
+-    return RepositoryContentChunkSchema.parse(
++    return responseSchema(RepositoryContentChunkSchema).parse(
+       await this.call('repository.v1.recovery.read', params)
+     )
+   }
+   async worktrees(params: RepositoryParams<'repository.v1.worktrees'>) {
+-    return WorktreePageSchema.parse(await this.call('repository.v1.worktrees', params))
++    return responseSchema(WorktreePageSchema).parse(
++      await this.call('repository.v1.worktrees', params)
++    )
+   }
+   async refs(params: RepositoryParams<'repository.v1.refs'>) {
+-    return RepositoryRefsPageSchema.parse(await this.call('repository.v1.refs', params))
++    return responseSchema(RepositoryRefsPageSchema).parse(
++      await this.call('repository.v1.refs', params)
++    )
+   }
+   async resolve(params: RepositoryParams<'repository.v1.resolve'>) {
+-    return RepositoryRevisionSchema.parse(await this.call('repository.v1.resolve', params))
++    return responseSchema(RepositoryRevisionSchema).parse(
++      await this.call('repository.v1.resolve', params)
++    )
+   }
+   async observe(params: RepositoryParams<'repository.v1.observe'>) {
+-    return RepositoryObservationSchema.parse(await this.call('repository.v1.observe', params))
++    return responseSchema(RepositoryObservationSchema).parse(
++      await this.call('repository.v1.observe', params)
++    )
+   }
+   async status(params: RepositoryParams<'repository.v1.status'>) {
+-    return RepositoryStatusPageSchema.parse(await this.call('repository.v1.status', params))
++    return responseSchema(RepositoryStatusPageSchema).parse(
++      await this.call('repository.v1.status', params)
++    )
+   }
+   async tree(params: RepositoryParams<'repository.v1.tree'>) {
+-    return RepositoryTreePageSchema.parse(await this.call('repository.v1.tree', params))
++    return responseSchema(RepositoryTreePageSchema).parse(
++      await this.call('repository.v1.tree', params)
++    )
+   }
+   async blob(params: RepositoryParams<'repository.v1.blob'>) {
+-    return RepositoryBlobSchema.parse(await this.call('repository.v1.blob', params))
++    return responseSchema(RepositoryBlobSchema).parse(await this.call('repository.v1.blob', params))
+   }
+   async content(params: RepositoryParams<'repository.v1.content'>) {
+-    return RepositoryContentChunkSchema.parse(await this.call('repository.v1.content', params))
++    return responseSchema(RepositoryContentChunkSchema).parse(
++      await this.call('repository.v1.content', params)
++    )
+   }
+   async history(params: RepositoryParams<'repository.v1.history'>) {
+-    return RepositoryHistoryPageSchema.parse(await this.call('repository.v1.history', params))
++    return responseSchema(RepositoryHistoryPageSchema).parse(
++      await this.call('repository.v1.history', params)
++    )
+   }
+   async commit(params: RepositoryParams<'repository.v1.commit'>) {
+-    return RepositoryCommitSchema.parse(await this.call('repository.v1.commit', params))
++    return responseSchema(RepositoryCommitSchema).parse(
++      await this.call('repository.v1.commit', params)
++    )
+   }
+   async compare(params: RepositoryParams<'repository.v1.compare'>) {
+-    return RepositoryComparisonSchema.parse(await this.call('repository.v1.compare', params))
++    return responseSchema(RepositoryComparisonSchema).parse(
++      await this.call('repository.v1.compare', params)
++    )
+   }
+   async patch(params: RepositoryParams<'repository.v1.patch'>) {
+-    return RepositoryBlobSchema.parse(await this.call('repository.v1.patch', params))
++    return responseSchema(RepositoryBlobSchema).parse(
++      await this.call('repository.v1.patch', params)
++    )
+   }
+   async blame(params: RepositoryParams<'repository.v1.blame'>) {
+-    return RepositoryBlameSchema.parse(await this.call('repository.v1.blame', params))
++    return responseSchema(RepositoryBlameSchema).parse(
++      await this.call('repository.v1.blame', params)
++    )
+   }
+   async search(params: RepositoryParams<'repository.v1.search'>) {
+-    return RepositorySearchPageSchema.parse(await this.call('repository.v1.search', params))
++    return responseSchema(RepositorySearchPageSchema).parse(
++      await this.call('repository.v1.search', params)
++    )
+   }
+   /** Omit subscription_id to acquire; pass this consumer's last ID to replace its lease. */
+   async watch(params: RepositoryParams<'repository.v1.watch'>) {
+-    return RepositoryWatchSchema.parse(
++    return responseSchema(RepositoryWatchSchema).parse(
+       await this.call('repository.v1.watch', { ...params, explicit_renewal: true })
+     )
+   }
+   async unwatch(params: RepositoryParams<'repository.v1.unwatch'>) {
+-    return RepositoryUnwatchSchema.parse(await this.call('repository.v1.unwatch', params))
++    return responseSchema(RepositoryUnwatchSchema).parse(
++      await this.call('repository.v1.unwatch', params)
++    )
+   }
+ }
+ export type {
+--- a/packages/node-client/src/trace.ts
++++ b/packages/node-client/src/trace.ts
+@@ -1,3 +1,4 @@
++import { responseSchema } from '@abele/channel-protocol'
+ import {
+   TraceFolderResultSchema,
+   TraceHitsResultSchema,
+@@ -20,38 +21,47 @@
+     return this.rpc(method, TraceMethodSchemas[method].parse(params))
+   }
+   async points(debug_session_id: string) {
+-    return TracePointsResultSchema.parse(
++    return responseSchema(TracePointsResultSchema).parse(
+       await this.call('trace.v1.points.list', { debug_session_id })
+     ).points
+   }
+   async setPoints(params: Input<'trace.v1.points.set'>) {
+-    return TracePointsResultSchema.parse(await this.call('trace.v1.points.set', params)).points
++    return responseSchema(TracePointsResultSchema).parse(
++      await this.call('trace.v1.points.set', params)
++    ).points
+   }
+   async status(debug_session_id: string) {
+-    return TraceStatusResultSchema.parse(await this.call('trace.v1.status', { debug_session_id }))
++    return responseSchema(TraceStatusResultSchema).parse(
++      await this.call('trace.v1.status', { debug_session_id })
++    )
+   }
+   async folder(project_id: string) {
+-    return TraceFolderResultSchema.parse(await this.call('trace.v1.folder.get', { project_id }))
++    return responseSchema(TraceFolderResultSchema).parse(
++      await this.call('trace.v1.folder.get', { project_id })
++    )
+   }
+   async setFolder(project_id: string, folder: string) {
+-    return TraceFolderResultSchema.parse(
++    return responseSchema(TraceFolderResultSchema).parse(
+       await this.call('trace.v1.folder.set', { project_id, folder })
+     )
+   }
+   async runs(project_id: string) {
+-    return TraceRunsResultSchema.parse(await this.call('trace.v1.runs', { project_id }))
++    return responseSchema(TraceRunsResultSchema).parse(
++      await this.call('trace.v1.runs', { project_id })
++    )
+   }
+   async run(params: Input<'trace.v1.run'>) {
+-    return TraceRunResultSchema.parse(await this.call('trace.v1.run', params))
++    return responseSchema(TraceRunResultSchema).parse(await this.call('trace.v1.run', params))
+   }
+   async value(params: Input<'trace.v1.value'>) {
+-    return TraceValueResultSchema.parse(await this.call('trace.v1.value', params))
++    return responseSchema(TraceValueResultSchema).parse(await this.call('trace.v1.value', params))
+   }
+   async find(params: Input<'trace.v1.find'>) {
+-    return TraceHitsResultSchema.parse(await this.call('trace.v1.find', params)).hits
++    return responseSchema(TraceHitsResultSchema).parse(await this.call('trace.v1.find', params))
++      .hits
+   }
+   async follow(params: Input<'trace.v1.follow'>) {
+-    return TraceTrailSchema.parse(await this.call('trace.v1.follow', params))
++    return responseSchema(TraceTrailSchema).parse(await this.call('trace.v1.follow', params))
+   }
+   mark(params: Input<'trace.v1.mark'>) {
+     return this.call('trace.v1.mark', params)

@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import { t } from '@/i18n'
 import { z } from 'zod'
 import {
@@ -22,13 +23,15 @@ const ProposalSchema = z
   .object({
     key: z.string(),
     principal_key: z.string(),
-    actor: z.unknown().transform((raw) => DebuggerActorSchema.parse(raw)),
+    actor: z.unknown().transform((raw) => responseSchema(DebuggerActorSchema).parse(raw)),
     method: z.string(),
     params: z.record(z.string(), z.unknown()),
     effective_breakpoints: z
-      .array(z.unknown().transform((raw) => DebuggerBreakpointRequestSchema.parse(raw)))
+      .array(
+        z.unknown().transform((raw) => responseSchema(DebuggerBreakpointRequestSchema).parse(raw))
+      )
       .optional(),
-    receipt: z.unknown().transform((raw) => DebuggerReceiptSchema.parse(raw)),
+    receipt: z.unknown().transform((raw) => responseSchema(DebuggerReceiptSchema).parse(raw)),
   })
   .strict()
 export const ApprovalPageSchema = z
@@ -168,7 +171,7 @@ export class DebuggerController {
     this.notify()
   }
   bindGrant(raw: unknown) {
-    const g = DebuggerGrantSchema.parse(raw),
+    const g = responseSchema(DebuggerGrantSchema).parse(raw),
       s = this.snapshot
     if (
       !s ||
@@ -205,7 +208,7 @@ export class DebuggerController {
       this.disconnected()
       return
     }
-    const s = DebuggerSnapshotSchema.parse(observation.snapshot)
+    const s = responseSchema(DebuggerSnapshotSchema).parse(observation.snapshot)
     if (this.disconnectTarget === JSON.stringify([s.debug_session_id, s.incarnation])) return
     this.disconnectTarget = undefined
     if (
@@ -368,7 +371,7 @@ export class DebuggerController {
       if (!this.matches(invocation)) return
       const hash = p.receipt.proposal_hash
       if (!hash) throw new Error('Missing exact proposal hash')
-      const receipt = DebuggerReceiptSchema.parse(
+      const receipt = responseSchema(DebuggerReceiptSchema).parse(
         await this.rpc('approve', {
           principal_key: p.principal_key,
           operation_id: p.receipt.operation_id,
@@ -503,7 +506,7 @@ export class DebuggerController {
     const proposals: Proposal[] = []
     let after = ''
     do {
-      const page = ApprovalPageSchema.parse(
+      const page = responseSchema(ApprovalPageSchema).parse(
         await this.rpc('approvals', { debug_session_id: sessionId, after })
       )
       if (!current() || generation !== this.serial) return []
@@ -525,7 +528,7 @@ export class DebuggerController {
     current: () => boolean = () => this.current
   ) {
     const generation = this.serial
-    const result = DebuggerReceiptSchema.parse(
+    const result = responseSchema(DebuggerReceiptSchema).parse(
       await this.pendingRequest(this.transport.command(method, params))
     )
     if (result.outcome !== 'pending' || !current() || generation !== this.serial) return result
@@ -543,7 +546,7 @@ export class DebuggerController {
     )
     if (!own?.receipt.proposal_hash) throw new Error(t('node.error.generic'))
     console.debug('[debugger] Approving owner control', method)
-    return DebuggerReceiptSchema.parse(
+    return responseSchema(DebuggerReceiptSchema).parse(
       await this.rpc('approve', {
         principal_key: own.principal_key,
         operation_id: own.receipt.operation_id,
@@ -572,7 +575,7 @@ export class DebuggerController {
         a.awaitingResult = true
         this.submitted.add(id)
         this.notify()
-        const result = DebuggerReceiptSchema.parse(
+        const result = responseSchema(DebuggerReceiptSchema).parse(
           await this.rpc('approve', {
             principal_key: p.principal_key,
             operation_id: p.receipt.operation_id,
@@ -709,7 +712,9 @@ export class DebuggerController {
           : {}),
       }
       const generation = this.serial
-      let result = DebuggerReceiptSchema.parse(await this.ownerCommand(method, params))
+      let result = responseSchema(DebuggerReceiptSchema).parse(
+        await this.ownerCommand(method, params)
+      )
       // Captures can advance again after dispatch. Pause still targets this process; rebase
       // only proven non-dispatches here, without another round of approval retirement reads.
       // Continue and stepping must retain the exact stop the person selected.
@@ -738,7 +743,7 @@ export class DebuggerController {
           break
         revision = this.snapshot.state_revision
         console.debug('[debugger] Rebasing undispatched Pause', revision)
-        result = DebuggerReceiptSchema.parse(
+        result = responseSchema(DebuggerReceiptSchema).parse(
           await this.ownerCommand(method, {
             ...this.precondition(),
             operation_id: crypto.randomUUID(),
@@ -766,7 +771,7 @@ export class DebuggerController {
       })
       if (!this.current || generation !== this.serial) return
       // Never change the owner policy/default: this switch belongs to one live grant.
-      const grant = DebuggerGrantSchema.parse(result)
+      const grant = responseSchema(DebuggerGrantSchema).parse(result)
       if (grant.grant_id !== invocation.grantId || grant.grant_id !== this.grantId)
         throw new Error('Debugger grant identity changed')
       this.bindGrant(grant)
@@ -909,7 +914,7 @@ export class DebuggerController {
   }
   setExceptionFilters(filters: string[]) {
     return this.human(async (invocation) => {
-      const result = DebuggerReceiptSchema.parse(
+      const result = responseSchema(DebuggerReceiptSchema).parse(
         await this.ownerCommand('exceptionBreakpoints.set', {
           ...this.precondition(invocation),
           operation_id: crypto.randomUUID(),
@@ -968,7 +973,7 @@ export class DebuggerController {
       const s = invocation.snapshot
       const generation = this.serial
       const patch = change(s)
-      const result = DebuggerReceiptSchema.parse(
+      const result = responseSchema(DebuggerReceiptSchema).parse(
         await this.ownerCommand('breakpoints.patch', {
           ...this.precondition(invocation),
           operation_id: crypto.randomUUID(),
@@ -1027,7 +1032,7 @@ export class DebuggerController {
   async refreshHistory() {
     if (!this.current || !this.snapshot) return
     const generation = this.serial
-    const page = DebuggerHistoryResultSchema.parse(
+    const page = responseSchema(DebuggerHistoryResultSchema).parse(
       await this.rpc('history', {
         debug_session_id: this.snapshot.debug_session_id,
         after: this.historyAfter,
@@ -1147,7 +1152,7 @@ export class DebuggerController {
     if (!this.current || !this.snapshot) return
     const s = this.snapshot,
       generation = this.serial
-    const page = DebuggerReplayResultSchema.parse(
+    const page = responseSchema(DebuggerReplayResultSchema).parse(
       await this.rpc('replay', {
         cursor: {
           debug_session_id: s.debug_session_id,
@@ -1198,7 +1203,7 @@ export class DebuggerController {
       const operation_id = crypto.randomUUID(),
         generation = this.serial
       this.inspections.set(operation_id, { handle })
-      const result = DebuggerReceiptSchema.parse(
+      const result = responseSchema(DebuggerReceiptSchema).parse(
         await this.ownerCommand('variables', {
           ...this.precondition(invocation),
           operation_id,
@@ -1419,7 +1424,7 @@ export class DebuggerController {
       this.inspections.set(operation_id, { expression })
       let result: DebuggerReceipt
       try {
-        result = DebuggerReceiptSchema.parse(
+        result = responseSchema(DebuggerReceiptSchema).parse(
           await this.ownerCommand('evaluate', {
             ...this.precondition(current),
             operation_id,

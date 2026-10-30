@@ -2,6 +2,7 @@ import { readWithIgnoredFallback } from '@/node/ignoredRead'
 import type { NodeClient, RepositoryRevision } from '@abele/node-client'
 import { t } from '@/i18n'
 import * as protocol from '@abele/node-protocol'
+import { responseSchema } from '@abele/channel-protocol'
 import { z } from 'zod'
 import { sha256 } from '@noble/hashes/sha2'
 import { bytesToHex } from '@noble/hashes/utils'
@@ -1282,8 +1283,8 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
                 return pendingMutation(record, 'pending')
               }
               const result = git
-                ? protocol.RepositoryMutationResultSchema.parse(receipt)
-                : protocol.FileMutationResultSchema.parse(receipt)
+                ? responseSchema(protocol.RepositoryMutationResultSchema).parse(receipt)
+                : responseSchema(protocol.FileMutationResultSchema).parse(receipt)
               const request = record.request.params as {
                 path: string
                 expected_content_id: string | null

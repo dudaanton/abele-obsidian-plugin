@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import {
   uiFieldMessage,
   uiFields,
@@ -1205,7 +1206,7 @@ export class NodeRepositorySource implements RepositorySource {
         this.emit({ kind: 'refs' })
       }
       if (event.type === 'repository.changed') {
-        const batch = RepositoryChangeBatchSchema.safeParse(event.data)
+        const batch = responseSchema(RepositoryChangeBatchSchema).safeParse(event.data)
         if (
           data?.project_id === this.identity.project &&
           data.worktree_id === this.identity.workspace
@@ -1238,7 +1239,7 @@ export class NodeRepositorySource implements RepositorySource {
         return
       }
       if (event.type !== 'repository.invalidated') return
-      const parsed = RepositoryInvalidationSchema.safeParse(event.data)
+      const parsed = responseSchema(RepositoryInvalidationSchema).safeParse(event.data)
       if (
         !parsed.success ||
         parsed.data.project_id !== this.identity.project ||

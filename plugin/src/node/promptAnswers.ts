@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import { FrameCodec } from '@abele/channel-protocol'
 import { PromptSchema, validateParams } from '@abele/node-protocol'
 import type { ClientState } from '@abele/node-client'
@@ -17,7 +18,7 @@ export function promptAnswerStates(
 ): Record<string, PromptAnswerState> {
   const answers: Record<string, PromptAnswerState> = {}
   for (const receipt of Object.values(state.results)) {
-    const legacy = PromptSchema.safeParse(receipt.result)
+    const legacy = responseSchema(PromptSchema).safeParse(receipt.result)
     const identity =
       receipt.answer ??
       (legacy.success && legacy.data.state === 'resolved' && legacy.data.choice
@@ -84,7 +85,7 @@ export async function answerOwnerPrompt(
   choice: 'allow' | 'deny',
   value?: string
 ): Promise<void> {
-  const prompt = PromptSchema.parse(raw)
+  const prompt = responseSchema(PromptSchema).parse(raw)
   if (!client.connected) throw new Error('disconnected')
   if (prompt.state !== 'pending') return
   const { session_id, prompt_id, run_id, revision, action_digest } = prompt

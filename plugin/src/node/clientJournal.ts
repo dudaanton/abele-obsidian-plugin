@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import { NodeEventSchema } from '@abele/node-protocol'
 import type { NodeClientState } from './NodeClientStore'
 import { SESSION_WINDOW } from './sessionWindow'
@@ -80,7 +81,7 @@ export class ClientJournal {
         if (cached?.revision === revision) snapshots.set(stream, cached)
         else {
           const events = ((await request(journal.get(stream))) as unknown[]).map((event) =>
-            NodeEventSchema.parse(event)
+            responseSchema(NodeEventSchema).parse(event)
           )
           const current = currentDiagnostics(stream, events)
           snapshots.set(stream, {

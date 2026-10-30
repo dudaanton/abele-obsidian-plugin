@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import type { ClientState, ClientStore } from '@abele/node-client'
 import { NodeEventSchema, TargetChangedRefusalSchema, validateParams } from '@abele/node-protocol'
 import { chatMovedNotice } from './expectedTarget'
@@ -145,7 +146,7 @@ function readState(raw: unknown): NodeClientState {
   const events = Object.fromEntries(
     Object.entries(state.events).map(([key, values]) => [
       key,
-      values.map((e) => NodeEventSchema.parse(e)),
+      values.map((e) => responseSchema(NodeEventSchema).parse(e)),
     ])
   )
   for (const request of Object.values(state.operationRequests ?? {}))
@@ -400,7 +401,7 @@ export class NodeClientStore implements ClientStore {
             for (const [id, draft] of Object.entries(state.turnDrafts ?? {})) {
               const receipt = state.results[id]
               if (!receipt) continue
-              if (TargetChangedRefusalSchema.safeParse(receipt.result).success) {
+              if (responseSchema(TargetChangedRefusalSchema).safeParse(receipt.result).success) {
                 state.chatDrafts ??= {}
                 if (!state.chatDrafts[draft.sessionId]?.text)
                   state.chatDrafts[draft.sessionId] = { text: draft.text, notice: chatMovedNotice }

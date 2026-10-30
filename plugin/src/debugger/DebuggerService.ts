@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import { t } from '@/i18n'
 import { computed, shallowRef, watch, type WatchStopHandle } from 'vue'
 import type { NodeConnection } from '@/node/NodeService'
@@ -1239,7 +1240,7 @@ export class DebuggerService {
       ...debugOwnerParams(presenter),
     })
     const sessions = z
-      .array(z.unknown().transform((raw) => DebuggerSnapshotSchema.parse(raw)))
+      .array(z.unknown().transform((raw) => responseSchema(DebuggerSnapshotSchema).parse(raw)))
       .parse(result)
     return this.uniqueSessions(sessions)
   }

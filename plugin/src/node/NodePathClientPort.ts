@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import { readWithIgnoredFallback } from './ignoredRead'
 import { uiErrorMessage, UiError, uiMessage } from '@/i18n/streamBErrors'
 
@@ -900,7 +901,7 @@ export class NodePathClientPort implements NodePathPort {
           ...params,
           include_ignored: true,
         })
-        const blob = RepositoryBlobSchema.parse(value)
+        const blob = responseSchema(RepositoryBlobSchema).parse(value)
         return { ...blob, content_id: blob.content_id ?? null }
       },
       false,
@@ -1286,7 +1287,7 @@ export class NodePathClientPort implements NodePathPort {
       if (event.type === 'repository.changed') {
         const batch =
           streaming && target.kind === 'worktree'
-            ? RepositoryChangeBatchSchema.safeParse(event.data)
+            ? responseSchema(RepositoryChangeBatchSchema).safeParse(event.data)
             : null
         if (batch?.success && batch.data.worktree_id === target.id) follow(batch.data)
         else if (
@@ -1305,7 +1306,7 @@ export class NodePathClientPort implements NodePathPort {
       if (event.type === 'workspace.files_changed') {
         const batch =
           streaming && target.kind === 'workspace'
-            ? WorkspaceChangeBatchSchema.safeParse(event.data)
+            ? responseSchema(WorkspaceChangeBatchSchema).safeParse(event.data)
             : null
         if (batch?.success && batch.data.workspace_id === target.id) follow(batch.data)
         else if (

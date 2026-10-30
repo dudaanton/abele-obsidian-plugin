@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import type { NodeClient } from '@abele/node-client'
 import { ChannelError, type JournalEvent } from '@abele/channel-protocol'
 import { NodeEventSchema } from '@abele/node-protocol'
@@ -87,7 +88,7 @@ export async function catchUp(client: NodeClient, stream: string, head: number):
       limit: Math.min(PAGE, head - after),
     })
     if (!Array.isArray(raw) || !raw.length) break
-    const page = raw.map((event) => NodeEventSchema.parse(event))
+    const page = raw.map((event) => responseSchema(NodeEventSchema).parse(event))
     if (page.some((event, i) => event.seq !== after + 1 + i)) break
     fetched.push(...page)
   }
@@ -117,5 +118,7 @@ export async function readOlder(
     limit: before - 1 - after,
   })
   if (!Array.isArray(raw)) throw new ChannelError('invalid_result')
-  return raw.map((event) => NodeEventSchema.parse(event)).filter((e) => e.seq < before)
+  return raw
+    .map((event) => responseSchema(NodeEventSchema).parse(event))
+    .filter((e) => e.seq < before)
 }

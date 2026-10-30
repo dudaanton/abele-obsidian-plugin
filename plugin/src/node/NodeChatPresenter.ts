@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import { UiError, uiMessage, uiErrorMessage, presentUiError, uiField } from '@/i18n/streamBErrors'
 import { presenterSnapshot } from './presenterSnapshot'
 
@@ -386,7 +387,9 @@ export class NodeChatPresenter implements ChatPresentationSession {
               after_seq: after,
               limit,
             })
-            const page = Array.isArray(raw) ? raw.map((e) => NodeEventSchema.parse(e)) : []
+            const page = Array.isArray(raw)
+              ? raw.map((e) => responseSchema(NodeEventSchema).parse(e))
+              : []
             if (
               !page.length ||
               page.length > limit ||
@@ -481,7 +484,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         const record = visible.findLast((event) =>
           ['session.created', 'session.updated'].includes(event.type)
         )
-        const current = SessionSchema.safeParse(record?.data)
+        const current = responseSchema(SessionSchema).safeParse(record?.data)
         projection.session = current.success
           ? current.data
           : (this.sessionRecord.value ?? projection.session)
@@ -610,7 +613,9 @@ export class NodeChatPresenter implements ChatPresentationSession {
           after_seq: events.length,
           limit: Math.min(256, before - events.length),
         })
-        const page = Array.isArray(raw) ? raw.map((event) => NodeEventSchema.parse(event)) : []
+        const page = Array.isArray(raw)
+          ? raw.map((event) => responseSchema(NodeEventSchema).parse(event))
+          : []
         const after = events.length
         if (
           !page.length ||
@@ -844,7 +849,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
                   limit: 1,
                 })
                 const page = Array.isArray(raw)
-                  ? raw.map((event) => NodeEventSchema.parse(event))
+                  ? raw.map((event) => responseSchema(NodeEventSchema).parse(event))
                   : []
                 const event = page.find(
                   (event) => event.stream_id === sessionId && event.seq === seq
@@ -1053,7 +1058,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
       retain = false
       await client.flush()
       const receipt = await client.operationResult(operation_id)
-      if (TargetChangedRefusalSchema.safeParse(receipt?.result).success) {
+      if (responseSchema(TargetChangedRefusalSchema).safeParse(receipt?.result).success) {
         retain = true
         uiField(this.draftNotice, 'value', uiMessage('streamBError.f87df21e8e'))
         await this.refreshBinding().catch((error: unknown) => this.report(error))
@@ -1094,7 +1099,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
     this.error.value = ''
     const client = this.connection.client
     try {
-      prompt = PromptSchema.parse(prompt)
+      prompt = responseSchema(PromptSchema).parse(prompt)
       if (prompt.session_id !== this.reference.sessionId)
         throw new UiError(uiMessage('streamB.promptBelongsToAnotherSession.004dde'))
       if (prompt.state !== 'pending') return
@@ -1147,7 +1152,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
 
   async stopFromApproval(prompt: Prompt): Promise<void> {
     try {
-      prompt = PromptSchema.parse(prompt)
+      prompt = responseSchema(PromptSchema).parse(prompt)
       if (prompt.session_id !== this.reference.sessionId)
         throw new UiError(uiMessage('streamB.promptBelongsToAnotherSession.004dde'))
       if (!this.connection.client.connected)

@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import type { NodeClient, Prompt } from '@abele/node-client'
 import {
   DelegationSchema,
@@ -521,7 +522,7 @@ export class NodeDelegationController {
       for (const receipt of Object.values(s.results)) {
         const method = receipt.request?.method
         if (method === 'delegation.send') {
-          const reply = DelegationSendResultSchema.safeParse(receipt.result)
+          const reply = responseSchema(DelegationSendResultSchema).safeParse(receipt.result)
           const params = receipt.request?.params as { delegation_id?: string } | undefined
           const task = Object.values(local.tasks).find(
             (t) => t.child?.delegation_id === params?.delegation_id
@@ -556,7 +557,7 @@ export class NodeDelegationController {
           }
         }
         if (method === 'delegation.create') {
-          const child = DelegationSchema.safeParse(receipt.result)
+          const child = responseSchema(DelegationSchema).safeParse(receipt.result)
           if (child.success) {
             const task = local.tasks[child.data.delegation_key]
             if (task && !task.cancelSettled && task.parentId === child.data.parent_id)

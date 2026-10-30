@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import type { JournalEvent } from '@abele/channel-protocol'
 import { obsidianCallMessage, obsidianPromptCall } from './obsidianPresentation'
 import {
@@ -274,7 +275,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
       failed = true
     }
     if (event.type === 'session.created' || event.type === 'session.updated') {
-      const parsed = SessionSchema.safeParse(data)
+      const parsed = responseSchema(SessionSchema).safeParse(data)
       if (parsed.success) session = parsed.data
       else unknown.push(event)
       continue
@@ -461,7 +462,7 @@ export function reduceTranscript(events: readonly JournalEvent[]): NodeTranscrip
         prompts.set(current.prompt_id, { ...current, delivered: true })
       else unknown.push(event)
     } else if (event.type.startsWith('prompt.')) {
-      const parsed = PromptSchema.safeParse(event.data)
+      const parsed = responseSchema(PromptSchema).safeParse(event.data)
       if (parsed.success) prompts.set(parsed.data.prompt_id, parsed.data)
       else unknown.push(event)
     } else if (event.type === 'tool.started') {

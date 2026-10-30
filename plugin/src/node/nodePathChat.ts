@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import { SessionTargetChangedSchema, type ExecutionTarget } from '@abele/node-protocol'
 import type { JournalEvent } from '@abele/channel-protocol'
 import type { ChatMessage } from '@/ai/types'
@@ -41,7 +42,7 @@ export function nodeChatSwitches(
     )
       continue
     seen.add(event.seq)
-    const parsed = SessionTargetChangedSchema.safeParse(event.data)
+    const parsed = responseSchema(SessionTargetChangedSchema).safeParse(event.data)
     if (
       !parsed.success ||
       parsed.data.session_id !== event.stream_id ||

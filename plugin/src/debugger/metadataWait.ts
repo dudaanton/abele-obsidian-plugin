@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import { DebuggerControlMethodSchemas, DebuggerWaitResultSchema } from '@abele/node-protocol'
 
 type WaitParams = Parameters<import('@abele/node-client').NodeClient['debugger']['wait']>[0]
@@ -13,5 +14,5 @@ export async function waitForDebuggerMetadata(
   const raw = await client.request('debugger.v1.wait', request)
   // The old SDK event union cannot decode stop_details. This observer uses its snapshot,
   // never the event payload as a substitute for current state.
-  return DebuggerWaitResultSchema.omit({ event: true }).strip().parse(raw)
+  return responseSchema(DebuggerWaitResultSchema.omit({ event: true })).parse(raw)
 }

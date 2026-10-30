@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import { Platform } from 'obsidian'
 import { z } from 'zod'
 import { shallowRef } from 'vue'
@@ -649,7 +650,7 @@ export class NodeObsidianTools {
     let after: string | undefined
     for (;;) {
       const page = await this.client.pendingQuestionnaires(this.vaultId, after)
-      prompts.push(...page.map((prompt) => PromptSchema.parse(prompt)))
+      prompts.push(...page.map((prompt) => responseSchema(PromptSchema).parse(prompt)))
       if (!page.length) break
       const next = page.at(-1)!.prompt_id
       if (next === after) throw new Error('Questionnaire recovery did not advance')

@@ -5,28 +5,50 @@ since v0.4.47, so the earlier local delegation-reasons patch is no longer applie
 
 ## Current browser payloads
 
-All four packages are built from the clean AbeleNode archive at
-`309d59315ed1c2b935a7afa1fdf56452353e0e73` (v0.4.62, using patched Zod 4.6.6),
-including `repository_watch_renewal_v1` and the optional `subscription_id` on repository watch requests.
-The plugin sends this id only when the node advertises explicit renewal.
-The provider-independent `command_context_v1` and `integration_context_v1` contracts remain included.
-The clean release archive is built for the four browser packages only.
-Apply paired-welcome.patch, lsp-install-deadline.patch (updated for HTTP long polling),
-execution-policy-admission.patch, repository-deadline.patch and command-context-errors.patch before compiling and packaging. The admission patch adds
-an optional generic admission callback to connect(), before saved subscriptions/outbox
-replay, and disconnects if admission fails. It never opts into execution policy by itself.
-The command-context error patch preserves the node's resource-specific error message
-in durable receipts; unrelated methods retain their existing error representation.
-The plugin explicitly negotiates execution.policy.v1 on every transport admission and
-also opts into command.context.v1 and integration.context.v1 separately before replaying saved context operations and streams.
-Discovery is refreshed after enabling execution policy; older nodes retain unknown policy snapshots.
-The lockfile and integrity.json record these exact packaged bytes.
-The fourth patch gives all `repository.*` requests a thirty-second deadline instead
-of five seconds. Version 0.4.44 exposes no per-request deadline option on either
-RequestChannel or NodeClient. Its existing timeout behavior keeps the channel open,
-returns outcome_unknown for the expired request, and never replays mutations.
-Only channel-client index.js and its source map are rebuilt for this patch using
-TypeScript 5.9.3, ES2022 and ES modules; public declarations are unchanged.
+All four packages are built from the clean AbeleNode **v0.4.72** release archive,
+using Zod 4.6.6 and TypeScript 5.9.3 (ES2022, ES modules). This refresh includes all
+four browser packages, not just the two client packages. The channel-client tarball
+is byte-identical to the previous patched payload because its source did not change.
+The lockfile and `integrity.json` record the exact packaged bytes.
+
+Apply these source patches in order, from the release archive's root, before building:
+
+1. `paired-welcome.patch`: use the normal record limit for the authenticated welcome;
+   pre-authentication records retain their smaller bound.
+2. `lsp-install-deadline.patch`: give explicit LSP installation ten minutes, retaining
+   HTTP long-poll deadlines and ordinary request deadlines.
+3. `execution-policy-admission.patch`: run the optional admission callback before saved
+   subscriptions/outbox replay, disconnecting if it fails.
+4. `repository-deadline.patch`: give `repository.*` requests thirty seconds. Expiration
+   keeps the channel open, reports `outcome_unknown` and never replays mutations.
+5. `command-context-errors.patch`: preserve resource-specific command/integration context
+   refusal messages in durable receipts.
+6. `response-compatibility.patch`: export `responseSchema` from channel-protocol and use
+   it at SDK receiving boundaries, including event validation and transcript replay.
+   It clones and caches Zod schemas, recursively ignores additional object fields, and
+   retains known-field checks, refinements and collection limits. Shared schemas and
+   outgoing requests remain strict. Normal incoming response/event/welcome envelopes
+   use this compatibility view; authentication requests and outgoing encoding stay strict.
+   It also describes the optional `context.run_id` emitted by the live session runtime.
+
+Build only the browser packages, with the release dependencies already installed:
+
+```sh
+tsc -b packages/channel-protocol packages/node-protocol packages/channel-client packages/node-client
+```
+
+Then pack and install all four payloads using the commands below. The plugin's own
+receiving parsers use the same compatibility view; local state and outgoing intent
+validators stay strict. Responses from 0.4.72 retain the known `truncated` observation
+flag and accept the live context's run identity. Further optional fields do not reject
+the entire response, even inside arrays, unions, records and recursive trace shapes.
+
+The existing `repository_watch_renewal_v1`, `command_context_v1` and
+`integration_context_v1` contracts remain included. The plugin sends a repository
+subscription ID only when explicit renewal is advertised. It explicitly negotiates
+`execution.policy.v1` on every transport admission and separately opts into command
+and integration contexts before replay. Discovery is refreshed after admission;
+older nodes retain unknown policy snapshots.
 
 ## Earlier payload history
 

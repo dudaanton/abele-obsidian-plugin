@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import type { ClientState, NodeClient, Project } from '@abele/node-client'
 import { ChannelError } from '@abele/channel-protocol'
@@ -293,7 +294,7 @@ export class NodePathMutations {
       if (receipt.error && !['resource_busy', 'workspace_dirty'].includes(receipt.error))
         throw new UiError(uiMessage('streamBError.fcff0cdbbc', { v0: String(receipt.error) }))
       if (!receipt.error) {
-        const reservation = WorkspaceJobResultSchema.parse(receipt.result)
+        const reservation = responseSchema(WorkspaceJobResultSchema).parse(receipt.result)
         // Busy and dirty refusals confirm no removal. Keep all other job outcomes durable.
         // A later explicit Delete may start a new job; uncertain jobs keep their receipt.
         const job = await this.client.getJob?.(reservation.job_id)

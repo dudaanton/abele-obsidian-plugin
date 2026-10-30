@@ -7,8 +7,8 @@ import {
 } from '@/debugger/programLaunchTargets'
 import { DebuggerControlMethodSchemas, DebuggerStartSchema } from '@abele/node-protocol'
 
-// BUG: The node start protocol must accept launch configuration before the paired feature ships.
-it.fails('admits runtime arguments, working folder and environment in the node protocol', () => {
+// AbeleNode 0.4.72 includes the launch configuration fields in its strict start schema.
+it('admits runtime arguments, working folder and environment in the node protocol', () => {
   expect(
     DebuggerStartSchema.safeParse({
       operation_id: 'sample-operation',
@@ -19,6 +19,23 @@ it.fails('admits runtime arguments, working folder and environment in the node p
       env: { MODE: 'sample' },
     }).success
   ).toBe(true)
+})
+
+it.each([
+  { runtime_argv: [42] },
+  { runtime_argv: Array.from({ length: 65 }, () => '--sample') },
+  { cwd: 'sample\0folder' },
+  { env: { MODE: 42 } },
+  { future_launch_option: true },
+])('rejects malformed or unknown launch configuration: %j', (invalid) => {
+  expect(
+    DebuggerStartSchema.safeParse({
+      operation_id: 'sample-operation',
+      conversation_id: 'sample-chat',
+      program: 'packages/sample/src/main.ts',
+      ...invalid,
+    }).success
+  ).toBe(false)
 })
 
 it('keeps the recently opened file ahead of discovered built entries', () => {

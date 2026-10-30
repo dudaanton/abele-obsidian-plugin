@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import type { NodeClient } from '@abele/node-client'
 import { LspDiagnosticsSchema, type LspDiagnostic } from '@abele/node-protocol'
 import { z } from 'zod'
@@ -102,7 +103,7 @@ export class NodeLspDocument {
         return
       }
       if (event.type !== 'lsp.diagnostics') return
-      const parsed = LspDiagnosticsSchema.safeParse(event.data)
+      const parsed = responseSchema(LspDiagnosticsSchema).safeParse(event.data)
       if (!parsed.success) return
       const data = parsed.data
       if (

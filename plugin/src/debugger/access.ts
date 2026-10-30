@@ -1,3 +1,4 @@
+import { responseSchema } from '@abele/channel-protocol'
 import { z } from 'zod'
 import { DebuggerGrantSchema } from '@abele/node-protocol'
 import { t } from '@/i18n'
@@ -94,7 +95,7 @@ export class DebuggerAccess {
     const request = this.requests.find((r) => r.request_id === request_id)
     try {
       const result = await this.rpc('debugger.v1.access.decide', { request_id, decision })
-      if (decision === 'allow') DebuggerGrantSchema.parse(result)
+      if (decision === 'allow') responseSchema(DebuggerGrantSchema).parse(result)
       else z.object({ denied: z.literal(true) }).parse(result)
       this.decisions[request_id] = decision
       if (request && !this.requests.some((r) => r.request_id === request_id))
@@ -121,7 +122,7 @@ export class DebuggerAccess {
     const grants: DebuggerGrant[] = []
     for (let offset = 0; ; offset += 16) {
       const page = z
-        .array(z.unknown().transform((raw) => DebuggerGrantSchema.parse(raw)))
+        .array(z.unknown().transform((raw) => responseSchema(DebuggerGrantSchema).parse(raw)))
         .max(16)
         .parse(await this.rpc('debugger.v1.grant.list', { offset, limit: 16 }))
       grants.push(...page)
