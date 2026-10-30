@@ -201,6 +201,20 @@ describe('agent file writes do not grant code execution', () => {
     await expect(scriptForExecution(app, 'Attachments/sample.js')).rejects.toThrow(/approval/)
   })
 
+  it('preserves executable owner code when replace only moves it', async () => {
+    await app.vault.create(path, source)
+    await service.discover()
+    await createReplaceTool().execute('move', {
+      path,
+      actions: [{ type: 'move', directory: 'Scripts/Moved' }],
+    })
+    // Replace's note-oriented move uses .md; restoring the extension does not change code.
+    await app.fileManager.renameFile(app.vault.getFileByPath('Scripts/Moved/sample.js.md')!, path)
+    await expect(scriptForExecution(app, path)).resolves.toMatchObject({
+      code: expect.stringContaining('sample result'),
+    })
+  })
+
   it('allows only the exact owner-approved version', async () => {
     await create()
     const confirm = vi.fn(async (_request: { source: string }) => true)

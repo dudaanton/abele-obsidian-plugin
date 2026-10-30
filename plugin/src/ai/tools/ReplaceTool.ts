@@ -118,7 +118,8 @@ export function createReplaceTool(opts?: {
       let newContent: string | null = null
 
       // Read current frontmatter
-      if (!opts?.scriptAuthor) await noteAgentScriptWrite(app, file.path)
+      if (!opts?.scriptAuthor && actions.some((action) => action.type !== 'move'))
+        await noteAgentScriptWrite(app, file.path)
       let frontmatter: Record<string, any> = {}
       await app.fileManager.processFrontMatter(file, (fm) => {
         signal?.throwIfAborted()
