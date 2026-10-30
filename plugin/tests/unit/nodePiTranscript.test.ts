@@ -86,7 +86,7 @@ it('retains the edit diff when the call first appears in an assistant snapshot',
   })
 })
 
-it('shows an interrupted turn as stopped and closes its unfinished tools', () => {
+it('shows an owner-interrupted turn as stopped and closes its unfinished tools', () => {
   const scope = { run_id: 'sample-run', runtime_generation: 1 }
   const p = reduceTranscript([
     event(1, 'input.accepted', { input_id: 'sample-input', text: 'Read the sample' }),
@@ -110,6 +110,7 @@ it('shows an interrupted turn as stopped and closes its unfinished tools', () =>
     event(5, 'turn.completed', {
       run_id: 'sample-run',
       outcome: 'interrupted',
+      terminal_reason: 'stopped_by_owner',
       input_ids: ['sample-input'],
     }),
   ])
