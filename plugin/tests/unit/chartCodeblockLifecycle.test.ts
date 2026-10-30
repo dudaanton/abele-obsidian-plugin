@@ -22,6 +22,7 @@ vi.mock('@/bases/echarts', () => ({
 
 import { registerChartCodeblock } from '@/editor/ChartCodeblock'
 import { echartsInit } from '@/bases/echarts'
+import { markPrintRoot } from '@/markdown/printMode'
 
 /** A resize observer the test fires by hand, with the width the container reached. */
 const observers: Array<{ cb: ResizeObserverCallback; disconnect: ReturnType<typeof vi.fn> }> = []
@@ -153,6 +154,12 @@ describe('a chart block', () => {
   it.each([
     ['a block that is not YAML', 'series: [', 'YAML parse error'],
     ['a block with no series', 'type: bar', 'No series defined'],
+    ['a malformed series', 'series: [null]', 'Chart error'],
+    ['a zero step', 'x: [0, 1, 0]\nseries:\n  - formula: x', 'Invalid x range'],
+    ['a zero default step', 'x: [0, 0]\nseries:\n  - formula: x', 'Invalid x range'],
+    ['a reversed step', 'x: [0, 1, -1]\nseries:\n  - formula: x', 'Invalid x range'],
+    ['an infinite step', 'x: [0, 1, .inf]\nseries:\n  - formula: x', 'Invalid x range'],
+    ['too many samples', 'x: [0, 1, 1e-20]\nseries:\n  - formula: x', 'sampling limit'],
   ])('says what is wrong with %s', (_name, source, text) => {
     const el = document.body.createDiv()
     handler(source, el, ctx())
@@ -162,6 +169,14 @@ describe('a chart block', () => {
     expect(el.querySelector('.abele-chart-container')).toBeNull()
     children[0]?.onunload()
     el.remove()
+  })
+
+  it('shows sampling errors during print rendering too', () => {
+    const el = document.createElement('div')
+    markPrintRoot(el)
+    handler('x: [0, 1, 1e-20]\nseries:\n  - formula: x', el, ctx())
+    expect(el.textContent).toContain('sampling limit')
+    expect(echartsInit).not.toHaveBeenCalled()
   })
 
   it('replaces the chart with the error when the chart cannot be drawn', async () => {

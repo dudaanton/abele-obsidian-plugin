@@ -1,4 +1,8 @@
 export const extra = {
+  'chart.invalidRange':
+    'Intervalo x no válido: use números finitos y un paso distinto de cero hacia el extremo final.',
+  'chart.sampleLimit':
+    'Se alcanzó el límite de muestreo del gráfico ({limit} puntos). Aumente el paso o acorte el intervalo.',
   'pdf.rowsFallback': 'Todas las filas coincidentes',
   'pdf.includeHeaderFooter': 'Incluir la cabecera y el pie de Abele al exportar a PDF',
   'pdf.mapFallback': 'Esquema del mapa (sin mosaicos de fondo)',

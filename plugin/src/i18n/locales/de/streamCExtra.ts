@@ -1,4 +1,8 @@
 export const extra = {
+  'chart.invalidRange':
+    'Ungültiger x-Bereich: Verwenden Sie endliche Zahlen und eine Schrittweite ungleich null in Richtung des Endpunkts.',
+  'chart.sampleLimit':
+    'Abtastgrenze des Diagramms erreicht ({limit} Punkte). Vergrößern Sie die Schrittweite oder verkürzen Sie den Bereich.',
   'pdf.rowsFallback': 'Alle passenden Zeilen',
   'pdf.includeHeaderFooter': 'Abele-Kopf- und Fußzeile beim PDF-Export einschließen',
   'pdf.mapFallback': 'Kartenskizze (ohne Hintergrundkacheln)',

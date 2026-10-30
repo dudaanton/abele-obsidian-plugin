@@ -1,4 +1,7 @@
 import Formula from 'fparser'
+import { t } from '@/i18n'
+
+const MAX_FORMULA_SAMPLES = 10000
 
 /** What an `abele-chart` block says, and the ECharts option it is drawn with. */
 
@@ -51,13 +54,18 @@ function evaluateFormula(
   expr: string,
   from: number,
   to: number,
-  step: number
+  step: number,
+  budget: { remaining: number }
 ): Array<[number, number]> {
   const processed = preprocess(expr)
   const formula = new Formula(processed)
   const points: Array<[number, number]> = []
 
-  for (let x = from; x <= to; x += step) {
+  for (let x = from; step > 0 ? x <= to : x >= to; x += step) {
+    // Count attempts, including undefined points and steps too small to advance a float.
+    // Share the budget across series so adding formulas cannot multiply the work limit.
+    if (budget.remaining-- <= 0)
+      throw new Error(t('chart.sampleLimit', { limit: MAX_FORMULA_SAMPLES }))
     try {
       const y = formula.evaluate({ x })
       if (typeof y === 'number' && isFinite(y)) {
@@ -79,8 +87,21 @@ export function buildEchartsOption(config: ChartConfig): Record<string, any> {
   const hasFormula = config.series.some((s) => s.formula)
   const xRange = config.x || [0, 10]
   const step = xRange[2] ?? (xRange[1] - xRange[0]) / 200
+  if (
+    hasFormula &&
+    (!Array.isArray(xRange) ||
+      !Number.isFinite(xRange[0]) ||
+      !Number.isFinite(xRange[1]) ||
+      !Number.isFinite(step) ||
+      step === 0 ||
+      (xRange[0] < xRange[1] && step < 0) ||
+      (xRange[0] > xRange[1] && step > 0))
+  ) {
+    throw new Error(t('chart.invalidRange'))
+  }
 
   const seriesList: any[] = []
+  const budget = { remaining: MAX_FORMULA_SAMPLES }
 
   for (const s of config.series) {
     const seriesType = s.type || chartType
@@ -88,7 +109,7 @@ export function buildEchartsOption(config: ChartConfig): Record<string, any> {
       s.name || (s.formula != null ? String(s.formula) : '') || `Series ${seriesList.length + 1}`
 
     if (s.formula) {
-      const points = evaluateFormula(s.formula, xRange[0], xRange[1], step)
+      const points = evaluateFormula(s.formula, xRange[0], xRange[1], step, budget)
       seriesList.push({
         name,
         type: seriesType === 'pie' ? 'line' : seriesType,

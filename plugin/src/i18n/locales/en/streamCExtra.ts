@@ -1,4 +1,8 @@
 export const extra = {
+  'chart.invalidRange':
+    'Invalid x range: use finite numbers and a non-zero step towards the endpoint.',
+  'chart.sampleLimit':
+    'Chart sampling limit reached ({limit} points). Increase the step or shorten the range.',
   'pdf.rowsFallback': 'All matching rows',
   'pdf.includeHeaderFooter': 'Include Abele header and footer in PDF export',
   'pdf.mapFallback': 'Map schematic (without background tiles)',

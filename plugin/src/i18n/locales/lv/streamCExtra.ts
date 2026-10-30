@@ -1,4 +1,8 @@
 export const extra = {
+  'chart.invalidRange':
+    'Nederīgs x diapazons: izmantojiet galīgus skaitļus un nenulles soli diapazona beigu virzienā.',
+  'chart.sampleLimit':
+    'Sasniegts diagrammas aprēķinu limits ({limit} punkti). Palieliniet soli vai saīsiniet diapazonu.',
   'pdf.rowsFallback': 'Visas atbilstošās rindas',
   'pdf.includeHeaderFooter': 'Iekļaut Abele galveni un kājeni PDF eksportā',
   'pdf.mapFallback': 'Kartes shēma (bez fona kartes)',

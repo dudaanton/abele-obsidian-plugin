@@ -1,4 +1,14 @@
 {
+  "chart.invalidRange": {
+    "englishHash": "ae04fd4be3565634f10413e6a340adddbd9bf671b3d0622fb39b071e5e2ecb5e",
+    "context": "Formula chart range validation and sampling budget error",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "chart.sampleLimit": {
+    "englishHash": "122f3beec8885322621ae3958cc4586b4d017e0188041c18ee35aa3ca287d4d8",
+    "context": "Formula chart range validation and sampling budget error",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
   "debug.disableRecordPoint": {
     "englishHash": "ffe902083b47ec9d20f4bbc5425c8b72db1cc047079ec96d599af7bd69bcf07d",
     "context": "Debugger record-point menu action",
