@@ -77,30 +77,27 @@ it.each([
   '\ufeff' + serializeChat(snapshot),
   '\ufeff' + JSON.stringify(snapshot),
   ' '.repeat(255) + '\u2003' + serializeChat(snapshot),
-])(
-  'recognizes a previously renamed chat by its content',
-  async (raw) => {
-    const app = useVault([{ path: 'Disguised.md', raw }])
-    const read = await createReadFileTool({ skipScope: true }).execute('read', {
-      path: 'Disguised.md',
-    })
-    expect(read.content[0].text).toContain('A public answer')
-    expect(read.content[0].text).not.toContain('PRIVATE_')
-    await createCopyFileTool({ skipScope: true }).execute('copy', {
-      from: 'Disguised.md',
-      to: 'Copy.txt',
-    })
-    expect(await app.vault.read(app.vault.getAbstractFileByPath('Copy.txt') as TFile)).toBe(
-      read.content[0].text
-    )
-    const attached = await resolveAttachmentsForApi(['Disguised.md'])
-    expect(JSON.stringify(attached)).not.toContain('PRIVATE_')
-    const found = await createFindTool({ skipScope: true }).execute('find', {
-      criteria: [{ type: 'content', operator: 'contains', value: 'PRIVATE_' }],
-    })
-    expect(found.content[0].text).not.toContain('Disguised.md')
-  }
-)
+])('recognizes a previously renamed chat by its content', async (raw) => {
+  const app = useVault([{ path: 'Disguised.md', raw }])
+  const read = await createReadFileTool({ skipScope: true }).execute('read', {
+    path: 'Disguised.md',
+  })
+  expect(read.content[0].text).toContain('A public answer')
+  expect(read.content[0].text).not.toContain('PRIVATE_')
+  await createCopyFileTool({ skipScope: true }).execute('copy', {
+    from: 'Disguised.md',
+    to: 'Copy.txt',
+  })
+  expect(await app.vault.read(app.vault.getAbstractFileByPath('Copy.txt') as TFile)).toBe(
+    read.content[0].text
+  )
+  const attached = await resolveAttachmentsForApi(['Disguised.md'])
+  expect(JSON.stringify(attached)).not.toContain('PRIVATE_')
+  const found = await createFindTool({ skipScope: true }).execute('find', {
+    criteria: [{ type: 'content', operator: 'contains', value: 'PRIVATE_' }],
+  })
+  expect(found.content[0].text).not.toContain('Disguised.md')
+})
 
 it('refuses moving a chat out of the protected namespace', async () => {
   const raw = serializeChat(snapshot)
