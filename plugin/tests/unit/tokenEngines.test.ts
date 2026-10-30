@@ -888,16 +888,29 @@ it.each([
 it('retains the original startup failure before an engine exists', async () => {
   const failure = vi
     .spyOn(safety, 'recoverExternalState')
-    .mockRejectedValueOnce(new Error('Native prefix reader failed'))
+    .mockImplementationOnce(async (...args) => {
+      args[8]?.('connection:Recovery plugin-metadata:begin')
+      throw Object.assign(new Error('Native prefix reader failed'), { code: 'io' })
+    })
   const { ui, host, registry, encoded, release, probe } = inspectionFixture()
   try {
+    const publish = vi.spyOn(ui, 'publish')
     await ui.connect(encoded)
     const id = registry.records()[0].id
     await vi.waitFor(() =>
       expect(ui.activity.value[id]?.failure?.reason).toContain('Native prefix reader failed')
     )
     expect(ui.activity.value[id].failure?.stage).toBe('Checking saved sync state')
+    expect(ui.activity.value[id].failure).toMatchObject({
+      kind: 'Error',
+      substep: 'plugin-metadata',
+      code: 'io',
+    })
     expect(host.live.has(id)).toBe(false)
+    await Promise.resolve()
+    expect(
+      publish.mock.calls.filter(([, value]) => value.failure?.reason === 'Native prefix reader failed')
+    ).toHaveLength(1)
   } finally {
     release()
     await host.close()

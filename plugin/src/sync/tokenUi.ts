@@ -77,7 +77,12 @@ export function connectionError(
   )
 }
 class ConnectStageError extends Error {}
-export function failureDetails(error: unknown): { reason: string; code?: string } {
+export function failureDetails(error: unknown): {
+  reason: string
+  code?: string
+  kind?: string
+  substep?: string
+} {
   const seen = new Set<unknown>()
   while (error && typeof error === 'object' && !seen.has(error)) {
     seen.add(error)
@@ -86,10 +91,14 @@ export function failureDetails(error: unknown): { reason: string; code?: string 
     error = cause
   }
   const code = error && typeof error === 'object' ? Reflect.get(error, 'code') : undefined
+  const kind = error instanceof Error ? error.name : undefined
+  const substep = error && typeof error === 'object' ? Reflect.get(error, 'recoverySubstep') : undefined
   const message = error && typeof error === 'object' ? Reflect.get(error, 'message') : error
   return {
     reason: typeof message === 'string' ? message : 'Unknown sync failure',
     ...(typeof code === 'string' ? { code } : {}),
+    ...(typeof kind === 'string' ? { kind } : {}),
+    ...(typeof substep === 'string' ? { substep } : {}),
   }
 }
 /** Bound an individual stage and revoke its permission to perform later effects. */
@@ -206,7 +215,7 @@ export interface ConnectionActivity {
   waitingFiles?: import('@abele/sync-sdk/core').EngineStatus['waitingFiles']
   missingKeptCopies?: string[]
   /** Diagnostics only: the code and original message behind `error`'s friendly text. */
-  failure?: { code?: string; message: string; reason?: string; stage?: string }
+  failure?: { code?: string; message: string; reason?: string; stage?: string; kind?: string; substep?: string }
   transfer?: import('./transferProgress').TransferSnapshot
   reconciliation?: import('@abele/sync-sdk/core').ReconciliationState | null
   pull?: { stage: string; completed: number; total: number }

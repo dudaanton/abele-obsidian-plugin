@@ -1,6 +1,17 @@
 import { expect, it, vi } from 'vitest'
 import { VaultDirectories } from '@/sync/vaultDirectories'
 
+it('does not rewrite pending removals for a directory download with no removals', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const app = buildFakeVault([{ path: 'Sample/file.md', content: 'sample' }])
+  const directories = new VaultDirectories(app.vault.adapter, app)
+  const save = vi.spyOn(app, 'saveLocalStorage')
+  for (let n = 0; n < 1000; n++) await directories.mkdir('Sample')
+  expect(
+    save.mock.calls.filter(([key]) => key === 'abele-sync-empty-directory-removals-v1')
+  ).toHaveLength(0)
+})
+
 it('does not save unchanged directory identities on another inventory', async () => {
   const { buildFakeVault } = await import('../helpers/fakeVault')
   const app = buildFakeVault([{ path: 'Sample/Nested/file.md', content: 'sample' }])

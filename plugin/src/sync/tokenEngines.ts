@@ -76,6 +76,7 @@ import { SyncTaskBudget } from './syncTaskBudget'
 /** One native host, independent durable engines, and one vault-wide placement coordinator. */
 export class TokenEngines {
   private readonly engines = new ConnectionEngines()
+  private readonly reportedStartupFailures = new WeakSet<object>()
   private readonly live = new Map<string, TokenEngineRuntime>()
   private readonly pending = new Set<string>()
   private readonly drained = new Set<string>()
@@ -483,7 +484,10 @@ export class TokenEngines {
           records.find((one) => one.id === id),
           { teardown, documents, ready: beforeOpening }
         ),
-      (id, error) => this.failed(id, error)
+      (id, error) => {
+        if (error && typeof error === 'object' && this.reportedStartupFailures.has(error)) return
+        this.failed(id, error)
+      }
     )
     // Item discovery can change persisted connections. Keep it behind recovery and
     // inspection, just like the engine it may extend; blocked rows do no network work.
@@ -1005,7 +1009,9 @@ export class TokenEngines {
             // Runtime discovery also incorporates server-named group members.
             if (record.scope.kind === 'group') scopedInspection.inventory = undefined
           }
-          return recoverExternalState(
+          let recoverySubstep: string | undefined
+          try {
+            return await recoverExternalState(
             connectionApp,
             state,
             record.ledgerId,
@@ -1014,7 +1020,11 @@ export class TokenEngines {
             fence,
             factoryOf(this.deps),
             scopedInspection,
-            (phase) => this.deps.startupTimeline?.mark(phase),
+            (phase) => {
+              const match = /^connection:Recovery (.*):(begin|end)$/.exec(phase)
+              if (match?.[2] === 'begin') recoverySubstep = match[1]
+              this.deps.startupTimeline?.mark(phase)
+            },
             () => {
               const encoded = this.ui.itemSets.encoded(record)
               const item = this.ui.itemSets.store.forRecord(record.id)?.item.id
@@ -1037,7 +1047,12 @@ export class TokenEngines {
               // Recovery may fail before the engine consumes the result.
               void prefetchedConnection.catch(() => {})
             }
-          )
+            )
+          } catch (error) {
+            if (error instanceof Error && recoverySubstep)
+              Object.assign(error, { recoverySubstep })
+            throw error
+          }
         },
         true
       )
@@ -1361,6 +1376,7 @@ export class TokenEngines {
         const cancelled = startup.signal.aborted
         const failure = cancelled ? startup.signal.reason : error
         this.failed(record.id, failure)
+        if (failure && typeof failure === 'object') this.reportedStartupFailures.add(failure)
         cancel()
         this.startupCancels.delete(record.id)
         await runtime?.disconnect()

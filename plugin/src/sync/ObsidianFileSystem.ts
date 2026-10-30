@@ -3892,7 +3892,9 @@ export class ObsidianFileSystem implements FileSystem {
       if (local) {
         const host = durableHostOf(local)
         const key = this.pathKey(file.path)
-        if (mutation || !host?.scanInstallation(key)?.contentRevision)
+        // Folder index notifications can arrive after child files were installed. Their
+        // receipts remain valid until each child's physical identity check says otherwise.
+        if (mutation || (descendants && !host?.scanInstallation(key)?.contentRevision))
           host?.invalidateScanInstallations([key])
       }
       this.noteWatchChange(file.path, descendants)

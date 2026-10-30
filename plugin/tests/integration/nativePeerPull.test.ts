@@ -4,7 +4,7 @@ import { expect, it } from 'vitest'
 import { promises as disk } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import type { App } from 'obsidian'
+import { TFolder, type App } from 'obsidian'
 import { IDBFactory } from 'fake-indexeddb'
 import { pull, ExpectedWrites, sha256 } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
@@ -49,6 +49,7 @@ for (const fault of [
   'install-fingerprint',
   'install-fingerprint-backlog',
   'install-fingerprint-notification',
+  'install-fingerprint-folder-notification',
   'install-fingerprint-repeat',
   'install-fingerprint-inflight',
   'install-fingerprint-publication',
@@ -549,6 +550,7 @@ for (const fault of [
           fault === 'install-fingerprint' ||
           fault === 'install-fingerprint-backlog' ||
           fault === 'install-fingerprint-notification' ||
+          fault === 'install-fingerprint-folder-notification' ||
           fault === 'install-fingerprint-repeat' ||
           fault === 'install-fingerprint-inflight' ||
           fault === 'install-fingerprint-publication' ||
@@ -611,6 +613,8 @@ for (const fault of [
           try {
             if (fault === 'install-fingerprint-notification')
               for (const item of items) app.emit('vault', 'modify', { path: item.path })
+            if (fault === 'install-fingerprint-folder-notification')
+              app.emit('vault', 'create', Object.assign(new TFolder(), { path: 'Notes' }))
             if (fault === 'install-fingerprint-repeat')
               for (const item of items)
                 expect((await files.fingerprint(item.path)).sha).toBe(item.sha)

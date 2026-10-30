@@ -91,8 +91,10 @@ export class VaultDirectories {
     return removalSchema.parse(this.storage.loadLocalStorage(REMOVALS) ?? [])
   }
   private saveRemovals(removals: z.infer<typeof removalSchema>) {
+    const expected = JSON.stringify(removals)
+    if (JSON.stringify(this.storage.loadLocalStorage(REMOVALS) ?? []) === expected) return
     this.storage.saveLocalStorage(REMOVALS, removals)
-    if (JSON.stringify(this.storage.loadLocalStorage(REMOVALS)) !== JSON.stringify(removals))
+    if (JSON.stringify(this.storage.loadLocalStorage(REMOVALS)) !== expected)
       throw new Error('Pending empty-directory removal was not stored')
   }
   private async tree(
