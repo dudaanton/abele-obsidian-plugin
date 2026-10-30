@@ -1839,8 +1839,8 @@ export class ObsidianFileSystem implements FileSystem {
   private nativeFor(disk: DataAdapter): NativeFs | null {
     const raw = nativeOf(
       disk,
-      (paths = []) => {
-        for (const path of paths) this.inventory?.mutations.add(path)
+      (paths = [], mutation = true) => {
+        if (mutation) for (const path of paths) this.inventory?.mutations.add(path)
         this.runtimeFence?.assertOwned()
         this.externalCoordination.assertEnginePaths(paths)
       },

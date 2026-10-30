@@ -13,6 +13,7 @@ import { desktopFsPort } from '../helpers/desktopRequire'
 import { countedDisk, nativeVault } from '../helpers/nativeRestartVault'
 import { nativeTokenFixture } from '../helpers/nativeTokenFixture'
 import { TokenEngines } from '@/sync/tokenEngines'
+import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 
 const extraFiles = Number(process.env.STOPPED_SCOPE_EXTRA_FILES ?? 0)
 async function livePaths(token: string): Promise<Set<string>> {
@@ -40,12 +41,17 @@ it('publishes an offline deletion beside edits and a folder rename in a settled 
   const files = [
     'Sample/Notes/Size.md',
     'Sample/Notes/Time.md',
+    'Sample/Notes/Stable.md',
     'Sample/Z-Removed.md',
     ...Array.from({ length: 32 }, (_, i) => `Sample/Old/Child ${i}.md`),
     ...Array.from({ length: extraFiles }, (_, i) => `Sample/Notes/Item ${i}.md`),
   ]
   let device: Awaited<ReturnType<typeof nativeTokenFixture>> | undefined
   let restarted: TokenEngines | undefined
+  const trustReason = Symbol.for('abele.sync.unchanged-index-reason-v1')
+  const prototype = ObsidianFileSystem.prototype as unknown as Record<symbol, (path: string) => string>
+  const originalTrustReason = prototype[trustReason]
+  const stableReasons: string[] = []
   try {
     for (const folder of new Set(files.map(dirname)))
       await disk.mkdir(join(root, folder), { recursive: true })
@@ -78,7 +84,7 @@ it('publishes an offline deletion beside edits and a folder rename in a settled 
     expect((await livePaths(user.token)).has('Sample/Z-Removed.md')).toBe(true)
     await device.host.close()
 
-    const size = files[0], time = files[1], removed = files[2]
+    const size = files[0], time = files[1], removed = files[3]
     await disk.writeFile(join(root, size), 'a larger replacement with different bytes')
     await app.vault.modify(app.vault.getFileByPath(size)!, 'a larger replacement with different bytes')
     await setIndexStat(size)
@@ -107,6 +113,11 @@ it('publishes an offline deletion beside edits and a folder rename in a settled 
         WebSocket: class { constructor() { throw new Error('Fixture uses polling') } } as never },
       'Scripts', { path: `${app.vault.configDir}/plugins/abele/data.json`, arrived: () => {} }
     )
+    prototype[trustReason] = function (this: ObsidianFileSystem, path: string) {
+      const reason = originalTrustReason.call(this, path)
+      if (path === 'Sample/Notes/Stable.md') stableReasons.push(reason)
+      return reason
+    }
     restarted.start()
     await device.ui.connectionsChanged()
     // A settled host may announce an already indexed scope folder during startup.
@@ -118,6 +129,8 @@ it('publishes an offline deletion beside edits and a folder rename in a settled 
       if (row?.status !== 'idle') throw new Error('Waiting for the restarted sync')
     }, { timeout: 120000, interval: 50 })
     const live = await livePaths(user.token)
+    expect(stableReasons.length).toBeGreaterThan(0)
+    expect(stableReasons).not.toContain('pending-event')
     expect(live.has(removed)).toBe(false)
     expect(await app.vault.adapter.exists(removed)).toBe(false)
     expect(live.has(size)).toBe(true)
@@ -129,6 +142,7 @@ it('publishes an offline deletion beside edits and a folder rename in a settled 
       expect(live.has(`Sample/Renamed/Child ${i}.md`)).toBe(true)
     }
   } finally {
+    prototype[trustReason] = originalTrustReason
     await restarted?.close()
     await device?.host.close()
     await server.close()

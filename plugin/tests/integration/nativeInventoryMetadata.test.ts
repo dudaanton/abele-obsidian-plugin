@@ -94,3 +94,35 @@ it('shares advisory ancestor checks for connection-scoped native identities', as
     await fs.rm(root, { recursive: true, force: true })
   }
 })
+
+it('keeps trusted indexed rows unchanged while native identity is read during inventory', async () => {
+  const root = await fs.realpath(await fs.mkdtemp(join(tmpdir(), 'sample-read-inventory-')))
+  const app = buildFakeVault([{ path: 'Shared/sample.md' }])
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
+  Object.assign(app.workspace, { layoutReady: true })
+  Object.assign(app.vault.adapter, {
+    getFullPath: (path: string) => join(root, path),
+    fsPromises: fs,
+  })
+  try {
+    await fs.mkdir(join(root, 'Shared'))
+    await fs.writeFile(join(root, 'Shared/sample.md'), 'sample')
+    const filesystem = new ObsidianFileSystem(app as never, {
+      fileScope: 'Shared', prepareStartupInventory: async () => {},
+    })
+    const inventory = Reflect.get(filesystem, Symbol.for('abele.sync.inventory-pass-v1')) as
+      (work: () => Promise<void>) => Promise<void>
+    await inventory.call(filesystem, async () => {
+      const native = Reflect.get(filesystem, 'native') as ReturnType<typeof nativeOf>
+      const reason = Reflect.get(filesystem, Symbol.for('abele.sync.unchanged-index-reason-v1')) as
+        (path: string) => string
+      expect(reason.call(filesystem, 'Shared/sample.md')).toBe('hit')
+      expect(await native!.fileIdentity!('Shared/sample.md')).toBeTruthy()
+      expect(await native!.fileContentRevision!('Shared/sample.md')).toBeTruthy()
+      expect((Reflect.get(filesystem, 'inventory') as { mutations: Set<string> }).mutations.size).toBe(0)
+      expect(reason.call(filesystem, 'Shared/sample.md')).toBe('hit')
+    })
+  } finally {
+    await fs.rm(root, { recursive: true, force: true })
+  }
+})

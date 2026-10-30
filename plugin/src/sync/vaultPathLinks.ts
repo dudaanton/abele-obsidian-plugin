@@ -878,7 +878,7 @@ export interface NativeFs {
 /** Optional native capabilities; mobile remains adapter-only, never a Node import. */
 export function nativeOf(
   adapter: DataAdapter,
-  assertEffect: (paths?: readonly string[]) => void = () => {},
+  assertEffect: (paths?: readonly string[], mutation?: boolean) => void = () => {},
   recoveryRoot?: string,
   diagnostic?: Parameters<typeof nativeDiagnostics>[1]
 ): NativeFs | null {
@@ -935,10 +935,10 @@ export function nativeOf(
   if (fsp.lstat)
     native.fileIdentity = async (path) => {
       await assertVaultMetadataPath(adapter, path)
-      assertEffect([path])
+      assertEffect([path], false)
       try {
         const stat = await fsp.lstat(at(path), { bigint: true })
-        assertEffect([path])
+        assertEffect([path], false)
         return stat.isFile?.() ? desktopFileIdentity(stat) : null
       } catch (error) {
         if ((error as { code?: string }).code === 'ENOENT') return null
@@ -948,10 +948,10 @@ export function nativeOf(
   if (fsp.lstat)
     native.fileContentRevision = async (path) => {
       await assertVaultMetadataPath(adapter, path)
-      assertEffect([path])
+      assertEffect([path], false)
       try {
         const stat = await fsp.lstat(at(path), { bigint: true })
-        assertEffect([path])
+        assertEffect([path], false)
         const identity = desktopFileIdentity(stat)
         return stat.isFile?.() &&
           identity &&
@@ -975,7 +975,7 @@ export function nativeOf(
   if (fsp.open) {
     native.syncFile = async (path) => {
       await assertVaultPath(adapter, path)
-      assertEffect([path])
+      assertEffect([path], false)
       const handle = await fsp.open(at(path), 'r')
       try {
         if (!handle.sync) throw new EngineError('io', 'native durability is unavailable')
@@ -992,7 +992,7 @@ export function nativeOf(
         : fsp
       const flush = async (part: string) => {
         await assertVaultPath(adapter, part)
-        assertEffect([part])
+        assertEffect([part], false)
         const handle = await fs.open(at(part), 'r')
         try {
           if (!handle.sync) throw new EngineError('io', 'native durability is unavailable')
@@ -1008,7 +1008,7 @@ export function nativeOf(
   const scopedSync = Reflect.get(adapter, Symbol.for('abele.sync.scoped-sync-path-v1'))
   if (typeof scopedSync === 'function')
     native.syncPath = async (path, parentsOnly = false) => {
-      assertEffect([path])
+      assertEffect([path], false)
       await scopedSync(path, parentsOnly, diagnostic)
     }
   if (fsp.mkdir && fsp.stat && fsp.link && fsp.unlink) {
