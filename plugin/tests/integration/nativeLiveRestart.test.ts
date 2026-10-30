@@ -464,6 +464,12 @@ async function measure() {
         },
         { timeout: 120000, interval: 10 }
       )
+      // The timeline records stable idle after the watcher has had time to hand off
+      // its startup batch; engine status alone can briefly become idle first.
+      await vi.waitFor(
+        () => expect(marks.some((mark) => mark.phase === 'idle')).toBe(true),
+        { timeout: 3000, interval: 10 }
+      )
       // The foreground event that follows startup used to invalidate the just-proven tree.
       await host.foreground(true)
       measurements.push({

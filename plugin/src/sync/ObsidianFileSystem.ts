@@ -334,6 +334,7 @@ export class ObsidianFileSystem implements FileSystem {
     if (this.awaitingIndex.has(path) || this.inventory.mutations.has(path)) return 'pending-event'
     const key = this.pathKey(path)
     if (this.inventoryRevision(path) > this.inventory.pollRevision) return 'pending-event'
+    if (this.watchExactChanges.has(key)) return 'pending-event'
     for (let parent = key; parent; parent = parent.slice(0, parent.lastIndexOf('/'))) {
       if (this.watchChanges.has(parent)) return 'pending-event'
       if (!parent.includes('/')) break
@@ -3818,13 +3819,16 @@ export class ObsidianFileSystem implements FileSystem {
   private watchClock = 0
   private watchFloor = 0
   private readonly watchChanges = new Map<string, number>()
-  private noteWatchChange(path: string): void {
+  private readonly watchExactChanges = new Map<string, number>()
+  private noteWatchChange(path: string, descendants = true): void {
     const key = this.pathKey(path)
-    if (!this.watchChanges.has(key) && this.watchChanges.size >= 65536) {
+    const changes = descendants ? this.watchChanges : this.watchExactChanges
+    if (!changes.has(key) && changes.size >= 65536) {
       this.watchChanges.clear()
+      this.watchExactChanges.clear()
       this.watchFloor = this.watchClock + 1
     }
-    this.watchChanges.set(key, ++this.watchClock)
+    changes.set(key, ++this.watchClock)
   }
   [Symbol.for('abele.sync.watch-epoch-v1')](): number | undefined {
     if (!this.scanWatchers) return undefined
@@ -3837,6 +3841,7 @@ export class ObsidianFileSystem implements FileSystem {
       this.watchEpoch = ++watchEpochs
       this.watchEpochAt = now
       this.watchChanges.clear()
+      this.watchExactChanges.clear()
       this.watchFloor = ++this.watchClock
     }
     return this.watchEpoch
@@ -3850,7 +3855,7 @@ export class ObsidianFileSystem implements FileSystem {
     return this.watchPathRevision(key)
   }
   private watchPathRevision(key: string): number {
-    let revision = this.watchFloor
+    let revision = Math.max(this.watchFloor, this.watchExactChanges.get(key) ?? 0)
     for (let current = key; current; current = current.slice(0, current.lastIndexOf('/'))) {
       revision = Math.max(revision, this.watchChanges.get(current) ?? 0)
       if (!current.includes('/')) break
@@ -3870,7 +3875,7 @@ export class ObsidianFileSystem implements FileSystem {
       this.watchEpoch = undefined
       this.rootChain = undefined
     }
-    const changed = (file: { path: string }, mutation = false) => {
+    const changed = (file: { path: string }, mutation = false, descendants = true) => {
       const local = storageOf(this.app)
       // Index notifications also arrive after our own publication. Keep the receipt until
       // the identity/stat check examines it; an observed adapter mutation retires it now.
@@ -3880,7 +3885,7 @@ export class ObsidianFileSystem implements FileSystem {
         if (mutation || !host?.scanInstallation(key)?.contentRevision)
           host?.invalidateScanInstallations([key])
       }
-      this.noteWatchChange(file.path)
+      this.noteWatchChange(file.path, descendants)
       if (this.inventoryVisible(file.path) && this.withinFileScope(file.path))
         this.scanWatchRevision++
     }
@@ -3892,10 +3897,10 @@ export class ObsidianFileSystem implements FileSystem {
     })
     const rootChanges = [
       this.app.vault.on('create', (file) => {
-        changed(file)
+        changed(file, false, !(file instanceof TFolder))
         this.invalidateRootChain([file.path])
       }),
-      this.app.vault.on('modify', (file) => changed(file)),
+      this.app.vault.on('modify', (file) => changed(file, false, !(file instanceof TFolder))),
       this.app.vault.on('delete', (file) => {
         changed(file)
         this.invalidateRootChain([file.path])
@@ -3928,7 +3933,9 @@ export class ObsidianFileSystem implements FileSystem {
         snapshot: () => this.configSnapshot(),
       },
       (paths) => {
-        for (const path of paths) this.noteWatchChange(path)
+        for (const path of paths)
+          if (!(this.app.vault.getAbstractFileByPath(path) instanceof TFolder))
+            this.noteWatchChange(path)
         if (
           paths.some(
             (path) =>

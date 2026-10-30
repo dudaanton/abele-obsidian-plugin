@@ -273,6 +273,36 @@ export class TokenEngineRuntime
   private readonly transferBudget: TransferBudget
   private active = true
   private startupReconciliationStarted = false
+  private startupIdlePublished = false
+  private startupIdleTimer: number | undefined
+  private startupIdleGeneration = 0
+  private cancelStartupIdle(): void {
+    this.startupIdleGeneration++
+    window.clearTimeout(this.startupIdleTimer)
+    this.startupIdleTimer = undefined
+  }
+  private scheduleStartupIdle(): void {
+    if (!this.options.startupMark || this.startupIdlePublished) return
+    this.cancelStartupIdle()
+    const generation = this.startupIdleGeneration
+    const check = () => {
+      if (!this.active || generation !== this.startupIdleGeneration) return
+      if (this.engine.status.state !== 'idle') return
+      // A held deletion is a pending decision, even when the exchange itself is quiet.
+      if ((this.engine.status.heldDeletes ?? 0) > 0) return
+      if (this.quiet.pending) {
+        this.startupIdleTimer = window.setTimeout(check, 500)
+        return
+      }
+      this.startupIdleTimer = undefined
+      this.startupIdlePublished = true
+      this.options.startupMark?.('reconcile:cycle:end')
+      this.options.startupMark?.('idle')
+    }
+    // The host batches vault events for 300 ms. A first idle is only useful after
+    // that batch has had time to schedule its follow-on scan.
+    this.startupIdleTimer = window.setTimeout(check, 500)
+  }
   private serverAvailable = true
   private rootIssue: ScopeRootIssue | undefined
   private unroot: (() => void) | undefined
@@ -1495,12 +1525,14 @@ export class TokenEngineRuntime
                     (path) =>
                       path === '.abele-sync-ignore' || !this.ignore?.ignores(path.normalize('NFC'))
                   )
-                  if (relevant.length)
+                  if (relevant.length) {
+                    this.cancelStartupIdle()
                     void this.quiet.notice(relevant).catch((error) => {
                       console.debug('[abele-sync] cannot schedule local changes', error)
                       // An unavailable stat must not swallow the original change report.
                       if (this.active) notify(relevant)
                     })
+                  }
                 })
                 return () => {
                   this.notifyLocal = undefined
@@ -1859,12 +1891,11 @@ export class TokenEngineRuntime
     })
     let running = false
     this.unstatus = this.engine.onStatus((status) => {
-      if (this.startupReconciliationStarted && status.state === 'syncing')
+      if (this.startupReconciliationStarted && status.state === 'syncing') {
+        this.cancelStartupIdle()
         options.startupMark?.('reconcile:cycle:begin')
-      if (this.startupReconciliationStarted && status.state === 'idle') {
-        options.startupMark?.('reconcile:cycle:end')
-        options.startupMark?.('idle')
       }
+      if (this.startupReconciliationStarted && status.state === 'idle') this.scheduleStartupIdle()
       this.quiet.pause(status.state === 'paused')
       const retention = Reflect.get(options.fs, Symbol.for('abele.sync.retention-idle-v1'))
       if (typeof retention === 'function')
@@ -2983,6 +3014,7 @@ export class TokenEngineRuntime
     await this.engine.reconcile()
   }
   invalidate(): void {
+    this.cancelStartupIdle()
     this.indexWaitCancellation.abort()
     this.quiet.stop()
     this.active = false

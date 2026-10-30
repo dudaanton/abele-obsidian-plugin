@@ -46,10 +46,52 @@ it('marks construction, reconciliation and first idle from the running engine', 
     expect(marks).toEqual(['engine-construct'])
     await one.runtime.start()
     await one.runtime.sync()
+    await vi.waitFor(() => expect(marks).toContain('idle'), { timeout: 2000 })
     expect(marks).toContain('reconcile-start')
-    expect(marks).toContain('idle')
     expect(marks.indexOf('engine-construct')).toBeLessThan(marks.indexOf('reconcile-start'))
     expect(marks.indexOf('reconcile-start')).toBeLessThan(marks.indexOf('idle'))
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('waits for stable engine idle before publishing the startup idle mark', async () => {
+  const wire = await server('Notes/sample.md', 'remote')
+  const marks: string[] = []
+  const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+    startupMark: (phase) => marks.push(phase),
+  })
+  try {
+    await one.runtime.start()
+    await one.runtime.sync()
+    expect(marks).not.toContain('idle')
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    await one.runtime.sync()
+    expect(marks).not.toContain('idle')
+    await vi.waitFor(() => expect(marks).toContain('idle'), { timeout: 2000 })
+  } finally {
+    await one.runtime.close()
+  }
+})
+
+it('does not mark startup idle while a deletion awaits a decision', async () => {
+  const wire = await server('Notes/sample.md', 'remote')
+  const marks: string[] = []
+  const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+    startupMark: (phase) => marks.push(phase),
+  })
+  try {
+    await one.runtime.start()
+    await one.runtime.sync()
+    const status = one.runtime.engine.status
+    const held = vi.spyOn(one.runtime.engine, 'status', 'get').mockReturnValue({
+      ...status, state: 'idle', heldDeletes: 1,
+    })
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    expect(marks).not.toContain('idle')
+    held.mockRestore()
+    await one.runtime.sync()
+    await vi.waitFor(() => expect(marks).toContain('idle'), { timeout: 2000 })
   } finally {
     await one.runtime.close()
   }

@@ -133,8 +133,11 @@ export function watchVault(host: WatchHost, cb: (paths: string[]) => void): Vaul
   }
 
   const refs: EventRef[] = [
-    host.app.vault.on('create', (file) => add(pathsOf(file))),
-    host.app.vault.on('modify', (file) => add(pathsOf(file))),
+    // A host index can announce an existing folder while loading. Its children are
+    // already in the settled index; naming all of them turns one notification into
+    // a full-vault rescan. A rename or deletion really does affect the old subtree.
+    host.app.vault.on('create', (file) => add([file.path])),
+    host.app.vault.on('modify', (file) => add([file.path])),
     host.app.vault.on('delete', (file) => add(pathsOf(file))),
     host.app.vault.on('rename', (file, oldPath) => add(pathsOf(file, oldPath))),
   ]
