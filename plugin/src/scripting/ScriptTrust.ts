@@ -17,7 +17,7 @@ import { ref } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { isScriptPath } from './scriptPath'
-import { noteManagedLocalScriptWrite } from './trust/localScriptWrite'
+import { localScriptWriteContext, noteManagedLocalScriptWrite } from './trust/localScriptWrite'
 import { confirmAgentScript } from './trust/agentScriptWrites'
 import {
   armedWith,
@@ -218,10 +218,9 @@ export class ScriptTrust {
    * The owner or an authorized script is writing `text` to `path` on this device.
    * Anything that is not a script, or written while checking is off, is not recorded.
    */
-  async noteLocalWrite(path: string, text: string): Promise<void> {
+  async noteLocalWrite(path: string, text: string, hash?: string): Promise<void> {
     if (!this.current.armed || !isScriptPath(path)) return
-    const hash = await sha256(text)
-    this.put(withConfirmed(this.current, path, hash, text))
+    this.put(withConfirmed(this.current, path, hash ?? (await sha256(text)), text))
   }
 
   /** A source that knows itself brought `text` to `path`, and says what should happen to it. */
@@ -235,10 +234,13 @@ export class ScriptTrust {
 /** Owner authoring must persist its exact approval; optional sync bookkeeping is best effort. */
 export async function noteLocalScriptWrite(path: string, text: string): Promise<void> {
   const app = GlobalStore.getInstance().app
-  if (app && path.endsWith('.js')) confirmAgentScript(app, await sha256(text))
+  const context = app && isScriptPath(path) ? localScriptWriteContext(app) : undefined
+  // One exact byte snapshot and digest feed every approval ledger.
+  const hash = app && path.endsWith('.js') ? await sha256(text) : undefined
+  if (app && hash) confirmAgentScript(app, hash)
   try {
-    await ScriptTrust.getInstance().noteLocalWrite(path, text)
-    if (app && isScriptPath(path)) await noteManagedLocalScriptWrite(app, path, text)
+    await ScriptTrust.getInstance().noteLocalWrite(path, text, hash)
+    if (app && isScriptPath(path)) await noteManagedLocalScriptWrite(app, path, text, hash, context)
   } catch (err) {
     console.error('[ScriptTrust] could not record a local write', err)
   }

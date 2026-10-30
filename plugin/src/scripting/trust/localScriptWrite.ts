@@ -6,23 +6,28 @@ import { rememberLocalScriptVersion } from './localScriptUpgrade'
 import { scriptConnectionKey } from './scriptConnection'
 import { assertNoScriptContextHold, SCRIPT_CONTEXT_HOLD_FILE } from './scriptContextHold'
 
+/** Capture before hashing: a later connection must never inherit this authoring decision. */
+export const localScriptWriteContext = (app: App): string =>
+  JSON.stringify([scriptConnectionKey(app), app.loadLocalStorage(SCRIPT_TRUST_KEY)])
+
 /** Called by explicit local authoring sites, NEVER by native modify/create or sync receipts. */
 export async function noteManagedLocalScriptWrite(
   app: App,
   path: string,
-  source: string
+  source: string,
+  hash?: string,
+  context?: string
 ): Promise<void> {
-  const contextKey = () =>
-    JSON.stringify([scriptConnectionKey(app), app.loadLocalStorage(SCRIPT_TRUST_KEY)])
-  const before = contextKey()
+  const before = context ?? localScriptWriteContext(app)
   const assertContext = () => {
     assertNoScriptContextHold(app)
-    if (before !== contextKey()) throw new Error('Script context changed during local authoring')
+    if (before !== localScriptWriteContext(app))
+      throw new Error('Script context changed during local authoring')
   }
   const trust = await scriptTrustFor(app)
   try {
     if (trust && trust.provenance.binding.facet !== 'personal') return
-    const sha = await sha256(source)
+    const sha = hash ?? (await sha256(source))
     if (await app.vault.adapter.exists(SCRIPT_CONTEXT_HOLD_FILE))
       throw new Error('Script execution blocked while a protected context is isolated')
     assertContext()

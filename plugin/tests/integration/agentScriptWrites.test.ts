@@ -18,7 +18,8 @@ import { createScriptTools } from '@/ai/tools/ScriptTool'
 import { createDownloadFileTool } from '@/ai/tools/DownloadImageTool'
 import * as http from '@/helpers/http'
 import { ScriptService } from '@/scripting/ScriptService'
-import { ScriptTrust, noteLocalScriptWrite } from '@/scripting/ScriptTrust'
+import { ScriptTrust, noteLocalScriptWrite, sha256 } from '@/scripting/ScriptTrust'
+import { deferred } from '../helpers/deferred'
 import { ScriptRuns } from '@/scripting/ScriptRuns'
 import { runStartupScripts } from '@/scripting/startupRunner'
 import { scriptForExecution, assertScriptContext } from '@/scripting/trust/scriptExecutionGate'
@@ -309,5 +310,42 @@ describe('agent file writes do not grant code execution', () => {
     await create()
     app.saveLocalStorage(AGENT_SCRIPT_WRITES_KEY, { paths: 'damaged' })
     await expect(scriptForExecution(app, path)).rejects.toThrow(/unreadable/)
+  })
+
+  it('does not approve a different connection entered while owner approval is hashing', async () => {
+    vi.stubGlobal('indexedDB', new IDBFactory())
+    await create()
+    const hash = await sha256(source)
+    const entered = deferred()
+    const release = deferred()
+    const digest = crypto.subtle.digest.bind(crypto.subtle)
+    vi.spyOn(crypto.subtle, 'digest').mockImplementationOnce(async (algorithm, bytes) => {
+      entered.resolve()
+      await release.promise
+      return digest(algorithm, bytes)
+    })
+    const authoring = noteLocalScriptWrite(path, source)
+    await entered.promise
+    const binding = {
+      endpoint: 'https://sync.example',
+      vaultId: 'sample-vault',
+      principal: 'sample-device',
+      facet: 'personal' as const,
+      grantId: null,
+    }
+    setScriptConnection(app, binding)
+    const trust = await activateScriptProvenance(app, binding, indexedDB)
+    try {
+      await trust.provenance.record(path, 'sample-file')
+      release.resolve()
+      await authoring
+      expect(await trust.provenance.approved((await trust.provenance.lookup(path))!, hash)).toBe(
+        false
+      )
+    } finally {
+      release.resolve()
+      await authoring
+      trust.store.close()
+    }
   })
 })

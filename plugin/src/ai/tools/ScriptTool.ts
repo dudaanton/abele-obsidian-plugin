@@ -8,6 +8,7 @@ import { formatPick, notesMatching } from '@/helpers/noteFilter'
 import { appOf } from '../toolContext'
 import { agentScriptWaiting } from '@/scripting/trust/agentScriptWrites'
 import { noteLocalScriptWrite, sha256 } from '@/scripting/ScriptTrust'
+import { vaultDisk } from '@/sync/vaultPathLinks'
 
 export function createScriptTools(): AgentTool[] {
   const service = ScriptService.getInstance()
@@ -22,7 +23,7 @@ export function createScriptTools(): AgentTool[] {
       // Approval of a file write is not execution authority. Only this script's own
       // approved call or explicit Auto mode may activate an agent-authored version.
       const app = appOf(ctx)
-      const bytes = await app.vault.adapter.readBinary(script.path)
+      const bytes = await vaultDisk(app.vault).readBinary(script.path)
       const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
       if (agentScriptWaiting(app, script.path, await sha256(source))) {
         const name = `script_${scriptSlug(script.meta.name)}`

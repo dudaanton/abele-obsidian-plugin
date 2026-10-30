@@ -6,6 +6,7 @@ import { scopeOf } from '../toolContext'
 import { toSafeVaultPath, describeRename } from '@/helpers/pathsHelpers'
 import { TFile } from 'obsidian'
 import { noteFileToolScriptCopy } from '@/scripting/trust/fileToolScriptWrite'
+import { vaultDisk } from '@/sync/vaultPathLinks'
 
 export function createMoveFileTool(opts?: {
   skipScope?: boolean
@@ -54,7 +55,12 @@ export function createMoveFileTool(opts?: {
       }
       signal?.throwIfAborted()
       if (!opts?.scriptAuthor && safeTo.endsWith('.js'))
-        await noteFileToolScriptCopy(app, file.path, safeTo, await app.vault.read(file))
+        await noteFileToolScriptCopy(
+          app,
+          file.path,
+          safeTo,
+          await vaultDisk(app.vault).read(file.path)
+        )
       await app.fileManager.renameFile(file, safeTo)
       if (!opts?.skipScope) scopeOf(ctx).addFile(safeTo)
       scopeOf(ctx).invalidate()
