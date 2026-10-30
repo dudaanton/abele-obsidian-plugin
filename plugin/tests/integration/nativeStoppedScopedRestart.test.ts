@@ -27,7 +27,10 @@ async function livePaths(token: string): Promise<Set<string>> {
   } while (next)
   return paths
 }
-it('publishes an offline deletion beside edits and a folder rename in a settled scoped index', async () => {
+it.each([
+  { label: 'publishes an offline deletion with a commit range receipt', withoutHeader: false },
+  { label: 'holds an offline deletion for review without a commit range receipt', withoutHeader: true },
+])('$label', async ({ withoutHeader }) => {
   const root = await disk.realpath(await disk.mkdtemp(join(tmpdir(), 'sample-stopped-scope-')))
   const server = await v2Server()
   const factory = new IDBFactory()
@@ -53,6 +56,9 @@ it('publishes an offline deletion beside edits and a folder rename in a settled 
   const prototype = ObsidianFileSystem.prototype as unknown as Record<symbol, (path: string) => string>
   const originalTrustReason = prototype[trustReason]
   const stableReasons: string[] = []
+  let commitBaseHeaders = 0
+  let directoryReceipts = 0
+  let pauseAtDirectories: Promise<void> | undefined
   try {
     for (const folder of new Set(files.map(dirname)))
       await disk.mkdir(join(root, folder), { recursive: true })
@@ -108,10 +114,30 @@ it('publishes an offline deletion beside edits and a folder rename in a settled 
     await disk.unlink(join(root, removed))
     await app.vault.delete(app.vault.getFileByPath(removed)!)
 
+    const restartFetch: typeof fetch = async (input, init) => {
+      const response = await globalThis.fetch(input, init)
+      const url = input instanceof Request ? input.url : String(input)
+      if (new URL(url).pathname !== '/v2/commit' || !response.headers.has('abele-commit-base'))
+        return response
+      commitBaseHeaders++
+      const operation = JSON.parse(String(init?.body)) as { ops?: Array<{ op: string }> }
+      if (operation.ops?.some((op) => op.op === 'move_directory' || op.op === 'mkdir')) {
+        directoryReceipts++
+        if (directoryReceipts === 2) {
+          const runtime = device!.ui.runtimes.get(device!.id)
+          if (!runtime) throw new Error('The connection runtime is unavailable')
+          pauseAtDirectories = runtime.pause(true)
+        }
+      }
+      if (!withoutHeader) return response
+      const headers = new Headers(response.headers)
+      headers.delete('abele-commit-base')
+      return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
+    }
     restarted = new TokenEngines(
       app as unknown as App, device.ui,
       (reference) => device!.keys.get(reference) ?? null,
-      { fetch: globalThis.fetch, indexedDB: factory, fallbackMs: 60000, pollMs: 60000,
+      { fetch: restartFetch, indexedDB: factory, fallbackMs: 60000, pollMs: 60000,
         WebSocket: class { constructor() { throw new Error('Fixture uses polling') } } as never },
       'Scripts', { path: `${app.vault.configDir}/plugins/abele/data.json`, arrived: () => {} }
     )
@@ -125,6 +151,13 @@ it('publishes an offline deletion beside edits and a folder rename in a settled 
     // A settled host may announce an already indexed scope folder during startup.
     app.emit('vault', 'create', app.vault.getAbstractFileByPath('Sample'))
     await new Promise((resolve) => setTimeout(resolve, 350))
+    const firstSync = device.ui.sync(device.id)
+    await vi.waitFor(() => {
+      if (!pauseAtDirectories) throw new Error('Waiting for directory receipts')
+    }, { timeout: 30000, interval: 20 })
+    await pauseAtDirectories
+    await firstSync
+    await device.ui.runtimes.get(device.id)!.pause(false)
     await device.ui.sync(device.id)
     await vi.waitFor(() => {
       const row = device!.ui.rows.value.find((one) => one.id === device!.id)
@@ -133,9 +166,17 @@ it('publishes an offline deletion beside edits and a folder rename in a settled 
     const live = await livePaths(user.token)
     expect(stableReasons.length).toBeGreaterThan(0)
     expect(stableReasons).not.toContain('pending-event')
-    expect(device.ui.activity.value[device.id]?.reconciliation?.phase).not.toBe('review')
-    expect(contentReads.filter((path) => path.endsWith('/Sample/Notes/Stable.md'))).toHaveLength(0)
-    expect(live.has(removed)).toBe(false)
+    expect(directoryReceipts).toBeGreaterThanOrEqual(2)
+    if (withoutHeader) {
+      expect(commitBaseHeaders).toBeGreaterThan(0)
+      expect(device.ui.activity.value[device.id]?.reconciliation?.phase).toBe('review')
+      expect(live.has(removed)).toBe(true)
+    } else {
+      expect(commitBaseHeaders).toBeGreaterThan(0)
+      expect(device.ui.activity.value[device.id]?.reconciliation?.phase).not.toBe('review')
+      expect(contentReads.filter((path) => path.endsWith('/Sample/Notes/Stable.md'))).toHaveLength(0)
+      expect(live.has(removed)).toBe(false)
+    }
     expect(await app.vault.adapter.exists(removed)).toBe(false)
     expect(live.has(size)).toBe(true)
     expect(live.has(time)).toBe(true)

@@ -1,5 +1,5 @@
 /** Server test input is independent of the installed core/protocol package pin. */
-export const SERVER_TEST_COMMIT = '76bc242fc95d3571b9dd8db97f48edfe80db76c1'
+export const SERVER_TEST_COMMIT = 'e74e09630c6be9dae6a1892421434088621d481f'
 /** Only fast-tier files whose setup uses a real, provenance-checked server archive. */
 export const serverTestFixtures = {
   ABELE_SYNC_DIR: [
@@ -17,6 +17,7 @@ export const serverTestFixtures = {
     'syncOwnSettings',
     'syncConnectionSaves',
     'productionSharingBuild',
+    'nativeStoppedScopedRestart',
   ]
     .map((name) => `tests/integration/${name}.test.ts`)
     .concat('tests/unit/syncLiveServer.test.ts'),
