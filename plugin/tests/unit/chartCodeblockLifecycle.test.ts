@@ -18,10 +18,11 @@ const resize = vi.fn()
 const setOption = vi.fn()
 vi.mock('@/bases/echarts', () => ({
   echartsInit: vi.fn(() => ({ setOption, dispose, resize })),
+  printChart: vi.fn(),
 }))
 
 import { registerChartCodeblock } from '@/editor/ChartCodeblock'
-import { echartsInit } from '@/bases/echarts'
+import { echartsInit, printChart } from '@/bases/echarts'
 import { markPrintRoot } from '@/markdown/printMode'
 
 /** A resize observer the test fires by hand, with the width the container reached. */
@@ -176,6 +177,7 @@ describe('a chart block', () => {
     markPrintRoot(el)
     handler('x: [0, 1, 1e-20]\nseries:\n  - formula: x', el, ctx())
     expect(el.textContent).toContain('sampling limit')
+    expect(printChart).not.toHaveBeenCalled()
     expect(echartsInit).not.toHaveBeenCalled()
   })
 

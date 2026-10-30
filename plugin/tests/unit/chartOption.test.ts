@@ -7,7 +7,8 @@ import { initializeLocale } from '../helpers/i18n'
 
 afterEach(() => initializeLocale('en'))
 
-const formulaConfig = (x: unknown): ChartConfig => ({ x, series: [{ formula: 'x' }] }) as ChartConfig
+const formulaConfig = (x: unknown): ChartConfig =>
+  ({ x, series: [{ formula: 'x' }] }) as ChartConfig
 
 describe('formula chart sampling', () => {
   it('rejects a zero step instead of blocking the renderer', () => {
@@ -65,8 +66,7 @@ describe('formula chart sampling', () => {
   it('preserves ascending points, rounding, defaults and formula results', () => {
     const config: ChartConfig = { x: [0, 1], series: [{ formula: 'x * x' }] }
     const expected: number[][] = []
-    for (let x = 0; x <= 1; x += 1 / 200)
-      expected.push([Math.round(x * 1e10) / 1e10, x * x])
+    for (let x = 0; x <= 1; x += 1 / 200) expected.push([Math.round(x * 1e10) / 1e10, x * x])
     expect(buildEchartsOption(config).series[0]).toEqual({
       name: 'x * x',
       type: 'line',
