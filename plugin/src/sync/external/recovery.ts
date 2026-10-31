@@ -12,10 +12,13 @@ const OWNER_KEY = 'abele-sync-runtime-owner-v1:'
 const effects = new Map<string, Set<Promise<unknown>>>()
 
 export class ExternalRecoveryRequired extends Error {
+  readonly recoveryRecord?: { kind: string; id: string; path: string }
   constructor(
-    detail = 'retained external-file dependencies require recovery or disconnect preparation'
+    detail = 'retained external-file dependencies require recovery or disconnect preparation',
+    recoveryRecord?: { kind: string; id: string; path: string }
   ) {
     super(`External files: ${detail}. The connection and recovery evidence remain intact.`)
+    this.recoveryRecord = recoveryRecord
   }
 }
 

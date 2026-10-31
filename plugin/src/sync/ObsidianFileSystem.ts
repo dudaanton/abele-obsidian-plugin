@@ -43,6 +43,7 @@ import {
   MAX_CHUNK_BYTES,
   readReconciliation,
   requestReconciliation,
+  retentionSnapshot,
   type FileInfo,
   type FileSystem,
   type StateStore,
@@ -2260,6 +2261,7 @@ export class ObsidianFileSystem implements FileSystem {
       )
     await this.recoverConditionalFiles()
     this.runtimeFence?.assertOwned()
+    await this.retireSupersededPrivateSummaryIntents()
     if (this.ledger?.readCommittedEntries) {
       const paths = (await this.journal.currentEntries())
         .filter(
@@ -2308,6 +2310,50 @@ export class ObsidianFileSystem implements FileSystem {
       },
       () => this.runtimeFence?.assertOwned()
     )
+  }
+
+  /** Private removal metadata has no server ledger row to acknowledge an anonymous install. */
+  private async retireSupersededPrivateSummaryIntents(): Promise<void> {
+    if (!this.privateRemovalRoot) return
+    const summary = this.privateRemovalRoot + '/retained-removals/summary.json'
+    for (const entry of await this.journal.currentEntries()) {
+      if (
+        entry.target !== summary ||
+        !entry.temp ||
+        !withinRoot(entry.temp, this.privateRemovalRoot + '/writes') ||
+        !entry.temp.endsWith('.tmp') ||
+        !entry.replacementSha ||
+        entry.backup ||
+        entry.streaming ||
+        entry.conditionalReceipt ||
+        entry.retiredGeneration
+      )
+        continue
+      if (this.stageOperations.has(entry.temp) || adapterWriteInFlight(entry.temp)) continue
+      if ((await this.rawStat(entry.temp)) !== null || (await this.rawStat(summary)) === null)
+        continue
+      // The stage is gone. Validate the current authoritative summary before dropping only
+      // the obsolete intent; neither the summary nor any retained victim is touched.
+      try {
+        await retentionSnapshot(this[PRIVATE_REMOVAL_FILES]())
+      } catch (cause) {
+        throw Object.assign(
+          new EngineError('io', 'cannot validate retained removal summary', cause),
+          {
+            recoveryRecord: {
+              kind: 'installation',
+              id: entry.temp.slice(entry.temp.lastIndexOf('/') + 1),
+              path: entry.target,
+            },
+          }
+        )
+      }
+      this.runtimeFence?.assertOwned()
+      await this.journal.persist(async () => {
+        if (await this.journal.isCurrent(entry)) this.journal.drop(entry)
+      })
+      console.debug('[abele-sync] retired superseded private removal summary intent')
+    }
   }
 
   /** Called with committed rows, or a committed startup inventory, never overlay entries. */

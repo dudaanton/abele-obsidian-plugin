@@ -1059,16 +1059,23 @@ export async function requireExternalLifecycleSafety(
       }
     }
   }
-  if (
-    ((await installation.currentEntries()).some(
-      (entry) =>
-        (!allowRetiredInstallations || !entry.retiredGeneration) &&
-        (!entry.streaming || entry.backup)
-    ) &&
-      !recoverInstallation) ||
-    (await installation.currentRecovered()).length
-  )
-    throw new ExternalRecoveryRequired('installation or retained-byte recovery is unfinished')
+  const unfinished = !recoverInstallation
+    ? (await installation.currentEntries()).find(
+        (entry) =>
+          (!allowRetiredInstallations || !entry.retiredGeneration) &&
+          (!entry.streaming || entry.backup)
+      )
+    : undefined
+  const recovered = (await installation.currentRecovered())[0]
+  if (unfinished || recovered) {
+    const entry = unfinished ?? recovered!
+    const locator = unfinished?.temp ?? recovered?.backup ?? entry.target
+    throw new ExternalRecoveryRequired('installation or retained-byte recovery is unfinished', {
+      kind: unfinished ? 'installation' : 'retained-byte',
+      id: locator.slice(locator.lastIndexOf('/') + 1),
+      path: entry.target,
+    })
+  }
   const names = new Set<string>(database ? [database] : [])
   for (const record of TokenConnectionRegistry.open(app).records()) names.add(record.ledgerId)
   const retired = retiredLedgers(app)

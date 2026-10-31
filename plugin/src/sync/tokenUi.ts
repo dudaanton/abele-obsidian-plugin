@@ -84,10 +84,12 @@ export function failureDetails(error: unknown): {
   substep?: string
   stack?: string[]
   causes?: { kind?: string; message: string; code?: string }[]
+  recoveryRecord?: { kind: string; id: string; path: string }
 } {
   const seen = new Set<unknown>()
   const causes: { kind?: string; message: string; code?: string }[] = []
   let substep: string | undefined
+  let recoveryRecord: { kind: string; id: string; path: string } | undefined
   while (error && typeof error === 'object' && !seen.has(error)) {
     seen.add(error)
     const kind = error instanceof Error ? error.name : undefined
@@ -95,6 +97,15 @@ export function failureDetails(error: unknown): {
     const code = Reflect.get(error, 'code')
     const currentSubstep = Reflect.get(error, 'recoverySubstep')
     if (typeof currentSubstep === 'string') substep = currentSubstep
+    const currentRecord = Reflect.get(error, 'recoveryRecord')
+    if (
+      currentRecord &&
+      typeof currentRecord === 'object' &&
+      typeof Reflect.get(currentRecord, 'kind') === 'string' &&
+      typeof Reflect.get(currentRecord, 'id') === 'string' &&
+      typeof Reflect.get(currentRecord, 'path') === 'string'
+    )
+      recoveryRecord = currentRecord as { kind: string; id: string; path: string }
     causes.push({
       ...(typeof kind === 'string' ? { kind } : {}),
       message: typeof message === 'string' ? message : String(error),
@@ -116,6 +127,7 @@ export function failureDetails(error: unknown): {
     ...(typeof substep === 'string' ? { substep } : {}),
     ...(stack ? { stack } : {}),
     ...(causes.length ? { causes } : {}),
+    ...(recoveryRecord ? { recoveryRecord } : {}),
   }
 }
 /** Bound an individual stage and revoke its permission to perform later effects. */
@@ -241,6 +253,7 @@ export interface ConnectionActivity {
     substep?: string
     stack?: string[]
     causes?: { kind?: string; message: string; code?: string }[]
+    recoveryRecord?: { kind: string; id: string; path: string }
   }
   transfer?: import('./transferProgress').TransferSnapshot
   reconciliation?: import('@abele/sync-sdk/core').ReconciliationState | null
