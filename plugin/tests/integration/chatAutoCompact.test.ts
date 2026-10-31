@@ -145,9 +145,42 @@ beforeEach(() => {
   stopDuringSummary = false
   extraToolStep = false
   queueCorrection = false
+  // Compaction now preserves the latest owner turn, so provide older work to replace.
+  const history = session as unknown as {
+    allChatMessages: ChatMessage[]
+    allInternalMessages: Message[]
+    activeLeafId: string
+  }
+  history.allChatMessages = [
+    { id: 'sample-prior-user', role: 'user', content: 'Previous finished task', timestamp: 0 },
+    {
+      id: 'sample-prior-answer',
+      parentId: 'sample-prior-user',
+      role: 'assistant',
+      content: 'Previously finished',
+      timestamp: 1,
+    },
+  ]
+  history.allInternalMessages = [
+    {
+      role: 'user',
+      content: 'Previous finished task',
+      timestamp: 0,
+      chatMessageId: 'sample-prior-user',
+    },
+    {
+      ...reply([{ type: 'text', text: 'Previously finished' }], 50),
+      chatMessageId: 'sample-prior-answer',
+    },
+  ]
+  history.activeLeafId = 'sample-prior-answer'
+  session.updateVisibleMessages()
   vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(
     async function* (_model, system, messages): AsyncGenerator<StreamEvent> {
-      if (system.includes('You summarize conversations')) {
+      if (
+        typeof messages.at(-1)?.content === 'string' &&
+        String(messages.at(-1)?.content).includes('Do not call tools')
+      ) {
         helpers.push(structuredClone(messages))
         if (stopDuringSummary) session.abort()
         if (helperError) yield { type: 'error', error: 'Sample summary failure' }
@@ -210,8 +243,8 @@ describe('automatic compaction inside a tool loop', () => {
       expect(corrections).toHaveLength(1)
       expect(JSON.stringify(corrections[0].content)).toContain('Corrected sample fact.')
       expect(helpers).toHaveLength(1)
-      expect(JSON.stringify(helpers[0])).not.toContain('unread-result')
-      expect(JSON.stringify(helpers[0])).not.toContain('Preserve the sample correction')
+      expect(JSON.stringify(helpers[0])).toContain('unread-result')
+      expect(JSON.stringify(helpers[0])).toContain('Preserve the sample correction')
     }
   )
 
@@ -241,9 +274,9 @@ describe('automatic compaction inside a tool loop', () => {
       await session.retryRequest()
       expect(requests[0].filter((m) => m.role === 'user').map((m) => m.content)).toEqual([content])
       expect(requests[0].filter((m) => m.role === 'assistant' && m.model === '')).toHaveLength(1)
-      expect(helpers).toHaveLength(1)
-      // Once the real model has responded, this user request may join the older summary.
-      expect(JSON.stringify(helpers[0])).toContain('unanswered-request')
+      // No older ordinary exchange exists: keep the unanswered owner turn verbatim.
+      expect(helpers).toHaveLength(0)
+      expect(JSON.stringify(session.messagesForModel())).toContain('unanswered-request')
     }
   )
 
@@ -292,9 +325,9 @@ describe('automatic compaction inside a tool loop', () => {
     internals.activeLeafId = 'sample-pending-question'
     session.updateVisibleMessages()
     await session.retryRequest()
-    expect(helpers).toHaveLength(2)
+    expect(helpers).toHaveLength(1)
     expect(JSON.stringify(helpers[0])).toContain('Previous sample answer')
-    expect(JSON.stringify(helpers[0])).not.toContain('pending-request')
+    expect(JSON.stringify(helpers[0])).toContain('pending-request')
     expect(requests[0].filter((m) => m.role === 'user').map((m) => m.content)).toEqual([content])
     expect(requests[0].filter((m) => m.role === 'assistant' && m.model === '')).toHaveLength(1)
   })
@@ -314,6 +347,7 @@ describe('automatic compaction inside a tool loop', () => {
         content: expect.stringContaining('[Conversation compacted]'),
       })
       expect(requests[1].slice(1).map((m) => m.role)).toEqual([
+        'user',
         'assistant',
         'toolResult',
         'toolResult',
@@ -326,6 +360,7 @@ describe('automatic compaction inside a tool loop', () => {
       ])
       expect(session.messagesForModel().map((m) => m.role)).toEqual([
         'system',
+        'user',
         'assistant',
         'toolResult',
         'toolResult',
@@ -364,6 +399,7 @@ describe('automatic compaction inside a tool loop', () => {
     expect(helpers).toHaveLength(1)
     expect(requests[1].map((m) => m.role)).toEqual([
       'system',
+      'user',
       'assistant',
       'toolResult',
       'toolResult',
@@ -376,11 +412,25 @@ describe('automatic compaction inside a tool loop', () => {
     extraToolStep = true
     await session.sendMessage('Complete the sample request')
     expect(requests).toHaveLength(3)
-    expect(helpers).toHaveLength(2)
-    expect(JSON.stringify(helpers[1])).toContain('Continue the sample request.')
-    expect(requests[2].map((m) => m.role)).toEqual(['system', 'assistant', 'toolResult'])
+    expect(helpers).toHaveLength(1)
+    expect(JSON.stringify(helpers[0])).toContain('Previous finished task')
+    expect(requests[2].map((m) => m.role)).toEqual([
+      'system',
+      'user',
+      'assistant',
+      'toolResult',
+      'toolResult',
+      'user',
+      'assistant',
+      'toolResult',
+    ])
     expect(session.messagesForModel().map((m) => m.role)).toEqual([
       'system',
+      'user',
+      'assistant',
+      'toolResult',
+      'toolResult',
+      'user',
       'assistant',
       'toolResult',
       'assistant',
@@ -397,6 +447,7 @@ describe('automatic compaction inside a tool loop', () => {
     await session.load(file)
     expect(session.messagesForModel().map((m) => m.role)).toEqual([
       'system',
+      'user',
       'assistant',
       'toolResult',
       'toolResult',
@@ -408,6 +459,8 @@ describe('automatic compaction inside a tool loop', () => {
     ;(session as unknown as { activeLeafId: string }).activeLeafId = beforeDivider.id
     session.updateVisibleMessages()
     expect(session.messagesForModel().map((m) => m.role)).toEqual([
+      'user',
+      'assistant',
       'user',
       'assistant',
       'toolResult',

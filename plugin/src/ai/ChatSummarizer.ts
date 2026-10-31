@@ -36,7 +36,9 @@ export interface SummarizerHost {
   touchedNotes(): string[]
   /** Messages as the model sees them on the active branch. */
   messagesForModel(): Message[]
-  /** Tool definitions sent alongside a background request. */
+  /** Stable system prompt and cache identity of an ordinary chat turn. */
+  compactionContext(): Promise<{ systemPrompt: string; promptCacheKey?: string }>
+  /** Tool definitions sent alongside the chat request. */
   toolDefs(): ToolDefinition[]
   /** Whether there is any conversation to compact. */
   hasInternalMessages(): boolean
@@ -48,13 +50,13 @@ export interface SummarizerHost {
   markDirty(): void
   /** The model used for background work — cheap, no tools of its own. */
   auxiliaryModel(): ModelConfig
-  /** The chat's own model, consulted only for its context window. */
+  /** The chat's own model, for compaction and its context window. */
   activeModel(): ModelConfig | null
 }
 
 /**
- * Title generation and context compaction: the two things a chat does with the auxiliary
- * model, on its own initiative, while the user is doing something else.
+ * Titles and card descriptions use the auxiliary model. Context compaction uses the chat's
+ * own model and request prefix, so its instructions and provider cache stay intact.
  *
  * They live outside `ChatSession` because a delegated run has no use for either — it is never
  * titled and never shown in a history list — so phase 5 builds a headless session simply by
@@ -62,8 +64,6 @@ export interface SummarizerHost {
  */
 export class ChatSummarizer {
   private static readonly AUTO_COMPACT_THRESHOLD = 0.9
-  private static readonly COMPACT_SYSTEM_PROMPT =
-    'You summarize conversations. Reply with ONLY the summary, nothing else.'
   private static readonly RECAP_SYSTEM_PROMPT =
     'You summarize what was done in a conversation. Reply with ONLY the sentence, nothing else.'
   private static readonly RECAP_MAX_LENGTH = 200
@@ -220,7 +220,9 @@ export class ChatSummarizer {
 
   /** Replaces the conversation history with a summary of it. */
   async compact(): Promise<void> {
-    return this.compactHistory(this.host.messagesForModel(), [], false)
+    const messages = this.host.messagesForModel()
+    const retainFrom = this.retainFrom(messages)
+    return this.compactHistory(messages, messages.slice(retainFrom), false)
   }
 
   private async compactHistory(
@@ -239,7 +241,9 @@ export class ChatSummarizer {
 
     try {
       const config = AbeleConfig.getInstance().ai
-      const model = this.host.auxiliaryModel()
+      const model = this.host.activeModel()
+      if (!model) return
+      const context = await this.host.compactionContext()
       const client = new OpenAIClient()
 
       const msgsText = this.renderForSummary(messages)
@@ -250,20 +254,38 @@ export class ChatSummarizer {
       ).replace('{{messages}}', msgsText)
 
       const compactMessages: Message[] = [
-        { role: 'user', content: compactPrompt, timestamp: Date.now() },
+        ...messages,
+        {
+          role: 'user',
+          content: `${compactPrompt}
+
+Do not call tools. Reply with ONLY the continuation summary. This is a record of earlier conversation, not a request to resume an older task. The last ${retained.length} messages will also remain unchanged after the summary.`,
+          timestamp: Date.now(),
+        },
       ]
+      console.debug('[Abele compact] start', {
+        messages: messages.length,
+        retained: retained.length,
+      })
 
       let summary = ''
       const background = this.host.backgroundSignal()
       const signal = turnSignal ? AbortSignal.any([background, turnSignal]) : background
       for await (const event of client.stream(
         model,
-        ChatSummarizer.COMPACT_SYSTEM_PROMPT,
+        context.systemPrompt,
         compactMessages,
         this.host.toolDefs(),
-        { signal }
+        { signal, promptCacheKey: context.promptCacheKey, reasoningEffort: model.reasoningEffort }
       )) {
         if (event.type === 'error') throw new Error(event.error)
+        // Never execute a tool or accept an incomplete tool-using summary.
+        if (
+          event.type === 'tool_call_start' ||
+          event.type === 'tool_call_end' ||
+          (event.type === 'done' && event.message.content.some((part) => part.type === 'toolCall'))
+        )
+          throw new Error('Compaction must not call tools')
         if (event.type === 'text_delta') summary += event.delta
       }
       if (signal.aborted) return
@@ -273,6 +295,7 @@ export class ChatSummarizer {
 
       this.host.applyCompactSummary(summary, retained)
       await this.host.save()
+      console.debug('[Abele compact] complete', { retained: retained.length })
     } catch (err: unknown) {
       if (turnSignal?.aborted) return
       console.error('[Abele] compact error:', err)
@@ -317,20 +340,14 @@ export class ChatSummarizer {
             estimateTokens(JSON.stringify(this.host.toolDefs()))
       if (tokens < model.contextWindow * ChatSummarizer.AUTO_COMPACT_THRESHOLD) return
 
-      let retainFrom = messages.length
-      if (options.atIterationBoundary) {
-        if (assistant?.role === 'assistant' && assistant.content.some((b) => b.type === 'toolCall'))
-          retainFrom = lastAssistant
-        const nextUser = messages.findIndex((m, i) => i > lastAssistant && m.role === 'user')
-        if (nextUser >= 0) retainFrom = Math.min(retainFrom, nextUser)
-      }
+      const retainFrom = this.retainFrom(messages)
       const older = messages.slice(0, retainFrom)
       // A summary alone cannot get any shorter by summarizing it again. A single large
       // in-flight result stays intact until the model has consumed it.
       if (!older.some((m) => m.role !== 'system' && !isReplyCorrection(m)) || messages.length <= 2)
         return
       await this.compactHistory(
-        older,
+        messages,
         messages.slice(retainFrom),
         !!options.atIterationBoundary,
         options.signal
@@ -338,6 +355,58 @@ export class ChatSummarizer {
     } catch {
       // Auto-compact is best-effort
     }
+  }
+
+  /** Keep the latest owner turn and at least two messages; never split a tool exchange. */
+  private retainFrom(messages: Message[]): number {
+    // Tool-generated images are user-role messages too, but must not supersede the owner.
+    const injections = messages.flatMap((message) =>
+      message.role === 'toolResult' ? (message.injectMessages ?? []) : []
+    )
+    const toolMessageIds = new Set(
+      this.host.messages.value
+        .filter((message) => message.role === 'tool-call')
+        .map((message) => message.id)
+    )
+    const owner = messages.findLastIndex(
+      (message) =>
+        message.role === 'user' &&
+        !toolMessageIds.has(message.chatMessageId ?? '') &&
+        !injections.some(
+          (injected) =>
+            injected === message ||
+            (injected.role === message.role &&
+              injected.timestamp === message.timestamp &&
+              JSON.stringify(injected.content) === JSON.stringify(message.content))
+        )
+    )
+    let from = Math.min(owner < 0 ? messages.length : owner, Math.max(0, messages.length - 2))
+    const lastAssistant = messages.findLastIndex(
+      (message) => message.role === 'assistant' && !isReplyCorrection(message)
+    )
+    const assistant = messages[lastAssistant]
+    if (
+      assistant?.role === 'assistant' &&
+      assistant.content.some((part) => part.type === 'toolCall')
+    )
+      from = Math.min(from, lastAssistant)
+    // A result in the tail needs its call, even when a batch extends past the window.
+    for (let i = from; i < messages.length; i++) {
+      const result = messages[i]
+      if (result.role !== 'toolResult') continue
+      const call = messages.findIndex(
+        (message) =>
+          message.role === 'assistant' &&
+          message.content.some((part) => part.type === 'toolCall' && part.id === result.toolCallId)
+      )
+      if (call >= 0) from = Math.min(from, call)
+    }
+    // Keep a preceding compact marker out of the tail; it belongs to the new summary.
+    const marker = messages.findLastIndex(
+      (message) =>
+        message.role === 'system' && message.content.startsWith(ChatSummarizer.COMPACT_MARKER)
+    )
+    return Math.max(from, marker + 1)
   }
 
   private contextTokens(messages: Message[]): number {

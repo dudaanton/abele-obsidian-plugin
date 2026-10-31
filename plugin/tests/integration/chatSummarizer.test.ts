@@ -16,6 +16,7 @@ let nextResponse = ''
 /** Set to throw from the stream instead of yielding. */
 let nextError: Error | null = null
 let nextStreamError: string | null = null
+let nextToolCall = false
 /** Every (systemPrompt, messages) pair the stub was called with. */
 const calls: Array<{
   model: ModelConfig
@@ -34,6 +35,8 @@ vi.mock('@/ai/client/OpenAIClient', () => {
     ) {
       calls.push({ model: _model, system, messages, tools })
       if (nextError) throw nextError
+      if (nextToolCall)
+        yield { type: 'tool_call_start' as const, toolCallId: 'sample-call', toolName: 'read' }
       yield { type: 'text_delta' as const, delta: nextResponse }
       if (nextStreamError) yield { type: 'error' as const, error: nextStreamError }
     }
@@ -69,6 +72,8 @@ function buildHost(overrides: Partial<SummarizerHost> = {}) {
     summary: ref(''),
     touchedNotes: () => ['Notes/A.md'],
     messagesForModel: () => [
+      { role: 'user', content: 'earlier question', timestamp: 0 },
+      modelAssistant(0),
       { role: 'user', content: 'question', timestamp: 1 },
       { role: 'user', content: 'another', timestamp: 2 },
       { role: 'user', content: 'third', timestamp: 3 },
@@ -76,6 +81,10 @@ function buildHost(overrides: Partial<SummarizerHost> = {}) {
         .filter((m) => m.role === 'assistant' && m.usage)
         .map((m) => modelAssistant(m.usage!.total)),
     ],
+    compactionContext: async () => ({
+      systemPrompt: 'Sample system',
+      promptCacheKey: 'sample-cache',
+    }),
     toolDefs: () => [],
     hasInternalMessages: () => true,
     applyCompactSummary: (summary: string) => void applied.push(summary),
@@ -115,6 +124,7 @@ beforeEach(() => {
   nextResponse = ''
   nextError = null
   nextStreamError = null
+  nextToolCall = false
   calls.length = 0
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, agents: [], defaultAgentId: '' }
 })
@@ -203,6 +213,145 @@ it('sends tools only to compaction, never to title, recap or summary requests', 
 })
 
 describe('ChatSummarizer.compact', () => {
+  it('rejects a tool-using summary without replacing or saving history', async () => {
+    nextToolCall = true
+    nextResponse = 'Incomplete summary'
+    const { host, applied, saveCount } = buildHost()
+    await new ChatSummarizer(host).compact()
+    expect(host.error.value).toBe('Compact failed: Compaction must not call tools')
+    expect(applied).toEqual([])
+    expect(saveCount()).toBe(0)
+    expect(host.isCompacting.value).toBe(false)
+  })
+
+  it('records a structured continuation sample returned by a fake provider', async () => {
+    // This fixture tests the request/storage contract, not a real model's summarizing quality.
+    nextResponse = `## Owner request and purpose
+Fix the current parser regression without disturbing the reserved test device.
+## Owner messages verbatim
+1. “The export fix is released. Do not reopen it.”
+2. “Fix the parser regression. Do not run live tests: the device is reserved.”
+## Completed work and decisions
+The export fix was released. A failing parser unit test was added; no live tests ran.
+## Files, commands and errors
+src/parser.ts; tests/parser.test.ts. A local unit test reproduced an empty-input failure.
+## Current work
+The parser regression is still in progress. The export task is finished.
+## Next step
+Latest instruction: “Fix the parser regression. Do not run live tests: the device is reserved.”
+Fix the empty-input branch and rerun only the local parser unit test. Do not run live tests.`
+    const history: Message[] = [
+      { role: 'user', content: 'The export fix is released. Do not reopen it.', timestamp: 1 },
+      modelAssistant(0),
+      {
+        role: 'user',
+        content: 'Fix the parser regression. Do not run live tests: the device is reserved.',
+        timestamp: 2,
+      },
+      modelAssistant(950),
+    ]
+    const { host, applied } = buildHost({ messagesForModel: () => history })
+    await new ChatSummarizer(host).compact()
+    expect(applied).toEqual([nextResponse])
+    const instruction = calls[0].messages.at(-1)!.content as string
+    for (const section of [
+      'Owner request and purpose',
+      'Owner messages verbatim',
+      'Completed work and decisions',
+      'Files, commands and errors',
+      'Current work',
+      'Next step',
+    ])
+      expect(instruction).toContain(section)
+    expect(instruction).toContain('preserve EVERY owner message')
+    expect(instruction).toContain('Never substitute an older task')
+  })
+
+  it('keeps the latest instruction and every following tool turn verbatim', async () => {
+    nextResponse =
+      'Older work completed. Continue only the current task; live tests are prohibited.'
+    const history: Message[] = [
+      { role: 'user', content: 'Old task is shipped.', timestamp: 0 },
+      modelAssistant(10),
+      { role: 'user', content: 'Fix current task. Do not run live tests.', timestamp: 5 },
+      {
+        ...modelAssistant(10),
+        content: [{ type: 'toolCall', id: 'sample-call', name: 'read', arguments: {} }],
+      },
+      {
+        role: 'toolResult',
+        toolCallId: 'sample-call',
+        toolName: 'read',
+        content: [{ type: 'text', text: 'sample result' }],
+        isError: false,
+        timestamp: 6,
+      },
+      modelAssistant(20),
+    ]
+    const apply = vi.fn()
+    const { host } = buildHost({ messagesForModel: () => history, applyCompactSummary: apply })
+    await new ChatSummarizer(host).compact()
+    expect(calls[0].messages.slice(0, history.length)).toEqual(history)
+    expect(apply).toHaveBeenCalledWith(nextResponse, history.slice(2))
+    expect(calls[0].system).toBe('Sample system')
+    expect(calls[0].model).toEqual(host.activeModel())
+  })
+
+  it('does not duplicate the transcript in the default compaction instruction', async () => {
+    nextResponse = 'Sample summary'
+    const { host } = buildHost()
+    await new ChatSummarizer(host).compact()
+    const instruction = calls[0].messages.at(-1)!.content as string
+    expect(instruction).not.toContain('[user]: earlier question')
+    expect(calls[0].messages.slice(0, -1)).toEqual(host.messagesForModel())
+  })
+
+  it('retains an image-only owner turn and all subsequent messages', async () => {
+    nextResponse = 'Sample summary'
+    const history: Message[] = [
+      { role: 'user', content: 'Old task finished.', timestamp: 0 },
+      modelAssistant(0),
+      {
+        role: 'user',
+        content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAA' } }],
+        timestamp: 1,
+      },
+      modelAssistant(0),
+      modelAssistant(0),
+    ]
+    const apply = vi.fn()
+    const { host } = buildHost({ messagesForModel: () => history, applyCompactSummary: apply })
+    await new ChatSummarizer(host).compact()
+    expect(apply).toHaveBeenCalledWith(nextResponse, history.slice(2))
+  })
+
+  it('honours a custom compact prompt and its transcript placeholder', async () => {
+    AbeleConfig.getInstance().ai.prompts = {
+      ...DEFAULT_AI_SETTINGS.prompts,
+      compactPrompt: 'Custom record: {{messages}}',
+    }
+    nextResponse = 'Custom summary'
+    const { host } = buildHost()
+    await new ChatSummarizer(host).compact()
+    const instruction = calls[0].messages.at(-1)!.content as string
+    expect(instruction).toContain('Custom record: [user]: earlier question')
+    expect(instruction).toContain('Do not call tools')
+  })
+
+  it('uses the primary provider for exact history, never the auxiliary provider', async () => {
+    nextResponse = 'Sample summary'
+    const primary = { ...MODEL, id: 'sample-primary' }
+    const helper = vi.fn(() => ({
+      ...MODEL,
+      id: 'sample-helper',
+      baseUrl: 'https://helper.example/v1',
+    }))
+    const { host } = buildHost({ activeModel: () => primary, auxiliaryModel: helper })
+    await new ChatSummarizer(host).compact()
+    expect(calls[0].model).toEqual(primary)
+    expect(helper).not.toHaveBeenCalled()
+  })
+
   it.each(['manual', 'automatic'] as const)(
     'reports a streamed failure during %s compaction without replacing history',
     async (kind) => {
@@ -268,8 +417,16 @@ describe('ChatSummarizer.compact', () => {
  * typed reached the model as `[object Object]` and was summarised away.
  */
 describe('the transcript a summary is made from', () => {
+  beforeEach(() => {
+    AbeleConfig.getInstance().ai.prompts = {
+      ...DEFAULT_AI_SETTINGS.prompts,
+      compactPrompt: 'Summarize this transcript:\n\n{{messages}}',
+    }
+  })
   const transcript = () =>
-    (calls[0].messages[0].content as string).split('\n\n').filter((l) => l.startsWith('[user]'))
+    (calls[0].messages.at(-1)!.content as string)
+      .split('\n\n')
+      .filter((l) => l.startsWith('[user]'))
 
   it('carries the text of a plain user turn', async () => {
     nextResponse = 'ok'
@@ -362,6 +519,8 @@ describe('ChatSummarizer.autoCompactIfNeeded', () => {
           timestamp: 1,
           chatMessageId: 'divider',
         },
+        { role: 'user', content: 'Earlier', timestamp: 1 },
+        modelAssistant(0),
         { role: 'user', content: 'Continue', timestamp: 2 },
         modelAssistant(950),
       ],
@@ -588,10 +747,12 @@ describe('location results in helper-model requests', () => {
   }
 
   it.each(['generateRecap', 'compact', 'autoCompactIfNeeded'] as const)(
-    '%s receives a redacted placeholder instead of any location result content',
+    '%s never forwards location results to an unapproved helper provider',
     async (operation) => {
       nextResponse = 'A sample summary.'
       const messages: Message[] = [
+        { role: 'user', content: 'Previous finished task', timestamp: 0 },
+        modelAssistant(0),
         { role: 'user', content: 'Find a nearby place', timestamp: 1 },
         locationResult,
         {
@@ -618,8 +779,15 @@ describe('location results in helper-model requests', () => {
       })
       await new ChatSummarizer(host)[operation]()
       expect(calls).toHaveLength(1)
-      expect(calls[0].model).toEqual(helper)
       const sent = JSON.stringify(calls[0].messages)
+      if (operation !== 'generateRecap') {
+        expect(calls[0].model).toEqual(host.activeModel())
+        expect(calls[0].messages.slice(0, messages.length)).toEqual(before)
+        expect(sent).toContain('sample-device-token')
+        expect(messages).toEqual(before)
+        return
+      }
+      expect(calls[0].model).toEqual(helper)
       expect(sent).toContain('[tool current_location]: [Location result redacted]')
       for (const secret of [
         '12.345',

@@ -86,6 +86,48 @@ afterEach(async () => {
   vi.restoreAllMocks()
 })
 
+it.each(['chat-completions', 'responses'] as const)(
+  'compacts with a byte-identical ordinary request prefix and retains the latest instruction (%s)',
+  async (apiMode) => {
+    AbeleConfig.getInstance().ai.providers[0].apiMode = apiMode
+    if (apiMode === 'responses')
+      fetch.mockImplementation(
+        async () =>
+          new Response(
+            'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"Sample summary."}\n\n' +
+              'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed","output":[],"usage":{"input_tokens":10,"output_tokens":2}}}\n\n'
+          )
+      )
+    await session.sendMessage('The previous task is finished.')
+    await session.sendMessage('The old result is released.')
+    await session.sendMessage('Fix the current task. Do not run live tests.')
+    const previous = JSON.parse(String(fetch.mock.calls.at(-1)![1]!.body))
+    const before = structuredClone(session.messagesForModel())
+    await session.compact()
+    const compact = JSON.parse(String(fetch.mock.calls.at(-1)![1]!.body))
+    const field = apiMode === 'responses' ? 'input' : 'messages'
+    expect(JSON.stringify(compact[field].slice(0, previous[field].length))).toBe(
+      JSON.stringify(previous[field])
+    )
+    expect(compact.model).toBe(previous.model)
+    expect(compact.tools).toEqual(previous.tools)
+    expect(compact.instructions).toBe(previous.instructions)
+    expect(compact.prompt_cache_key).toBe(previous.prompt_cache_key)
+    expect(compact[field].at(-1).content).toContain('Do not call tools')
+    const after = session.messagesForModel()
+    const lastOwner = before.findLastIndex((message) => message.role === 'user')
+    expect(after[0]).toMatchObject({
+      role: 'system',
+      content: expect.stringContaining('[Conversation compacted]'),
+    })
+    expect(after.slice(1).map(({ chatMessageId: _id, ...message }) => message)).toEqual(
+      before
+        .slice(Math.min(lastOwner, before.length - 2))
+        .map(({ chatMessageId: _id, ...message }) => message)
+    )
+  }
+)
+
 it('keeps cache usage in visible and saved messages and debug diagnostics', async () => {
   const debug = vi.spyOn(console, 'debug')
   await session.sendMessage('Sample question')

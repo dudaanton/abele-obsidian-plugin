@@ -1201,6 +1201,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     return this.getMessagesForModel()
   }
 
+  async compactionContext(): Promise<{ systemPrompt: string; promptCacheKey: string }> {
+    this.chatIdentity ??= crypto.randomUUID()
+    return {
+      systemPrompt: await this.chatService.getSystemPrompt(this),
+      promptCacheKey: chatPromptCacheKey(this.chatIdentity),
+    }
+  }
+
   toolDefs(): ToolDefinition[] {
     return this.getTools().map((translationItem) => ({
       name: translationItem.name,

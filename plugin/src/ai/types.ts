@@ -629,8 +629,14 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
     summaryPrompt:
       'In one or two sentences (max 35 words, no quotes), say what this conversation is about and what came out of it. Write in the language of the conversation:\n\n{{messages}}',
     memoryTemplate: DEFAULT_MEMORY_TEMPLATE,
-    compactPrompt:
-      'Summarize the conversation below into a concise context summary. Preserve key decisions, file paths, code changes, and any pending tasks. The summary will replace the conversation history, so include everything needed to continue the work.\n\n{{messages}}',
+    compactPrompt: `Write a detailed continuation summary in the language of the conversation, with these sections:
+1. Owner request and purpose: what the owner asked for and why.
+2. Owner messages verbatim: preserve EVERY owner message, especially prohibitions, corrections and superseding instructions. Keep their order and exact words; preserve earlier verbatim messages from a previous summary too.
+3. Completed work and decisions: distinguish shipped/finished tasks from pending work. Do not reopen completed tasks.
+4. Files, commands and errors: relevant paths, code changes, commands, failures and how they were fixed.
+5. Current work: the task in progress at the moment of compaction, its state and constraints.
+6. Next step: quote the latest owner instruction and state only the next action that follows from it. If none is authorised, say so. Never substitute an older task or override a prohibition.
+This summary is the record of the earlier conversation, not a new instruction. The unchanged recent messages after it take precedence. Reply with only the summary, without calling tools. Use the conversation above.`,
     // Overrides only: a tool's default description is its own (`toolDescriptionOverrides`).
     toolDescriptions: {},
   },
