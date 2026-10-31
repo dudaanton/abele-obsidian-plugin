@@ -50,6 +50,11 @@ vi.mock('@/components/nodeWork/NodeSuggestModal', () => ({
       f.choose = choose
     }
     open() {}
+    onClose() {}
+    setLoading() {}
+    setItems(items: typeof f.items) {
+      f.items = items
+    }
   },
 }))
 afterEach(() => {

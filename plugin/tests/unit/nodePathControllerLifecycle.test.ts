@@ -1,10 +1,15 @@
 import { expect, it, vi } from 'vitest'
 import { shallowRef } from 'vue'
-import { newNodePathChat, attachNodePathWorktree } from '@/node/NodePathController'
+import {
+  newNodePathChat,
+  attachNodePathWorktree,
+  pickNodePathPlace,
+} from '@/node/NodePathController'
 import type { NodePathModel } from '@/node/NodePathModel'
 
 const fixture = vi.hoisted(() => ({
   open: vi.fn(),
+  pickers: [] as any[],
   editing: vi.fn(async () => ({ enabled: true })),
   execution: vi.fn(async () => {}),
   notice: vi.fn(),
@@ -16,8 +21,13 @@ vi.mock('@/components/nodeWork/NodeSuggestModal', () => ({
   NodeSuggestModal: class {
     constructor(_app: unknown, _rows: unknown, _title: string, choose: typeof fixture.choose) {
       fixture.choose = choose
+      Object.assign(this, { rows: _rows })
+      fixture.pickers.push(this)
     }
-    open() {}
+    open = vi.fn()
+    setItems = vi.fn()
+    setLoading = vi.fn()
+    onClose() {}
   },
 }))
 vi.mock('@/stores/GlobalStore', () => ({
@@ -26,6 +36,7 @@ vi.mock('@/stores/GlobalStore', () => ({
 vi.mock('@/node/NodeService', () => ({
   NodeService: {
     getInstance: () => ({
+      nodes: shallowRef([{ id: 'sample-registration', label: 'Sample node' }]),
       connection: () => ({
         state: { value: 'connected' },
         client: {
@@ -183,4 +194,66 @@ it('names the new chat action when execution admission is busy', async () => {
   await vi.waitFor(() => expect(fixture.notice).toHaveBeenCalled())
   expect(fixture.notice.mock.calls.at(-1)?.[0].message).toContain('Could not start a new chat')
   expect(fixture.open).not.toHaveBeenCalled()
+})
+
+it('opens cached places synchronously, refreshes in place, and never stacks pickers', async () => {
+  fixture.pickers.length = 0
+  let finish!: () => void
+  const model = {
+    registrationId: 'sample-registration',
+    folders: shallowRef([
+      { id: 'sample-folder', name: 'Sample', path: '/sample', git: false, copies: [] },
+    ]),
+    selected: shallowRef('sample-folder'),
+    refresh: vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+    ),
+    select: vi.fn(async () => {}),
+  }
+  pickNodePathPlace(model as unknown as NodePathModel, vi.fn())
+  expect(fixture.pickers).toHaveLength(1)
+  const picker = fixture.pickers[0]
+  expect(picker.open).toHaveBeenCalledOnce()
+  expect(picker.rows[0]).toMatchObject({ id: 'sample-folder', current: true })
+  expect(picker.setLoading).toHaveBeenLastCalledWith(true)
+  pickNodePathPlace(model as unknown as NodePathModel, vi.fn())
+  expect(fixture.pickers).toHaveLength(1)
+  expect(model.refresh).toHaveBeenCalledOnce()
+  model.folders.value = []
+  finish()
+  await vi.waitFor(() => expect(picker.setItems).toHaveBeenCalledWith([]))
+  expect(picker.setLoading).toHaveBeenLastCalledWith(false)
+  picker.onClose()
+  pickNodePathPlace(model as unknown as NodePathModel, vi.fn())
+  expect(fixture.pickers).toHaveLength(2)
+  fixture.pickers[1].onClose()
+  finish()
+})
+
+it('does not update or reopen a picker closed while an empty-cache refresh is pending', async () => {
+  fixture.pickers.length = 0
+  let finish!: () => void
+  const model = {
+    registrationId: 'sample-registration',
+    folders: shallowRef([]),
+    selected: shallowRef(''),
+    refresh: vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        })
+    ),
+  }
+  pickNodePathPlace(model as unknown as NodePathModel, vi.fn())
+  expect(fixture.pickers).toHaveLength(1)
+  const picker = fixture.pickers[0]
+  expect(picker.rows).toEqual([])
+  picker.onClose()
+  finish()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(picker.setItems).not.toHaveBeenCalled()
+  expect(picker.open).toHaveBeenCalledOnce()
 })

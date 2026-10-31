@@ -245,17 +245,28 @@ export class NodePathClientPort implements NodePathPort {
     Awaited<ReturnType<ReadClient['listWorkspaces']>>
   >()
   async catalogue(capabilities?: (capabilities: string[]) => void): Promise<PathCatalogue> {
-    const description = await this.describe(true)
+    const started = performance.now()
+    const timed = async <T>(call: string, read: () => Promise<T>): Promise<T> => {
+      const start = performance.now()
+      try {
+        return await read()
+      } finally {
+        console.debug('[Abele] node path: catalogue call', call, {
+          ms: Math.round(performance.now() - start),
+        })
+      }
+    }
+    const description = await timed('describe', () => this.describe(true))
     capabilities?.([...this.capabilities])
     const guarded = supportsExpectedTarget(description)
     const enriched = this.capabilities.includes('node_path_v2')
     const [projects, sessions] = await Promise.all([
       nodePages(
-        (after) => this.client.listProjects(after),
+        (after) => timed('listProjects', () => this.client.listProjects(after)),
         (p) => p.project_id
       ),
       nodePages(
-        (after) => this.client.listSessions(after),
+        (after) => timed('listSessions', () => this.client.listSessions(after)),
         (s) => s.session_id
       ),
     ])
@@ -265,7 +276,8 @@ export class NodePathClientPort implements NodePathPort {
     for (const project of projects) {
       let unavailable = false
       const workspaces = await nodePages(
-        (after) => this.client.listWorkspaces(project.project_id, after),
+        (after) =>
+          timed('listWorkspaces', () => this.client.listWorkspaces(project.project_id, after)),
         (w) => w.workspace_id
       ).catch((error: unknown) => {
         if (
@@ -283,14 +295,16 @@ export class NodePathClientPort implements NodePathPort {
         const rows = unavailable
           ? []
           : await pathPages((cursor) =>
-              this.client.repository.worktrees({
-                project_id: project.project_id,
-                cursor,
-                ...(enriched ? { include_selection: true } : {}),
-                ...(nodeAdvertisesMethod(this.client, 'repository.v1.file.directory')
-                  ? { include_identity: true }
-                  : {}),
-              })
+              timed('repository.v1.worktrees', () =>
+                this.client.repository.worktrees({
+                  project_id: project.project_id,
+                  cursor,
+                  ...(enriched ? { include_selection: true } : {}),
+                  ...(nodeAdvertisesMethod(this.client, 'repository.v1.file.directory')
+                    ? { include_identity: true }
+                    : {}),
+                })
+              )
             ).catch((error: unknown): WorktreeEntry[] => {
               // The project's fingerprint is checked before filesystem availability. A
               // removed .git can therefore refuse the entire catalogue as stale_resource.
@@ -378,10 +392,12 @@ export class NodePathClientPort implements NodePathPort {
       let target = session.workspace_id ? workspaceTargets.get(session.workspace_id) : undefined
       if (this.capabilities.includes('node_path_execution')) {
         try {
-          const binding = await this.client.nodePath.sessionWorktreeGet({
-            session_id: session.session_id,
-            ...(guarded ? { include_incarnation: true } : {}),
-          })
+          const binding = await timed('sessionWorktreeGet', () =>
+            this.client.nodePath.sessionWorktreeGet({
+              session_id: session.session_id,
+              ...(guarded ? { include_incarnation: true } : {}),
+            })
+          )
           target = {
             ...bindPathTarget(this.identity, binding.project_id, binding.target),
             ...(binding.incarnation ? { incarnation: binding.incarnation } : {}),
@@ -401,7 +417,7 @@ export class NodePathClientPort implements NodePathPort {
         }
       }
       if (target && !this.subscribedSessions.has(session.session_id)) {
-        await this.client.subscribe(session.session_id)
+        await timed('subscribe(session)', () => this.client.subscribe(session.session_id))
         this.subscribedSessions.add(session.session_id)
       }
       // Runs and a long-lived session's turns alike, and a question waiting for the owner.
@@ -410,6 +426,11 @@ export class NodePathClientPort implements NodePathPort {
       )
       bound.push({ session, target, running: activity.running, activity })
     }
+    console.debug('[Abele] node path: catalogue ready', {
+      ms: Math.round(performance.now() - started),
+      projects: projects.length,
+      sessions: sessions.length,
+    })
     return { folders, targets, capabilities: this.capabilities, sessions: bound }
   }
   async inspect(

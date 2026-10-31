@@ -714,11 +714,21 @@ export class NodePathModel {
       const previousFolders = this.folders.value
       this.targets.value = catalogue.targets.map((t) => ({ ...t }))
       const removed = previous.filter((target) => !this.hasTarget(target))
-      const removedSelected = removed.some(
-        (target) =>
-          target.id === this.selected.value ||
-          (target.kind === 'workspace' && target.projectId === this.selected.value)
-      )
+      const missingSelected =
+        selected &&
+        catalogue.folders.some(
+          (folder) =>
+            folder.id === selected.projectId &&
+            !folder.missing &&
+            folder.copies.some((copy) => copy.id === selected.id && copy.missing)
+        )
+      const removedSelected =
+        missingSelected ||
+        removed.some(
+          (target) =>
+            target.id === this.selected.value ||
+            (target.kind === 'workspace' && target.projectId === this.selected.value)
+        )
       const replacement =
         removedSelected && selected
           ? catalogue.folders.some((f) => f.id === selected.projectId && f.missing)
@@ -731,6 +741,7 @@ export class NodePathModel {
               )
           : undefined
       for (const target of removed) this.discardTarget(target)
+      if (missingSelected && selected) this.discardTarget(selected)
       // Retire the old selection before opening any independently matched replacement.
       if (removedSelected)
         this.selected.value = catalogue.folders.some(

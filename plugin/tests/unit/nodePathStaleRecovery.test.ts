@@ -537,3 +537,25 @@ it.each(['refresh', 'refreshCurrent', 'reconnected', 'stale read', 'startup'])(
     model.destroy()
   }
 )
+
+it('falls back automatically when a catalogue retains the selected secondary checkout as missing', async () => {
+  const { model, port, stop } = fixture()
+  const root = { ...target, id: 'sample-root' }
+  const secondary = { ...rootFolder.copies[0], kind: 'worktree' as const }
+  const folder = { ...rootFolder, copies: [{ ...rootFolder.copies[0], id: root.id }, secondary] }
+  model.targets.value = [root, target]
+  model.folders.value = [folder]
+  await model.selectTarget(target)
+  port.catalogue.mockResolvedValueOnce({
+    folders: [{ ...folder, copies: [folder.copies[0], { ...secondary, missing: true }] }],
+    targets: [root, target],
+    sessions: [],
+    capabilities: [],
+  } as never)
+  await model.refresh()
+  expect(model.current.value).toEqual(root)
+  expect(model.error.value).toBe('')
+  expect(stop).toHaveBeenCalledOnce()
+  expect(port.inspect.mock.calls.at(-1)?.[0]).toEqual(root)
+  model.destroy()
+})

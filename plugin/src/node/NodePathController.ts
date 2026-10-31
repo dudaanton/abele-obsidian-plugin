@@ -819,17 +819,13 @@ export const openFolderForNode = (model: NodePathModel) =>
  * changed files, and under each the node agent's chats that work there. Choosing a place shows
  * it in the panel; choosing a chat opens it.
  */
+const placePickers = new WeakMap<NodePathModel, NodeSuggestModal>()
+
 export function pickNodePathPlace(model: NodePathModel, openChat: (id: string) => void): void {
-  nodePathAction(async () => {
+  if (placePickers.has(model)) return
+  const started = performance.now()
+  void (async () => {
     const connection = NodeService.getInstance().connection(model.registrationId)
-    // Offline the last catalogue is useful; online always ask before presenting a snapshot.
-    if (connection.state.value === 'connected') {
-      try {
-        await model.refresh()
-      } catch (error) {
-        nodeErrorNotice(error, t('streamB.nodeActionFailed.35c41e'))
-      }
-    }
     const node = NodeService.getInstance().nodes.value.find((n) => n.id === model.registrationId)
     const chats = (list: NodePathModel['folders']['value'][number]['chats'], where: string) =>
       (list ?? []).map((chat) => ({
@@ -839,38 +835,39 @@ export function pickNodePathPlace(model: NodePathModel, openChat: (id: string) =
         title: chat.title,
         note: [where, chat.when].filter(Boolean).join(' · '),
       }))
-    const items = model.folders.value.flatMap((folder) =>
-      folder.git && !folder.missing
-        ? folder.copies.flatMap((copy) => [
-            {
-              id: copy.id,
-              // A worktree gone from disk says so by its glyph and in its tooltip, as everywhere.
-              icon: copyIcon(copy),
-              kind: copyKind(copy),
-              title: `${folder.name} / ${copy.branch}`,
-              note: copy.path,
-              ...(copy.changed
-                ? { count: { value: copy.changed, label: t('streamB.changedFiles.4743a8') } }
-                : {}),
-              current: copy.id === model.selected.value,
-            },
-            ...chats(copy.chats, `${folder.name} / ${copy.branch}`),
-          ])
-        : [
-            {
-              id: folder.id,
-              icon: 'folder',
-              kind: t('streamB.folder.74ccd4'),
-              title: folder.name,
-              note: folder.path,
-              current: folder.id === model.selected.value,
-            },
-            ...chats(folder.chats, folder.name),
-          ]
-    )
-    new NodeSuggestModal(
+    const items = () =>
+      model.folders.value.flatMap((folder) =>
+        folder.git && !folder.missing
+          ? folder.copies.flatMap((copy) => [
+              {
+                id: copy.id,
+                // A worktree gone from disk says so by its glyph and in its tooltip, as everywhere.
+                icon: copyIcon(copy),
+                kind: copyKind(copy),
+                title: `${folder.name} / ${copy.branch}`,
+                note: copy.path,
+                ...(copy.changed
+                  ? { count: { value: copy.changed, label: t('streamB.changedFiles.4743a8') } }
+                  : {}),
+                current: copy.id === model.selected.value,
+              },
+              ...chats(copy.chats, `${folder.name} / ${copy.branch}`),
+            ])
+          : [
+              {
+                id: folder.id,
+                icon: 'folder',
+                kind: t('streamB.folder.74ccd4'),
+                title: folder.name,
+                note: folder.path,
+                current: folder.id === model.selected.value,
+              },
+              ...chats(folder.chats, folder.name),
+            ]
+      )
+    const picker = new NodeSuggestModal(
       app(),
-      items,
+      items(),
       node?.label != null
         ? t('streamB.folderBranchOrChatOn.4055f1', { v0: node.label })
         : t('streamBMeta.6e72d9e69a'),
@@ -879,9 +876,38 @@ export function pickNodePathPlace(model: NodePathModel, openChat: (id: string) =
           ? openChat(item.id.slice(5))
           : nodePathAction(() => model.select(item.id)),
       t('streamB.noFolderOrBranchMatches.5b24c7')
-    ).open()
-  })
+    )
+    placePickers.set(model, picker)
+    const onClose = picker.onClose.bind(picker)
+    picker.onClose = () => {
+      onClose()
+      if (placePickers.get(model) === picker) placePickers.delete(model)
+    }
+    try {
+      picker.open()
+    } catch (error) {
+      placePickers.delete(model)
+      throw error
+    }
+    console.debug('[Abele] node path: place picker opened', {
+      ms: Math.round(performance.now() - started),
+    })
+    if (connection.state.value !== 'connected') return
+    picker.setLoading(true)
+    try {
+      await model.refresh()
+      if (placePickers.get(model) === picker) picker.setItems(items())
+    } catch (error) {
+      nodeErrorNotice(error, t('streamB.nodeActionFailed.35c41e'))
+    } finally {
+      if (placePickers.get(model) === picker) picker.setLoading(false)
+      console.debug('[Abele] node path: place picker refreshed', {
+        ms: Math.round(performance.now() - started),
+      })
+    }
+  })().catch((error: unknown) => nodeErrorNotice(error, t('streamB.nodeActionFailed.35c41e')))
 }
+
 /**
  * Compare with…: every branch, remote branch and tag the worktree can be set against. The
  * branch's codes and its committed changes then count against the one chosen.

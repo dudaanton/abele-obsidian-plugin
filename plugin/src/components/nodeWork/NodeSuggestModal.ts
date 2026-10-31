@@ -3,6 +3,8 @@ import { t } from '@/i18n'
 // quick-switcher prompt: type to filter, arrows to move, Enter to choose. Each row is the thing's
 // glyph (its kind in the tooltip), its name, a faint line under it, and a code at the end.
 import { App, SuggestModal, setIcon, setTooltip } from 'obsidian'
+import { h, render } from 'vue'
+import Progress from '@/components/obsidian/Progress.vue'
 import './nodeSuggest.css'
 
 export interface NodeSuggestion {
@@ -37,6 +39,7 @@ export interface NodeSuggestHint {
 
 export class NodeSuggestModal extends SuggestModal<NodeSuggestion> {
   private hintEl?: HTMLElement
+  private loadingEl?: HTMLElement
 
   constructor(
     app: App,
@@ -81,6 +84,26 @@ export class NodeSuggestModal extends SuggestModal<NodeSuggestion> {
     this.hintEl?.remove()
     this.hintEl = undefined
     this.inputEl.dispatchEvent(new Event('input'))
+  }
+
+  /** The shared native progress component; the cached list remains usable. */
+  setLoading(loading: boolean): void {
+    if (this.loadingEl) {
+      render(null, this.loadingEl)
+      this.loadingEl.remove()
+      this.loadingEl = undefined
+    }
+    this.resultContainerEl.setAttribute('aria-busy', String(loading))
+    if (!loading) return
+    const el = createDiv()
+    render(h(Progress, { label: t('streamB.waitingForTheNode.7225c7') }), el)
+    this.resultContainerEl.before(el)
+    this.loadingEl = el
+  }
+
+  onClose(): void {
+    this.setLoading(false)
+    super.onClose()
   }
 
   getSuggestions(query: string): NodeSuggestion[] {
