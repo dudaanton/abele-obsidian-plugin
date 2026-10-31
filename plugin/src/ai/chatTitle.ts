@@ -1,14 +1,13 @@
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { OpenAIClient } from './client/OpenAIClient'
-import type { Message, ModelConfig, ToolDefinition } from './client'
+import type { Message, ModelConfig } from './client'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from './types'
 
 /** The same opening-exchange title for local and node conversations. */
 export async function generateChatTitle(
   messages: ChatMessage[],
   model: ModelConfig,
-  signal: AbortSignal,
-  tools: ToolDefinition[] = []
+  signal: AbortSignal
 ): Promise<string> {
   const config = AbeleConfig.getInstance().ai
   const client = new OpenAIClient()
@@ -27,7 +26,7 @@ export async function generateChatTitle(
   const titleMessages: Message[] = [{ role: 'user', content: titlePrompt, timestamp: Date.now() }]
 
   let title = ''
-  for await (const event of client.stream(model, titleSystem, titleMessages, tools, { signal })) {
+  for await (const event of client.stream(model, titleSystem, titleMessages, [], { signal })) {
     if (event.type === 'text_delta') title += event.delta
   }
 

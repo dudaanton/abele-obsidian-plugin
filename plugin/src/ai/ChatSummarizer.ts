@@ -107,8 +107,7 @@ export class ChatSummarizer {
       const title = await generateChatTitle(
         this.host.messages.value,
         this.host.auxiliaryModel(),
-        this.host.backgroundSignal(),
-        this.host.toolDefs()
+        this.host.backgroundSignal()
       )
 
       if (this.host.manualTitle?.value || !title || title === this.host.chatTitle.value) return
@@ -170,7 +169,7 @@ export class ChatSummarizer {
         model,
         ChatSummarizer.RECAP_SYSTEM_PROMPT,
         [{ role: 'user', content: prompt, timestamp: Date.now() }],
-        this.host.toolDefs(),
+        [],
         { signal }
       )) {
         if (event.type === 'text_delta') recap += event.delta
@@ -206,8 +205,7 @@ export class ChatSummarizer {
       const summary = await requestSummary(
         conversationLines(this.host.messages.value),
         this.host.auxiliaryModel(),
-        this.host.backgroundSignal(),
-        this.host.toolDefs()
+        this.host.backgroundSignal()
       )
       if (!summary || summary === this.host.summary.value) return
       this.host.summary.value = summary

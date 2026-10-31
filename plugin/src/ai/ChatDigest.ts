@@ -3,7 +3,7 @@ import { TFile } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { OpenAIClient } from './client/OpenAIClient'
-import type { ModelConfig, ToolDefinition } from './client'
+import type { ModelConfig } from './client'
 import { parseChatMetadata, serializeMetadata } from './ChatLog'
 import { ChatStorage } from './ChatStorage'
 import { ChatService } from './ChatService'
@@ -29,8 +29,7 @@ const PER_LINE = 400
 export async function requestSummary(
   lines: ChatLine[],
   model: ModelConfig,
-  signal: AbortSignal,
-  toolDefs: ToolDefinition[] = []
+  signal: AbortSignal
 ): Promise<string> {
   if (!lines.some((line) => line.role === 'assistant')) return ''
 
@@ -47,7 +46,7 @@ export async function requestSummary(
     model,
     SYSTEM_PROMPT,
     [{ role: 'user', content: prompt, timestamp: Date.now() }],
-    toolDefs,
+    [],
     { signal }
   )) {
     if (event.type === 'text_delta') summary += event.delta

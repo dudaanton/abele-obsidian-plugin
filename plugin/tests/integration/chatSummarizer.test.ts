@@ -9,7 +9,7 @@ import type { TFile } from 'obsidian'
 import { ChatSummarizer, type SummarizerHost } from '@/ai/ChatSummarizer'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS, type ChatMessage } from '@/ai/types'
-import type { Message, ModelConfig, ToolCallContent } from '@/ai/client'
+import type { Message, ModelConfig, ToolCallContent, ToolDefinition } from '@/ai/client'
 
 /** Whatever the stubbed client should emit as `text_delta` on the next call. */
 let nextResponse = ''
@@ -17,12 +17,22 @@ let nextResponse = ''
 let nextError: Error | null = null
 let nextStreamError: string | null = null
 /** Every (systemPrompt, messages) pair the stub was called with. */
-const calls: Array<{ model: ModelConfig; system: string; messages: Message[] }> = []
+const calls: Array<{
+  model: ModelConfig
+  system: string
+  messages: Message[]
+  tools: ToolDefinition[]
+}> = []
 
 vi.mock('@/ai/client/OpenAIClient', () => {
   class OpenAIClient {
-    async *stream(_model: ModelConfig, system: string, messages: Message[]) {
-      calls.push({ model: _model, system, messages })
+    async *stream(
+      _model: ModelConfig,
+      system: string,
+      messages: Message[],
+      tools: ToolDefinition[]
+    ) {
+      calls.push({ model: _model, system, messages, tools })
       if (nextError) throw nextError
       yield { type: 'text_delta' as const, delta: nextResponse }
       if (nextStreamError) yield { type: 'error' as const, error: nextStreamError }
@@ -173,6 +183,23 @@ describe('ChatSummarizer.generateTitle', () => {
 
     expect(host.chatTitle.value).toBe('Existing')
   })
+})
+
+it('sends tools only to compaction, never to title, recap or summary requests', async () => {
+  nextResponse = 'Sample summary'
+  const tools = [{ name: 'sample_tool', description: 'Sample', parameters: { type: 'object' } }]
+  const { host } = buildHost({
+    messages: ref([assistantMessage(10)]),
+    toolDefs: () => tools,
+  })
+  const summarizer = new ChatSummarizer(host)
+  await summarizer.generateTitle()
+  await summarizer.generateRecap()
+  await summarizer.generateSummary()
+  expect(calls).toHaveLength(3)
+  expect(calls.map((c) => c.tools)).toEqual([[], [], []])
+  await summarizer.compact()
+  expect(calls.at(-1)?.tools).toEqual(tools)
 })
 
 describe('ChatSummarizer.compact', () => {
