@@ -22,3 +22,35 @@ it('requests children only on expansion and exposes paged continuation actions',
   expect(wrapper.emitted('more')).toEqual([['']])
   wrapper.unmount()
 })
+
+it('expands only the selected file ancestors as their lazy pages arrive', async () => {
+  const wrapper = mount(FileTree, {
+    props: {
+      entries: [
+        { path: 'packages', name: 'packages', kind: 'folder' },
+        { path: 'other', name: 'other', kind: 'folder' },
+      ],
+      changes: [],
+      mode: 'all',
+    },
+  })
+  expect(wrapper.emitted('expand')).toBeUndefined()
+  await wrapper.setProps({ selected: 'packages/sample/src/example.ts' })
+  expect(wrapper.emitted('expand')).toEqual([['packages']])
+  await wrapper.setProps({
+    entries: [
+      {
+        path: 'packages',
+        name: 'packages',
+        kind: 'folder',
+        children: [
+          { path: 'packages/sample', name: 'sample', kind: 'folder' },
+          { path: 'packages/neighbour', name: 'neighbour', kind: 'folder' },
+        ],
+      },
+      { path: 'other', name: 'other', kind: 'folder' },
+    ],
+  })
+  expect(wrapper.emitted('expand')).toEqual([['packages'], ['packages/sample']])
+  wrapper.unmount()
+})
