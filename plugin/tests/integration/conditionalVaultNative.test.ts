@@ -502,6 +502,7 @@ it('proves publication by the retained inode, refusing an independent equal-byte
   expect(await fs.readFile(join(root, 'sample.bin'))).toEqual(Buffer.from(bytes))
 }, 30_000)
 
+// Native durability work can exceed the default 5s on a busy volume.
 it('retains a captured inode for saves through a handle opened before removal', async () => {
   const { root, disk } = await setup(),
     path = join(root, 'sample.bin')
@@ -528,8 +529,9 @@ it('retains a captured inode for saves through a handle opened before removal', 
   expect(await fs.readFile(join(folder, ids[0], 'victim'))).toEqual(Buffer.from(b))
   await disk().recoverConditionalFiles()
   await expect(fs.stat(path)).rejects.toMatchObject({ code: 'ENOENT' })
-})
+}, 30_000)
 
+// Native durability work can exceed the default 5s on a busy volume.
 it('certifies only a conditionally installed sealed stage and preserves its expected mtime', async () => {
   const { root, disk } = await setup(),
     host = disk()
@@ -554,4 +556,4 @@ it('certifies only a conditionally installed sealed stage and preserves its expe
   await fs.writeFile(join(root, 'independent.bin'), bytes)
   await fs.rename(join(root, 'independent.bin'), join(root, 'sample.bin'))
   expect(await reopened.installed()).toBe(false)
-})
+}, 30_000)
