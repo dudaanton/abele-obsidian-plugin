@@ -1431,8 +1431,19 @@ export async function verifyMetadataInventory(vault: Pick<Vault, 'adapter'>): Pr
         } catch (error) {
           if ((error as { code?: string }).code !== 'ENOENT') throw error
         }
-        if (before?.dev !== after?.dev || before?.ino !== after?.ino || after?.isSymbolicLink()) {
+        // A namespace change can retire an advisory ancestor during the pass.
+        // The vault pin is unchanged; later effects still check their own paths.
+        if (after === null) {
+          inventory?.directories.delete(path)
+          return
+        }
+        if (before === null && after.isDirectory() && !after.isSymbolicLink()) {
+          inventory?.directories.set(path, Promise.resolve(after))
+          return
+        }
+        if (before?.dev !== after.dev || before?.ino !== after.ino || after.isSymbolicLink()) {
           const error = new VaultRootChangedError()
+          error.cause = new Error(`Advisory ancestor identity changed: ${path}`)
           pin.stop(error)
           throw error
         }

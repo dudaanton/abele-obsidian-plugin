@@ -936,7 +936,9 @@ export class TokenEngines {
         },
       })
       physicalLedger.observeCommittedEntries((entries) => ordinary.acknowledgeWrites(entries))
-      await ordinary.waitForStartupIndex(startup.signal)
+      const waitForIndex = () => ordinary.waitForStartupIndex(startup.signal)
+      await (this.deps.startupTimeline?.stage('connection', 'Waiting for host index', waitForIndex) ??
+        waitForIndex())
       assertActive()
       if ((await ordinary.needsRecoveryHandshake()) || (await state.getExternalState()) !== null)
         await stage('Checking server restore generation', async () => {

@@ -14,6 +14,7 @@ import { countedDisk, nativeVault } from '../helpers/nativeRestartVault'
 import { nativeTokenFixture } from '../helpers/nativeTokenFixture'
 import { TokenEngines } from '@/sync/tokenEngines'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { nativeOf } from '@/sync/vaultPathLinks'
 
 const extraFiles = Number(process.env.STOPPED_SCOPE_EXTRA_FILES ?? 0)
 async function livePaths(token: string): Promise<Set<string>> {
@@ -56,6 +57,9 @@ it.each([
   const trustReason = Symbol.for('abele.sync.unchanged-index-reason-v1')
   const prototype = ObsidianFileSystem.prototype as unknown as Record<symbol, (path: string) => string>
   const originalTrustReason = prototype[trustReason]
+  const verifyInventory = Symbol.for('abele.sync.verify-inventory-root-v1')
+  const originalVerify = Reflect.get(ObsidianFileSystem.prototype, verifyInventory) as () => Promise<void>
+  let retiredAncestor = false
   const stableReasons: string[] = []
   let commitBaseHeaders = 0
   let directoryReceipts = 0
@@ -149,6 +153,17 @@ it.each([
       if (path === 'Sample/Notes/Stable.md') stableReasons.push(reason)
       return reason
     }
+    Reflect.set(ObsidianFileSystem.prototype, verifyInventory, async function (this: ObsidianFileSystem) {
+      if (!withoutHeader && !retiredAncestor) {
+        retiredAncestor = true
+        const before = '.abele-sync/sample-advisory'
+        await disk.mkdir(join(root, before), { recursive: true })
+        await disk.writeFile(join(root, before, 'sample.md'), 'private sample')
+        expect(await nativeOf(app.vault.adapter)!.fileIdentity!(before + '/sample.md')).toBeTruthy()
+        await disk.rename(join(root, before), join(root, '.abele-sync/sample-retired'))
+      }
+      return originalVerify.call(this)
+    })
     restarted.start()
     await device.ui.connectionsChanged(() => {})
     if (!withoutHeader) {
@@ -183,6 +198,7 @@ it.each([
     expect(stableReasons.length).toBeGreaterThan(0)
     expect(stableReasons).not.toContain('pending-event')
     expect(directoryReceipts).toBeGreaterThanOrEqual(2)
+    if (!withoutHeader) expect(retiredAncestor).toBe(true)
     if (withoutHeader) {
       expect(commitBaseHeaders).toBeGreaterThan(0)
       expect(device.ui.activity.value[device.id]?.reconciliation?.phase).toBe('review')
@@ -204,6 +220,7 @@ it.each([
     }
   } finally {
     prototype[trustReason] = originalTrustReason
+    Reflect.set(ObsidianFileSystem.prototype, verifyInventory, originalVerify)
     await restarted?.close()
     await device?.host.close()
     await server.close()

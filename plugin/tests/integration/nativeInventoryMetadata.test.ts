@@ -14,6 +14,41 @@ import {
 import { buildFakeVault } from '../helpers/fakeVault'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 
+it.each(['create', 'rename'] as const)(
+  'keeps the pinned vault usable after an ordinary directory %s during inventory',
+  async (change) => {
+    const root = await fs.realpath(await fs.mkdtemp(join(tmpdir(), 'sample-directory-change-')))
+    const app = buildFakeVault([])
+    Object.assign(app.vault.adapter, {
+      getFullPath: (path: string) => join(root, path),
+      fsPromises: fs,
+    })
+    try {
+      await fs.mkdir(join(root, 'Shared'))
+      await fs.mkdir(join(root, 'Shared/Old'))
+      await fs.writeFile(join(root, 'Shared/Old/sample.md'), 'sample')
+      const adapter = guardedVaultAdapter(app.vault.adapter)
+      const native = nativeOf(adapter)!
+      await withMetadataInventory({ adapter }, async () => {
+        if (change === 'create') {
+          expect(await adapter.stat('Shared/New/sample.md')).toBeNull()
+          await fs.mkdir(join(root, 'Shared/New'))
+          await fs.writeFile(join(root, 'Shared/New/sample.md'), 'new sample')
+        } else {
+          expect(await native.fileIdentity!('Shared/Old/sample.md')).toBeTruthy()
+          await fs.rename(join(root, 'Shared/Old'), join(root, 'Shared/Renamed'))
+        }
+        await expect(verifyMetadataInventory({ adapter })).resolves.toBeUndefined()
+        expect(await native.fileIdentity!(
+          change === 'create' ? 'Shared/New/sample.md' : 'Shared/Renamed/sample.md'
+        )).toBeTruthy()
+      })
+    } finally {
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  }
+)
+
 it.each(['inventory', 'operation'] as const)(
   'shares advisory ancestor checks per directory, keeps leaf checks fresh and fences replaced parents (%s)',
   async (mode) => {
@@ -52,7 +87,12 @@ it.each(['inventory', 'operation'] as const)(
           await verifyMetadataInventory({ adapter: disk })
           await fs.rename(join(root, 'Shared/sub'), join(root, 'Shared/retained'))
           await fs.mkdir(join(root, 'Shared/sub'))
-          await expect(verifyMetadataInventory({ adapter: disk })).rejects.toThrow()
+          const verification = verifyMetadataInventory({ adapter: disk })
+          await expect(verification).rejects.toThrow()
+          await expect(verification).rejects.toMatchObject({
+            code: 'vault-root-changed',
+            cause: { message: 'Advisory ancestor identity changed: Shared/sub' },
+          })
           fenced = true
         })
       } catch (error) {
