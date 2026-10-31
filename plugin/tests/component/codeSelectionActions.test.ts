@@ -308,3 +308,37 @@ it('retains link insertion separately from insertion with code in the floating m
   bar.vm.$emit('pick', 'code', { text: 'sample', from: 1, to: 1 })
   expect(linker.insertSnippet).toHaveBeenCalledWith(expect.any(Promise))
 })
+
+it('marks navigation destinations without showing an execution line in pending node code', async () => {
+  useVault([])
+  const model = {
+    notice: ref(''),
+    error: ref(''),
+    busy: ref(false),
+    mode: ref('file'),
+    document: ref({
+      path: 'sample.ts',
+      text: 'const first = 1\nconst second = 2',
+      target: {
+        nodeId: 'node',
+        registrationId: 'registration',
+        projectId: 'project',
+        kind: 'worktree',
+        id: 'tree',
+      },
+    }),
+  }
+  view = mount(NodePathFilePane, { attachTo: document.body, props: { model: model as never } })
+  await flushPromises()
+  expect(view.findComponent(DebugSource).exists()).toBe(true)
+  await view.setProps({ line: 2 })
+  await flushPromises()
+  expect(view.get('.abele-github-code__line_target').text()).toContain('second')
+  expect(view.find('.abele-debug-source__line_here').exists()).toBe(false)
+  await view.setProps({ line: 1 })
+  await flushPromises()
+  expect(view.get('.abele-github-code__line_target').text()).toContain('first')
+  await view.setProps({ line: undefined })
+  await flushPromises()
+  expect(view.find('.abele-github-code__line_target').exists()).toBe(false)
+})

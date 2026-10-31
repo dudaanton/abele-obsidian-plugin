@@ -90,7 +90,7 @@
             :text="model.document.value.text"
             :path="model.document.value.path"
             :breakpoints="pendingMarks"
-            :line="line"
+            :range="line ? { start: line, end: line, match } : undefined"
             :editing="pendingEditing"
             @breakpoint="togglePending"
             @margin-menu="pendingMenu"

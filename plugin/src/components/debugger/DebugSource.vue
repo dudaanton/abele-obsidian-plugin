@@ -39,6 +39,7 @@ import {
 import { Compartment, Prec, StateEffect } from '@codemirror/state'
 import { setTooltip } from 'obsidian'
 import { mountCode, type CodeViewer } from '@/github/codeViewer'
+import type { LineRange } from '@/github/urls'
 import SelectionBar, { type Selected } from '../obsidian/SelectionBar.vue'
 import { ADD, ASK, NOTE } from '../obsidian/selectionActions'
 import type { DebugBreakpoint } from './types'
@@ -50,6 +51,8 @@ const props = withDefaults(
     breakpoints: DebugBreakpoint[]
     /** The line the program stands on; none while it runs. */
     line?: number
+    /** Navigation destination, independent of the program execution line. */
+    range?: LineRange
     /** Last known, while the node is away: nothing can be changed. */
     stale?: boolean
     /** The line whose record point is being set up, under it. */
@@ -57,7 +60,7 @@ const props = withDefaults(
     /** What each record point took the last time, at the end of its line. */
     tails?: boolean
   }>(),
-  { line: undefined, stale: false, editing: undefined, tails: false }
+  { line: undefined, range: undefined, stale: false, editing: undefined, tails: false }
 )
 
 const emit = defineEmits<{
@@ -267,7 +270,7 @@ async function draw() {
   await nextTick()
   viewer?.destroy()
   if (!host.value) return
-  viewer = mountCode(host.value, props.text, props.path, undefined, {}, props.line)
+  viewer = mountCode(host.value, props.text, props.path, props.range, {}, props.line)
   editor = EditorView.findFromDOM(host.value.querySelector('.cm-editor'))
   editor?.dispatch({
     effects: StateEffect.appendConfig.of([
@@ -294,7 +297,7 @@ async function draw() {
   console.debug('[debugger] Source mounted', props.path, props.line)
 }
 onMounted(draw)
-watch(() => [props.text, props.path], draw)
+watch(() => [props.text, props.path, props.range], draw)
 watch(
   () => [props.breakpoints, props.stale, props.line, props.editing, props.tails],
   (values, previous) => {
