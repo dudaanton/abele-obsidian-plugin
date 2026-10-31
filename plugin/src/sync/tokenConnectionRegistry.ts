@@ -54,10 +54,11 @@ export interface TokenAuthority {
   scope: TokenScope
   status: 'active' | 'scope_unavailable' | 'scope_updating'
 }
-/** Only the device keychain may implement this port. Never pass the synced secret store. */
+/** Device-local credential port. Never pass the synced secret store. */
 export interface DeviceTokenSecrets {
   get(reference: string): string | null
   set(reference: string, key: string): void
+  flush?(): Promise<void>
 }
 const bindingSchema = z
   .object({
@@ -173,7 +174,7 @@ export class TokenConnectionRegistry {
     }
   }
   async finishForgottenDurably(
-    secrets: Pick<DeviceTokenSecrets, 'get'> & { remove(reference: string): void },
+    secrets: Pick<DeviceTokenSecrets, 'get' | 'flush'> & { remove(reference: string): void },
     only?: string
   ): Promise<void> {
     const retiring = (this.document().cleanup ?? []).filter(
@@ -186,6 +187,7 @@ export class TokenConnectionRegistry {
       if (!same(current, [item])) throw recovery()
       this.finishForgotten(secrets, item.id)
     }
+    await secrets.flush?.()
     await this.flush()
   }
   private empty(localId: string): TokenConnectionRecord {
@@ -619,6 +621,13 @@ export class TokenConnectionRegistry {
   ): Promise<void> {
     const finish = this.prepareAttachment(localId, token, authority, secrets)
     await this.flush()
+    const pending = this.record(this.document(), localId).pending
+    if (pending) {
+      const saved = secrets.get(pending.secretReference)
+      if (saved != null && saved !== token.key) throw recovery()
+      if (saved == null) secrets.set(pending.secretReference, token.key)
+      await secrets.flush?.()
+    }
     finish()
     await this.flush()
   }

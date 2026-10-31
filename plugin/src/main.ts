@@ -130,6 +130,7 @@ import '@/composables/useFooterFold'
 import '@/composables/useFooterView'
 import { prepareTokenConnections } from './sync/tokenRegistryPreparation'
 import { prepareHostSyncStorage } from './sync/hostSyncStorage'
+import { DurableTokenSecrets } from './sync/durableTokenSecrets'
 import { recordTeardown } from './sync/teardownBarrier'
 import { tokenUi, TokenUi } from './sync/tokenUi'
 import { SyncStartupTimeline, timedSyncTransport } from './sync/startupTimeline'
@@ -380,17 +381,39 @@ export default class AbelePlugin extends Plugin {
       setSecrets(secretStore)
       await startupStepAsync('sync connection', async () => {
         let hostStorage: Awaited<ReturnType<typeof prepareHostSyncStorage>> | undefined
+        let desktopSecrets: DurableTokenSecrets | undefined
         const config = AbeleConfig.getInstance(),
           loaded = config.takeLoadedSync()
         try {
+          const keychain = {
+            get: (id: string) => secretStore.getLocal(id) || null,
+            set: (id: string, value: string) => secretStore.setLocal(id, value),
+            remove: (id: string) => secretStore.forgetLocal(id),
+          }
+          if (!Platform.isMobile) {
+            const identity = (this.app as typeof this.app & { appId?: string }).appId
+            desktopSecrets = await DurableTokenSecrets.open(window.indexedDB, identity ?? '', keychain)
+          }
+          const tokenSecrets = desktopSecrets ?? keychain
           const registry = await prepareTokenConnections(
             this.app,
             {
-              get: (id) => secretStore.getLocal(id),
-              remove: (id) => secretStore.forgetLocal(id),
+              get: (id) => tokenSecrets.get(id) ?? secretStore.getLocal(id),
+              remove: (id) => {
+                if (id.startsWith('abele-sync-device-token-')) tokenSecrets.remove(id)
+                else secretStore.forgetLocal(id)
+              },
+              flush: () => desktopSecrets?.flush() ?? Promise.resolve(),
             },
             loaded?.sync,
             window.indexedDB
+          )
+          await desktopSecrets?.migrate(
+            registry.records().flatMap((record) =>
+              [record.secretReference, record.pending?.secretReference].filter(
+                (reference): reference is string => !!reference
+              )
+            )
           )
           hostStorage = await prepareHostSyncStorage(this.app, window.indexedDB)
           this.syncTimeline.mark('db-open')
@@ -415,11 +438,7 @@ export default class AbelePlugin extends Plugin {
           const transport = timedSyncTransport(transportOf({}), this.syncTimeline)
           const ui = new TokenUi(
             registry,
-            {
-              get: (id) => secretStore.getLocal(id) || null,
-              set: (id, value) => secretStore.setLocal(id, value),
-              remove: (id) => secretStore.forgetLocal(id),
-            },
+            tokenSecrets,
             transport,
             reviews
           )
@@ -433,7 +452,7 @@ export default class AbelePlugin extends Plugin {
           this.tokenEngines = new TokenEngines(
             this.app,
             ui,
-            (reference) => secretStore.getLocal(reference) || null,
+            (reference) => tokenSecrets.get(reference),
             { fetch: transport, startupTimeline: this.syncTimeline },
             AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts',
             {
@@ -489,6 +508,7 @@ export default class AbelePlugin extends Plugin {
                 reviews.close()
               } finally {
                 hostStorage?.close()
+                desktopSecrets?.close()
               }
             })
             recordTeardown(this.app, closed)
@@ -511,6 +531,7 @@ export default class AbelePlugin extends Plugin {
         } catch (error) {
           if (!this.tokenEngines) {
             hostStorage?.close()
+            desktopSecrets?.close()
             this.tokenHostStartup.state = 'failed'
             this.tokenHostStartup.error =
               (error as Error)?.message || 'Token host initialization failed'

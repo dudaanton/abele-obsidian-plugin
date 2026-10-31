@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createRequire } from 'node:module'
 import { runInThisContext } from 'node:vm'
-import { IDBFactory } from 'fake-indexeddb'
+import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { load as loadYaml } from 'js-yaml'
 import { request as httpRequest } from 'node:http'
 import * as obsidian from '../mocks/obsidian'
@@ -124,6 +124,8 @@ export async function bootProductionPlugin(code: string) {
   }
   if (!(window.indexedDB instanceof IDBFactory))
     Object.defineProperty(window, 'indexedDB', { configurable: true, value: new IDBFactory() })
+  if (!globalThis.IDBKeyRange)
+    Object.defineProperty(globalThis, 'IDBKeyRange', { configurable: true, value: IDBKeyRange })
   const native = createRequire(import.meta.url)
   const network = {
     loseAssetCommit: false,

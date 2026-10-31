@@ -3,6 +3,7 @@ import type { LocalStorage } from './ledgerId'
 export interface RetiredSecrets {
   get(reference: string): string
   remove(reference: string): void
+  flush?(): Promise<void>
 }
 const cleanupKey = 'abele-sync-retired-access-cleanup-v1'
 const legacyKeys = [

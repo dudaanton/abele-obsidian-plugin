@@ -3010,9 +3010,12 @@ mean there are no local edits; counting asks the server nothing and acknowledges
 
 `abele-sync-connections-v2` is the device-local registry, containing only kind `token`. Each
 record has an address, authoritative space/token IDs and stable folder/group selector, an
-independent ledger ID, pause and status. Secret references use the device-only keychain
+independent ledger ID, pause and status. Secret references use the device-only
 namespace `abele-sync-device-token-…`; raw keys never enter the registry, synced settings,
-encrypted synced secrets or settings transfer. Engine-local state is bound to the local
+encrypted synced secrets or settings transfer. On desktop, a separate vault-local IndexedDB
+transaction commits each credential before the connection is published. The host keychain
+also retains its copy. On mobile, the system secure store remains the credential authority.
+Engine-local state is bound to the local
 connection ID under `abele-sync-token-state:`; copied settings cannot carry that identity.
 
 The host write journal, preserved-copy decisions, token/item registries and share membership
@@ -3023,6 +3026,8 @@ copies are not retired before that commit. Subsequent starts use IDB as authorit
 or stale localStorage mirrors cannot resurrect retired work. Host commits never join SDK
 state-store overlays. Enrollment commits before runtime startup, and retirement commits
 before credential cleanup or runtime removal.
+The external activation marker also lives in this host database. A stale localStorage
+mirror cannot erase the proof needed to inspect an already activated external journal.
 Schema version 3 stores journal entries and registry records separately in `host-records-v3`,
 keyed by a collision-free string encoding of namespace, document key and record ID. Older
 `host-records` rows remain migration input only and cannot resurrect retired entries.
@@ -3063,8 +3068,9 @@ rewriting old settings, so keychain failures remain recoverable even without tho
 New token credentials and unrelated keys are protected. The old access runtime is
 not started, including when cleanup fails.
 
-A pending token binding is written before the device keychain write, then activated only
-after the key reads back. Re-pasting the same new token resumes interrupted provisioning;
+A pending token binding is written before the device credential write, then activated only
+after the credential commit completes on desktop or the secure store reads it back on mobile.
+Re-pasting the same new token resumes interrupted provisioning;
 different authority cannot take over that binding. A bound record cannot be retargeted: a different token needs a separate local record, preserving existing pending state. A renamed selector keeps its stable ID,
 ledger and credential, including during interrupted provisioning: only address, space,
 token and selector kind/ID bind the pending identity; the latest authoritative path is saved.

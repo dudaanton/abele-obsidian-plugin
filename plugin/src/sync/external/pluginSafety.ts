@@ -42,6 +42,7 @@ import { IGNORE_FILE } from '../scope'
 import { isDeviceLocalPluginState } from '../deviceLocalState'
 import { wait, completion } from '../idbRequests'
 import { IndexedDbStateStore, stateDatabaseName } from '../IndexedDbStateStore'
+import { flushHostStorage, hostStorageOf } from '../hostSyncStorage'
 import { WriteJournal } from '../writeJournal'
 import { DISCONNECT_PROOF_KEY } from './attachmentStore'
 import { installationBase, installationProofKey } from './installationProof'
@@ -91,7 +92,7 @@ const activationSchema = z
   .strict()
 type Activation = z.infer<typeof activationSchema>
 function activation(storage: RecoveryStorage): Activation | null {
-  const raw = storage.loadLocalStorage(EXTERNAL_ACTIVATION_KEY)
+  const raw = hostStorageOf(storage).loadLocalStorage(EXTERNAL_ACTIVATION_KEY)
   if (raw == null) return null
   try {
     return activationSchema.parse(raw)
@@ -154,8 +155,9 @@ export async function retiredArtifactPaths(
   return paths
 }
 function persist(storage: RecoveryStorage, key: string, value: unknown): void {
-  storage.saveLocalStorage(key, value)
-  if (JSON.stringify(storage.loadLocalStorage(key)) !== JSON.stringify(value))
+  const target = key === EXTERNAL_ACTIVATION_KEY ? hostStorageOf(storage) : storage
+  target.saveLocalStorage(key, value)
+  if (JSON.stringify(target.loadLocalStorage(key)) !== JSON.stringify(value))
     throw new ExternalRecoveryRequired('migration bookkeeping was not persisted')
 }
 
@@ -871,6 +873,7 @@ export async function recoverExternalState(
     if (item?.phase === 'preparing') {
       item.phase = 'active'
       persist(app, EXTERNAL_ACTIVATION_KEY, marker)
+      await flushHostStorage(app)
     }
   })
 }
@@ -912,6 +915,7 @@ export async function activateExternalFiles(
       ],
     }
     persist(app, EXTERNAL_ACTIVATION_KEY, marker)
+    await flushHostStorage(app)
   }
   const marker = activation(app)
   const item = marker?.ledgers.find((value) => value.databaseName === databaseName)
@@ -932,6 +936,7 @@ export async function activateExternalFiles(
     throw new ExternalRecoveryRequired('activation binding changed')
   current.phase = 'active'
   persist(app, EXTERNAL_ACTIVATION_KEY, latest)
+  await flushHostStorage(app)
   return state
 }
 

@@ -175,6 +175,8 @@ export class HostSyncStorage implements LocalStorage {
       const copy = structuredClone(value)
       this.pending = this.pending.concat(hostChanges(key, this.values.get(key), copy))
       this.setView(key, copy)
+      // Keep old readers' preview current; the committed host row remains authoritative.
+      if (key === 'abele-sync-external-activation-v1') this.local.saveLocalStorage(key, copy)
       if (journalKey(key) && !knownHint) this.journalHints.delete(key)
     } else this.local.saveLocalStorage(key, value)
     // Ordinary settings/status saves also drain without waiting for another file exchange.

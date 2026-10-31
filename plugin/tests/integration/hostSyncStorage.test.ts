@@ -16,6 +16,15 @@ import { deferred } from '../helpers/deferred'
 import { prepareTokenConnections } from '@/sync/tokenRegistryPreparation'
 import { recordTeardown } from '@/sync/teardownBarrier'
 import { connectionJournalApp } from '@/sync/vaultPathLinks'
+import { EXTERNAL_ACTIVATION_KEY } from '@/sync/external/recovery'
+import { checkExternalMigration } from '@/sync/external/pluginSafety'
+import type { App } from 'obsidian'
+
+const sampleBinding = {
+  endpoint: 'https://sync.example.invalid', vaultId: 'sample-vault', mode: 'personal' as const,
+  principalId: 'sample-device', principalType: 'device' as const, grantId: null,
+  generation: 1, credentialAssociation: 'sample-slot',
+}
 
 function local() {
   const data = new Map<string, unknown>()
@@ -27,6 +36,34 @@ function local() {
     },
   }
 }
+
+it('recovers an activated marker when host local storage loses every unflushed write', async () => {
+  const factory = new IDBFactory()
+  const volatile = local()
+  let host = await HostSyncStorage.open(factory, 'sample-activation', volatile)
+  const marker = { schema: 1, ledgers: [{ ledgerId: 'sample', databaseName: 'sample', databaseIdentity: 'sample', binding: sampleBinding, phase: 'active' }] }
+  host.saveLocalStorage(EXTERNAL_ACTIVATION_KEY, marker)
+  await host.flush()
+  host.close()
+  volatile.data.clear()
+  host = await HostSyncStorage.open(factory, 'sample-activation', volatile)
+  expect(host.loadLocalStorage(EXTERNAL_ACTIVATION_KEY)).toEqual(marker)
+  host.close()
+})
+
+it('checks the committed activation marker when the local preview is older', async () => {
+  const factory = new IDBFactory()
+  const localApp = Object.assign(local(), { appId: 'sample-vault' })
+  const host = await HostSyncStorage.open(factory, localApp.appId, localApp)
+  host.saveLocalStorage(EXTERNAL_ACTIVATION_KEY, {
+    schema: 1,
+    ledgers: [{ ledgerId: 'sample', databaseName: 'sample-missing', databaseIdentity: 'sample', binding: sampleBinding, phase: 'active' }],
+  })
+  await host.flush()
+  localApp.data.clear()
+  await expect(checkExternalMigration(localApp as unknown as App, factory)).rejects.toThrow('activated ledger is missing')
+  host.close()
+})
 
 it('validates 33k unchanged ownership checks without copying the registry document each time', async () => {
   const host = await HostSyncStorage.open(new IDBFactory(), 'sample-registry-validation', local())
