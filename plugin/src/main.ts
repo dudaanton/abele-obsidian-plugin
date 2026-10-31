@@ -130,7 +130,7 @@ import '@/composables/useFooterFold'
 import '@/composables/useFooterView'
 import { prepareTokenConnections } from './sync/tokenRegistryPreparation'
 import { prepareHostSyncStorage } from './sync/hostSyncStorage'
-import { DurableTokenSecrets } from './sync/durableTokenSecrets'
+import { DurableTokenSecrets, desktopCredentialCipher } from './sync/durableTokenSecrets'
 import { recordTeardown } from './sync/teardownBarrier'
 import { tokenUi, TokenUi } from './sync/tokenUi'
 import { SyncStartupTimeline, timedSyncTransport } from './sync/startupTimeline'
@@ -392,7 +392,7 @@ export default class AbelePlugin extends Plugin {
           }
           if (!Platform.isMobile) {
             const identity = (this.app as typeof this.app & { appId?: string }).appId
-            desktopSecrets = await DurableTokenSecrets.open(window.indexedDB, identity ?? '', keychain)
+            desktopSecrets = await DurableTokenSecrets.open(window.indexedDB, identity ?? '', keychain, desktopCredentialCipher())
           }
           const tokenSecrets = desktopSecrets ?? keychain
           const registry = await prepareTokenConnections(

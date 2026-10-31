@@ -185,6 +185,15 @@ export async function bootProductionPlugin(code: string) {
     require: (id: string) => (id === 'electron' ? mainElectron : native(id)),
     getGlobal: (name: string) => (globalThis as any)[name],
   }
+  const safeStorage = {
+    isEncryptionAvailable: () => true,
+    encryptString: (value: string) => Buffer.from(value.split('').reverse().join('')),
+    decryptString: (value: Uint8Array) => Buffer.from(value).toString().split('').reverse().join(''),
+  }
+  Object.defineProperty(window, 'electron', {
+    configurable: true,
+    value: { remote: { safeStorage } },
+  })
   const module = { exports: {} as any }
   const evaluate = runInThisContext(`(function(module, exports, require) { ${code}\n})`)
   evaluate(module, module.exports, (id: string) => {

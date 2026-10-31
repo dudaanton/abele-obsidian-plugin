@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { IDBFactory, IDBKeyRange, IDBObjectStore } from 'fake-indexeddb'
-import { DurableTokenSecrets } from '@/sync/durableTokenSecrets'
+import { DurableTokenSecrets, type CredentialCipher } from '@/sync/durableTokenSecrets'
 import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
 import { HostSyncStorage } from '@/sync/hostSyncStorage'
 
@@ -31,6 +31,80 @@ function volatileHost() {
 
 vi.stubGlobal('IDBKeyRange', IDBKeyRange)
 
+const cipher: CredentialCipher = {
+  isEncryptionAvailable: () => true,
+  encrypt: (value) => new TextEncoder().encode(value.split('').reverse().join('')),
+  decrypt: (value) => new TextDecoder().decode(value).split('').reverse().join(''),
+}
+
+async function rows(factory: IDBFactory): Promise<Array<{ namespace: string; reference: string; value: string }>> {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = factory.open('abele-sync-device-credentials-v1')
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+  const result = await new Promise<Array<{ namespace: string; reference: string; value: string }>>((resolve, reject) => {
+    const request = db.transaction('credentials').objectStore('credentials').getAll()
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+  db.close()
+  return result
+}
+
+it('encrypts committed rows, binds them to this vault and reference, and falls back after losing the OS key', async () => {
+  const factory = new IDBFactory()
+  const host = volatileHost()
+  const reference = 'abele-sync-device-token-sample'
+  let secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host, cipher)
+  secrets.set(reference, token.key)
+  await secrets.flush()
+  secrets.close()
+  expect(JSON.stringify(await rows(factory))).not.toContain(token.key)
+  const lostKey: CredentialCipher = {
+    ...cipher,
+    encrypt: () => { throw new Error('key unavailable') },
+    decrypt: () => { throw new Error('key unavailable') },
+  }
+  secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host, lostKey)
+  expect(secrets.get(reference)).toBe(token.key)
+  await secrets.migrate([reference])
+  expect(secrets.get(reference)).toBe(token.key)
+  secrets.close()
+  host.crash()
+  secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host, lostKey)
+  expect(secrets.get(reference)).toBeNull()
+  secrets.close()
+  const other = await DurableTokenSecrets.open(factory, 'other-vault', host, cipher)
+  expect(other.get(reference)).toBeNull()
+  other.close()
+})
+
+it('migrates only live references and removes orphaned plaintext, then removes disconnected credentials', async () => {
+  const factory = new IDBFactory()
+  const host = volatileHost()
+  const live = 'abele-sync-device-token-live'
+  const orphan = 'abele-sync-device-token-orphan'
+  const db = await new Promise<IDBDatabase>((resolve) => {
+    const request = factory.open('abele-sync-device-credentials-v1', 1)
+    request.onupgradeneeded = () => request.result.createObjectStore('credentials', { keyPath: ['namespace', 'reference'] })
+    request.onsuccess = () => resolve(request.result)
+  })
+  await Promise.all([live, orphan].map((reference) => new Promise<void>((resolve) => {
+    const request = db.transaction('credentials', 'readwrite').objectStore('credentials').put({ namespace: 'sample-vault', reference, value: token.key })
+    request.onsuccess = () => resolve()
+  })))
+  db.close()
+  const secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host, cipher)
+  await secrets.migrate([live])
+  expect((await rows(factory)).map((row) => row.reference)).toEqual([live])
+  expect(JSON.stringify(await rows(factory))).not.toContain(token.key)
+  secrets.remove(live)
+  await secrets.flush()
+  expect(await rows(factory)).toEqual([])
+  secrets.close()
+})
+
 it('keeps an enrolled credential after every volatile host write is lost', async () => {
   const factory = new IDBFactory()
   const host = volatileHost()
@@ -40,7 +114,7 @@ it('keeps an enrolled credential after every volatile host write is lost', async
     saveLocalStorage: (key: string, value: unknown) => { local.set(key, structuredClone(value)) },
   }
   let registryHost = await HostSyncStorage.open(factory, 'sample-vault', storage)
-  const secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host)
+  const secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host, cipher)
   const registry = TokenConnectionRegistry.open(storage)
   const id = registry.add()
   await registry.attachDurably(id, token, authority, secrets)
@@ -54,7 +128,7 @@ it('keeps an enrolled credential after every volatile host write is lost', async
   secrets.close()
   registryHost = await HostSyncStorage.open(factory, 'sample-vault', storage)
   expect(TokenConnectionRegistry.open(storage).records()[0].secretReference).toBe(reference)
-  const restarted = await DurableTokenSecrets.open(factory, 'sample-vault', host)
+  const restarted = await DurableTokenSecrets.open(factory, 'sample-vault', host, cipher)
   expect(restarted.get(reference)).toBe(token.key)
   restarted.close()
   registryHost.close()
@@ -69,7 +143,7 @@ it('does not publish a connection before its credential commit completes', async
     saveLocalStorage: (key: string, value: unknown) => { local.set(key, structuredClone(value)) },
   }
   let registryHost = await HostSyncStorage.open(factory, 'sample-vault', storage)
-  let secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host)
+  let secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host, cipher)
   let registry = TokenConnectionRegistry.open(storage)
   const id = registry.add()
   secrets.flush = async () => { throw new Error('injected commit failure') }
@@ -80,7 +154,7 @@ it('does not publish a connection before its credential commit completes', async
   host.crash()
   local.clear()
   registryHost = await HostSyncStorage.open(factory, 'sample-vault', storage)
-  secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host)
+  secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host, cipher)
   registry = TokenConnectionRegistry.open(storage)
   expect(registry.records()[0].pending).toBeDefined()
   expect(registry.records()[0].secretReference).toBe('')
@@ -93,20 +167,20 @@ it('does not publish a connection before its credential commit completes', async
 it('keeps the last completed rotation when volatile writes are lost', async () => {
   const factory = new IDBFactory()
   const host = volatileHost()
-  let secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host)
+  let secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host, cipher)
   const reference = 'abele-sync-device-token-sample'
   secrets.set(reference, token.key)
   await secrets.flush()
   secrets.set(reference, 'b'.repeat(43))
   host.crash()
   secrets.close()
-  secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host)
+  secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host, cipher)
   expect(secrets.get(reference)).toBe(token.key)
   secrets.set(reference, 'c'.repeat(43))
   await secrets.flush()
   host.crash()
   secrets.close()
-  secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host)
+  secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host, cipher)
   expect(secrets.get(reference)).toBe('c'.repeat(43))
   secrets.close()
 })
@@ -120,7 +194,7 @@ it('resumes enrollment after credential COMMIT but before registry publication',
     saveLocalStorage: (key: string, value: unknown) => { local.set(key, structuredClone(value)) },
   }
   let host = await HostSyncStorage.open(factory, 'sample-vault', storage)
-  let secrets = await DurableTokenSecrets.open(factory, 'sample-vault', keychain)
+  let secrets = await DurableTokenSecrets.open(factory, 'sample-vault', keychain, cipher)
   let registry = TokenConnectionRegistry.open(storage)
   const id = registry.add()
   const commit = secrets.flush.bind(secrets)
@@ -134,7 +208,7 @@ it('resumes enrollment after credential COMMIT but before registry publication',
   keychain.crash()
   local.clear()
   host = await HostSyncStorage.open(factory, 'sample-vault', storage)
-  secrets = await DurableTokenSecrets.open(factory, 'sample-vault', keychain)
+  secrets = await DurableTokenSecrets.open(factory, 'sample-vault', keychain, cipher)
   registry = TokenConnectionRegistry.open(storage)
   expect(registry.records()[0].pending).toBeDefined()
   await registry.attachDurably(id, token, authority, secrets)
@@ -147,7 +221,7 @@ it('retries a rolled-back credential transaction without losing its write', asyn
   const factory = new IDBFactory()
   const keychain = volatileHost()
   const reference = 'abele-sync-device-token-sample'
-  const secrets = await DurableTokenSecrets.open(factory, 'sample-vault', keychain)
+  const secrets = await DurableTokenSecrets.open(factory, 'sample-vault', keychain, cipher)
   secrets.set(reference, token.key)
   const put = IDBObjectStore.prototype.put
   let abortOnce = true
@@ -166,7 +240,7 @@ it('retries a rolled-back credential transaction without losing its write', asyn
   await secrets.flush()
   secrets.close()
   keychain.crash()
-  const restarted = await DurableTokenSecrets.open(factory, 'sample-vault', keychain)
+  const restarted = await DurableTokenSecrets.open(factory, 'sample-vault', keychain, cipher)
   expect(restarted.get(reference)).toBe(token.key)
   restarted.close()
 })

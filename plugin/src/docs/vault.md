@@ -3760,6 +3760,13 @@ The device-local token registry records an interrupted split update in
 recorded document and item-selection writes, then retires that recovery record. This is
 local recovery metadata and is never part of a transferred connection.
 
+Desktop connection credentials also have a vault-scoped IndexedDB copy in
+`abele-sync-device-credentials-v1`. Values use the host's OS-backed desktop encryption
+when available; a host without that encryption stores them in the same plain form as its
+secret storage. Startup retains only references in the active or pending connection
+registry and upgrades older rows. Disconnect removes the corresponding row. Phone
+credentials remain in the host's secure storage.
+
 Conditional filesystem effects retain disk-backed operation records and displaced files in
 the connection's private `conditional` area, or the plugin's device-local `sync-conditional`
 directory for an unscoped adapter. `active` holds outstanding recovery pointers, `objects`
