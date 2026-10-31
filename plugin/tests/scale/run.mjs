@@ -60,6 +60,7 @@ import {
   evaluationExpression,
   decodeEvaluationOutput,
   observationError,
+  cliObservationError,
   observeStartup,
 } from './observation.mjs'
 import {
@@ -155,14 +156,15 @@ export class RealVault {
       ))
     } catch (error) {
       const failure = new Error('Vault CLI unavailable')
-      failure.scaleObservationError = observationError(error)
+      failure.scaleObservationError = cliObservationError(error)
       failure.scaleCliFailure = {
         startedAt,
         endedAt: Date.now(),
         device,
         elapsedMs: Date.now() - startedAt,
-        code: error.code,
-        signal: error.signal,
+        code: failure.scaleObservationError.exitCode,
+        signal: failure.scaleObservationError.signal,
+        timedOut: failure.scaleObservationError.timedOut,
         killed: error.killed === true,
         stdoutBytes: Buffer.byteLength(error.stdout ?? ''),
         stderrBytes: Buffer.byteLength(error.stderr ?? ''),
@@ -171,7 +173,7 @@ export class RealVault {
     } finally {
       clearTimeout(slow)
     }
-    return decodeEvaluationOutput(stdout, nonce)
+    return decodeEvaluationOutput(stdout, nonce, [this.root, this.config.output])
   }
   async reindex(operation) {
     return this.evaluate(`const fs=require('node:fs');
@@ -277,6 +279,7 @@ export class RealVault {
           (remaining) => this.snapshot({ timeoutMs: Math.min(5000, remaining) }),
           {
             timeoutMs: Math.min(30000, timeout),
+            roots: [this.root, this.config.output],
             record: async (entry) => {
               const evidence = {
                 ...entry,
@@ -580,7 +583,7 @@ export async function run(config) {
         reason,
         device: String(devices.indexOf(device)),
         snapshot: first,
-        observationError: observationError(error),
+        observationError: observationError(error, [device.root, config.output]),
         cliFailure: error.scaleCliFailure,
       })
       requireHealthySnapshot(report.failures.at(-1).snapshot)
@@ -1295,6 +1298,8 @@ export async function run(config) {
     // Errors from SDK/CLI can include credentials; expose only our controlled diagnostics.
     report.cliFailure = error.scaleCliFailure
     report.observationError = error.scaleObservationError
+      ? observationError(error, [...config.vaults, config.output])
+      : undefined
     report.failure =
       /^(Fatal sync state|Advertised server limit|Expected server limits|Local fixture|Unknown server mode|Server file limit|Run deadline reached|Timed out:|Disposable |Two separate|Isolated |Token endpoint|Case-sensitive|Selected build)/.test(
         error.message

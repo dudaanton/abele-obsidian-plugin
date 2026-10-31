@@ -6,6 +6,8 @@ import {
   decodeEvaluationOutput,
   evaluationExpression,
   observeStartup,
+  observationError,
+  cliObservationError,
 } from './observation.mjs'
 
 function startupError() {
@@ -27,6 +29,7 @@ it('keeps the renderer exception kind and message across the CLI frame', async (
     )
   )
   expect(reply.error).toMatchObject({ kind: 'TypeError', message: 'sample index is starting' })
+  expect(reply.error).not.toHaveProperty('stack')
   expect(() => decodeEvaluationReply(reply, 'sample')).toThrow('sample index is starting')
   let captured
   try {
@@ -129,4 +132,110 @@ it('caps retries by elapsed time as well as count', async () => {
     )
   ).rejects.toThrow('sample index is starting')
   expect(allowances).toEqual([10])
+})
+
+it('persists only controlled CLI diagnostics, never exec argv, stderr or credentials', async () => {
+  const original = Object.assign(
+    new Error('exec --token sample-token-value /private/sample --key sample-key-value'),
+    {
+      code: 124,
+      signal: 'SIGTERM',
+      stderr: 'Bearer sample-bearer-value',
+    }
+  )
+  const failure = Object.assign(new Error('Vault CLI unavailable'), {
+    scaleObservationError: cliObservationError(original),
+    scaleCliFailure: {
+      code: 124,
+      signal: 'SIGTERM',
+      argv: '--token sample-token-value',
+      stderr: 'sample-bearer-value',
+    },
+  })
+  const records: unknown[] = []
+  await expect(
+    observeStartup(
+      async () => {
+        throw failure
+      },
+      {
+        maxAttempts: 1,
+        record: async (entry: unknown) => {
+          records.push(entry)
+        },
+      }
+    )
+  ).rejects.toThrow('Vault CLI unavailable')
+  expect(observationError(failure)).toMatchObject({
+    kind: 'Error',
+    category: 'cli-execution-failure',
+    exitCode: 124,
+    signal: 'SIGTERM',
+    timedOut: true,
+  })
+  const persisted = JSON.stringify({
+    report: observationError(failure),
+    failure: observationError(failure),
+    records,
+  })
+  for (const value of [
+    'sample-token-value',
+    'sample-key-value',
+    'sample-bearer-value',
+    '--token',
+    '/private/sample',
+    'stack',
+    'stderr',
+  ])
+    expect(persisted).not.toContain(value)
+})
+
+it('redacts renderer credentials, URL credentials/queries and external paths before persistence', () => {
+  const original = {
+    kind: 'TypeError',
+    message:
+      'index starting: Bearer sample-bearer-value token=sample-token-value secret="sample secret value" https://sample-user:sample-pass@example.invalid/read?key=sample-query /private/sample/data /sample/vault/note.md /sample/output/log.json',
+    stack: 'at sample (/private/sample/source.js:3)',
+  }
+  let failure
+  try {
+    decodeEvaluationReply({ __abeleReply: 'sample', error: original }, 'sample', [
+      '/sample/vault',
+      '/sample/output',
+    ])
+  } catch (error) {
+    failure = error
+  }
+  const safe = observationError(failure, ['/sample/vault', '/sample/output'])
+  expect(safe).toMatchObject({ kind: 'TypeError', category: 'renderer-evaluation-failure' })
+  expect(safe.message).toContain('index starting')
+  expect(safe.message).toContain('/sample/vault/note.md')
+  expect(safe.message).toContain('/sample/output/log.json')
+  const persisted = JSON.stringify(safe)
+  for (const value of [
+    'sample-bearer-value',
+    'sample-token-value',
+    'sample secret value',
+    'sample-user',
+    'sample-pass',
+    'sample-query',
+    '/private/sample',
+    'stack',
+  ])
+    expect(persisted).not.toContain(value)
+  expect(
+    observationError({ scaleObservationError: { ...original, message: 'sample '.repeat(1000) } })
+      .message.length
+  ).toBe(512)
+  const paths = observationError(
+    {
+      scaleObservationError: {
+        kind: 'Error',
+        message:
+          'path:/private/sample [C:\\private\\sample] `/private/sample` /sample/vault/../private/sample',
+      },
+    },
+    ['/sample/vault']
+  )
+  expect(JSON.stringify(paths)).not.toContain('private')
 })
