@@ -107,11 +107,11 @@ it('fails slow discovery promptly with guidance and stops pagination after its d
   )
   await vi.advanceTimersByTimeAsync(5001)
   await result
-  expect(search).toHaveBeenCalledTimes(5)
+  expect(search).toHaveBeenCalledTimes(1)
   for (const resolve of finish)
     resolve({ entries: [], cursor: 'late-page', incomplete: false, omissions: [] })
   await vi.advanceTimersByTimeAsync(1)
-  expect(search).toHaveBeenCalledTimes(5)
+  expect(search).toHaveBeenCalledTimes(1)
   expect(vi.getTimerCount()).toBe(0)
 })
 
@@ -243,3 +243,47 @@ it('connects once for a live collection instead of repeating connection recovery
   await files.ready()
   expect(connect).toHaveBeenCalledOnce()
 })
+
+it.each(['worktree', 'workspace'])(
+  'keeps %s discovery below the node search worker limit',
+  async (kind) => {
+    const { NodeRequestFiles } = await import('@/requests/nodeFiles')
+    let active = 0
+    const search = vi.fn(async () => {
+      if (active >= 4) throw Object.assign(new Error('resource_busy'), { code: 'resource_busy' })
+      active++
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1))
+        return {
+          entries: [{ path: 'api/sample.http' }],
+          cursor: null,
+          incomplete: false,
+          omissions: [],
+        }
+      } finally {
+        active--
+      }
+    })
+    const client = {
+      connected: true,
+      repository: {
+        worktrees: async () => {
+          if (kind === 'workspace')
+            throw Object.assign(new Error('git_required'), { code: 'git_required' })
+          return { entries: [{ kind: 'root', worktree_id: 'sample-root' }], cursor: null }
+        },
+        observe: async () => ({ revision: {} }),
+        search,
+      },
+      nodePath: { search },
+      listWorkspaces: async () => [{ kind: 'root', state: 'ready', workspace_id: 'sample-root' }],
+    }
+    const files = new NodeRequestFiles(
+      client as unknown as import('@abele/node-client').NodeClient,
+      { nodeId: 'sample-node', registrationId: 'sample-registration', projectId: 'sample-project' },
+      async () => {}
+    )
+    await expect(files.list()).resolves.toEqual(['api/sample.http'])
+    expect(search).toHaveBeenCalledTimes(5)
+  }
+)

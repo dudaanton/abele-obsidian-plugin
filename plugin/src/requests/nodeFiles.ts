@@ -135,9 +135,11 @@ export class NodeRequestFiles implements RequestFilePort {
         : undefined
     // Filename searches run on the node; unrelated directories cost no client round trips.
     // Include collection markers and environment files as well as request sources.
-    const pages = await Promise.all(
-      ['.http', '.rest', '.bru', 'bruno.json', 'http-client'].map((query) =>
-        pathPages((cursor) => {
+    // Leave the node's bounded search workers available to other views.
+    const pages = []
+    for (const query of ['.http', '.rest', '.bru', 'bruno.json', 'http-client']) {
+      pages.push(
+        await pathPages((cursor) => {
           signal.throwIfAborted()
           const options = {
             query,
@@ -159,7 +161,7 @@ export class NodeRequestFiles implements RequestFilePort {
           )
         })
       )
-    )
+    }
     return [...new Set(pages.flatMap((page) => page.map((entry) => entry.path)))].filter(
       (path) =>
         !/(^|\/)(\.git|node_modules|\.abele)(\/|$)/.test(path) &&
