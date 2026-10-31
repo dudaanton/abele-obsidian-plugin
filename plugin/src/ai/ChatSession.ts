@@ -2163,7 +2163,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       }
       const systemPrompt = await this.chatService.getSystemPrompt(this)
       this.chatIdentity ??= crypto.randomUUID()
-      const promptCacheKey = await chatPromptCacheKey(this.chatIdentity)
+      const promptCacheKey = chatPromptCacheKey(this.chatIdentity)
       const result = await this.agentLoop.run({
         model,
         systemPrompt,

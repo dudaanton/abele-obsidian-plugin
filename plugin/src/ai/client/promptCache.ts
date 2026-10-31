@@ -1,3 +1,6 @@
+import { sha256 } from '@noble/hashes/sha2'
+import { bytesToHex } from '@noble/hashes/utils'
+
 /** Flat optional provider capability, like apiMode. Unknown gateways opt in explicitly. */
 export function acceptsPromptCacheKey(provider: {
   baseUrl: string
@@ -13,7 +16,6 @@ export function acceptsPromptCacheKey(provider: {
 }
 
 /** Keep routing hints opaque: neither a chat title nor a vault path reaches the provider. */
-export async function chatPromptCacheKey(id: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(id))
-  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')
+export function chatPromptCacheKey(id: string): string {
+  return bytesToHex(sha256(new TextEncoder().encode(id)))
 }
