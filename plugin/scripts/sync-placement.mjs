@@ -958,8 +958,8 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         )
         code = replaceOnce(
           code,
-          'const have = placed === undefined',
-          'const beforeIdentity = await this.fs.fileIdentity?.(target);\n        const have = placed === undefined'
+          'const have = verifiedObservation?.size',
+          'const beforeIdentity = await this.fs.fileIdentity?.(target);\n        const have = verifiedObservation?.size'
         )
         code = replaceOnce(
           code,
@@ -975,19 +975,14 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
                 await this.fs[Symbol.for('abele.sync.replay-stage-v1')]?.() === false))) &&
             (await fingerprintFile(this.fs, path, this.hash)).sha !== entry.sha)`
         )
-        code = `import { receiveToStage as receivePlacementSource } from './streaming.js';\n` + code
+        code = `import { settledStat } from './apply.js';\nimport { receiveToStage as receivePlacementSource } from './streaming.js';\n` + code
         if (!code.includes('fingerprintFile(this.fs,'))
           throw boundaryError(id, 'fingerprintFile(this.fs,', 0, 'at least 1')
         code = code.replaceAll('fingerprintFile(this.fs,', 'fingerprintPlacementFile(this.fs,')
         code = replaceOnce(
           code,
-          'settledStat(this.fs, target, sha, wrote, this.hash)',
-          'settledPlacementStat(this.fs, target, sha, wrote, this.hash)'
-        )
-        code = replaceOnce(
-          code,
-          '                : wrote;',
-          '                : await settledPlacementStat(this.fs, target, sha, wrote, this.hash);'
+          '            : wrote;',
+          '            : await settledPlacementStat(this.fs, target, sha, wrote, this.hash);'
         )
         code += `
         async function fingerprintPlacementFile(fs, path, hash) {
@@ -1035,7 +1030,7 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
           code,
           `if (entry !== null && (await this.edited(entry, target)))
             return false;
-        const movedBase =`,
+        const movedBasePossible =`,
           `if (pending && !pending.stageId && this.fs[Symbol.for('abele.sync.recover-published-pull-v1')] && this.fs.reopenStage && this.client.openVersion && change.size !== null) {
           if (from !== null && beforeFrom !== null && caseKey(from) !== caseKey(target) &&
               (!pending.sourceIdentity || await this.fs.fileIdentity?.(from) !== pending.sourceIdentity)) return false;
@@ -1043,7 +1038,7 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         }
         if (entry !== null && (await this.edited(entry, target)))
             return false;
-        const movedBase =`
+        const movedBasePossible =`
         )
         code = replaceOnce(
           code,

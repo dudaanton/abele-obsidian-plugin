@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { desktopFsPort } from '../helpers/desktopRequire'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { promises as disk } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -77,8 +77,6 @@ for (const fault of [
         ? 1
         : fault === 'acknowledgement-reads'
           ? 32
-        : fault === 'install-fingerprint-backlog'
-          ? 4200
           : fault === 'batch-tail'
             ? 65
             : fault === 'second-ledger-abort' || fault === 'ordered-operations'
@@ -248,9 +246,7 @@ for (const fault of [
       let files = new ObsidianFileSystem(app as unknown as App, {
         storage: host,
         ledger: state,
-        ...(fault === 'acknowledgement-reads'
-          ? { prepareStartupInventory: async () => {} }
-          : {}),
+        ...(fault === 'acknowledgement-reads' ? { prepareStartupInventory: async () => {} } : {}),
         ...(fault === 'install-fingerprint-inflight'
           ? {
               onEngineWrite: (path) => {
@@ -587,7 +583,9 @@ for (const fault of [
               await discard(receipt)
             }
           }
+          const installStarted = performance.now()
           await run()
+          const installMs = performance.now() - installStarted
           if (fault === 'install-fingerprint-single-edited') {
             expect((await files.fingerprint(items[0].path, undefined, true)).sha).toBe(
               await sha256(payload(0).fill(91))
@@ -636,16 +634,43 @@ for (const fault of [
             // The watcher's own-write check fingerprints every file the pull installed. The batch
             // verified those bytes before publishing them; reading them again doubled a pull's IO.
             if (fault === 'install-fingerprint-backlog') {
-              // A debounced watcher may examine the whole pull after all batches finish.
+              // Cross the real revision-clock boundary without thousands of durable
+              // installs. hostMutationCohort separately keeps 4,200 installation proofs.
+              const revision = host.scanFingerprintRevision(items[0].path)
+              await host.withScanMutation(['Unrelated'], async () => {
+                for (let i = 0; i < 4200; i++)
+                  await host.withScanMutation([`Unrelated/Sample ${i}.md`], async () => {})
+              })
+              expect(host.scanFingerprintRevision(items[0].path)).toBeGreaterThan(revision)
+              // A debounced watcher still examines the whole real pull after eviction.
               const watcher = new WatchReports({
                 fs: files,
                 expected,
                 debounceMs: 60000,
                 onChange: () => {},
               })
+              const fingerprints = vi.spyOn(files, 'fingerprint')
               watcher.notice(items.map((item) => item.path))
-              expect(await watcher.examine()).toBe(false)
-              expect(watcher.reported.size).toBe(0)
+              const watchStarted = performance.now()
+              try {
+                expect(await watcher.examine()).toBe(false)
+                expect(watcher.reported.size).toBe(0)
+                expect(fingerprints.mock.calls.map(([path]) => path)).toEqual(
+                  items.map((item) => item.path)
+                )
+              } finally {
+                watcher.cancel()
+                fingerprints.mockRestore()
+              }
+              console.log('[peer-backlog-costs]', {
+                count,
+                installMs,
+                watchMs: performance.now() - watchStarted,
+                contentReads,
+                hostCommits,
+                ledgerCommits: commits,
+                durabilityBarriers: [...flushes.values()].reduce((sum, value) => sum + value, 0),
+              })
             } else
               for (const item of items)
                 expect(

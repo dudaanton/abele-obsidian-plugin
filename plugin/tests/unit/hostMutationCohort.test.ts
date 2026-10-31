@@ -182,3 +182,28 @@ it('bounds mutation revisions without reviving a fingerprint captured before evi
     host.close()
   }
 })
+
+it('keeps a large installation backlog across revision eviction and retires only changed proofs', async () => {
+  const host = await HostSyncStorage.open(new IDBFactory(), 'sample-installation-backlog', {
+    loadLocalStorage: () => null,
+    saveLocalStorage: () => {},
+  })
+  const paths = Array.from({ length: 4200 }, (_, i) => `Notes/Sample ${i}.md`)
+  const fingerprint = { identity: 'sample-inode', size: 1, mtime: 1, ctime: 1, sha: 'a'.repeat(64) }
+  try {
+    const revision = host.scanFingerprintRevision(paths[0])
+    for (const path of paths)
+      host.rememberScanInstallation(path, fingerprint, host.scanFingerprintRevision(path))
+    await host.withScanMutation(['Other'], async () => {
+      for (let i = 0; i < 4200; i++)
+        await host.withScanMutation([`Other/Sample ${i}.md`], async () => {})
+    })
+    expect(host.scanFingerprintRevision(paths[0])).toBeGreaterThan(revision)
+    for (const path of paths) expect(host.scanInstallation(path)).toEqual(fingerprint)
+    await host.withScanMutation([paths[0]], async () => {})
+    expect(host.scanInstallation(paths[0])).toBeUndefined()
+    for (const path of paths.slice(1)) expect(host.scanInstallation(path)).toEqual(fingerprint)
+  } finally {
+    host.close()
+  }
+})
