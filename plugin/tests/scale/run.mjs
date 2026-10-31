@@ -57,6 +57,12 @@ import { preserveFailureState } from './failure-state.mjs'
 import { createFailureMonitor, serializeErrorObservation } from './failure-monitor.mjs'
 import controlErrors from './control-error.cjs'
 import {
+  evaluationExpression,
+  decodeEvaluationOutput,
+  observationError,
+  observeStartup,
+} from './observation.mjs'
+import {
   requireTime,
   phaseTimings,
   saveCheckpoint,
@@ -110,8 +116,9 @@ export class RealVault {
     this.config = config
     this.root = root
     this.name = basename(root)
+    this.observationErrors = []
   }
-  async evaluate(body) {
+  async evaluate(body, { timeoutMs } = {}) {
     // Only file locations travel in CLI arguments. Never token text or arbitrary product errors.
     let stdout
     const nonce = randomUUID()
@@ -130,8 +137,8 @@ export class RealVault {
           })
         ).catch(() => {})
     }, 3000)
-    const cliTimeoutMs = this.config.failureDiagnostic ? 120000 : 12000
-    const expression = `(async()=>{try{const value=await(async()=>{${body}})();return JSON.stringify({__abeleReply:${JSON.stringify(nonce)},hasValue:value!==undefined,value})}catch{return JSON.stringify({__abeleReply:${JSON.stringify(nonce)},hasValue:true,value:{scaleError:true}})}})()`
+    const cliTimeoutMs = timeoutMs ?? (this.config.failureDiagnostic ? 120000 : 12000)
+    const expression = evaluationExpression(body, nonce)
     try {
       ;({ stdout } = await exec(
         process.execPath,
@@ -148,6 +155,7 @@ export class RealVault {
       ))
     } catch (error) {
       const failure = new Error('Vault CLI unavailable')
+      failure.scaleObservationError = observationError(error)
       failure.scaleCliFailure = {
         startedAt,
         endedAt: Date.now(),
@@ -163,17 +171,7 @@ export class RealVault {
     } finally {
       clearTimeout(slow)
     }
-    const line = stdout.slice(stdout.lastIndexOf('=> ') + 3).trim()
-    let result
-    try {
-      const reply = JSON.parse(line)
-      if (reply.__abeleReply !== nonce || !reply.hasValue) throw new Error('Invalid frame')
-      result = reply.value
-    } catch {
-      throw new Error('Vault CLI returned no JSON result')
-    }
-    if (result?.scaleError) throw new Error('Vault action failed (private details suppressed)')
-    return result
+    return decodeEvaluationOutput(stdout, nonce)
   }
   async reindex(operation) {
     return this.evaluate(`const fs=require('node:fs');
@@ -204,10 +202,11 @@ export class RealVault {
       timeout
     )
   }
-  async snapshot() {
+  async snapshot(options) {
     await failureDiagnostics?.poll()
     return this.evaluate(
-      `${host}return !u?null:{visibleStatus:[...(globalThis.document?.querySelectorAll('.abele-sync-status, .abele-sync-window__line, .abele-sync-row__status')??[])].filter(el=>el.getClientRects().length>0).map(el=>({text:el.textContent?.trim()??'',label:el.getAttribute('aria-label')})),job:window.__scaleJob,engines:[...h.live.values()].map(e=>({state:e.engine.status.state,lastSyncAt:e.engine.status.lastSyncAt,lastError:e.engine.status.lastError})),rows:u.rows.value.map(({id,status,paused})=>({id,status,paused})),activity:Object.entries(u.activity.value).map(([id,a])=>({id,classification:a.classification??null,waiting:a.waiting??null,waitingFiles:a.waitingFiles??null,notSynced:a.notSynced??null,error:a.error,failure:a.failure??undefined,startup:a.startup?.stage,transfer:a.transfer?.stage,completed:a.transfer?.completed,total:a.transfer?.total}))}`
+      `${host}return !u?null:{visibleStatus:[...(globalThis.document?.querySelectorAll('.abele-sync-status, .abele-sync-window__line, .abele-sync-row__status')??[])].filter(el=>el.getClientRects().length>0).map(el=>({text:el.textContent?.trim()??'',label:el.getAttribute('aria-label')})),job:window.__scaleJob,engines:[...h.live.values()].map(e=>({state:e.engine.status.state,lastSyncAt:e.engine.status.lastSyncAt,lastError:e.engine.status.lastError})),rows:u.rows.value.map(({id,status,paused})=>({id,status,paused})),activity:Object.entries(u.activity.value).map(([id,a])=>({id,classification:a.classification??null,waiting:a.waiting??null,waitingFiles:a.waitingFiles??null,notSynced:a.notSynced??null,error:a.error,failure:a.failure??undefined,startup:a.startup?.stage,transfer:a.transfer?.stage,completed:a.transfer?.completed,total:a.transfer?.total}))}`,
+      options
     )
   }
   async inFlight(proxy, label, timeout = this.config.timeoutMs) {
@@ -274,7 +273,24 @@ export class RealVault {
     return wait(
       'vault idle',
       async () => {
-        const state = await this.snapshot()
+        const state = await observeStartup(
+          (remaining) => this.snapshot({ timeoutMs: Math.min(5000, remaining) }),
+          {
+            timeoutMs: Math.min(30000, timeout),
+            record: async (entry) => {
+              const evidence = {
+                ...entry,
+                device: String(this.config.vaults?.indexOf(this.root) ?? -1),
+                operation: 'idle snapshot',
+              }
+              this.observationErrors.push(evidence)
+              await appendFile(
+                join(this.config.output, 'observation-errors.jsonl'),
+                JSON.stringify(evidence) + '\n'
+              )
+            },
+          }
+        )
         requireHealthySnapshot(state, 'Vault entered an error state')
         if (state?.job === 'failed')
           throw new Error('Sync action failed (private details suppressed)')
@@ -447,6 +463,7 @@ export async function run(config) {
   let owner
   let expected = []
   const devices = config.vaults.map((root) => new RealVault(config, root))
+  report.observationErrors = devices.map((device) => device.observationErrors)
   let saving = Promise.resolve()
   let checkpointError = false
   const checkpoint = (boundary = false) => {
@@ -551,7 +568,7 @@ export async function run(config) {
         'Timed out: vault idle',
       ].includes(error.message)
         ? error.message
-        : 'Device state unavailable'
+        : 'Observation failed'
       const first = error.scaleFatalSnapshot ?? (await device.snapshot().catch(() => null))
       if (first?.rows?.some(row=>row.status==='error')) {
         await recoverObservedError(device, step, first)
@@ -563,6 +580,8 @@ export async function run(config) {
         reason,
         device: String(devices.indexOf(device)),
         snapshot: first,
+        observationError: observationError(error),
+        cliFailure: error.scaleCliFailure,
       })
       requireHealthySnapshot(report.failures.at(-1).snapshot)
       await device.invalidateJob().catch(() => {})
@@ -1275,6 +1294,7 @@ export async function run(config) {
     }
     // Errors from SDK/CLI can include credentials; expose only our controlled diagnostics.
     report.cliFailure = error.scaleCliFailure
+    report.observationError = error.scaleObservationError
     report.failure =
       /^(Fatal sync state|Advertised server limit|Expected server limits|Local fixture|Unknown server mode|Server file limit|Run deadline reached|Timed out:|Disposable |Two separate|Isolated |Token endpoint|Case-sensitive|Selected build)/.test(
         error.message
@@ -1584,6 +1604,9 @@ export async function run(config) {
         harnessFailures: report.harnessFailures,
         remainingPhaseEvidence: report.remainingPhaseEvidence,
         checkpointFailure: report.checkpointFailure,
+        observationErrors: report.observationErrors,
+        observationError: report.observationError,
+        cliFailure: report.cliFailure,
       }
       await writeEvidenceJson(join(config.output, 'failure-report.json'), failureSummary)
       // Never leave a previously written PASS JSON beside a failed Markdown/analyzer exit.
