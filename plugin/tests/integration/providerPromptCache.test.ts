@@ -6,6 +6,8 @@ import { ChatStorage } from '@/ai/ChatStorage'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
+import { OpenAIClient } from '@/ai/client/OpenAIClient'
+import type { ModelConfig } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
 
 const model = {
@@ -58,23 +60,21 @@ beforeEach(() => {
     vi.spyOn(ChatSummarizer.prototype, key).mockResolvedValue(undefined)
   session = new ChatSession(service)
   vi.spyOn(session as unknown as { getTools(): [] }, 'getTools').mockReturnValue([])
-  fetch = vi
-    .spyOn(window, 'fetch')
-    .mockImplementation(
-      async () =>
-        new Response(
-          'data: ' +
-            JSON.stringify({
-              choices: [{ delta: { content: 'Sample answer.' }, finish_reason: 'stop' }],
-              usage: {
-                prompt_tokens: 100,
-                completion_tokens: 10,
-                prompt_tokens_details: { cached_tokens: 60, cache_write_tokens: 20 },
-              },
-            }) +
-            '\n\ndata: [DONE]\n\n'
-        )
-    )
+  fetch = vi.spyOn(window, 'fetch').mockImplementation(
+    async () =>
+      new Response(
+        'data: ' +
+          JSON.stringify({
+            choices: [{ delta: { content: 'Sample answer.' }, finish_reason: 'stop' }],
+            usage: {
+              prompt_tokens: 100,
+              completion_tokens: 10,
+              prompt_tokens_details: { cached_tokens: 60, cache_write_tokens: 20 },
+            },
+          }) +
+          '\n\ndata: [DONE]\n\n'
+      )
+  )
 })
 afterEach(async () => {
   await session.flush()
@@ -104,3 +104,42 @@ it('keeps cache usage in visible and saved messages and debug diagnostics', asyn
   )
   expect(fetch).toHaveBeenCalledTimes(1)
 })
+
+it('uses one opaque cache key across turns and reloads, and a different key for another chat', async () => {
+  const body = () => JSON.parse(String(fetch.mock.calls.at(-1)![1]!.body))
+  await session.sendMessage('First')
+  const key = body().prompt_cache_key
+  expect(key).toMatch(/^abele-[a-f0-9]{64}$/)
+  await session.flush()
+  await session.load(session.currentChatFile.value!)
+  await session.sendMessage('Second')
+  expect(body().prompt_cache_key).toBe(key)
+  const other = new ChatSession(service)
+  try {
+    await other.sendMessage('Another chat')
+    expect(body().prompt_cache_key).not.toBe(key)
+  } finally {
+    other.destroy()
+  }
+})
+
+it.each(['chat-completions', 'responses'] as const)(
+  'gates cache keys per provider for %s',
+  async (apiMode) => {
+    for (const [baseUrl, promptCacheKey, accepted] of [
+      ['https://api.openai.com/v1', undefined, true],
+      ['https://api.openai.com/v1', false, false],
+      ['https://gateway.example.invalid/v1', undefined, false],
+      ['https://gateway.example.invalid/v1', true, true],
+      ['https://api.openai.com.example.invalid/v1', undefined, false],
+    ] as const) {
+      const config: ModelConfig = { ...model, apiKey: '', baseUrl, apiMode, promptCacheKey }
+      for await (const event of new OpenAIClient().stream(config, 'Stable', [], [], {
+        promptCacheKey: 'sample-key',
+      }))
+        void event
+      const body = JSON.parse(String(fetch.mock.calls.at(-1)![1]!.body))
+      expect(body.prompt_cache_key).toBe(accepted ? 'sample-key' : undefined)
+    }
+  }
+)

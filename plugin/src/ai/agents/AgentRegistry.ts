@@ -212,6 +212,7 @@ export class AgentRegistry {
       name: found.model.name,
       baseUrl: found.provider.baseUrl,
       apiMode: found.provider.apiMode,
+      promptCacheKey: found.provider.promptCacheKey,
       clientName: found.provider.clientName,
       requestTimeoutSeconds: requestTimeoutSeconds(
         found.model.requestTimeoutSeconds,

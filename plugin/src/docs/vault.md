@@ -15,6 +15,12 @@ section. Note-body blocks are exported regardless of this setting.
 
 ## Model reasoning settings
 
+Providers optionally retain `promptCacheKey`, a boolean capability alongside `apiMode`.
+Absent enables `prompt_cache_key` only for `https://api.openai.com/v1`; custom gateways
+must opt in with `true`, and `false` disables it for any provider. Settings transfer carries
+this field with the provider. Requests use a SHA-256 routing key derived from metadata
+`chatId`, allocated before the first request and retained on reload or rename.
+
 Provider model configs in plugin settings retain an optional `reasoningDisabled` boolean.
 The reasoning toggle sets it to true on an explicit off choice and removes it when enabled.
 Absent means no explicit off choice was recorded; older configs are not migrated to off.

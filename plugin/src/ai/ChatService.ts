@@ -1156,7 +1156,7 @@ export class ChatService {
     const id = `node:${reference.registrationId}:${reference.sessionId}`
     const intent = this.presentations.begin(id, true)
     await this.folders.reveal(
-      this.folders.membershipOf(id) !== undefined ? id : this.nodeParentPaths.value[id] ?? id
+      this.folders.membershipOf(id) !== undefined ? id : (this.nodeParentPaths.value[id] ?? id)
     )
     const presenter = this.presentations.apply(intent, () => {
       if (this.nodeSessions.has(id)) {
@@ -1580,6 +1580,7 @@ export class ChatService {
       name: model.name,
       baseUrl: provider.baseUrl,
       apiMode: provider.apiMode,
+      promptCacheKey: provider.promptCacheKey,
       clientName: provider.clientName,
       requestTimeoutSeconds: requestTimeoutSeconds(
         model.requestTimeoutSeconds,
@@ -1625,6 +1626,7 @@ export class ChatService {
           name: model.name,
           baseUrl: provider.baseUrl,
           apiMode: provider.apiMode,
+          promptCacheKey: provider.promptCacheKey,
           clientName: provider.clientName,
           requestTimeoutSeconds: requestTimeoutSeconds(
             model.requestTimeoutSeconds,
@@ -1751,6 +1753,7 @@ export class ChatService {
       name: model.name,
       baseUrl: provider.baseUrl,
       apiMode: provider.apiMode,
+      promptCacheKey: provider.promptCacheKey,
       clientName: provider.clientName,
       ...providerKey(provider.apiKeyId, provider.baseUrl, AbeleConfig.getInstance()),
       contextWindow: model.contextWindow,

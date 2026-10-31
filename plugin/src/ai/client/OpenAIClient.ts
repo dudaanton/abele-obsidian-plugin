@@ -6,6 +6,7 @@ import { prepareImageForApi } from '@/ai/imagePrep'
 import { repairOpenAIToolHistory } from './toolHistory'
 import { clientHeaders } from './clientName'
 import { modelFetch } from './modelFetch'
+import { acceptsPromptCacheKey } from './promptCache'
 import type {
   AssistantMessage,
   AssistantContentBlock,
@@ -486,6 +487,8 @@ export class OpenAIClient {
       if (options.reasoningEffort && model.supportsReasoning)
         body.reasoning = { effort: options.reasoningEffort, summary: 'auto' }
       if (options.temperature != null) body.temperature = options.temperature
+      if (options.promptCacheKey && acceptsPromptCacheKey(model))
+        body.prompt_cache_key = options.promptCacheKey
       return body
     }
     const openaiTools = this.convertTools(tools)
@@ -518,6 +521,8 @@ export class OpenAIClient {
       body.reasoning_effort = options.reasoningEffort
     }
 
+    if (options.promptCacheKey && acceptsPromptCacheKey(model))
+      body.prompt_cache_key = options.promptCacheKey
     return body
   }
 

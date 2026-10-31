@@ -1,3 +1,4 @@
+import { chatPromptCacheKey } from './client/promptCache'
 import {
   NODE_ACTION_TOOLS,
   localNodeActionModes,
@@ -2161,6 +2162,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         committed = messages.length
       }
       const systemPrompt = await this.chatService.getSystemPrompt(this)
+      this.chatIdentity ??= crypto.randomUUID()
+      const promptCacheKey = await chatPromptCacheKey(this.chatIdentity)
       const result = await this.agentLoop.run({
         model,
         systemPrompt,
@@ -2175,6 +2178,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           this.markDirty()
         },
         streamOptions: {
+          promptCacheKey,
           ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
           signal: controller.signal,
         },

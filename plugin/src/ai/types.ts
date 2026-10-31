@@ -54,6 +54,8 @@ export interface AiProvider {
   baseUrl: string
   /** Absent preserves Chat Completions. */
   apiMode?: 'chat-completions' | 'responses'
+  /** Accepts prompt_cache_key. Absent enables only the direct OpenAI endpoint. */
+  promptCacheKey?: boolean
   /** Optional identifying User-Agent; empty preserves the transport default. */
   clientName?: string
   apiKeyId: string // reference for Obsidian keychain
