@@ -1334,6 +1334,10 @@ another asks first. The folder choice is saved with AI general settings and trav
 
 ## Chats
 
+Message `usage` optionally retains `cacheRead` and `cacheWrite` token counts alongside
+`input`, `output`, `total` and `speed`. Older records without cache counts remain readable.
+Input counts exclude cache reads/writes; the total includes them.
+
 The chat tree uses logical folders, independent of directories on disk. The configured
 chat-folder template alone determines where new transcripts live. Tree folder creation,
 renaming, deletion, filing and dragging never move or rename transcripts. Unfiled chats appear

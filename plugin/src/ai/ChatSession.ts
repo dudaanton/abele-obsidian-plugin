@@ -1798,6 +1798,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
               ? {
                   input: am.usage.input,
                   output: am.usage.output,
+                  cacheRead: am.usage.cacheRead,
+                  cacheWrite: am.usage.cacheWrite,
                   total: am.usage.totalTokens,
                   speed:
                     this.streamStartTime && am.usage.output

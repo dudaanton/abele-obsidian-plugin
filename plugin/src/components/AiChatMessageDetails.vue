@@ -77,7 +77,14 @@
             p1: String(message.usage.output),
             p2: String(message.usage.total),
           })
-        }}<template v-if="message.usage.speed">
+        }}<template v-if="message.usage.cacheRead != null || message.usage.cacheWrite != null">
+          {{
+            t('streamBMeta.cacheTokens', {
+              read: String(message.usage.cacheRead ?? 0),
+              write: String(message.usage.cacheWrite ?? 0),
+            })
+          }}</template
+        ><template v-if="message.usage.speed">
           {{ t('streamBMeta.d46f6ad65a', { p0: String(message.usage.speed) }) }}</template
         ></span
       >

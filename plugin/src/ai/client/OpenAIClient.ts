@@ -356,6 +356,7 @@ export class OpenAIClient {
     }
 
     // Finish any remaining block
+    console.debug('[Abele model] usage', output.usage)
     if (currentBlock) yield* this.finishBlock(currentBlock, output)
     for (const call of responseCalls.values()) yield* this.finishBlock(call, output)
 

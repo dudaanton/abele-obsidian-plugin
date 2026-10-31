@@ -686,6 +686,8 @@ export function migrateOldPermissions(
 export interface ChatMessageUsage {
   input: number
   output: number
+  cacheRead?: number
+  cacheWrite?: number
   total: number
   speed?: number // output tokens per second
 }

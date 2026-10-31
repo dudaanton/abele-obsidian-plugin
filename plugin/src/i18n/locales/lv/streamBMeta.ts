@@ -1,4 +1,5 @@
 export const streamBMeta = {
+  'streamBMeta.cacheTokens': ' / no kešatmiņas: {read} / kešatmiņā: {write}',
   'streamBMeta.2348f99874': 'atvērts',
   'streamBMeta.c3eefb58d7': 'slēgts',
   'streamBMeta.3f8f09c8e0': 'sapludināts',

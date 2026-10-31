@@ -1,4 +1,5 @@
 export const streamBMeta = {
+  'streamBMeta.cacheTokens': ' / из кэша: {read} / в кэш: {write}',
   'streamBMeta.2348f99874': 'открыто',
   'streamBMeta.c3eefb58d7': 'закрыто',
   'streamBMeta.3f8f09c8e0': 'слито',

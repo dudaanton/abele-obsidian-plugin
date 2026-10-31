@@ -640,5 +640,8 @@
   },
   "streamBMeta.noIdleChat": {
     "englishHash": "4d69ca656465ad7874ea1e01cdcd33cb2944e19a17fa6e2920ec46cfe1f3c4a8"
+  },
+  "streamBMeta.cacheTokens": {
+    "englishHash": "f0c33586c5b140415fd4a24fe5d5373212bc2a3883bfe78574d87591859e9466"
   }
 }
