@@ -1,6 +1,6 @@
 --- a/packages/channel-protocol/src/index.ts
 +++ b/packages/channel-protocol/src/index.ts
-@@ -1,6 +1,8 @@
+@@ -3,6 +3,8 @@
  import { WireTimestampSchema } from './timestamp.js'
  export { WireTimestampSchema, WireOffsetTimestampSchema } from './timestamp.js'
  import { z } from 'zod'
@@ -9,7 +9,7 @@
  import { PairedRecordSchemas, type PublicKey } from './paired.js'
  export * from './paired.js'
 
-@@ -134,7 +136,11 @@
+@@ -138,7 +140,11 @@
    },
    decode(bytes: Uint8Array): RecordFrame {
      if (bytes.byteLength > LIMITS.record_bytes) throw new ChannelError('record_too_large')
@@ -204,11 +204,12 @@
 -          'debugger.v1.grant.list',
 -          DebuggerControlMethodSchemas['debugger.v1.grant.list'].parse(params)
 -        )
+-      )
 +    return responseSchema(DebuggerGrantSchema.array().max(16)).parse(
 +      await this.rpc(
 +        'debugger.v1.grant.list',
 +        DebuggerControlMethodSchemas['debugger.v1.grant.list'].parse(params)
-       )
++      )
 +    )
    }
    revokeGrant(grant_id: string) {
@@ -310,11 +311,12 @@
 -          'debugger.v1.sessions',
 -          DebuggerMethodSchemas['debugger.v1.sessions'].parse(params)
 -        )
+-      )
 +    return responseSchema(DebuggerSnapshotSchema.array().max(128)).parse(
 +      await this.rpc(
 +        'debugger.v1.sessions',
 +        DebuggerMethodSchemas['debugger.v1.sessions'].parse(params)
-       )
++      )
 +    )
    }
    async restart(params: (typeof DebuggerControlMethodSchemas)['debugger.v1.restart']['_input']) {
@@ -655,7 +657,7 @@
        await this.mutation('workspace.create', {
          project_id,
          base_ref,
-@@ -718,24 +735,30 @@
+@@ -718,28 +735,28 @@
        ...(after_id ? { after_id } : {}),
      })
      if (!Array.isArray(result)) throw new ChannelError('invalid_result')
@@ -664,15 +666,16 @@
    }
    async getWorkspace(workspace_id: string) {
 -    return WorkspaceSchema.parse(await this.request('workspace.get', { workspace_id }))
-+    return responseSchema(WorkspaceSchema).parse(
-+      await this.request('workspace.get', { workspace_id })
-+    )
++    return responseSchema(WorkspaceSchema).parse(await this.request('workspace.get', { workspace_id }))
    }
    async removeWorkspace(workspace_id: string) {
 -    return WorkspaceJobResultSchema.parse(await this.mutation('workspace.remove', { workspace_id }))
-+    return responseSchema(WorkspaceJobResultSchema).parse(
-+      await this.mutation('workspace.remove', { workspace_id })
-+    )
++    return responseSchema(WorkspaceJobResultSchema).parse(await this.mutation('workspace.remove', { workspace_id }))
+   }
+   /** Retire a failed create record without changing the worktree or its files. */
+   async retireWorkspace(workspace_id: string) {
+-    return WorkspaceSchema.parse(await this.mutation('workspace.retire', { workspace_id }))
++    return responseSchema(WorkspaceSchema).parse(await this.mutation('workspace.retire', { workspace_id }))
    }
    async workspaceStatus(workspace_id: string, offset = 0, limit = 256) {
 -    return WorkspaceStatusSchema.parse(
@@ -682,9 +685,7 @@
    }
    async workspaceDiff(workspace_id: string) {
 -    return WorkspaceDiffSchema.parse(await this.request('workspace.diff', { workspace_id }))
-+    return responseSchema(WorkspaceDiffSchema).parse(
-+      await this.request('workspace.diff', { workspace_id })
-+    )
++    return responseSchema(WorkspaceDiffSchema).parse(await this.request('workspace.diff', { workspace_id }))
    }
    async getJob(job_id: string) {
 -    return JobSchema.parse(await this.request('job.get', { job_id }))
@@ -692,7 +693,7 @@
    }
    async listJobs(project_id?: string, after_id?: string) {
      const result = await this.request('job.list', {
-@@ -743,7 +766,7 @@
+@@ -747,7 +764,7 @@
        ...(after_id ? { after_id } : {}),
      })
      if (!Array.isArray(result)) throw new ChannelError('invalid_result')
@@ -701,7 +702,7 @@
    }
    async send(
      session_id: string,
-@@ -773,7 +796,7 @@
+@@ -777,7 +794,7 @@
    async sendResult(operation_id: string): Promise<TurnAdmissionResult | undefined> {
      const receipt = await this.operationResult(operation_id)
      if (receipt?.error) throw new ChannelError(receipt.error)
@@ -710,7 +711,7 @@
    }
    async prompts(session_id: string, after_id?: string, state?: Prompt['state']) {
      const result = await this.request('prompt.list', {
-@@ -782,7 +805,7 @@
+@@ -786,7 +803,7 @@
        ...(state ? { state } : {}),
      })
      if (!Array.isArray(result)) throw new ChannelError('invalid_result')
@@ -719,7 +720,7 @@
    }
    /** Reconnect scan for pending questionnaires across this vault's node sessions. */
    async pendingQuestionnaires(vault_id: string, after_id?: string) {
-@@ -792,7 +815,7 @@
+@@ -796,7 +813,7 @@
      })
      if (!Array.isArray(result)) throw new ChannelError('invalid_result')
      return result.map((raw) => {
@@ -728,7 +729,7 @@
        if (prompt.kind !== 'questionnaire') throw new ChannelError('invalid_result')
        return prompt
      })
-@@ -829,7 +852,7 @@
+@@ -833,7 +850,7 @@
      const receipt = await this.operationResult(id)
      if (!receipt) throw new ChannelError('outcome_unknown')
      if (receipt.error) throw new ChannelError(receipt.error)
@@ -737,7 +738,7 @@
    }
    private async enqueue(method: string, params: unknown, retainedOperationId?: string) {
      if (method.startsWith('debugger.v1.')) throw new ChannelError('debugger_online_only')
-@@ -881,7 +904,7 @@
+@@ -885,7 +902,7 @@
              ['disconnected', 'outcome_unknown', 'storage_unavailable'].includes(e.code)
            )
              throw e
@@ -920,10 +921,11 @@
    async fileDirectory(
      params:
 -      NodePathParams<'workspace.file.directory'> | NodePathParams<'repository.v1.file.directory'>
+-  ) {
+-    return DirectoryManifestSchema.parse(
 +      | NodePathParams<'workspace.file.directory'>
 +      | NodePathParams<'repository.v1.file.directory'>
-   ) {
--    return DirectoryManifestSchema.parse(
++  ) {
 +    return responseSchema(DirectoryManifestSchema).parse(
        await this.call(
          'worktree_id' in params ? 'repository.v1.file.directory' : 'workspace.file.directory',

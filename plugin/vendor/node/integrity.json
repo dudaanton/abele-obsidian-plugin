@@ -112,10 +112,10 @@
     "id": "@abele/node-protocol@0.0.0",
     "name": "@abele/node-protocol",
     "version": "0.0.0",
-    "size": 115143,
-    "unpackedSize": 856784,
-    "shasum": "2d1ea83cbd91a1c84e05d50663d9b09e573ec6f6",
-    "integrity": "sha512-xJGHHcRI4dfcAKNEHGVHAftIfmdL6F9ukzDUZDnllhVFz7yu/yNtMEYKneL5lP9qly74w1WjmfCxo2og3cQGPw==",
+    "size": 115217,
+    "unpackedSize": 857222,
+    "shasum": "08583c03e8758bc2d0d5af57a80d9cdd0e27c81f",
+    "integrity": "sha512-JQ5yivATWiZKfbUOIF+M4ZNK09qlKxuhVluM6obLPOEPi3ZyTRepaMxQ0265pjtz7qg7uqV0OBI4wBiuHxJTZA==",
     "filename": "abele-node-protocol-0.0.0.tgz",
     "files": [
       {
@@ -465,22 +465,22 @@
       },
       {
         "path": "dist/resources.d.ts",
-        "size": 5556,
+        "size": 5682,
         "mode": 420
       },
       {
         "path": "dist/resources.js",
-        "size": 4597,
+        "size": 4686,
         "mode": 420
       },
       {
         "path": "dist/resources.js.map",
-        "size": 5409,
+        "size": 5505,
         "mode": 420
       },
       {
         "path": "dist/schemas.d.ts",
-        "size": 60801,
+        "size": 60928,
         "mode": 420
       },
       {
@@ -600,10 +600,10 @@
     "id": "@abele/node-client@0.0.0",
     "name": "@abele/node-client",
     "version": "0.0.0",
-    "size": 52200,
-    "unpackedSize": 302550,
-    "shasum": "a0242a0117d3201ad886237fde0b48daede91e3f",
-    "integrity": "sha512-qAxZs0CIf13DjTBV/R1D4hs28/OAEibXQiEvz5ttk8x8AlrnDX6PpvBVHJkAj/h/b+IzTVNYB15dLL3KvutFTg==",
+    "size": 52345,
+    "unpackedSize": 303535,
+    "shasum": "a80b13548d2c105defeb10473e793359b4422838",
+    "integrity": "sha512-Sp7RDgsZjn9WpQtCpC+H4lVSZXWPxGRaHYa/lkp8hRdiKrLHuXKCZZALaeZ3RuyhKdPazn2How8wkahS1VNLTg==",
     "filename": "abele-node-client-0.0.0.tgz",
     "files": [
       {
@@ -638,17 +638,17 @@
       },
       {
         "path": "dist/index.d.ts",
-        "size": 34481,
+        "size": 35055,
         "mode": 420
       },
       {
         "path": "dist/index.js",
-        "size": 33018,
+        "size": 33264,
         "mode": 420
       },
       {
         "path": "dist/index.js.map",
-        "size": 31010,
+        "size": 31175,
         "mode": 420
       },
       {

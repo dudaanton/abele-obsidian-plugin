@@ -6,7 +6,7 @@ since v0.4.47, so the earlier local delegation-reasons patch is no longer applie
 ## Current browser payloads
 
 All four packages are built from AbeleNode security branch commit
-`5c2a2bdc4db04f79da83cd614d062234c8aa8147` (based on v0.4.72),
+`449e1c5e44186b5596c29adceef6979283ce8c3d` (based on v0.4.74),
 using the six source patches below, Zod 4.6.6 and TypeScript 5.9.3.
 The lockfile and `integrity.json` record the exact rebuilt bytes.
 
