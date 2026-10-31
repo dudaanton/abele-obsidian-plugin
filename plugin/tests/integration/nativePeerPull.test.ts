@@ -58,6 +58,7 @@ for (const fault of [
   'install-fingerprint-own-event',
   'install-fingerprint-invalidated',
   'second-ledger-abort',
+  'acknowledgement-reads',
 ] as const)
   it(
     `bounds native peer installation persistence and retained payloads by a batch (${fault})`,
@@ -74,6 +75,8 @@ for (const fault of [
       ].includes(fault)
       const count = fault.startsWith('install-fingerprint-single')
         ? 1
+        : fault === 'acknowledgement-reads'
+          ? 32
         : fault === 'install-fingerprint-backlog'
           ? 4200
           : fault === 'batch-tail'
@@ -245,6 +248,9 @@ for (const fault of [
       let files = new ObsidianFileSystem(app as unknown as App, {
         storage: host,
         ledger: state,
+        ...(fault === 'acknowledgement-reads'
+          ? { prepareStartupInventory: async () => {} }
+          : {}),
         ...(fault === 'install-fingerprint-inflight'
           ? {
               onEngineWrite: (path) => {
@@ -708,6 +714,8 @@ for (const fault of [
           return
         }
         const report = await run()
+        if (fault === 'acknowledgement-reads')
+          expect(contentReads, 'pull acknowledgement must reuse installed transfer bytes').toBe(0)
         if (count >= 33000) {
           await collectHeap()
           console.log('native settled pull memory', process.memoryUsage())

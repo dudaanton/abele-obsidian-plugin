@@ -67,7 +67,7 @@
     "junk": [
       "plugin/vendor/node/*.tgz",
       "plugin/vendor/sync/abele-sync-sdk-0.3.1.tgz",
-      "plugin/vendor/sync/abele-sync-sdk-0.3.12.tgz"
+      "plugin/vendor/sync/abele-sync-sdk-0.3.13.tgz"
     ],
     "homePaths": []
   }

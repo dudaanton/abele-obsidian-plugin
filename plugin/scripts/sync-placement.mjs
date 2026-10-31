@@ -958,8 +958,8 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         )
         code = replaceOnce(
           code,
-          'const have = await settledStat(this.fs, target, sha, wrote, this.hash);',
-          'const beforeIdentity = await this.fs.fileIdentity?.(target);\n        const have = await settledStat(this.fs, target, sha, wrote, this.hash);'
+          'const have = placed === undefined',
+          'const beforeIdentity = await this.fs.fileIdentity?.(target);\n        const have = placed === undefined'
         )
         code = replaceOnce(
           code,
@@ -983,6 +983,11 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
           code,
           'settledStat(this.fs, target, sha, wrote, this.hash)',
           'settledPlacementStat(this.fs, target, sha, wrote, this.hash)'
+        )
+        code = replaceOnce(
+          code,
+          '                : wrote;',
+          '                : await settledPlacementStat(this.fs, target, sha, wrote, this.hash);'
         )
         code += `
         async function fingerprintPlacementFile(fs, path, hash) {

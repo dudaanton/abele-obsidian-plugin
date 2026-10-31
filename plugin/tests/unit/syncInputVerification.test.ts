@@ -40,11 +40,11 @@ afterEach(() => {
 describe('npm sync SDK input preflight', () => {
   it('verifies the audited npm version, integrity and installed package bytes', () => {
     const input = verifySyncSdkInputs()
-    expect(input.version).toBe('0.3.12')
-    expect(input.source).toBe('file:vendor/sync/abele-sync-sdk-0.3.12.tgz')
-    expect(input.sha256).toBe('0a6a2d93ecb1213aabaebdbdca84b66ca18fe6e85f660a1293776d1971600aae')
+    expect(input.version).toBe('0.3.13')
+    expect(input.source).toBe('file:vendor/sync/abele-sync-sdk-0.3.13.tgz')
+    expect(input.sha256).toBe('042b4c9697f6c0428c8a65bec23f877dcdc3ca2788b91375c731db587ccbdc8d')
     expect(input.integrity).toBe(
-      'sha512-PtoYw3jedV4FOLhbHg6TM7zFWd2aEhrkQk5G8ZLgQTAKAJe8ZkPfByEUpfn8xpOavUtcKFzmZMQia8MRI2Oe4w=='
+      'sha512-deBUK9pSCI5hmnH9PL2KfN7TXLRjxwhC2gpCF03sSri69CQ1U/rBQsQu2b8iMj9yhd5/v3JPDSKVGtW4Wkjkmw=='
     )
   })
   it('refuses a manifest that omits the pinned SDK input', () => {

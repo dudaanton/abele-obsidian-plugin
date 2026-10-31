@@ -134,9 +134,9 @@ async function measure(folder: boolean) {
 
 it.each([false, true])('bounds first-pull costs and order (folder=%s)', measure)
 
-it('keeps first pull within four bridge operations per file', async () => {
+it('keeps first pull within five bridge operations per file including the installed stat', async () => {
   const counts = await measure(false)
-  expect(counts.bridge).toBeLessThanOrEqual(counts.files * 4 + 8)
+  expect(counts.bridge).toBeLessThanOrEqual(counts.files * 5 + 8)
 })
 
 it.fails(
