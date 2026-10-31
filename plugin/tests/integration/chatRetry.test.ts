@@ -51,7 +51,7 @@ let session: ChatSession
 let sent: Message[][]
 
 /** A loop that behaves like the real one: announces the turn, keeps a failed one out. */
-function loopThat(turns: AssistantMessage[]) {
+function loopThat(turns: AssistantMessage[], events: unknown[] = []) {
   let at = 0
   return vi.spyOn(AgentLoop.prototype, 'run').mockImplementation(async function (
     this: AgentLoop,
@@ -61,12 +61,14 @@ function loopThat(turns: AssistantMessage[]) {
     const turn = turns[Math.min(at++, turns.length - 1)]
     const emit = (this as unknown as { emit: (event: unknown) => void }).emit.bind(this)
 
+    for (const event of events) emit(event)
     emit({ type: 'message_end', message: turn })
     return { messages: turn.stopReason === 'error' ? [...opts.messages] : [...opts.messages, turn] }
   })
 }
 
 beforeEach(() => {
+  vi.restoreAllMocks()
   sent = []
   useVault([])
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, providers: [provider] }
@@ -170,6 +172,84 @@ describe('trying again on its own', () => {
     }
     await done
   }
+
+  it.each(['Request timed out after 300s', 'Failed to fetch'])(
+    'recovers an empty transport failure automatically: %s',
+    async (error) => {
+      const { OpenAIClient } = await import('@/ai/client/OpenAIClient')
+      let calls = 0
+      vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(
+        async function* (_model, _system, messages) {
+          if (!messages.some((m) => m.role === 'user' && m.content === 'Sample question')) {
+            yield { type: 'done' as const, message: answered('Summary') }
+            return
+          }
+          if (calls++ === 0) {
+            await new Promise((resolve) => setTimeout(resolve, 3000))
+            yield { type: 'error' as const, error, message: failed(error) }
+          } else yield { type: 'done' as const, message: answered('recovered') }
+        }
+      )
+      const done = session.sendMessage('Sample question')
+      await vi.advanceTimersByTimeAsync(3500)
+      expect(session.retrying.value).toMatchObject({ attempt: 1, of: 2 })
+      await vi.advanceTimersByTimeAsync(20_000)
+      await done
+      expect(calls).toBe(2)
+      expect(session.error.value).toBeNull()
+    }
+  )
+
+  it('exhausts two automatic transport retries', async () => {
+    loopThat([failed('Failed to fetch')])
+    await sendThrough()
+    expect(sent).toHaveLength(3)
+    expect(session.error.value).toBe('Failed to fetch')
+  })
+
+  it('does not repeat partial output even with explicit retries', async () => {
+    setRetry(3)
+    const partial = failed('Failed to fetch')
+    partial.content = [{ type: 'text', text: 'Partial answer' }]
+    loopThat([partial, answered('repeated')])
+    await sendThrough()
+    expect(sent).toHaveLength(1)
+  })
+
+  it.each(['text_delta', 'thinking_delta', 'tool_call_start'])(
+    'never repeats after %s',
+    async (type) => {
+      loopThat(
+        [failed('Failed to fetch')],
+        [
+          {
+            type: 'stream_event',
+            event: {
+              type,
+              delta: 'Sample',
+              toolCallId: 'call-1',
+              toolName: 'sample_tool',
+            },
+          },
+        ]
+      )
+      await sendThrough()
+      expect(sent).toHaveLength(1)
+    }
+  )
+
+  it.each(['stop', 'close'])('cancels the default countdown on %s', async (action) => {
+    loopThat([failed('Failed to fetch')])
+    const done = session.sendMessage('Sample question')
+    await vi.advanceTimersByTimeAsync(500)
+    expect(session.retrying.value).not.toBeNull()
+    if (action === 'close') session.destroy()
+    else session.abort()
+    await vi.advanceTimersByTimeAsync(20_000)
+    await done
+    expect(sent).toHaveLength(1)
+    expect(session.retrying.value).toBeNull()
+  })
 
   it('does nothing unless it was asked to', async () => {
     loopThat([failed('HTTP 429: rate limited')])

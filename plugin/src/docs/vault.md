@@ -2007,6 +2007,14 @@ streamed chunk, not the whole response. It applies to all OpenAI-compatible chat
 including background, review, fallback and delegated requests. Other request types keep
 their own limits.
 
+Chat turns automatically retry timeouts and transport failures (including `Failed to fetch`)
+before any model output, with two retries and waits of 2 and 4 seconds by default. The existing
+retry countdown shows progress; exhaustion keeps the error and manual Retry action. Explicit
+`ai.autoRetry` settings can increase the retry count or change the delay; other transient
+provider failures still require those settings. Receiving text, reasoning or tool-call output,
+or starting a tool, prevents automatic replay of that loop attempt. Stopping or closing the
+chat cancels a pending retry.
+
 ## Background model settings
 
 The shared `ai.auxiliaryModelId` setting stores `providerId::modelId` for new background-model

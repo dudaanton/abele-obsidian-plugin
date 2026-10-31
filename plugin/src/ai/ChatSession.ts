@@ -298,6 +298,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private readonly activeAgentTurns = ref(0)
   private retryTimer: number | null = null
   private retryCancel: (() => void) | null = null
+  private retryHasOutput = false
   private allChatMessages: ChatMessage[] = []
   private activeLeafId: string | null = null
   private pendingBranchCut: string | undefined
@@ -1739,6 +1740,15 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   // ── Event handling ───────────────────────────��──────────────────
 
   private handleAgentEvent(event: AgentEvent): void {
+    // Once anything arrived, repeating the whole loop could duplicate an answer or a write.
+    if (
+      event.type === 'tool_start' ||
+      (event.type === 'stream_event' && !['error', 'done'].includes(event.event.type)) ||
+      (event.type === 'message_end' &&
+        event.message.role === 'assistant' &&
+        event.message.content.length > 0)
+    )
+      this.retryHasOutput = true
     switch (event.type) {
       case 'reconnecting':
         this.reconnecting.value = event.state
@@ -2015,7 +2025,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   /**
    * A turn, tried again by itself when the failure was the sort that passes on its own.
    *
-   * Off unless asked for. What it repeats is decided by `isTransient`: a rate limit or a
+   * Empty transport failures get two retries by default. Other retries are opt-in.
+   * What it repeats is decided by `isTransient`: a rate limit or a
    * dropped connection is worth another go, a rejected key is not — that would be the same
    * refusal five times over with a growing wait between them.
    */
@@ -2040,6 +2051,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     try {
       const settings = { ...DEFAULT_RETRY, ...(AbeleConfig.getInstance().ai.autoRetry ?? {}) }
       for (let attempt = 0; ; attempt++) {
+        this.retryHasOutput = false
         await this.runAgentLoopOnce()
 
         const failure = this.error.value
@@ -2061,17 +2073,35 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
             resolved: [...new Set([...(this.attention.value.resolved ?? []), ...interruptedTools])],
           }
         }
-        if (!failure || attempt >= settings.attempts || !isTransient(failure)) return
+        const attempts =
+          failure &&
+          /failed to fetch|network|timed out|timeout|socket|econn|temporarily/i.test(failure)
+            ? Math.max(2, settings.attempts)
+            : settings.attempts
+        if (!failure || attempt >= attempts || !isTransient(failure)) return
         // The reader is in charge: a pending tool call or a stopped turn is not retried behind
         // their back.
-        if (this.pendingToolCalls.value.length) return
+        if (
+          this.pendingToolCalls.value.length ||
+          this.retryHasOutput ||
+          this.turnAborted ||
+          this.destroyed ||
+          generation !== this.generation
+        )
+          return
+
+        console.debug('[Abele AI] retrying request', {
+          attempt: attempt + 1,
+          of: attempts,
+          failure,
+        })
 
         const carryOn = await this.waitBeforeRetry(
           backoffDelay(attempt + 1, settings.firstDelayMs),
           attempt + 1,
-          settings.attempts
+          attempts
         )
-        if (!carryOn) return
+        if (!carryOn || this.turnAborted || this.destroyed || generation !== this.generation) return
       }
     } finally {
       this.activeAgentTurns.value--
