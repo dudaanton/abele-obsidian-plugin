@@ -13,6 +13,9 @@ exports.serialize = function serialize(value, seen = new WeakSet()) {
   return result
 }
 
+exports.shouldWrapFingerprints = config =>
+  config.failureDiagnostic && config.captureFingerprintCallers === true
+
 exports.wrapFingerprints = function (Class, emit) {
   if (!Class?.prototype || Class.prototype.__scaleFingerprintWrapped) return
   Object.defineProperty(Class.prototype, '__scaleFingerprintWrapped', { value: true })

@@ -22,3 +22,12 @@ test('a rejected promise paused for startup diagnostics is captured and resumed'
   assert.deepEqual(commands, ['Runtime.getProperties', 'Debugger.resume'])
   assert.equal(events[0].event, 'caught-startup-exception')
 })
+
+test('routine full-run error capture does not pause on every caught exception', () => {
+  const marker = '/sample/failure-capture-armed'
+  assert.equal(diagnostics.caughtExceptionPauseFile({ failureArmed: marker }), null)
+  assert.equal(diagnostics.caughtExceptionPauseFile({
+    failureArmed: marker,
+    captureCaughtExceptions: true,
+  }), marker)
+})

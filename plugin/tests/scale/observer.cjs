@@ -19,7 +19,8 @@ module.exports = class extends Plugin {
       const diagnostic = require(config.failureDiagnostic)
       const emit = value => fs.appendFileSync(config.failureEvents,
         JSON.stringify({ at: Date.now(), device: config.device, ...value }) + '\n')
-      globalThis.__scaleWrapFingerprints = Class => diagnostic.wrapFingerprints(Class, emit)
+      if (diagnostic.shouldWrapFingerprints(config))
+        globalThis.__scaleWrapFingerprints = Class => diagnostic.wrapFingerprints(Class, emit)
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Host profile location is evidence only.
       const remote = require('@electron/remote')
       const location = {

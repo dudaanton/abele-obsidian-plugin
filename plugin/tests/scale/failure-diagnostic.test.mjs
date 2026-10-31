@@ -16,6 +16,14 @@ test('fingerprint wrappers preserve results and capture the SDK caller before aw
   assert.equal(events.filter(row => row.event === 'fingerprint-result').length, 2)
 })
 
+test('startup error capture leaves fingerprint stacks off unless explicitly requested', () => {
+  assert.equal(diagnostic.shouldWrapFingerprints({ failureDiagnostic: true }), false)
+  assert.equal(diagnostic.shouldWrapFingerprints({
+    failureDiagnostic: true,
+    captureFingerprintCallers: true,
+  }), true)
+})
+
 test('fatal capture writes the complete exception and state before freezing exactly once', () => {
   const order = [], events = [], listeners = new Map()
   const target = { addEventListener: (key, fn) => listeners.set(key, fn), removeEventListener() {} }

@@ -341,7 +341,7 @@ exports.watch = async function (id, serializedConfig) {
     config.javascriptHashTracepoints,
     config.javascriptHashBoundary,
     emit,
-    config.failureArmed
+    exports.caughtExceptionPauseFile(config)
   )
   const profiler = exports.createStallProfiler({
     clock,
@@ -476,6 +476,9 @@ exports.classificationSnapshot = (activity) =>
     id,
     classification: value.classification ?? null,
   }))
+
+exports.caughtExceptionPauseFile = (config) =>
+  config.captureCaughtExceptions === true ? config.failureArmed ?? null : null
 
 exports.armHashTracepoints = async function (transport, lines, boundary, emit, failureArmed) {
   if (!lines?.length) return () => {}
