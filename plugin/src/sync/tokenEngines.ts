@@ -683,7 +683,17 @@ export class TokenEngines {
           if (cancelWait) startup.signal.removeEventListener('abort', cancelWait)
         }
       }
-      return this.deps.startupTimeline?.stage('connection', name, run) ?? run()
+      try {
+        return await (this.deps.startupTimeline?.stage('connection', name, run) ?? run())
+      } catch (error) {
+        if (
+          name === 'Checking saved sync state' &&
+          error instanceof Error &&
+          typeof Reflect.get(error, 'recoverySubstep') !== 'string'
+        )
+          Object.assign(error, { recoverySubstep: 'stage-boundary' })
+        throw error
+      }
     }
     const start = async () => {
       await (this.deps.startupTimeline?.stage('connection', 'Flushing registry', () =>
@@ -997,59 +1007,66 @@ export class TokenEngines {
       await stage(
         'Checking saved sync state',
         async () => {
-          const scopedInspection: import('./external/pluginSafety').ProjectionInspection = {
-            ...inspection,
-          }
-          if (!(record.scope.kind === 'folder' && record.scope.path === '/')) {
-            scopedInspection.roots = record.scope.kind === 'folder' ? [localRoot] : []
-            const paths: string[] = []
-            if (record.scope.kind === 'group')
-              for await (const entry of state.all()) paths.push(entry.path)
-            scopedInspection.paths = paths
-            // Runtime discovery also incorporates server-named group members.
-            if (record.scope.kind === 'group') scopedInspection.inventory = undefined
-          }
-          let recoverySubstep: string | undefined
+          let recoverySubstep = 'scope-inspection'
           try {
-            return await recoverExternalState(
-            connectionApp,
-            state,
-            record.ledgerId,
-            record.ledgerId,
-            binding,
-            fence,
-            factoryOf(this.deps),
-            scopedInspection,
-            (phase) => {
-              const match = /^connection:Recovery (.*):(begin|end)$/.exec(phase)
-              if (match?.[2] === 'begin') recoverySubstep = match[1]
-              this.deps.startupTimeline?.mark(phase)
-            },
-            () => {
-              const encoded = this.ui.itemSets.encoded(record)
-              const item = this.ui.itemSets.store.forRecord(record.id)?.item.id
-              let response: Response | undefined
-              const client = new V2EngineClient(encoded, {
-                item,
-                fetch: async (input, init) => {
-                  const received = await transportOf(this.deps)(input, init)
-                  response = received.clone()
-                  return received
-                },
-              })
-              prefetchedConnection = client.connection(startup.signal).then(
-                () => response,
-                (error) => {
-                  if (response) return response
-                  throw error
-                }
-              )
-              // Recovery may fail before the engine consumes the result.
-              void prefetchedConnection.catch(() => {})
+            const scopedInspection: import('./external/pluginSafety').ProjectionInspection = {
+              ...inspection,
             }
+            if (!(record.scope.kind === 'folder' && record.scope.path === '/')) {
+              scopedInspection.roots = record.scope.kind === 'folder' ? [localRoot] : []
+              const paths: string[] = []
+              if (record.scope.kind === 'group') {
+                recoverySubstep = 'scope-paths'
+                for await (const entry of state.all()) paths.push(entry.path)
+              }
+              scopedInspection.paths = paths
+              // Runtime discovery also incorporates server-named group members.
+              if (record.scope.kind === 'group') scopedInspection.inventory = undefined
+            }
+            recoverySubstep = 'recover-external-state'
+            return await recoverExternalState(
+              connectionApp,
+              state,
+              record.ledgerId,
+              record.ledgerId,
+              binding,
+              fence,
+              factoryOf(this.deps),
+              scopedInspection,
+              (phase) => {
+                const match = /^connection:Recovery (.*):(begin|end)$/.exec(phase)
+                if (match?.[2] === 'begin') recoverySubstep = match[1]
+                this.deps.startupTimeline?.mark(phase)
+              },
+              () => {
+                const encoded = this.ui.itemSets.encoded(record)
+                const item = this.ui.itemSets.store.forRecord(record.id)?.item.id
+                let response: Response | undefined
+                const client = new V2EngineClient(encoded, {
+                  item,
+                  fetch: async (input, init) => {
+                    const received = await transportOf(this.deps)(input, init)
+                    response = received.clone()
+                    return received
+                  },
+                })
+                prefetchedConnection = client.connection(startup.signal).then(
+                  () => response,
+                  (error) => {
+                    if (response) return response
+                    throw error
+                  }
+                )
+                // Recovery may fail before the engine consumes the result.
+                void prefetchedConnection.catch(() => {})
+              }
             )
           } catch (error) {
-            if (error instanceof Error && recoverySubstep)
+            if (
+              error instanceof Error &&
+              recoverySubstep &&
+              typeof Reflect.get(error, 'recoverySubstep') !== 'string'
+            )
               Object.assign(error, { recoverySubstep })
             throw error
           }

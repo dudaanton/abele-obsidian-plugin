@@ -1,5 +1,11 @@
 import { expect, it, vi } from 'vitest'
-import { TokenUi, connectionError, connectionStatusText, scopeName } from '@/sync/tokenUi'
+import {
+  TokenUi,
+  connectionError,
+  connectionStatusText,
+  failureDetails,
+  scopeName,
+} from '@/sync/tokenUi'
 import { TokenConnectionRegistry, TOKEN_REGISTRY_KEY } from '@/sync/tokenConnectionRegistry'
 import { encodeAccessToken } from '@/sync/v2/contract'
 import { MemoryStateStore, sha256 } from '@abele/sync-sdk/core'
@@ -8,6 +14,22 @@ import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { deferred } from '../helpers/deferred'
 import { LocalPlacementError } from '@/sync/localFolderPlacement'
+
+it('keeps bounded stack frames and the cause chain for a startup failure', () => {
+  const cause = Object.assign(new Error('saved row is unreadable'), { code: 'io' })
+  const wrapper = new Error('Could not finish starting sync', { cause })
+  expect(failureDetails(wrapper)).toMatchObject({
+    reason: 'saved row is unreadable',
+    kind: 'Error',
+    code: 'io',
+    stack: expect.arrayContaining([expect.stringContaining('saved row is unreadable')]),
+    causes: [
+      { kind: 'Error', message: 'Could not finish starting sync' },
+      { kind: 'Error', message: 'saved row is unreadable', code: 'io' },
+    ],
+  })
+  expect(failureDetails(wrapper).stack?.length).toBeLessThanOrEqual(8)
+})
 
 it('keeps the cause text when a shared-item manual sync fails', async () => {
   const { ui } = setup()

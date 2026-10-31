@@ -909,8 +909,34 @@ it('retains the original startup failure before an engine exists', async () => {
     expect(host.live.has(id)).toBe(false)
     await Promise.resolve()
     expect(
-      publish.mock.calls.filter(([, value]) => value.failure?.reason === 'Native prefix reader failed')
+      publish.mock.calls.filter(
+        ([, value]) => value.failure?.reason === 'Native prefix reader failed'
+      )
     ).toHaveLength(1)
+  } finally {
+    release()
+    await host.close()
+    probe.mockRestore()
+    failure.mockRestore()
+  }
+})
+
+it('names an unmarked saved-state failure and exposes its cause without starting effects', async () => {
+  const failure = vi.spyOn(safety, 'recoverExternalState').mockImplementationOnce(async () => {
+    throw new Error('saved-state wrapper', { cause: new Error('saved row failed') })
+  })
+  const { ui, host, registry, encoded, release, probe } = inspectionFixture()
+  try {
+    await ui.connect(encoded)
+    const id = registry.records()[0].id
+    await vi.waitFor(() => expect(ui.activity.value[id]?.failure?.reason).toBe('saved row failed'))
+    expect(ui.activity.value[id].failure).toMatchObject({
+      stage: 'Checking saved sync state',
+      substep: 'recover-external-state',
+      causes: [{ message: 'saved-state wrapper' }, { message: 'saved row failed' }],
+    })
+    expect(ui.activity.value[id].failure?.stack?.length).toBeGreaterThan(0)
+    expect(host.live.has(id)).toBe(false)
   } finally {
     release()
     await host.close()

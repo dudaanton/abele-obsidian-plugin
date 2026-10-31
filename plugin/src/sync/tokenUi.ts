@@ -82,23 +82,40 @@ export function failureDetails(error: unknown): {
   code?: string
   kind?: string
   substep?: string
+  stack?: string[]
+  causes?: { kind?: string; message: string; code?: string }[]
 } {
   const seen = new Set<unknown>()
+  const causes: { kind?: string; message: string; code?: string }[] = []
+  let substep: string | undefined
   while (error && typeof error === 'object' && !seen.has(error)) {
     seen.add(error)
+    const kind = error instanceof Error ? error.name : undefined
+    const message = Reflect.get(error, 'message')
+    const code = Reflect.get(error, 'code')
+    const currentSubstep = Reflect.get(error, 'recoverySubstep')
+    if (typeof currentSubstep === 'string') substep = currentSubstep
+    causes.push({
+      ...(typeof kind === 'string' ? { kind } : {}),
+      message: typeof message === 'string' ? message : String(error),
+      ...(typeof code === 'string' ? { code } : {}),
+    })
+    if (causes.length >= 6) break
     const cause = Reflect.get(error, 'cause')
     if (!cause || seen.has(cause)) break
     error = cause
   }
   const code = error && typeof error === 'object' ? Reflect.get(error, 'code') : undefined
   const kind = error instanceof Error ? error.name : undefined
-  const substep = error && typeof error === 'object' ? Reflect.get(error, 'recoverySubstep') : undefined
+  const stack = error instanceof Error ? error.stack?.split('\n').slice(0, 8) : undefined
   const message = error && typeof error === 'object' ? Reflect.get(error, 'message') : error
   return {
     reason: typeof message === 'string' ? message : 'Unknown sync failure',
     ...(typeof code === 'string' ? { code } : {}),
     ...(typeof kind === 'string' ? { kind } : {}),
     ...(typeof substep === 'string' ? { substep } : {}),
+    ...(stack ? { stack } : {}),
+    ...(causes.length ? { causes } : {}),
   }
 }
 /** Bound an individual stage and revoke its permission to perform later effects. */
@@ -215,7 +232,16 @@ export interface ConnectionActivity {
   waitingFiles?: import('@abele/sync-sdk/core').EngineStatus['waitingFiles']
   missingKeptCopies?: string[]
   /** Diagnostics only: the code and original message behind `error`'s friendly text. */
-  failure?: { code?: string; message: string; reason?: string; stage?: string; kind?: string; substep?: string }
+  failure?: {
+    code?: string
+    message: string
+    reason?: string
+    stage?: string
+    kind?: string
+    substep?: string
+    stack?: string[]
+    causes?: { kind?: string; message: string; code?: string }[]
+  }
   transfer?: import('./transferProgress').TransferSnapshot
   reconciliation?: import('@abele/sync-sdk/core').ReconciliationState | null
   pull?: { stage: string; completed: number; total: number }

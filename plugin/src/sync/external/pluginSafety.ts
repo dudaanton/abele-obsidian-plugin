@@ -690,12 +690,17 @@ export async function recoverExternalState(
     mark?.(`connection:Recovery ${name}:begin`)
     try {
       return await work()
+    } catch (error) {
+      if (error instanceof Error && typeof Reflect.get(error, 'recoverySubstep') !== 'string')
+        Object.assign(error, { recoverySubstep: name })
+      throw error
     } finally {
       mark?.(`connection:Recovery ${name}:end`)
     }
   }
   fence.assertOwned()
-  if (inspection.inventory && !inspection.deferCache) {
+  await stage('saved-inventory', async () => {
+    if (!inspection.inventory || inspection.deferCache) return
     const cached = await inspectionCache(app).load()
     fence.assertOwned()
     inspection.cached?.(cached)
@@ -714,29 +719,33 @@ export async function recoverExternalState(
       // Metadata hints carry no directory-absence proof and never recognize bytes.
       inspection.inventory(inventory)
     }
-  }
+  })
   if (factory)
     await stage('private-artifacts', () =>
       recoverOrphanPrivateArtifacts(app, factory, () => fence.assertOwned())
     )
-  const marker = activation(app)
+  const marker = await stage('activation-marker', async () => activation(app))
   const item = marker?.ledgers.find((value) => value.databaseName === databaseName)
-  if (
-    item &&
-    (item.ledgerId !== ledgerId ||
-      item.databaseIdentity !== store.databaseIdentity ||
-      !sameConnection(item.binding, binding))
-  )
-    throw new ExternalRecoveryRequired('activation binding changed')
+  await stage('activation-binding', async () => {
+    if (
+      item &&
+      (item.ledgerId !== ledgerId ||
+        item.databaseIdentity !== store.databaseIdentity ||
+        !sameConnection(item.binding, binding))
+    )
+      throw new ExternalRecoveryRequired('activation binding changed')
+  })
   let raw = await stage('external-state', () => store.getExternalState())
   fence.assertOwned()
   if (raw === null && item?.phase === 'preparing') {
     // This exact database instance never received active deletion permission. Complete only
     // its initial empty state; a missing active journal cannot use this migration grant.
-    await ExternalState.open(store, ledgerId, binding)
-    raw = await store.getExternalState()
+    await stage('external-state-open', () => ExternalState.open(store, ledgerId, binding))
+    raw = await stage('external-state-reread', () => store.getExternalState())
   }
-  if (raw === null && item) throw new ExternalRecoveryRequired('activated journal is missing')
+  await stage('external-state-presence', async () => {
+    if (raw === null && item) throw new ExternalRecoveryRequired('activated journal is missing')
+  })
   const recoveryPaths = new Set<string>()
   const ownedProjectionPaths = await stage('retired-artifacts', () =>
     retiredArtifactPaths(app, factory, () => fence.assertOwned())
@@ -752,7 +761,8 @@ export async function recoverExternalState(
         for (const artifact of op.ownedArtifacts)
           ownedProjectionPaths.add(artifact.path.normalize('NFC').toLowerCase())
     }
-  if (raw !== null) {
+  await stage('external-document', async () => {
+    if (raw === null) return
     const document = decodeExternalDocument(raw)
     if (document.ledgerId !== ledgerId || !sameConnection(document.binding, binding))
       throw new ExternalRecoveryRequired('external connection binding changed')
@@ -807,49 +817,62 @@ export async function recoverExternalState(
           if (path) ownedProjectionPaths.add(path.normalize('NFC').toLowerCase())
     }
     for (const file of document.files) {
-      if (!file.lastProvenLocalBase || !(await store.byFileId(file.fileId)))
+      if (
+        !file.lastProvenLocalBase ||
+        !(await stage('external-proven-base', () => store.byFileId(file.fileId)))
+      )
         throw new ExternalRecoveryRequired('external proven base/head is missing')
       if (file.projectionPath)
         ownedProjectionPaths.add(file.projectionPath.normalize('NFC').toLowerCase())
     }
-  }
+  })
   if (
     recoveryPaths.size &&
-    (await projectionEvidence(app, () => fence.assertOwned(), true, ownedProjectionPaths, {
-      ...inspection,
-      pathsOnly: true,
-      paths: [...recoveryPaths],
-      // A partial recovery inventory cannot seed ordinary enumeration.
-      inventory: undefined,
-    }))
+    (await stage('pending-projection', () =>
+      projectionEvidence(app, () => fence.assertOwned(), true, ownedProjectionPaths, {
+        ...inspection,
+        pathsOnly: true,
+        paths: [...recoveryPaths],
+        // A partial recovery inventory cannot seed ordinary enumeration.
+        inventory: undefined,
+      })
+    ))
   )
     throw new ExternalRecoveryRequired('projection evidence requires recovery before ordinary sync')
   // Inspect installation journals before their existing safe recovery, and publication
   // metadata before any constructor scope work or ordinary replay is permitted.
   const publication = await stage('journals', async () => {
-    await new WriteJournal(app, undefined, connectionJournalOwner(app)).currentEntries()
-    await new WriteJournal(app, undefined, connectionJournalOwner(app)).currentRecovered()
-    return store.getJournal()
+    await stage('publication-writes', () =>
+      new WriteJournal(app, undefined, connectionJournalOwner(app)).currentEntries()
+    )
+    await stage('publication-recovered', () =>
+      new WriteJournal(app, undefined, connectionJournalOwner(app)).currentRecovered()
+    )
+    return stage('publication-ledger', () => store.getJournal())
   })
-  if (
-    publication !== null &&
-    (!publication.batchId ||
-      !publication.idempotencyKey ||
-      !publication.startedAt ||
-      !Array.isArray(publication.ops) ||
-      publication.ops.some((op) => !CommitOpSchema.safeParse(op).success))
-  )
-    throw new ExternalRecoveryRequired('publication journal is unreadable')
+  await stage('publication-validation', async () => {
+    if (
+      publication !== null &&
+      (!publication.batchId ||
+        !publication.idempotencyKey ||
+        !publication.startedAt ||
+        !Array.isArray(publication.ops) ||
+        publication.ops.some((op) => !CommitOpSchema.safeParse(op).success))
+    )
+      throw new ExternalRecoveryRequired('publication journal is unreadable')
+  })
   await stage('plugin-metadata', () => {
     // The request is read-only; its response is consumed only after this fence.
     startReadOnlyConnection?.()
     return store.validatePluginMeta()
   })
   fence.assertOwned()
-  if (item?.phase === 'preparing') {
-    item.phase = 'active'
-    persist(app, EXTERNAL_ACTIVATION_KEY, marker)
-  }
+  await stage('activation-finalize', async () => {
+    if (item?.phase === 'preparing') {
+      item.phase = 'active'
+      persist(app, EXTERNAL_ACTIVATION_KEY, marker)
+    }
+  })
 }
 
 /** Trusted activation port for the later explicit eviction API; never called automatically.

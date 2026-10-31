@@ -38,9 +38,14 @@ it('starts a fresh connection after private projection staging loses its ledger 
     ).resolves.toBeUndefined()
     for (const stage of [
       'private-artifacts',
+      'saved-inventory',
+      'activation-marker',
       'external-state',
       'retired-artifacts',
       'active-documents',
+      'publication-writes',
+      'publication-recovered',
+      'publication-ledger',
       'journals',
       'plugin-metadata',
     ])
