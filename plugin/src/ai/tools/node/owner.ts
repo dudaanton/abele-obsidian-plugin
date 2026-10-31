@@ -94,6 +94,7 @@ export async function nodeAgentHost(): Promise<NodeAgentHost> {
     const connection = service.connection(id)
     return {
       client: connection.client,
+      waitUntilConnected: (signal) => connection.waitUntilConnected(signal),
       childTitle: (parent, workspace) =>
         connection.delegationCards.value[parent]?.find((card) => card.workspaceId === workspace)
           ?.title,

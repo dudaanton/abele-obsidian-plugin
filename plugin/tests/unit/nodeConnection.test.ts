@@ -524,7 +524,8 @@ it('bounds a silent peer and reconnects despite stalled delegation restore', asy
     const failed = expect(connection.client.describe()).rejects.toThrow(/no answer from the node/i)
     await vi.advanceTimersByTimeAsync(10000)
     await failed
-    expect(connection.state.value).toBe('offline')
+    // The retry lifetime remains active while the peer is unreachable.
+    expect(connection.state.value).toBe('connecting')
     silent = false
     await vi.advanceTimersByTimeAsync(2000)
     expect(client.connect).toHaveBeenCalled()

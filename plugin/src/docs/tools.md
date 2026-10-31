@@ -1330,6 +1330,17 @@ node display name is accepted too. Paths may be relative to the selected target 
 inside that target. Traversal, `.git` paths and paths outside the target remain forbidden.
 `node_open(path)` with chat node access loads a bounded in-memory source without requiring an
 open repository tab; it returns the same content and identity as `node_read`.
+
+Configured nodes reconnect automatically while the plugin is running, with increasing retry
+pauses capped at 30 seconds and no permanent give-up. The panel shows the reconnecting state.
+Scoped node file and repository tools wait up to 30 seconds for admission before dispatch;
+if the node remains unreachable they return the existing `offline` refusal. Cancelling the
+call stops its wait, not the node's reconnect loop. Access, principal and chat scope are
+rechecked after waiting. A request already sent when the transport drops is not blindly
+replayed: it reports interruption or an uncertain outcome. Preserve any operation ID and
+receipt when reconciling it; never create a replacement write or command merely to learn
+whether the original completed.
+
 `node_ls` accepts a directory path with or without a trailing slash. Working-tree reads,
 listings and searches include git-ignored source inside the granted folder; the person's
 default file tree still hides it. Folder access, traversal and symlink restrictions still

@@ -54,6 +54,7 @@ export const NODE_AGENT_TOOL_NAMES = [
 ]
 export interface NodeAgentConnection {
   client: NodeClient
+  waitUntilConnected?(signal?: AbortSignal): Promise<boolean>
   childTitle?(parent: string, workspace: string): string | undefined
   /** Durable registration authority and installation/pin, never a display label. */
   principal(): string
@@ -386,7 +387,10 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       }
       const scopes = nodeScopeEntries(session)
       // Where the call wanted to go, for a refusal the chat can act on.
-      const admittedConnection = (node: string, want: Omit<NodeAccessWant, 'node_id'> = {}) => {
+      const admittedConnection = async (
+        node: string,
+        want: Omit<NodeAccessWant, 'node_id'> = {}
+      ) => {
         const place = { node_id: node, ...want }
         if (!scopes.length)
           throw new NodeAccessRefusalError(NO_NODE_ACCESS, { kind: 'no-access', ...place })
@@ -411,11 +415,6 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           branch = session.branchSelectionVersion
         const scope = JSON.stringify(scopes)
         checks.push(() => {
-          if (!connection.client.connected)
-            throw new NodeAccessRefusalError(
-              'Node offline; reconnect before agent file operations. The person connects it from the Node panel.',
-              { kind: 'offline', node_id: node }
-            )
           if (
             principal !== connection.principal() ||
             generation !== connection.authorizationGeneration ||
@@ -426,6 +425,16 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
             !host.ledger.approvedNode(session, node, principal)
           )
             throw new Error('Node scope approval changed or was revoked')
+        })
+        guard()
+        const ready = await connection.waitUntilConnected?.(signal)
+        guard()
+        checks.push(() => {
+          if (ready === false || !connection.client.connected)
+            throw new NodeAccessRefusalError(
+              'Node offline after waiting for automatic reconnect. The person can check it from the Node panel.',
+              { kind: 'offline', node_id: node }
+            )
         })
         guard()
         return connection
@@ -484,7 +493,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
             result.push({ node: nodeId, label: node.label, connected: false })
             continue
           }
-          admittedConnection(nodeId)
+          await admittedConnection(nodeId)
           await safe(() => connection.client.describe())
           result.push({ node: nodeId, label: node.label, connected: true })
         }
@@ -499,7 +508,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
       if (name === 'node_folders') {
         const requested = text(params, 'node')
         const node = host.nodeId?.(requested) ?? requested,
-          connection = admittedConnection(node),
+          connection = await admittedConnection(node),
           result: unknown[] = []
         const scopes = host.ledger.approvedEntries(session, node, connection.principal())
         let after: string | undefined
@@ -589,7 +598,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         const requested = text(params, 'node', selected?.node_id)
         const node = host.nodeId?.(requested) ?? requested,
           project = text(params, 'project', selected?.project_id)
-        const connection = admittedConnection(node, { project_id: project })
+        const connection = await admittedConnection(node, { project_id: project })
         const scopes = host.ledger.approvedEntries(session, node, connection.principal())
         if (
           !scopes.some(
@@ -649,7 +658,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
             (entry.kind === 'project' && entry.project_id === params.project)
         )
       ) {
-        const connection = admittedConnection(text(params, 'node'))
+        const connection = await admittedConnection(text(params, 'node'))
         const project = await safe(() => connection.client.getProject(text(params, 'project')))
         const available: { id: string; kind: 'workspace' | 'worktree' }[] = []
         let cursor: string | undefined
@@ -745,7 +754,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
         target: target.target,
         ...(NODE_MUTATION_TOOLS.includes(name) ? { access: 'edit' as const } : {}),
       }
-      const connection = admittedConnection(target.node_id, wanted),
+      const connection = await admittedConnection(target.node_id, wanted),
         client = connection.client
       const requireCommitTrust = async () => {
         const project = await safe(() => client.getProject(target.project_id))

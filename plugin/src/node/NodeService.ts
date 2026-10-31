@@ -1,6 +1,6 @@
 import { uiField, uiMessage, uiErrorMessage } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
-import { ref, type Ref } from 'vue'
+import { ref, watch, type Ref } from 'vue'
 import { AgentsService } from '@/agents/AgentsService'
 import { NodeClient, MemoryClientStore } from '@abele/node-client'
 import { NodePairingConnector } from './NodePairingConnector'
@@ -66,6 +66,8 @@ export class NodeConnection {
   private connecting?: Promise<void>
   private transportGeneration = 0
   private retryGeneration = 0
+  private retryStarted = false
+  private retryDelay = 2000
   private lastHealthCheck = 0
   constructor(
     readonly client: NodeClient,
@@ -454,6 +456,8 @@ export class NodeConnection {
   async refreshAuthorization(): Promise<void> {
     ++this.generation
     ++this.transportGeneration
+    this.retryStarted = false
+    ++this.retryGeneration
     window.clearTimeout(this.timer)
     this.state.value = 'offline'
     uiField(this.error, 'value', uiErrorMessage(''))
@@ -464,8 +468,42 @@ export class NodeConnection {
     this.connecting = undefined
   }
 
+  /** Wait only before dispatch: reconnect never replays an already-sent request. */
+  waitUntilConnected(signal?: AbortSignal, timeoutMs = 30000): Promise<boolean> {
+    signal?.throwIfAborted()
+    if (this.disposed) return Promise.resolve(false)
+    if (this.client.connected && this.state.value === 'connected') return Promise.resolve(true)
+    return new Promise<boolean>((resolve, reject) => {
+      const finish = (ready: boolean) => {
+        stop()
+        window.clearTimeout(timer)
+        signal?.removeEventListener('abort', abort)
+        resolve(ready)
+      }
+      const abort = () => {
+        stop()
+        window.clearTimeout(timer)
+        signal?.removeEventListener('abort', abort)
+        reject(new DOMException('Aborted', 'AbortError'))
+      }
+      const stop = watch(
+        this.state,
+        (state) => {
+          if (this.disposed) finish(false)
+          else if (state === 'connected' && this.client.connected) finish(true)
+        },
+        { flush: 'sync' }
+      )
+      const timer = window.setTimeout(() => finish(false), timeoutMs)
+      signal?.addEventListener('abort', abort, { once: true })
+      if (!this.retryStarted) this.start()
+      // The plugin-owned retry loop owns the backoff; callers must not reset it.
+    })
+  }
+
   /** Plugin-owned retry/foreground lifetime, independent of which tab is visible. */
   start(): void {
+    this.retryStarted = true
     window.clearTimeout(this.timer)
     const retryGeneration = ++this.retryGeneration
     const generation = this.generation
@@ -476,49 +514,65 @@ export class NodeConnection {
         generation !== this.generation
       )
         return
-      if (!this.client.connected || !this.executionPolicyReady) {
-        this.obsidian?.disconnected()
-        this.state.value = 'offline'
-        await this.connect('retry_tick').catch(() => {})
-      } else if (Date.now() - this.lastHealthCheck >= 15000) {
-        this.lastHealthCheck = Date.now()
-        // A live socket alone does not prove the peer is answering requests.
-        const transportGeneration = this.transportGeneration
-        await this.client
-          .describe()
-          .then(async (description) => {
-            if (!this.disposed && transportGeneration === this.transportGeneration) {
-              const changed = this.capabilities !== this.capabilityKey(description)
-              this.recordVersion(description)
-              if (changed) {
-                this.executionPolicyReady = false
-                await this.enableExecutionPolicy()
-                this.admitObsidianTools()
-                await this.obsidian?.connectionChanged(description)
+      try {
+        if (!this.client.connected || !this.executionPolicyReady) {
+          this.obsidian?.disconnected()
+          this.state.value = 'connecting'
+          await this.connect('retry_tick')
+        } else if (Date.now() - this.lastHealthCheck >= 15000) {
+          this.lastHealthCheck = Date.now()
+          // A live socket alone does not prove the peer is answering requests.
+          const transportGeneration = this.transportGeneration
+          await this.client
+            .describe()
+            .then(async (description) => {
+              if (!this.disposed && transportGeneration === this.transportGeneration) {
+                const changed = this.capabilities !== this.capabilityKey(description)
+                this.recordVersion(description)
+                if (changed) {
+                  this.executionPolicyReady = false
+                  await this.enableExecutionPolicy()
+                  this.admitObsidianTools()
+                  await this.obsidian?.connectionChanged(description)
+                }
+                if (this.disposed || transportGeneration !== this.transportGeneration) return
+                this.state.value = 'connected'
+                uiField(this.error, 'value', uiErrorMessage(''))
+                ++this.healthEpoch.value
               }
-              if (this.disposed || transportGeneration !== this.transportGeneration) return
-              this.state.value = 'connected'
-              uiField(this.error, 'value', uiErrorMessage(''))
-              ++this.healthEpoch.value
-            }
-          })
-          .catch(() => {})
-      }
-      // Mailbox restoration must never own the transport retry lifetime.
-      void this.refreshDelegations(false).catch(() => {})
-      void this.obsidian
-        ?.tick()
-        .catch((error: unknown) =>
-          console.debug('[Abele node] Obsidian tools synchronization pending', error)
+            })
+            .catch(() => {})
+        }
+        if (this.client.connected && this.state.value === 'connected') this.retryDelay = 2000
+      } catch (error) {
+        console.debug('[Abele node] retry pending', error)
+        if (
+          error instanceof ChannelError &&
+          ['disconnected', 'outcome_unknown'].includes(error.code)
         )
-      if (
-        !this.disposed &&
-        generation === this.generation &&
-        retryGeneration === this.retryGeneration
-      )
-        this.timer = window.setTimeout((): void => {
-          void tick()
-        }, 2000)
+          void this.client.disconnect().catch(() => {})
+      } finally {
+        const connected = this.client.connected && this.state.value === 'connected'
+        const delay = connected ? 2000 : this.retryDelay
+        if (!connected) this.retryDelay = Math.min(this.retryDelay * 2, 30000)
+        if (
+          !this.disposed &&
+          generation === this.generation &&
+          retryGeneration === this.retryGeneration
+        ) {
+          if (!connected) this.state.value = 'connecting'
+          this.timer = window.setTimeout((): void => {
+            void tick()
+          }, delay)
+        }
+        // Mailbox restoration must never own the transport retry lifetime.
+        void this.refreshDelegations(false).catch(() => {})
+        void this.obsidian
+          ?.tick()
+          .catch((error: unknown) =>
+            console.debug('[Abele node] Obsidian tools synchronization pending', error)
+          )
+      }
     }
     void tick()
   }
