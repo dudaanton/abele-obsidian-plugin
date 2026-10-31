@@ -13,6 +13,18 @@ PDF exports omit Abele's note header and footer by default. The `pdfIncludeHeade
 boolean in plugin settings includes them when enabled and travels in the Other settings
 section. Note-body blocks are exported regardless of this setting.
 
+## Chat compaction
+
+A compaction divider stores the continuation summary as a visible system message and an internal
+`[Conversation compacted]` marker. The active model history starts at the latest marker, followed
+by unchanged recent messages: at least the last two messages, the latest owner input and all
+turns after it. Tool calls and their results remain together, including an unread tool batch
+before queued owner input. Retained copies are linked to the divider for rewind/branch handling;
+original records remain available on earlier branches. Compaction never rolls back files.
+Only older history is replaced in the active context. Automatic compaction skips a context
+with no older ordinary exchange to replace, rather than repeatedly summarizing the same tail.
+The summary records earlier conversation; recent owner instructions take precedence over it.
+
 ## Model reasoning settings
 
 Providers optionally retain `promptCacheKey`, a boolean capability alongside `apiMode`.

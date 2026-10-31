@@ -154,6 +154,14 @@ and `ai.defaultFullVaultAccess` are what a chat may reach when its agent says no
 any of these changes what an agent — including the one being asked — is allowed to do, so it is
 the last thing to change quietly.
 
+Compaction uses the chat's own model, system prompt, tools and cache routing key, not the
+auxiliary model used for titles and history-card descriptions. Its final instruction requests
+text only; no tool is executed during compaction. The default `compactPrompt` asks for sections
+covering the owner's request and purpose, every owner message verbatim (especially prohibitions
+and corrections), completed work and decisions, files/commands/errors, current work and the next
+step justified by the latest instruction. A custom `compactPrompt` remains supported, including
+its `{{messages}}` transcript placeholder. Recent messages remain unchanged after the summary.
+
 `ai.prompts` holds the built-in prompts: `system`, `titleGeneration`, `recapPrompt`,
 `summaryPrompt`, `compactPrompt`, `memoryTemplate` and `toolDescriptions`. `toolDescriptions`
 holds overrides only — tool name to the text the person wants that tool to tell the model
