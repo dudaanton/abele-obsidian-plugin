@@ -1411,8 +1411,15 @@ export class TokenEngines {
       return starting
     }
     this.retries.set(record.id, async (assertCurrent) => {
-      if (this.ui.runtimes.has(record.id)) return
       assertCurrent()
+      // Sync now joins a startup already waiting for the host index. That wait
+      // can outlast the bounded retry stage without indicating a sync failure.
+      if (this.startupCancels.has(record.id)) {
+        await draining?.catch(() => {})
+        assertCurrent()
+        if (this.closed) return
+      }
+      if (this.ui.runtimes.has(record.id)) return
       this.ui.startupStage(record.id, 'Waiting to retry sync')
       this.ui.publish(record.id, { error: undefined, failure: undefined })
       let barrierError: unknown

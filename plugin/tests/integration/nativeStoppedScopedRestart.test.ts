@@ -48,7 +48,8 @@ it.each([
     'Sample/Notes/Stable.md',
     'Sample/Z-Removed.md',
     ...Array.from({ length: 32 }, (_, i) => `Sample/Old/Child ${i}.md`),
-    ...Array.from({ length: extraFiles }, (_, i) => `Sample/Notes/Item ${i}.md`),
+    // Keep the host index at vault scale without uploading unrelated files through this scope.
+    ...Array.from({ length: extraFiles }, (_, i) => `Other/Item ${i}.md`),
   ]
   let device: Awaited<ReturnType<typeof nativeTokenFixture>> | undefined
   let restarted: TokenEngines | undefined
@@ -134,6 +135,8 @@ it.each([
       headers.delete('abele-commit-base')
       return new Response(response.body, { status: response.status, statusText: response.statusText, headers })
     }
+    let indexClean = withoutHeader
+    Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => indexClean })
     restarted = new TokenEngines(
       app as unknown as App, device.ui,
       (reference) => device!.keys.get(reference) ?? null,
@@ -147,11 +150,24 @@ it.each([
       return reason
     }
     restarted.start()
-    await device.ui.connectionsChanged()
+    await device.ui.connectionsChanged(() => {})
+    if (!withoutHeader) {
+      await vi.waitFor(() => {
+        if (!device!.ui.activity.value[device!.id]?.indexWaiting)
+          throw new Error('Waiting for the host index')
+      }, { timeout: 30000, interval: 20 })
+    }
     // A settled host may announce an already indexed scope folder during startup.
     app.emit('vault', 'create', app.vault.getAbstractFileByPath('Sample'))
     await new Promise((resolve) => setTimeout(resolve, 350))
     const firstSync = device.ui.sync(device.id)
+    if (!withoutHeader) {
+      await new Promise((resolve) => setTimeout(resolve, 10500))
+      expect(device.ui.activity.value[device.id]?.indexWaiting).toBe(true)
+      expect(device.ui.rows.value.find((one) => one.id === device!.id)?.status).not.toBe('error')
+      indexClean = true
+      app.emit('metadataCache', 'resolved')
+    }
     await vi.waitFor(() => {
       if (!pauseAtDirectories) throw new Error('Waiting for directory receipts')
     }, { timeout: 30000, interval: 20 })
