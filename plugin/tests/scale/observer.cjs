@@ -13,10 +13,23 @@ module.exports = class extends Plugin {
         'utf8'
       )
     )
-    if (config.mode === 'control' || config.mode === 'profile-only') {
+    if (config.mode === 'control' || config.mode === 'profile-only' || config.mode === 'diagnostic') {
       const receipt = { observerStartedAt: Date.now() }
       const save = () => fs.writeFileSync(config.controlReceipt, JSON.stringify(receipt))
       save()
+      const diagnostic = config.mode === 'diagnostic'
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- The host loads diagnostic CommonJS modules.
+        ? require(config.diagnosticModule).startDiagnostic({
+            output: config.diagnosticReceipt,
+            root: this.app.vault.adapter.getBasePath(),
+            contentPrefix: config.contentPrefix,
+            adapter: this.app.vault.adapter,
+            vault: this.app.vault,
+            getActivity: () => Object.values(
+              this.app.plugins?.plugins?.abele?.tokenEngines?.ui?.activity?.value ?? {}
+            ),
+          })
+        : null
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable observer helper.
       const { createMetadataCacheCapture } = require(config.metadataCache)
       const metadataCache = createMetadataCacheCapture(this.app, receipt, save)
@@ -96,6 +109,8 @@ module.exports = class extends Plugin {
           engines.every((engine) => engine.state === 'idle' && engine.lastSyncAt)
         ) {
           receipt.firstIdleAt = Date.now()
+          save()
+          diagnostic?.stop()
           metadataCache.finish(receipt.firstIdleAt)
           indexWait.finish(receipt.firstIdleAt)
           save()

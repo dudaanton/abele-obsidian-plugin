@@ -98,14 +98,15 @@ export function classifyReindexHashes(operation, entries, settledAt, knownShas) 
       row.at >= operation.at &&
       row.at <= settledAt
   )
-  const reindexHashes = relevant.filter((row) => row.at <= (completedAt ?? Infinity))
-  const after = relevant.filter((row) => row.at > (completedAt ?? Infinity))
   const isPayloadDigest = (row) =>
     /\b(?:Object\.seal|nativeInstallBatch|Puller\.sha256\S* \[as hash\]|VaultWriter\.publishAbsent)/.test(
       row.stack ?? ''
     )
+  const during = relevant.filter((row) => row.at <= (completedAt ?? Infinity))
+  const after = relevant.filter((row) => row.at > (completedAt ?? Infinity))
   return {
-    reindexHashes,
+    reindexHashes: during.filter((row) => !isPayloadDigest(row)),
+    inReindexPayloadDigests: during.filter(isPayloadDigest),
     payloadDigests: after.filter(isPayloadDigest),
     otherPostReindexHashes: after.filter((row) => !isPayloadDigest(row)),
   }

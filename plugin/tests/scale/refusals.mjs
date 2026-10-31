@@ -28,7 +28,8 @@ export function oversizedEvidence(
   wire,
   interruptions = [],
   restartAt,
-  controlRestartAt
+  controlRestartAt,
+  offlineRestartAt
 ) {
   const restarts = [
     ...interruptions.filter((e) =>
@@ -40,6 +41,7 @@ export function oversizedEvidence(
       ].includes(e.kind)
     ),
     ...(Number.isFinite(restartAt) ? [{ at: restartAt }] : []),
+    ...(Number.isFinite(offlineRestartAt) ? [{ at: offlineRestartAt }] : []),
     ...(Number.isFinite(controlRestartAt) ? [{ at: controlRestartAt }] : []),
   ].sort((a, b) => a.at - b.at)
   const sizeReason = /too_large|too large|larger than|size.*limit|limit.*size/i

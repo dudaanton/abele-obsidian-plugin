@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
-import { readFile, writeFile, mkdir, copyFile, readdir, unlink } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, copyFile, readdir, unlink, stat } from 'node:fs/promises'
 import { resolve, join, basename, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash, randomUUID } from 'node:crypto'
@@ -46,7 +46,13 @@ import { decodeAccessToken, encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { generate, inventory, shapes, planVault } from './generate.mjs'
 import { WireProxy } from './proxy.mjs'
 import { settleRestartDevices, controlTiming } from './restart.mjs'
+import { triggerComparisonAtRestart } from './restart-trigger.mjs'
+import { enablePluginWhenReady } from './startup-enable.mjs'
 import { validateBuildReceipt } from './build.mjs'
+import { applyCombinedChanges } from './combined.mjs'
+import { planOfflineChanges, updateExpectedOfflineChanges } from './qualification-offline.mjs'
+import { verifyDirectoryChanges } from './directory-oracle.mjs'
+import { observeErrorRecovery } from './transient-error.mjs'
 import {
   requireTime,
   phaseTimings,
@@ -190,7 +196,7 @@ export class RealVault {
   }
   async snapshot() {
     return this.evaluate(
-      `${host}return !u?null:{visibleStatus:[...(globalThis.document?.querySelectorAll('.abele-sync-status, .abele-sync-window__line, .abele-sync-row__status')??[])].filter(el=>el.getClientRects().length>0).map(el=>({text:el.textContent?.trim()??'',label:el.getAttribute('aria-label')})),job:window.__scaleJob,engines:[...h.live.values()].map(e=>({state:e.engine.status.state,lastSyncAt:e.engine.status.lastSyncAt,lastError:e.engine.status.lastError})),rows:u.rows.value.map(({id,status,paused})=>({id,status,paused})),activity:Object.entries(u.activity.value).map(([id,a])=>({id,classification:a.classification??null,waiting:a.waiting??null,waitingFiles:a.waitingFiles??null,notSynced:a.notSynced??null,error:a.error,failure:a.failure?{code:a.failure.code,reason:a.failure.reason}:undefined,startup:a.startup?.stage,transfer:a.transfer?.stage,completed:a.transfer?.completed,total:a.transfer?.total}))}`
+      `${host}return !u?null:{visibleStatus:[...(globalThis.document?.querySelectorAll('.abele-sync-status, .abele-sync-window__line, .abele-sync-row__status')??[])].filter(el=>el.getClientRects().length>0).map(el=>({text:el.textContent?.trim()??'',label:el.getAttribute('aria-label')})),job:window.__scaleJob,engines:[...h.live.values()].map(e=>({state:e.engine.status.state,lastSyncAt:e.engine.status.lastSyncAt,lastError:e.engine.status.lastError})),rows:u.rows.value.map(({id,status,paused})=>({id,status,paused})),activity:Object.entries(u.activity.value).map(([id,a])=>({id,classification:a.classification??null,waiting:a.waiting??null,waitingFiles:a.waitingFiles??null,notSynced:a.notSynced??null,error:a.error,failure:a.failure?{code:a.failure.code,reason:a.failure.reason,message:a.failure.message,stage:a.failure.stage,kind:a.failure.kind,substep:a.failure.substep}:undefined,startup:a.startup?.stage,transfer:a.transfer?.stage,completed:a.transfer?.completed,total:a.transfer?.total}))}`
     )
   }
   async inFlight(proxy, label, timeout = this.config.timeoutMs) {
@@ -203,6 +209,11 @@ export class RealVault {
           try {
             requireHealthySnapshot(snapshot)
           } catch (error) {
+            if (this.onObservedError) {
+              await this.onObservedError(snapshot, label)
+              nextHealthCheck = Date.now() + 2000
+              return proxy.active.size > 0
+            }
             error.scaleFatalDevice = this.config.vaults?.indexOf(this.root)
             throw error
           }
@@ -225,7 +236,7 @@ export class RealVault {
   }
   async activityEvidence() {
     return this.evaluate(
-      `${host}return Object.entries(u.activity.value).map(([id,a])=>({id,classification:a.classification??null,waiting:a.waiting??null,waitingFiles:a.waitingFiles??null,notSynced:a.notSynced??null,refused:a.refused??[],events:[...(a.events??[])]}))`
+      `${host}return Object.entries(u.activity.value).map(([id,a])=>({id,classification:a.classification??null,waiting:a.waiting??null,waitingFiles:a.waitingFiles??null,notSynced:a.notSynced??null,failure:a.failure??null,refused:a.refused??[],events:[...(a.events??[])]}))`
     )
   }
   async connect(tokenFile) {
@@ -452,6 +463,45 @@ export async function run(config) {
       device.heapCaptured = true
     }
   }
+  const fatalCapture = async (device, label) => {
+    const output = join(config.output, 'state', label)
+    await device.evaluate(`window.__scaleFatalCapture={done:false};void require(${JSON.stringify(join(here,'diag-capture.cjs'))}).capture(app,${JSON.stringify(output)},indexedDB).then(result=>{window.__scaleFatalCapture={done:true,result}},error=>{window.__scaleFatalCapture={done:true,error:{message:error.message,stack:error.stack}}});return true`)
+    const value=await wait('fatal state export',async()=>{const state=await device.evaluate('return window.__scaleFatalCapture');return state?.done?state:false},60000)
+    ;(report.diagnosticCaptures??=[]).push({label,...value});checkpoint(true)
+  }
+  let lastHealthCheck=0
+  const recoverObservedError = async (device, step, first) => {
+    const entry = {step, device:String(devices.indexOf(device)),
+      reason:'Vault entered an error state', snapshot:first, strictFail:true}
+    report.failures.push(entry)
+    const observations = report.errorObservations ??= []
+    const result = await observeErrorRecovery({
+      first,
+      snapshot: () => device.snapshot(),
+      record: event => { observations.push({step,device:entry.device,...event}); checkpoint(true) },
+      sleep,
+      now:Date.now,
+      timeoutMs:120000,
+    })
+    entry.recovered=result.recovered
+    entry.recoveryMs=result.recoveryMs
+    checkpoint(true)
+    if (!result.recovered) {
+      const error=new Error('Vault error did not recover within 120 seconds')
+      error.scaleFatalSnapshot=first
+      throw error
+    }
+    return result
+  }
+  for (const device of devices)
+    device.onObservedError = (snapshot, step) => recoverObservedError(device, step, snapshot)
+  const primaryHealthy = async () => {
+    if(Date.now()-lastHealthCheck<2000)return
+    lastHealthCheck=Date.now()
+    const snapshot=await devices[0].snapshot()
+    if(snapshot?.rows?.some(row=>row.status==='error'))
+      await recoverObservedError(devices[0], 'primary health', snapshot)
+  }
   const settle = async (device, step) => {
     const startedAt = Date.now()
     let idle = false
@@ -468,11 +518,17 @@ export async function run(config) {
       ].includes(error.message)
         ? error.message
         : 'Device state unavailable'
+      const first = error.scaleFatalSnapshot ?? (await device.snapshot().catch(() => null))
+      if (first?.rows?.some(row=>row.status==='error')) {
+        await recoverObservedError(device, step, first)
+        idle = true
+        return true
+      }
       report.failures.push({
         step,
         reason,
         device: String(devices.indexOf(device)),
-        snapshot: error.scaleFatalSnapshot ?? (await device.snapshot().catch(() => null)),
+        snapshot: first,
       })
       requireHealthySnapshot(report.failures.at(-1).snapshot)
       await device.invalidateJob().catch(() => {})
@@ -561,7 +617,7 @@ export async function run(config) {
         await wait('disposable vault window', () =>
           device.evaluate('return true').catch(() => false)
         )
-        await device.evaluate('await app.plugins.setEnable(true);return true')
+        await enablePluginWhenReady(device, wait)
       }
       await devices[0].ready()
     }
@@ -773,14 +829,16 @@ export async function run(config) {
     await start()
     const upload = await wait(
       'resume upload',
-      () =>
-        p.events.find(
+      async () => {
+        await primaryHealthy()
+        return p.events.find(
           (e) =>
             e.at >= resumedAt &&
             e.event === 'start' &&
             ['PUT', 'POST'].includes(e.method) &&
             (/^\/v2\/uploads\//.test(e.route) || (e.route === '/v2/commit' && e.contentCommit))
-        ),
+        )
+      },
       config.timeoutMs
     )
     report.resumeUploadMs = upload.at - resumedAt
@@ -788,7 +846,7 @@ export async function run(config) {
     await reindex('reindex-primary-upload', a, p, 'batch')
     await wait(
       'commit acknowledgement interruption',
-      () => p.events.find((e) => e.event === 'trigger' && e.kind === 'batch'),
+      async () => {await primaryHealthy();return p.events.find((e) => e.event === 'trigger' && e.kind === 'batch')},
       config.timeoutMs
     )
     await stop(false)
@@ -887,7 +945,8 @@ export async function run(config) {
     phase('synced restart')
     const restartAt = Date.now()
     report.restartAt = restartAt
-    if (config.reindex === true || config.shape === 'scale') await triggered(p, 'comparison', start)
+    if (config.reindex === true || config.shape === 'scale')
+      await triggerComparisonAtRestart(p, start, triggered)
     else await start()
     report.deviceRestartIdleAt = await settleRestartDevices(
       devices,
@@ -931,9 +990,115 @@ export async function run(config) {
         }
       })
     )
+    report.strictRestartActivity = await Promise.all(devices.map((device) => device.activityEvidence()))
     phase('post-run heap diagnostics')
     for (const device of devices) await captureSettledHeap(device, 'post-run')
     await stop(false)
+    if (config.shape === 'scale') {
+      phase('stopped-app changes')
+      const plan = planOfflineChanges(prefix, expected)
+      const beforeRows = new Map((await manifest(token)).filter(file => file.kind !== 'directory').map(file => [file.path, file]))
+      for (const path of [plan.sized, plan.sameSize, plan.deleted, ...plan.moves.map(move => move.from)])
+        if (!beforeRows.has(path)) throw new Error('Offline source was not uploaded: '+path)
+      for (const path of [plan.added, plan.folderFile, ...plan.moves.map(move => move.to)])
+        if (beforeRows.has(path)) throw new Error('Offline target already exists on server: '+path)
+      const sameSizeBefore = await stat(join(a.root, plan.sameSize))
+      const changed = await applyCombinedChanges(a.root, plan)
+      const sameSizeAfter = await stat(join(a.root, plan.sameSize))
+      if (sameSizeAfter.size !== sameSizeBefore.size || sameSizeAfter.mtimeMs <= sameSizeBefore.mtimeMs)
+        throw new Error('Offline same-size mtime edit precondition failed')
+      expected = updateExpectedOfflineChanges(expected, plan, changed)
+      await writeFile(join(config.output, 'expected-inventory.json'), JSON.stringify(expected))
+      report.offlineCheck = {
+        plan, changed, sameSizeMtimeBefore: sameSizeBefore.mtimeMs,
+        sameSizeMtimeAfter: sameSizeAfter.mtimeMs, phaseSamples: [],
+      }
+      checkpoint(true)
+      let polling = false
+      let lastPoll = Promise.resolve()
+      const poll = () => {
+        if (polling) return
+        polling = true
+        lastPoll = a.evaluate(`${host}if(!u)return null;const s=[...h.live.values()][0]?.engine.status;
+          const activity=Object.values(u.activity.value)[0];const row=u.rows.value[0];
+          return {engineState:s?.state??null,reconciliationPhase:activity?.reconciliation?.phase??null,
+          reconciliationReason:activity?.reconciliation?.reason??null,
+          heldDeletes:s?.heldDeletes??activity?.heldDeletes??null,pending:activity?.pending??null,
+          uiStatus:row?.status??null}`)
+          .then(value => { if (value) report.offlineCheck.phaseSamples.push({ at: Date.now(), ...value }) })
+          .catch(() => {})
+          .finally(() => { polling = false })
+      }
+      const timer = setInterval(poll, 1000)
+      poll()
+      try {
+        const restartedAt = Date.now()
+        report.offlineCheck.restartedAt = restartedAt
+        await start()
+        await b.ready()
+        for (let cycle = 0; cycle < 3; cycle++) {
+          await a.sync()
+          if (!await settle(a, `offline cycle ${cycle} primary`))
+            throw new Error('Offline primary did not settle')
+          await b.sync()
+          if (!await settle(b, `offline cycle ${cycle} peer`))
+            throw new Error('Offline peer did not settle')
+        }
+        await lastPoll
+        poll()
+        await lastPoll
+        report.offlineCheck.bothIdleMs = Date.now() - restartedAt
+      } finally {
+        clearInterval(timer)
+        await lastPoll
+      }
+      const latest = report.offlineCheck.phaseSamples.at(-1)
+      report.offlineCheck.heldDeletesAtIdle = latest?.heldDeletes ?? null
+      if (latest?.engineState !== 'idle' || latest?.heldDeletes !== 0 || latest?.reconciliationPhase === 'review')
+        throw new Error('Offline deletion held for review')
+      const afterRows = new Map((await manifest(token)).filter(file => file.kind !== 'directory').map(file => [file.path, file]))
+      const notFound = async (root, path) => stat(join(root, path)).then(() => false, error => {
+        if (error.code === 'ENOENT') return true
+        throw error
+      })
+      report.offlineCheck.deletedAbsent = {
+        server: !afterRows.has(plan.deleted),
+        primary: await notFound(a.root, plan.deleted),
+        peer: await notFound(b.root, plan.deleted),
+      }
+      if (!Object.values(report.offlineCheck.deletedAbsent).every(Boolean))
+        throw new Error('Offline deletion missing or resurrected')
+      for (const file of changed) {
+        const row = afterRows.get(file.path)
+        if (!row) throw new Error('Offline file missing on server: '+file.path)
+        const response = await raw(token, `files/${encodeURIComponent(row.file_id)}/content?${new URLSearchParams({ version_id: row.version_id })}`)
+        const serverBytes = Buffer.from(await response.arrayBuffer())
+        const peerBytes = await readFile(join(b.root,file.path))
+        if (serverBytes.length !== file.size || sha(serverBytes) !== file.sha ||
+            peerBytes.length !== file.size || sha(peerBytes) !== file.sha)
+          throw new Error('Offline changed bytes differ across server and peer: '+file.path)
+      }
+      const oldFilesAbsent = await Promise.all(plan.moves.map(async move =>
+        !afterRows.has(move.from) && await notFound(b.root, move.from)))
+      if (!oldFilesAbsent.every(Boolean)) throw new Error('Offline old moved path remains')
+      const allowedChanges = new Set([plan.sized, plan.sameSize, plan.added, plan.deleted,
+        plan.folderFile, ...plan.moves.flatMap(move => [move.from,move.to])])
+      const unexpected = [...afterRows].filter(([path,row]) =>
+        !allowedChanges.has(path) && beforeRows.get(path)?.version_id !== row.version_id)
+      if (unexpected.length) throw new Error('Unrelated server file version changed after offline edit')
+      report.offlineCheck.directoryState = verifyDirectoryChanges(
+        join(config.localServerDirectory, 'abele.db'), {
+          addedFolder: plan.addedFolder, renamedFolderFrom: plan.renameFrom,
+          renamedFolderTo: plan.renameTo,
+        })
+      report.offlineCheck.changedBytesVerified = changed.length
+      report.offlineCheck.unexpectedFileVersions = unexpected.length
+      report.offlineCheck.peerContentRequests = q.events.filter(e =>
+        e.at >= report.offlineCheck.restartedAt && e.event === 'start' &&
+        /^\/v2\/files\//.test(e.route ?? '') && /\/content/.test(e.route ?? '')).length
+      phase('stopped-app changes verified')
+      await stop(false)
+    }
     phase('byte verification')
     report.mismatches = []
     report.verifiedFiles = 0
@@ -1018,10 +1183,12 @@ export async function run(config) {
         )
       })
     )
+    const controlActivity = await Promise.all(devices.map((device) => device.activityEvidence()))
     report.controlRestart = {
       mode: 'observer load/idle marks and proxy requests only',
       forcedReindex: false,
       devices: controlRows,
+      activity: controlActivity,
     }
     await stop(false, { minimal: true })
     phase('complete')
@@ -1032,6 +1199,11 @@ export async function run(config) {
         step: report.phase,
         snapshot: error.scaleFatalSnapshot,
       })
+    const fatalSnapshots=fatalDeviceSnapshots(await Promise.all(devices.map(device=>device.snapshot().catch(()=>null))),report.failures)
+    for(const {device:index,snapshot} of fatalSnapshots) {
+      ;(report.diagnosticFatals??=[]).push({at:Date.now(),device:index,state:snapshot})
+      await fatalCapture(devices[index],'fatal-device-'+index).catch(captureError=>{report.diagnosticCaptureError={device:index,message:captureError.message}})
+    }
     // Errors from SDK/CLI can include credentials; expose only our controlled diagnostics.
     report.cliFailure = error.scaleCliFailure
     report.failure =
@@ -1182,6 +1354,7 @@ export async function run(config) {
               : undefined,
         })
         result.postReindexPayloadDigests = classifiedHashes.payloadDigests.length
+        result.inReindexPayloadDigests = classifiedHashes.inReindexPayloadDigests.length
         result.otherPostReindexHashes = classifiedHashes.otherPostReindexHashes.length
         result.settledAt = saved.settledAt ?? null
         result.afterIndexUntilSettle = {
@@ -1258,7 +1431,8 @@ export async function run(config) {
         report.wire,
         report.interruptions,
         report.restartAt,
-        report.controlRestart?.devices?.[0]?.launchAt
+        report.controlRestart?.devices?.[0]?.launchAt,
+        report.offlineCheck?.restartedAt
       )
       if (report.pauseActionAt && report.pauseWindowEndAt)
         Object.assign(
@@ -1318,7 +1492,8 @@ export async function run(config) {
         report.comparison = compareReports(await loadEvidence(config.baselineReport), report)
       await writeEvidenceJson(join(config.output, 'report.json'), report)
       await writeEvidenceChunks(join(config.output, 'report.md'), markdownChunks(report))
-    } catch {
+    } catch (error) {
+      console.error('[scale] final analysis error', error?.stack ?? error)
       report.failure ??= 'Harness final evidence analysis failed; checkpoint retained'
       report.status = 'FAIL'
       await saveFailureCheckpoint(
