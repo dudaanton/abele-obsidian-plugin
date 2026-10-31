@@ -60,6 +60,9 @@ describe('what is worth trying again', () => {
 
   it.each([
     'Failed to fetch',
+    'fetch failed',
+    'Model connection failed',
+    'Model response ended before completion. Retry the request.',
     'network error while reading the response',
     'The operation timed out',
     'socket hang up',

@@ -36,7 +36,12 @@ const MAX_DELAY_MS = 60_000
 const TRANSIENT_CODES = [408, 409, 425, 429]
 
 /** What a dropped connection looks like once it reaches us as text. */
-const TRANSIENT_TEXT = /failed to fetch|network|timed out|timeout|socket|econn|temporarily/i
+const TRANSIENT_TEXT =
+  /failed to fetch|fetch failed|network|connection|timed out|timeout|socket|econn|temporarily|response ended before completion/i
+
+export function isTransportFailure(error: string): boolean {
+  return TRANSIENT_TEXT.test(error)
+}
 
 export function isTransient(error: string): boolean {
   if (!error) return false

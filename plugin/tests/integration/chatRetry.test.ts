@@ -173,32 +173,33 @@ describe('trying again on its own', () => {
     await done
   }
 
-  it.each(['Request timed out after 300s', 'Failed to fetch'])(
-    'recovers an empty transport failure automatically: %s',
-    async (error) => {
-      const { OpenAIClient } = await import('@/ai/client/OpenAIClient')
-      let calls = 0
-      vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(
-        async function* (_model, _system, messages) {
-          if (!messages.some((m) => m.role === 'user' && m.content === 'Sample question')) {
-            yield { type: 'done' as const, message: answered('Summary') }
-            return
-          }
-          if (calls++ === 0) {
-            await new Promise((resolve) => setTimeout(resolve, 3000))
-            yield { type: 'error' as const, error, message: failed(error) }
-          } else yield { type: 'done' as const, message: answered('recovered') }
+  it.each([
+    'Request timed out after 300s',
+    'Failed to fetch',
+    'Model response ended before completion. Retry the request.',
+  ])('recovers an empty transport failure automatically: %s', async (error) => {
+    const { OpenAIClient } = await import('@/ai/client/OpenAIClient')
+    let calls = 0
+    vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(
+      async function* (_model, _system, messages) {
+        if (!messages.some((m) => m.role === 'user' && m.content === 'Sample question')) {
+          yield { type: 'done' as const, message: answered('Summary') }
+          return
         }
-      )
-      const done = session.sendMessage('Sample question')
-      await vi.advanceTimersByTimeAsync(3500)
-      expect(session.retrying.value).toMatchObject({ attempt: 1, of: 2 })
-      await vi.advanceTimersByTimeAsync(20_000)
-      await done
-      expect(calls).toBe(2)
-      expect(session.error.value).toBeNull()
-    }
-  )
+        if (calls++ === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 3000))
+          yield { type: 'error' as const, error, message: failed(error) }
+        } else yield { type: 'done' as const, message: answered('recovered') }
+      }
+    )
+    const done = session.sendMessage('Sample question')
+    await vi.advanceTimersByTimeAsync(3500)
+    expect(session.retrying.value).toMatchObject({ attempt: 1, of: 2 })
+    await vi.advanceTimersByTimeAsync(20_000)
+    await done
+    expect(calls).toBe(2)
+    expect(session.error.value).toBeNull()
+  })
 
   it('exhausts two automatic transport retries', async () => {
     loopThat([failed('Failed to fetch')])
