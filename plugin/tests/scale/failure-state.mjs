@@ -13,8 +13,8 @@ async function processes() {
 }
 
 // The renderer has already frozen itself after synchronously writing its fatal marker.
-// Freeze its remaining app tree before copying LevelDB, then kill it without unload hooks.
-export async function preserveFailureState({ rootPid, marker, output,
+// Freeze its remaining app tree before copying LevelDB; diagnostic runs may then resume.
+export async function preserveFailureState({ rootPid, marker, output, resume = false,
   processTable = processes, signal = (pid, name) => process.kill(pid, name),
   copy = cp, save = writeFile, makeDirectory = mkdir,
 }) {
@@ -50,12 +50,17 @@ export async function preserveFailureState({ rootPid, marker, output,
     return receipt
   } finally {
     for (const pid of pids.reverse()) {
-      try { signal(pid, 'SIGKILL') } catch (error) {
+      try { signal(pid, resume ? 'SIGCONT' : 'SIGKILL') } catch (error) {
         if (error.code !== 'ESRCH') {
-          receipt.errors.push({ pid, operation: 'SIGKILL', reason: error.message })
+          receipt.errors.push({ pid, operation: resume ? 'SIGCONT' : 'SIGKILL', reason: error.message })
           await save(join(output, 'termination-errors.json'), JSON.stringify(receipt.errors))
         }
       }
+    }
+    if (resume) {
+      receipt.resumed = true
+      receipt.resumedAt = Date.now()
+      await save(join(output, 'receipt.json'), JSON.stringify(receipt, null, 2))
     }
   }
 }

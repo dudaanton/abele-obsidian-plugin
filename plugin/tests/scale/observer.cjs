@@ -29,21 +29,24 @@ module.exports = class extends Plugin {
       }
       emit({ event: 'failure-capture-ready', ...location })
       const capture = diagnostic.captureFailures({ target: window, console, emit,
-        armed: () => config.device === '0' && fs.existsSync(config.failureArmed),
+        armed: () => fs.existsSync(config.failureArmed),
         getState: () => {
           const host = this.app.plugins?.plugins?.abele?.tokenEngines
           return { rows: host?.ui?.rows.value, activity: host?.ui?.activity.value,
             engines: [...(host?.live.values() ?? [])].map(value => ({ status: value.engine.status,
               fatal: value.fatalFailure })) }
         },
-        writeFatal: value => fs.writeFileSync(config.failureMarker, JSON.stringify({ ...location, ...value })),
+        writeFatal: value => fs.writeFileSync(config.failureMarker, JSON.stringify({ device: config.device, ...location, ...value })),
         freeze: () => process.kill(process.pid, 'SIGSTOP'),
       })
       const timer = setInterval(() => capture.poll(), 25)
-      this.register(() => { clearInterval(timer); capture.close(); delete globalThis.__scaleWrapFingerprints })
+      globalThis.__scalePollFailureCapture = () => capture.poll()
+      this.register(() => { clearInterval(timer); capture.close(); delete globalThis.__scaleWrapFingerprints; delete globalThis.__scalePollFailureCapture })
     }
     if (config.mode === 'control' || config.mode === 'profile-only' || config.mode === 'diagnostic') {
       const receipt = { observerStartedAt: Date.now() }
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Control errors retain startup diagnostics only.
+      const { captureControlError } = require(config.controlError)
       const save = () => fs.writeFileSync(config.controlReceipt, JSON.stringify(receipt))
       save()
       const diagnostic = config.mode === 'diagnostic'
@@ -116,12 +119,10 @@ module.exports = class extends Plugin {
         const rows = ui.rows.value
         indexWait.poll(Object.values(ui.activity.value))
         const engines = [...host.live.values()].map((runtime) => runtime.engine.status)
-        if (
-          rows.some((row) => row.status === 'error') ||
-          engines.some((engine) => engine.state === 'error')
-        ) {
-          receipt.fatal = true
-          save()
+        if (captureControlError(receipt, { rows, engines,
+          activity: Object.entries(ui.activity.value).map(([id, value]) => ({ id, ...value })) },
+          save, () => globalThis.__scalePollFailureCapture?.())) {
+          sawActive = true
           return
         }
         if (

@@ -54,6 +54,8 @@ import { planOfflineChanges, updateExpectedOfflineChanges } from './qualificatio
 import { verifyDirectoryChanges } from './directory-oracle.mjs'
 import { observeErrorRecovery } from './transient-error.mjs'
 import { preserveFailureState } from './failure-state.mjs'
+import { createFailureMonitor, serializeErrorObservation } from './failure-monitor.mjs'
+import controlErrors from './control-error.cjs'
 import {
   requireTime,
   phaseTimings,
@@ -86,10 +88,14 @@ const sha = (bytes) => createHash('sha256').update(bytes).digest('hex')
 const host = 'const h=app.plugins.plugins.abele?.tokenEngines;const u=h?.ui;'
 let deadline = Infinity
 let preservedDiagnosticFailure
+let failureDiagnostics
+let observeDiagnosticErrors
 
 async function wait(label, test, timeout = 120000) {
   const until = Date.now() + timeout
   while (Date.now() < until) {
+    await failureDiagnostics?.poll()
+    await observeDiagnosticErrors?.()
     if (preservedDiagnosticFailure) throw new Error('Fatal sync state preserved before cleanup')
     requireTime(deadline)
     const result = await test()
@@ -124,6 +130,7 @@ export class RealVault {
           })
         ).catch(() => {})
     }, 3000)
+    const cliTimeoutMs = this.config.failureDiagnostic ? 120000 : 12000
     const expression = `(async()=>{try{const value=await(async()=>{${body}})();return JSON.stringify({__abeleReply:${JSON.stringify(nonce)},hasValue:value!==undefined,value})}catch{return JSON.stringify({__abeleReply:${JSON.stringify(nonce)},hasValue:true,value:{scaleError:true}})}})()`
     try {
       ;({ stdout } = await exec(
@@ -132,12 +139,12 @@ export class RealVault {
           evalProcess,
           this.config.cli,
           nonce,
-          String(Date.now() + 12000),
+          String(Date.now() + cliTimeoutMs),
           `vault=${this.name}`,
           'eval',
           `code=${expression}`,
         ],
-        { timeout: 14000, maxBuffer: 2 * 1024 ** 2 }
+        { timeout: cliTimeoutMs + 2000, maxBuffer: 2 * 1024 ** 2 }
       ))
     } catch (error) {
       const failure = new Error('Vault CLI unavailable')
@@ -198,8 +205,9 @@ export class RealVault {
     )
   }
   async snapshot() {
+    await failureDiagnostics?.poll()
     return this.evaluate(
-      `${host}return !u?null:{visibleStatus:[...(globalThis.document?.querySelectorAll('.abele-sync-status, .abele-sync-window__line, .abele-sync-row__status')??[])].filter(el=>el.getClientRects().length>0).map(el=>({text:el.textContent?.trim()??'',label:el.getAttribute('aria-label')})),job:window.__scaleJob,engines:[...h.live.values()].map(e=>({state:e.engine.status.state,lastSyncAt:e.engine.status.lastSyncAt,lastError:e.engine.status.lastError})),rows:u.rows.value.map(({id,status,paused})=>({id,status,paused})),activity:Object.entries(u.activity.value).map(([id,a])=>({id,classification:a.classification??null,waiting:a.waiting??null,waitingFiles:a.waitingFiles??null,notSynced:a.notSynced??null,error:a.error,failure:a.failure?{code:a.failure.code,reason:a.failure.reason,message:a.failure.message,stage:a.failure.stage,kind:a.failure.kind,substep:a.failure.substep}:undefined,startup:a.startup?.stage,transfer:a.transfer?.stage,completed:a.transfer?.completed,total:a.transfer?.total}))}`
+      `${host}return !u?null:{visibleStatus:[...(globalThis.document?.querySelectorAll('.abele-sync-status, .abele-sync-window__line, .abele-sync-row__status')??[])].filter(el=>el.getClientRects().length>0).map(el=>({text:el.textContent?.trim()??'',label:el.getAttribute('aria-label')})),job:window.__scaleJob,engines:[...h.live.values()].map(e=>({state:e.engine.status.state,lastSyncAt:e.engine.status.lastSyncAt,lastError:e.engine.status.lastError})),rows:u.rows.value.map(({id,status,paused})=>({id,status,paused})),activity:Object.entries(u.activity.value).map(([id,a])=>({id,classification:a.classification??null,waiting:a.waiting??null,waitingFiles:a.waitingFiles??null,notSynced:a.notSynced??null,error:a.error,failure:a.failure??undefined,startup:a.startup?.stage,transfer:a.transfer?.stage,completed:a.transfer?.completed,total:a.transfer?.total}))}`
     )
   }
   async inFlight(proxy, label, timeout = this.config.timeoutMs) {
@@ -327,6 +335,7 @@ export async function setupVault(config, root, device) {
   await copyFile(join(here, 'metadata-cache.cjs'), join(observer, 'metadata-cache.cjs'))
   await copyFile(join(here, 'index-wait-capture.cjs'), join(observer, 'index-wait-capture.cjs'))
   await copyFile(join(here, 'failure-diagnostic.cjs'), join(observer, 'failure-diagnostic.cjs'))
+  await copyFile(join(here, 'control-error.cjs'), join(observer, 'control-error.cjs'))
   await writeFile(
     join(observer, 'manifest.json'),
     JSON.stringify({
@@ -355,6 +364,7 @@ export async function setupVault(config, root, device) {
     JSON.stringify({
       evidence: join(config.output, 'renderer.jsonl'),
       device,
+      controlError: join(observer, 'control-error.cjs'),
       ...(config.failureDiagnostic ? {
         failureDiagnostic: join(observer, 'failure-diagnostic.cjs'),
         failureEvents: join(config.output, `failure-events-${device}.jsonl`),
@@ -384,6 +394,9 @@ export async function setupVault(config, root, device) {
 }
 
 export async function run(config) {
+  failureDiagnostics = undefined
+  observeDiagnosticErrors = undefined
+  preservedDiagnosticFailure = false
   const plannedDeadline = deadlinePlan(config.workerStartedAt ?? Date.now())
   deadline = config.deadlineAt ?? plannedDeadline.scenarioDeadlineAt
   // The external supervisor owns app-wide locks, resource reservation and crash cleanup.
@@ -429,6 +442,7 @@ export async function run(config) {
   let appProcess
   let failureMonitor
   let failureCapture = Promise.resolve()
+  const pendingDiagnosticErrors = []
   let issued
   let owner
   let expected = []
@@ -483,6 +497,8 @@ export async function run(config) {
   }
   let lastHealthCheck=0
   const recoverObservedError = async (device, step, first) => {
+    const pending = pendingDiagnosticErrors.findIndex(row => row.device === devices.indexOf(device))
+    if (pending !== -1) first = pendingDiagnosticErrors.splice(pending, 1)[0].snapshot
     const entry = {step, device:String(devices.indexOf(device)),
       reason:'Vault entered an error state', snapshot:first, strictFail:true}
     report.failures.push(entry)
@@ -507,6 +523,12 @@ export async function run(config) {
   }
   for (const device of devices)
     device.onObservedError = (snapshot, step) => recoverObservedError(device, step, snapshot)
+  observeDiagnosticErrors = serializeErrorObservation(async () => {
+    while (pendingDiagnosticErrors.length) {
+      const next = pendingDiagnosticErrors[0]
+      await recoverObservedError(devices[next.device], next.step, next.snapshot)
+    }
+  })
   const primaryHealthy = async () => {
     if(Date.now()-lastHealthCheck<2000)return
     lastHealthCheck=Date.now()
@@ -636,6 +658,36 @@ export async function run(config) {
     return at
   }
   await mkdir(config.output, { recursive: true })
+  if (config.failureDiagnostic) {
+    await writeFile(join(config.output, 'failure-capture-armed'), String(Date.now()))
+    failureDiagnostics = createFailureMonitor({
+      readMarkers: () => Promise.all(devices.map((_, index) =>
+        readFile(join(config.output, `failure-marker-${index}.json`), 'utf8')
+          .then(JSON.parse).catch(() => null))),
+      capture: async marker => {
+        const device = Number(marker.device)
+        const capture = { marker, step: report.phase, captureStartedAt: Date.now() }
+        ;(report.fatalDiagnostics ??= []).push(capture)
+        report.fatalDiagnostic ??= capture
+        checkpoint(true)
+        capture.receipt = await preserveFailureState({ rootPid: appProcess.pid, marker, resume: true,
+          output: join(config.output, 'state', `frozen-startup-${device}-${marker.pid}-${marker.at}`) })
+        pendingDiagnosticErrors.push({ device, step: `${report.phase} captured startup`, snapshot: {
+          ...marker.state,
+          activity: Object.entries(marker.state.activity ?? {}).map(([id, value]) => ({ id, ...value })),
+          engines: (marker.state.engines ?? []).map(value => value.status),
+        } })
+        checkpoint(true)
+      },
+    })
+    failureMonitor = setInterval(() => {
+      failureCapture = failureDiagnostics.poll().catch(error => {
+        report.diagnosticCaptureError = { message: error.message, stack: error.stack }
+        preservedDiagnosticFailure = true
+        checkpoint(true)
+      })
+    }, 100)
+  }
   checkpoint(true)
   checkpointTimer = setInterval(checkpoint, config.checkpointMs ?? 30000)
   checkpointTimer.unref()
@@ -1025,33 +1077,6 @@ export async function run(config) {
         plan, changed, sameSizeMtimeBefore: sameSizeBefore.mtimeMs,
         sameSizeMtimeAfter: sameSizeAfter.mtimeMs, phaseSamples: [],
       }
-      if (config.failureDiagnostic) {
-        await writeFile(join(config.output, 'failure-capture-armed'), String(Date.now()))
-        let capturing = false
-        failureMonitor = setInterval(() => {
-          if (capturing) return
-          capturing = true
-          failureCapture = (async () => {
-            const marker = await readFile(join(config.output, 'failure-marker-0.json'), 'utf8')
-              .then(JSON.parse).catch(() => null)
-            if (!marker) return
-            clearInterval(failureMonitor)
-            report.fatalDiagnostic = { marker, captureStartedAt: Date.now() }
-            checkpoint(true)
-            report.fatalDiagnostic.receipt = await preserveFailureState({
-              rootPid: appProcess.pid, marker,
-              output: join(config.output, 'state/frozen-startup-failure'),
-            })
-            preservedDiagnosticFailure = true
-            checkpoint(true)
-          })().catch(error => {
-            report.fatalDiagnostic ??= {}
-            report.fatalDiagnostic.captureError = { message: error.message, stack: error.stack }
-            preservedDiagnosticFailure = true
-            checkpoint(true)
-          }).finally(() => { capturing = false })
-        }, 100)
-      }
       checkpoint(true)
       let polling = false
       let lastPoll = Promise.resolve()
@@ -1088,8 +1113,6 @@ export async function run(config) {
         await lastPoll
         report.offlineCheck.bothIdleMs = Date.now() - restartedAt
       } finally {
-        clearInterval(failureMonitor)
-        await failureCapture
         clearInterval(timer)
         await lastPoll
       }
@@ -1197,12 +1220,8 @@ export async function run(config) {
     for (const [index, device] of devices.entries()) {
       const file = join(device.root, '.scale-observer.json')
       const observerConfig = await loadEvidence(file)
-      await writeEvidenceJson(file, {
-        ...observerConfig,
-        mode: 'control',
-        failureDiagnostic: undefined,
-        controlReceipt: join(config.output, `control-restart-${index}.json`),
-      })
+      await writeEvidenceJson(file, controlErrors.controlConfig(observerConfig,
+        join(config.output, `control-restart-${index}.json`)))
     }
     const controlAt = await start({ passive: true })
     const controlRows = await Promise.all(
@@ -1214,7 +1233,13 @@ export async function run(config) {
             const receipt = await readFile(receiptFile, 'utf8')
               .then(JSON.parse)
               .catch(() => null)
-            if (receipt?.fatal) throw new Error('Fatal sync state in control restart')
+            if (receipt?.fatal) {
+              if (!config.failureDiagnostic) throw new Error('Fatal sync state in control restart')
+              const observed = report.errorObservations?.some(row =>
+                row.device === String(index) && row.at >= controlAt)
+              if (!observed) await recoverObservedError(devices[index],
+                'control restart', receipt.errorSnapshot ?? await devices[index].snapshot())
+            }
             const timing = controlTiming(controlAt, proxies[index].events, receipt)
             return Number.isFinite(timing.pluginLoadToFirstRequestMs) &&
               timing.firstIdleAt >= timing.firstRequestAt
@@ -1227,7 +1252,9 @@ export async function run(config) {
     )
     const controlActivity = await Promise.all(devices.map((device) => device.activityEvidence()))
     report.controlRestart = {
-      mode: 'observer load/idle marks and proxy requests only',
+      mode: config.failureDiagnostic
+        ? 'startup error/console capture, host load/idle marks and proxy requests only'
+        : 'observer load/idle marks and proxy requests only',
       forcedReindex: false,
       devices: controlRows,
       activity: controlActivity,
@@ -1270,6 +1297,10 @@ export async function run(config) {
     report.fatalSnapshots = fatalDeviceSnapshots(report.lastSnapshots, report.failures)
   } finally {
     try {
+      clearInterval(failureMonitor)
+      await failureCapture
+      failureDiagnostics = undefined
+      observeDiagnosticErrors = undefined
       clearInterval(checkpointTimer)
       await saving
       report.checkpointFailure = checkpointError
@@ -1473,7 +1504,7 @@ export async function run(config) {
         report.wire,
         report.interruptions,
         report.restartAt,
-        report.controlRestart?.devices?.[0]?.launchAt,
+        controlErrors.controlRestartBoundary(report),
         report.offlineCheck?.restartedAt
       )
       if (report.pauseActionAt && report.pauseWindowEndAt)
