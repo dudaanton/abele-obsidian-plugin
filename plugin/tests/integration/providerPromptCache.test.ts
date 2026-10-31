@@ -35,7 +35,7 @@ beforeEach(() => {
   ChatStorage.destroy()
   AbeleConfig.getInstance().ai = {
     ...DEFAULT_AI_SETTINGS,
-    providers: [provider],
+    providers: [{ ...provider, models: [{ ...model }] }],
     agents: [],
     defaultAgentId: '',
     chatHistory: [],
@@ -110,7 +110,7 @@ it('uses one opaque cache key across turns and reloads, and a different key for 
   const body = () => JSON.parse(String(fetch.mock.calls.at(-1)![1]!.body))
   await session.sendMessage('First')
   const key = body().prompt_cache_key
-  expect(key).toMatch(/^abele-[a-f0-9]{64}$/)
+  expect(key).toMatch(/^[a-f0-9]{64}$/)
   await session.flush()
   await session.load(session.currentChatFile.value!)
   await session.sendMessage('Second')
@@ -123,6 +123,35 @@ it('uses one opaque cache key across turns and reloads, and a different key for 
     other.destroy()
   }
 })
+
+it.each([true, false])(
+  'retains the provider capability through every model resolver (%s)',
+  (promptCacheKey) => {
+    AbeleConfig.getInstance().ai.providers[0].promptCacheKey = promptCacheKey
+    AbeleConfig.getInstance().ai.activeProviderId = provider.id
+    AbeleConfig.getInstance().ai.activeModelId = model.id
+    AbeleConfig.getInstance().ai.auxiliaryModelId = `${provider.id}::${model.id}`
+    const registry = AgentRegistry.getInstance()
+    const agent = registry.create({
+      name: 'Sample auxiliary',
+      providerId: provider.id,
+      modelId: model.id,
+      fallbackProviderId: provider.id,
+      fallbackModelId: model.id,
+      auxiliaryProviderId: provider.id,
+      auxiliaryModelId: model.id,
+    })
+    for (const config of [
+      service.getActiveModelConfig(),
+      service.getModelConfigFor(provider.id, model.id),
+      service.getAuxiliaryModelConfig(),
+      registry.resolveModel(agent),
+      registry.resolveModel(agent, { fallback: true }),
+      registry.resolveModel(agent, { background: true }),
+    ])
+      expect(config?.promptCacheKey).toBe(promptCacheKey)
+  }
+)
 
 it('supersedes forgotten memory without rewriting the previous snapshot', async () => {
   const registry = AgentRegistry.getInstance()
