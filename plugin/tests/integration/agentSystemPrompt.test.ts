@@ -131,10 +131,10 @@ describe('ChatService.getSystemPrompt', () => {
  * What an agent was asked to remember reaches its own prompt and nobody else's, through the
  * template in the prompt settings.
  */
-describe('agent memory in the system prompt', () => {
+describe('agent memory in the current context', () => {
   const memory = (text: string) => [{ id: text, text, created: '2026-09-23' }]
 
-  it('adds the memory of the chat agent after its prompt blocks', async () => {
+  it('keeps agent instructions stable and sends memory in the current context', async () => {
     const registry = AgentRegistry.getInstance()
     const agent = registry.create({
       name: 'Writer',
@@ -146,11 +146,11 @@ describe('agent memory in the system prompt', () => {
       memoryTemplate: 'Remember:\n{{memory}}',
     }
 
-    const prompt = await ChatService.getInstance().getSystemPrompt(
-      fakeSession({ agentId: agent.id })
+    const session = fakeSession({ agentId: agent.id })
+    expect(await ChatService.getInstance().getSystemPrompt(session)).toBe('Agent.')
+    expect(await ChatService.getInstance().getTurnContext(session)).toBe(
+      'Current context snapshot (supersedes earlier context snapshots):\n\nRemember:\n- Answer in Russian'
     )
-
-    expect(prompt).toBe('Agent.\n\nRemember:\n- Answer in Russian')
   })
 
   it('never shows one agent what another was asked to remember', async () => {
@@ -163,18 +163,18 @@ describe('agent memory in the system prompt', () => {
     )
 
     expect(prompt).toBe('Code.')
+    expect(await ChatService.getInstance().getTurnContext(fakeSession({ agentId: coder.id }))).toBe(
+      ''
+    )
   })
 
   it('keeps the memory when the chat overrides the prompt', async () => {
     const registry = AgentRegistry.getInstance()
     const agent = registry.create({ name: 'Writer', memory: memory('Answer in Russian') })
 
-    const prompt = await ChatService.getInstance().getSystemPrompt(
-      fakeSession({ agentId: agent.id, customSystemPrompt: 'Chat override.' })
-    )
-
-    expect(prompt.startsWith('Chat override.\n\n')).toBe(true)
-    expect(prompt).toContain('- Answer in Russian')
+    const session = fakeSession({ agentId: agent.id, customSystemPrompt: 'Chat override.' })
+    expect(await ChatService.getInstance().getSystemPrompt(session)).toBe('Chat override.')
+    expect(await ChatService.getInstance().getTurnContext(session)).toContain('- Answer in Russian')
   })
 
   it('uses the default template when the setting predates it', async () => {

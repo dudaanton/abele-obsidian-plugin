@@ -254,7 +254,7 @@ export class AgentRegistry {
    * rather than contributing an empty line, so reordering blocks in the editor never changes
    * the spacing the model sees.
    */
-  async buildSystemPrompt(agent: AgentDefinition): Promise<string> {
+  async buildSystemPrompt(agent: AgentDefinition, includeMemory = true): Promise<string> {
     const date = dayjs().format('YYYY-MM-DD')
     const blocks: string[] = []
 
@@ -263,7 +263,7 @@ export class AgentRegistry {
       if (text) blocks.push(text.replace(/\{\{date\}\}/g, date))
     }
 
-    const memory = this.memoryPrompt(agent)
+    const memory = includeMemory ? this.memoryPrompt(agent) : ''
     if (memory) blocks.push(memory)
 
     return blocks.join('\n\n')

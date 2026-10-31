@@ -2194,7 +2194,30 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
             systemPrompt,
             signal: controller.signal,
           })
-          return this.getMessagesForModel()
+          const context = this.getMessagesForModel()
+          const previous = context.findLast((m) => m.role === 'system' && m.contextSnapshot)
+          const current = await this.chatService.getTurnContext(this)
+          if (this.destroyed || generation !== this.generation || controller.signal.aborted)
+            return context
+          const content =
+            current ||
+            (previous
+              ? 'Current context snapshot (supersedes earlier context snapshots):\n\nNo current agent memory or anchored context.'
+              : '')
+          if (content && content !== previous?.content) {
+            const snapshot: Message = {
+              role: 'system',
+              contextSnapshot: true,
+              content,
+              timestamp: Date.now(),
+              chatMessageId: this.messages.value.at(-1)?.id,
+            }
+            // Append and checkpoint, never rewrite a snapshot already sent to the provider.
+            messages.push(snapshot)
+            checkpoint(messages)
+            context.push(snapshot)
+          }
+          return context
         },
         beforeToolCall: async (toolName, _id, args, permissionKey, destinationKey) => {
           // Refused before anyone is asked: approving a write that cannot run wastes a click.

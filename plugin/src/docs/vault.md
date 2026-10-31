@@ -1344,6 +1344,12 @@ Message `usage` optionally retains `cacheRead` and `cacheWrite` token counts alo
 `input`, `output`, `total` and `speed`. Older records without cache counts remain readable.
 Input counts exclude cache reads/writes; the total includes them.
 
+Internal system messages may carry `contextSnapshot: true`: immutable snapshots of agent
+memory and current comment anchor text appended after stable history. Each belongs to the
+visible message identified by `chatMessageId`, follows branch selection and survives reload.
+Only changed snapshots are appended; a later one explicitly supersedes earlier snapshots,
+including when memory is forgotten. The system prompt retains agent instructions and date.
+
 The chat tree uses logical folders, independent of directories on disk. The configured
 chat-folder template alone determines where new transcripts live. Tree folder creation,
 renaming, deletion, filing and dragging never move or rename transcripts. Unfiled chats appear

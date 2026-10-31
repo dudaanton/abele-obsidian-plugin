@@ -328,7 +328,7 @@ describe('what a nested comment is told', () => {
     const second = await show(C2)
     const third = (await service.createOnMessage(second, 'c2a', 'couchette', 21))!
 
-    const prompt = await ChatService.getInstance().getSystemPrompt(third)
+    const prompt = await ChatService.getInstance().getTurnContext(third)
 
     expect(prompt).toContain('Selected text:\ncouchette')
     expect(prompt).toContain('Yes, two classes of couchette.')
@@ -342,7 +342,7 @@ describe('what a nested comment is told', () => {
     const second = await show(C2)
     const third = (await service.createOnMessage(second, 'c2a', 'couchette', 21))!
 
-    const prompt = await ChatService.getInstance().getSystemPrompt(third)
+    const prompt = await ChatService.getInstance().getTurnContext(third)
 
     expect(prompt).toContain('Baltic Express')
     expect(prompt).toContain('night train')

@@ -141,7 +141,7 @@ describe('asking about a passage of an answer', () => {
     const parent = await openParent()
 
     const comment = (await CommentService.getInstance().createOnMessage(parent, 'u1', 'Riga', 17))!
-    const prompt = await ChatService.getInstance().getSystemPrompt(comment)
+    const prompt = await ChatService.getInstance().getTurnContext(comment)
 
     expect(comment.anchor.value).toEqual({ note: CHAT, quote: 'Riga', message: 'u1' })
     expect(prompt).toContain('How do I get to Riga?')
@@ -188,7 +188,7 @@ describe('asking about a passage of an answer', () => {
     const parent = await openParent()
     const comment = (await CommentService.getInstance().createOnMessage(parent, 'a1', 'night', 9))!
 
-    const prompt = await ChatService.getInstance().getSystemPrompt(comment)
+    const prompt = await ChatService.getInstance().getTurnContext(comment)
 
     expect(prompt).toContain('Selected text:\nnight')
     expect(prompt).toContain('Take the night train from Vilnius.')

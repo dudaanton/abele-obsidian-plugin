@@ -101,15 +101,16 @@ describe('buildCommentContext', () => {
 })
 
 describe('ChatService.getSystemPrompt', () => {
-  it('appends the block after the agent prompt for a comment session', async () => {
+  it('keeps the anchor in current context after stable instructions and history', async () => {
     const session = new ChatSession(ChatService.getInstance(), undefined, {
       kind: 'comment',
       anchor: { note: 'Notes/A.md', quote: 'The selected passage' },
     })
 
-    const prompt = await ChatService.getInstance().getSystemPrompt(session)
+    expect(await ChatService.getInstance().getSystemPrompt(session)).toBe('Agent prompt.')
+    const prompt = await ChatService.getInstance().getTurnContext(session)
 
-    expect(prompt.startsWith('Agent prompt.')).toBe(true)
+    expect(prompt.startsWith('Current context snapshot')).toBe(true)
     expect(prompt).toContain('## Where you are')
     expect(prompt).not.toContain('title: A note')
   })

@@ -107,6 +107,8 @@ export interface ReadMark {
 
 export interface SystemMessage {
   role: 'system'
+  /** Immutable per-request context, retained on its branch to keep earlier request bytes. */
+  contextSnapshot?: boolean
   content: string
   timestamp: number
   chatMessageId?: string

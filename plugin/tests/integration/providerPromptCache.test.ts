@@ -26,10 +26,11 @@ const provider = {
 }
 let session: ChatSession
 let service: ChatService
+let app: ReturnType<typeof useVault>
 let fetch: ReturnType<typeof vi.spyOn<typeof window, 'fetch'>>
 
 beforeEach(() => {
-  useVault([])
+  app = useVault([{ path: 'Notes/Sample.md', content: 'Original passage.' }])
   AgentRegistry.destroy()
   ChatStorage.destroy()
   AbeleConfig.getInstance().ai = {
@@ -122,6 +123,85 @@ it('uses one opaque cache key across turns and reloads, and a different key for 
     other.destroy()
   }
 })
+
+it('supersedes forgotten memory without rewriting the previous snapshot', async () => {
+  const registry = AgentRegistry.getInstance()
+  const agent = registry.defaultAgent()!
+  registry.update(agent.id, {
+    memory: [{ id: 'sample-memory', text: 'A remembered preference.', created: '2026-01-01' }],
+  })
+  await session.sendMessage('First')
+  const first = JSON.parse(String(fetch.mock.calls.at(-1)![1]!.body)).messages
+  registry.update(agent.id, { memory: [] })
+  await session.sendMessage('Second')
+  const second = JSON.parse(String(fetch.mock.calls.at(-1)![1]!.body)).messages
+  expect(second.slice(0, first.length)).toEqual(first)
+  expect(second.at(-1).content).toContain('No current agent memory or anchored context.')
+  const count = session.messagesForModel().length
+  await session.sendMessage('Third')
+  expect(session.messagesForModel()).toHaveLength(count + 2)
+})
+
+it.each(['chat-completions', 'responses'] as const)(
+  'preserves the entire sent prefix when memory and anchored context change (%s)',
+  async (apiMode) => {
+    AbeleConfig.getInstance().ai.providers[0].apiMode = apiMode
+    if (apiMode === 'responses')
+      fetch.mockImplementation(
+        async () =>
+          new Response(
+            'data: ' +
+              JSON.stringify({ type: 'response.output_text.delta', delta: 'Sample answer.' }) +
+              '\n\n' +
+              'data: ' +
+              JSON.stringify({
+                type: 'response.completed',
+                response: { status: 'completed', usage: { input_tokens: 10, output_tokens: 2 } },
+              }) +
+              '\n\n'
+          )
+      )
+    const registry = AgentRegistry.getInstance()
+    const agent = registry.defaultAgent()!
+    registry.update(agent.id, {
+      memory: [{ id: 'sample-memory', text: 'Original memory.', created: '2026-01-01' }],
+    })
+    session.destroy()
+    session = new ChatSession(service, undefined, {
+      kind: 'comment',
+      anchor: { note: 'Notes/Sample.md', quote: 'passage' },
+    })
+    vi.spyOn(session as unknown as { getTools(): [] }, 'getTools').mockReturnValue([])
+    const body = () => JSON.parse(String(fetch.mock.calls.at(-1)![1]!.body))
+    await session.sendMessage('First')
+    const first = body()
+    const firstMessages = first.messages ?? first.input
+    const system = first.instructions ?? firstMessages[0].content
+    expect(system).toBe('Stable instructions.')
+    expect(JSON.stringify(firstMessages)).toContain('Original memory.')
+    expect(JSON.stringify(firstMessages)).toContain('Original passage.')
+    await session.flush()
+    await session.load(session.currentChatFile.value!)
+    registry.update(agent.id, {
+      memory: [{ id: 'sample-memory', text: 'Updated memory.', created: '2026-01-01' }],
+    })
+    await app.vault.modify(app.vault.getAbstractFileByPath('Notes/Sample.md')!, 'Updated passage.')
+    await session.sendMessage('Second')
+    const second = body()
+    const secondMessages = second.messages ?? second.input
+    expect(second.instructions ?? secondMessages[0].content).toBe(system)
+    expect(JSON.stringify(secondMessages.slice(0, firstMessages.length))).toBe(
+      JSON.stringify(firstMessages)
+    )
+    expect(JSON.stringify(secondMessages.slice(firstMessages.length))).toContain('Updated memory.')
+    expect(JSON.stringify(secondMessages.slice(firstMessages.length))).toContain('Updated passage.')
+    expect(session.messages.value.some((m) => m.content.includes('Original memory.'))).toBe(false)
+    // An unchanged snapshot must not grow on every request.
+    const snapshots = session.messagesForModel().filter((m) => m.role === 'system').length
+    await session.sendMessage('Third')
+    expect(session.messagesForModel().filter((m) => m.role === 'system')).toHaveLength(snapshots)
+  }
+)
 
 it.each(['chat-completions', 'responses'] as const)(
   'gates cache keys per provider for %s',

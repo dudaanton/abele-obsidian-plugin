@@ -1647,7 +1647,19 @@ export class ChatService {
   // ── System prompt ─────────────────────────────────────────────
 
   async getSystemPrompt(session: ChatSession): Promise<string> {
-    return this.withCommentContext(session, await this.basePrompt(session))
+    return this.basePrompt(session)
+  }
+
+  /** Current facts travel at the growing end of history, preserving the cacheable prefix. */
+  async getTurnContext(session: ChatSession): Promise<string> {
+    const registry = AgentRegistry.getInstance()
+    const agent = session.agent.value ?? registry.defaultAgent()
+    const context = (
+      await this.withCommentContext(session, agent ? registry.memoryPrompt(agent) : '')
+    ).trim()
+    return context
+      ? `Current context snapshot (supersedes earlier context snapshots):\n\n${context}`
+      : ''
   }
 
   /**
@@ -1697,26 +1709,19 @@ export class ChatService {
     const registry = AgentRegistry.getInstance()
     const agent = session.agent.value ?? registry.defaultAgent()
 
-    // An overridden prompt replaces the agent's instructions, not what it was asked to
-    // remember: the chat still runs on that agent, and the person asked *it*.
-    const withMemory = (prompt: string): string => {
-      const memory = agent ? registry.memoryPrompt(agent) : ''
-      return memory ? `${prompt}\n\n${memory}` : prompt
-    }
-
     // Per-chat override: note path
     if (session.customSystemPromptNotePath.value) {
       const body = await this.readNoteBody(session.customSystemPromptNotePath.value)
-      if (body) return withMemory(body.replace(/\{\{date\}\}/g, date))
+      if (body) return body.replace(/\{\{date\}\}/g, date)
     }
 
     // Per-chat override: inline text
     if (session.customSystemPrompt.value) {
-      return withMemory(session.customSystemPrompt.value.replace(/\{\{date\}\}/g, date))
+      return session.customSystemPrompt.value.replace(/\{\{date\}\}/g, date)
     }
 
     if (agent) {
-      const composed = await registry.buildSystemPrompt(agent)
+      const composed = await registry.buildSystemPrompt(agent, false)
       if (composed) return composed
     }
 
