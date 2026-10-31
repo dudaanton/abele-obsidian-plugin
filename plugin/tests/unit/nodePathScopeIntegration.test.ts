@@ -1,7 +1,21 @@
 import { catalogs as testCatalogs } from '@/i18n/catalogs'
 import { beforeEach, describe, expect, it, vi, afterEach } from 'vitest'
 import { initializeLocale } from '@/i18n'
-import { ref } from 'vue'
+import { ref, type VNode } from 'vue'
+import { Notice } from 'obsidian'
+import { giveObsidianChatAccess } from '@/ai/tools/node/owner'
+const dialog = vi.hoisted(() => ({
+  render: undefined as undefined | ((close: () => void) => VNode),
+}))
+vi.mock('@/node/NodePathDialogs', () => ({
+  nodePathDialog: (_title: string, render: (close: () => void) => VNode) => {
+    dialog.render = render
+  },
+}))
+vi.mock('obsidian', async (original) => ({
+  ...(await original<typeof import('obsidian')>()),
+  Notice: vi.fn(),
+}))
 import {
   chooseNodePathChat,
   createNodePathObsidianActions,
@@ -70,6 +84,42 @@ beforeEach(() => {
   f.active.value = ''
 })
 describe('node row scope integration', () => {
+  it.each([
+    ['read', 'read'],
+    ['edit', 'read and edit'],
+    ['run', 'read, edit and run commands'],
+  ])('names the granted %s access in the notice', async (access, words) => {
+    vi.mocked(giveObsidianChatAccess).mockResolvedValue(undefined)
+    vi.mocked(Notice).mockClear()
+    dialog.render = undefined
+    const session = { id: 'sample-chat', chatTitle: ref('Sample chat'), overrides: ref({}) }
+    f.sessions = [session]
+    const pending = createNodePathObsidianActions().grant({
+      target: {
+        registrationId: 'sample-registration',
+        nodeId: 'sample-node',
+        projectId: 'sample-project',
+        kind: 'worktree',
+        id: 'sample-tree',
+      },
+    } as never)
+    await vi.waitFor(() => expect(f.picker).toBeDefined())
+    f.picker.choose({ id: session.id })
+    await vi.waitFor(() => expect(dialog.render).toBeDefined())
+    const close = vi.fn()
+    let children = dialog.render!(close).children as VNode[]
+    const dropdown = (children[1].children as { default: () => VNode }).default()
+    dropdown.props!['onUpdate:modelValue'](access)
+    children = dialog.render!(close).children as VNode[]
+    const buttons = children.at(-1)!.children as VNode[]
+    buttons[1].props!.onClick()
+    await vi.waitFor(() => expect(Notice).toHaveBeenCalled())
+    expect(vi.mocked(Notice).mock.calls[0][0]).toContain(` can ${words} `)
+    expect(vi.mocked(giveObsidianChatAccess).mock.calls.at(-1)?.[1]).toMatchObject({ access })
+    close()
+    // The dialog's completion callback is separate from its close callback in this fixture.
+    void pending
+  })
   it('adds selected code directly to the active node chat', async () => {
     f.active.value = f.node.id
     await createNodePathObsidianActions().add({

@@ -1,4 +1,5 @@
 export const streamB = {
+  'streamB.readEditRunCommands': 'read, edit and run commands',
   'streamB.invalidNodeCodeLink':
     'This node code link is invalid. Copy the link again from the node.',
   'streamB.showAsCode': 'Show as code',

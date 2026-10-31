@@ -228,9 +228,11 @@ export function createNodePathObsidianActions(): NodePathOwnerActions {
                           t('streamB.can.085228', {
                             v0: String(chat),
                             v1: String(
-                              access.value === 'edit'
-                                ? t('streamB.readAndEdit.4067e8')
-                                : t('streamBMeta.3316348dba')
+                              access.value === 'run'
+                                ? t('streamB.readEditRunCommands')
+                                : access.value === 'edit'
+                                  ? t('streamB.readAndEdit.4067e8')
+                                  : t('streamBMeta.3316348dba')
                             ),
                             v2: String(where),
                           })

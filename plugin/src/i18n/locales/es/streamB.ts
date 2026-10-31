@@ -1,4 +1,5 @@
 export const streamB = {
+  'streamB.readEditRunCommands': 'leer, editar y ejecutar comandos',
   'streamB.invalidNodeCodeLink':
     'Este enlace al código del nodo no es válido. Copie de nuevo el enlace desde el nodo.',
   'streamB.showAsCode': 'Mostrar código',
