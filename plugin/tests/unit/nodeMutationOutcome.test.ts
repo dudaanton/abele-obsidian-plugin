@@ -155,6 +155,7 @@ async function setup(useOwner = false) {
     nodes: { value: registry.list() },
     connection: () => ({
       client,
+      waitUntilConnected: async () => connected,
       get authorizationGeneration() {
         return generation
       },
