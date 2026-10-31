@@ -340,7 +340,8 @@ exports.watch = async function (id, serializedConfig) {
     transport,
     config.javascriptHashTracepoints,
     config.javascriptHashBoundary,
-    emit
+    emit,
+    config.failureArmed
   )
   const profiler = exports.createStallProfiler({
     clock,
@@ -476,12 +477,22 @@ exports.classificationSnapshot = (activity) =>
     classification: value.classification ?? null,
   }))
 
-exports.armHashTracepoints = async function (transport, lines, boundary, emit) {
+exports.armHashTracepoints = async function (transport, lines, boundary, emit, failureArmed) {
   if (!lines?.length) return () => {}
   if (!Number.isInteger(boundary)) throw new Error('Hash evaluation boundary unavailable')
   const breakpoints = new Set()
   let gate
   const message = async (_event, method, params) => {
+    if (method === 'Debugger.paused' && ['exception', 'promiseRejection'].includes(params.reason)) {
+      try {
+        const properties = params.data?.objectId
+          ? await transport.sendCommand('Runtime.getProperties', { objectId: params.data.objectId, ownProperties: true })
+          : null
+        emit({ event: 'caught-startup-exception', data: params.data,
+          properties: properties?.result, callFrames: params.callFrames })
+      } finally { await transport.sendCommand('Debugger.resume') }
+      return
+    }
     if (method === 'Debugger.breakpointResolved' && breakpoints.has(params.breakpointId))
       emit({ event: 'javascript-hash-observer-ready', location: params.location })
     if (method !== 'Debugger.paused' || !params.hitBreakpoints?.includes(gate)) return
@@ -502,6 +513,15 @@ exports.armHashTracepoints = async function (transport, lines, boundary, emit) {
       // Pay the debugger's cold constructor cost inside the measured setup interval.
       // Construction alone emits no digest receipt; every actual digest remains observed.
       const { scriptSource } = await transport.sendCommand('Debugger.getScriptSource', { scriptId })
+      const fingerprintNames = [...scriptSource.matchAll(/\b(?:var|let|const|class) (ObsidianFileSystem(?:\$\d+)?)\b/g)].map(match => match[1])
+      for (const name of new Set(fingerprintNames)) {
+        const result = await transport.sendCommand('Debugger.evaluateOnCallFrame', {
+          callFrameId: params.callFrames[0].callFrameId,
+          expression: `globalThis.__scaleWrapFingerprints?.(${name})`,
+          returnByValue: true,
+        })
+        if (result.exceptionDetails) emit({ event: 'fingerprint-observer-unavailable', details: result.exceptionDetails })
+      }
       const names = [...scriptSource.matchAll(/\bclass (SHA256(?:\$\d+)?) extends /g)].map(
         (match) => match[1]
       )
@@ -524,6 +544,14 @@ exports.armHashTracepoints = async function (transport, lines, boundary, emit) {
   }
   transport.on('message', message)
   await transport.sendCommand('Debugger.enable')
+  if (failureArmed) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Main-process diagnostic arming receipt.
+    const fs = require('node:fs')
+    if (fs.existsSync(failureArmed)) {
+      await transport.sendCommand('Debugger.setPauseOnExceptions', { state: 'all' })
+      emit({ event: 'caught-exception-observer-ready' })
+    }
+  }
   const binding = await transport.sendCommand('Debugger.setBreakpointByUrl', {
     url: 'plugin:abele',
     lineNumber: boundary,

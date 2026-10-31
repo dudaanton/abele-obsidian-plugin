@@ -13,6 +13,35 @@ module.exports = class extends Plugin {
         'utf8'
       )
     )
+    if (config.failureDiagnostic) {
+      Error.stackTraceLimit = 100
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable diagnostic helper.
+      const diagnostic = require(config.failureDiagnostic)
+      const emit = value => fs.appendFileSync(config.failureEvents,
+        JSON.stringify({ at: Date.now(), device: config.device, ...value }) + '\n')
+      globalThis.__scaleWrapFingerprints = Class => diagnostic.wrapFingerprints(Class, emit)
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Host profile location is evidence only.
+      const remote = require('@electron/remote')
+      const location = {
+        userData: remote.app.getPath('userData'),
+        storagePath: remote.getCurrentWebContents().session.getStoragePath?.(),
+        root: this.app.vault.adapter.getBasePath(), pid: process.pid,
+      }
+      emit({ event: 'failure-capture-ready', ...location })
+      const capture = diagnostic.captureFailures({ target: window, console, emit,
+        armed: () => config.device === '0' && fs.existsSync(config.failureArmed),
+        getState: () => {
+          const host = this.app.plugins?.plugins?.abele?.tokenEngines
+          return { rows: host?.ui?.rows.value, activity: host?.ui?.activity.value,
+            engines: [...(host?.live.values() ?? [])].map(value => ({ status: value.engine.status,
+              fatal: value.fatalFailure })) }
+        },
+        writeFatal: value => fs.writeFileSync(config.failureMarker, JSON.stringify({ ...location, ...value })),
+        freeze: () => process.kill(process.pid, 'SIGSTOP'),
+      })
+      const timer = setInterval(() => capture.poll(), 25)
+      this.register(() => { clearInterval(timer); capture.close(); delete globalThis.__scaleWrapFingerprints })
+    }
     if (config.mode === 'control' || config.mode === 'profile-only' || config.mode === 'diagnostic') {
       const receipt = { observerStartedAt: Date.now() }
       const save = () => fs.writeFileSync(config.controlReceipt, JSON.stringify(receipt))

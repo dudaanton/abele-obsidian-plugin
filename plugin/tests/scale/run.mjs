@@ -53,6 +53,7 @@ import { applyCombinedChanges } from './combined.mjs'
 import { planOfflineChanges, updateExpectedOfflineChanges } from './qualification-offline.mjs'
 import { verifyDirectoryChanges } from './directory-oracle.mjs'
 import { observeErrorRecovery } from './transient-error.mjs'
+import { preserveFailureState } from './failure-state.mjs'
 import {
   requireTime,
   phaseTimings,
@@ -84,10 +85,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex')
 const host = 'const h=app.plugins.plugins.abele?.tokenEngines;const u=h?.ui;'
 let deadline = Infinity
+let preservedDiagnosticFailure
 
 async function wait(label, test, timeout = 120000) {
   const until = Date.now() + timeout
   while (Date.now() < until) {
+    if (preservedDiagnosticFailure) throw new Error('Fatal sync state preserved before cleanup')
     requireTime(deadline)
     const result = await test()
     if (result) return result
@@ -323,6 +326,7 @@ export async function setupVault(config, root, device) {
   await copyFile(join(here, 'profile-only.cjs'), join(observer, 'profile-only.cjs'))
   await copyFile(join(here, 'metadata-cache.cjs'), join(observer, 'metadata-cache.cjs'))
   await copyFile(join(here, 'index-wait-capture.cjs'), join(observer, 'index-wait-capture.cjs'))
+  await copyFile(join(here, 'failure-diagnostic.cjs'), join(observer, 'failure-diagnostic.cjs'))
   await writeFile(
     join(observer, 'manifest.json'),
     JSON.stringify({
@@ -351,6 +355,12 @@ export async function setupVault(config, root, device) {
     JSON.stringify({
       evidence: join(config.output, 'renderer.jsonl'),
       device,
+      ...(config.failureDiagnostic ? {
+        failureDiagnostic: join(observer, 'failure-diagnostic.cjs'),
+        failureEvents: join(config.output, `failure-events-${device}.jsonl`),
+        failureMarker: join(config.output, `failure-marker-${device}.json`),
+        failureArmed: join(config.output, 'failure-capture-armed'),
+      } : {}),
       contentPrefix: config.contentPrefix,
       observeContentReads: false,
       writeObserver: join(observer, 'writes.cjs'),
@@ -417,6 +427,8 @@ export async function run(config) {
   let memoryTimer
   let memoryPending = Promise.resolve()
   let appProcess
+  let failureMonitor
+  let failureCapture = Promise.resolve()
   let issued
   let owner
   let expected = []
@@ -1013,6 +1025,33 @@ export async function run(config) {
         plan, changed, sameSizeMtimeBefore: sameSizeBefore.mtimeMs,
         sameSizeMtimeAfter: sameSizeAfter.mtimeMs, phaseSamples: [],
       }
+      if (config.failureDiagnostic) {
+        await writeFile(join(config.output, 'failure-capture-armed'), String(Date.now()))
+        let capturing = false
+        failureMonitor = setInterval(() => {
+          if (capturing) return
+          capturing = true
+          failureCapture = (async () => {
+            const marker = await readFile(join(config.output, 'failure-marker-0.json'), 'utf8')
+              .then(JSON.parse).catch(() => null)
+            if (!marker) return
+            clearInterval(failureMonitor)
+            report.fatalDiagnostic = { marker, captureStartedAt: Date.now() }
+            checkpoint(true)
+            report.fatalDiagnostic.receipt = await preserveFailureState({
+              rootPid: appProcess.pid, marker,
+              output: join(config.output, 'state/frozen-startup-failure'),
+            })
+            preservedDiagnosticFailure = true
+            checkpoint(true)
+          })().catch(error => {
+            report.fatalDiagnostic ??= {}
+            report.fatalDiagnostic.captureError = { message: error.message, stack: error.stack }
+            preservedDiagnosticFailure = true
+            checkpoint(true)
+          }).finally(() => { capturing = false })
+        }, 100)
+      }
       checkpoint(true)
       let polling = false
       let lastPoll = Promise.resolve()
@@ -1049,6 +1088,8 @@ export async function run(config) {
         await lastPoll
         report.offlineCheck.bothIdleMs = Date.now() - restartedAt
       } finally {
+        clearInterval(failureMonitor)
+        await failureCapture
         clearInterval(timer)
         await lastPoll
       }
@@ -1159,6 +1200,7 @@ export async function run(config) {
       await writeEvidenceJson(file, {
         ...observerConfig,
         mode: 'control',
+        failureDiagnostic: undefined,
         controlReceipt: join(config.output, `control-restart-${index}.json`),
       })
     }
