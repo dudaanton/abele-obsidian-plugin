@@ -18,6 +18,7 @@ import { nodePages } from '@/node/nodePages'
 import { pathPages } from '@/node/NodePathClientPort'
 
 const f = vi.hoisted(() => ({
+  state: 'connected',
   items: [] as { id: string; title: string; kind?: string; note?: string }[],
   choose: (_item: { id: string }) => {},
   confirm: vi.fn(async () => true),
@@ -28,7 +29,7 @@ vi.mock('@/node/NodeService', () => ({
   NodeService: {
     getInstance: () => ({
       nodes: ref([]),
-      connection: () => ({ state: ref('connected'), client: f.client }),
+      connection: () => ({ state: ref(f.state), client: f.client }),
     }),
   },
 }))
@@ -52,6 +53,8 @@ vi.mock('@/components/nodeWork/NodeSuggestModal', () => ({
   },
 }))
 afterEach(() => {
+  f.state = 'connected'
+  f.items = []
   vi.restoreAllMocks()
   vi.clearAllMocks()
 })
@@ -279,6 +282,23 @@ describe('the node panel instead of the workspaces window', () => {
     })
   })
 
+  it('refreshes the catalogue before showing worktrees created outside the panel', async () => {
+    const m = model()
+    m.folders.value[0].copies = [m.folders.value[0].copies[0]]
+    f.items = []
+    m.refresh.mockImplementation(async () => {
+      m.folders.value[0].copies.push({
+        id: 'sample-created',
+        kind: 'worktree',
+        branch: 'new-topic',
+        path: '/sample/new-topic',
+      })
+    })
+    pickNodePathPlace(m as never, vi.fn())
+    await vi.waitFor(() => expect(f.items.some((item) => item.id === 'sample-created')).toBe(true))
+    expect(m.refresh).toHaveBeenCalledOnce()
+  })
+
   it('lists every folder, each worktree of a repository and the chats that work in it', async () => {
     const m = model()
     m.folders.value = [
@@ -293,6 +313,8 @@ describe('the node panel instead of the workspaces window', () => {
     ]
     const openChat = vi.fn()
     pickNodePathPlace(m as never, openChat)
+    await vi.waitFor(() => expect(m.refresh).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(f.items.some((item) => item.id === 'chat:chat-1')).toBe(true))
     expect(f.items.map((i) => [i.kind, i.title])).toEqual([
       ['The folder itself', 'sample-app / trunk'],
       ['Worktree', 'sample-app / feature'],
@@ -334,4 +356,19 @@ describe('the node panel instead of the workspaces window', () => {
     expect(f.confirm).not.toHaveBeenCalled()
     expect(deleteWorktree).not.toHaveBeenCalled()
   })
+})
+
+it('opens the cached switcher without refreshing an offline node', async () => {
+  f.state = 'offline'
+  const m = model()
+  pickNodePathPlace(m as never, vi.fn())
+  await vi.waitFor(() => expect(f.items.some((item) => item.id === 'sample-root')).toBe(true))
+  expect(m.refresh).not.toHaveBeenCalled()
+})
+it('keeps cached switcher choices available when catalogue refresh fails', async () => {
+  const m = model()
+  m.refresh.mockRejectedValueOnce(new Error('sample connection lost'))
+  pickNodePathPlace(m as never, vi.fn())
+  await vi.waitFor(() => expect(f.items.some((item) => item.id === 'sample-root')).toBe(true))
+  expect(m.refresh).toHaveBeenCalledOnce()
 })

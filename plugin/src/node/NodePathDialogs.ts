@@ -323,6 +323,20 @@ export async function openNodeWorktreeDialog(
               )
               created = job.state === 'succeeded'
               if (created) close()
+              let createdId: string | undefined
+              if (created) {
+                // Resolve the exact reservation; managed worktrees are listed by default.
+                const rows = await pathPages((cursor) =>
+                  connection.client.repository.worktrees({
+                    project_id: target.projectId,
+                    include_selection: true,
+                    cursor,
+                  })
+                )
+                createdId = rows.find(
+                  (row) => row.workspace_id === reservation.workspace_id
+                )?.worktree_id
+              }
               await model.refresh()
               if (job.state !== 'succeeded')
                 nodeErrorNotice(
@@ -331,11 +345,13 @@ export async function openNodeWorktreeDialog(
                     : t('streamB.worktreeCreationIsInProgressRefreshThe.b895d6')
                 )
               else {
-                const selected = model.targets.value.find(
-                  (translationItem) =>
-                    model.copy(translationItem)?.branch?.replace(/^refs\/heads\//, '') === branch &&
-                    translationItem.projectId === target.projectId
-                )
+                const selected =
+                  model.targets.value.find((item) => item.id === createdId) ??
+                  model.targets.value.find(
+                    (translationItem) =>
+                      model.copy(translationItem)?.branch?.replace(/^refs\/heads\//, '') ===
+                        branch && translationItem.projectId === target.projectId
+                  )
                 if (selected) await model.select(selected.id)
               }
               close()

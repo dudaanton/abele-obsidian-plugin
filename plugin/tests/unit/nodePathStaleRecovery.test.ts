@@ -498,3 +498,42 @@ it.each(['different path', 'basename only', 'different registration', 'chat inca
     model.destroy()
   }
 )
+
+it.each(['refresh', 'refreshCurrent', 'reconnected', 'stale read', 'startup'])(
+  'falls back from a removed managed worktree to the same project root after %s',
+  async (trigger) => {
+    const { model, port, stop } = fixture()
+    const feature: PathTarget = {
+      ...target,
+      id: 'sample-feature',
+      location: { root: rootFolder.path, path: '/sample/worktrees/feature', kind: 'managed' },
+    }
+    model.targets.value = [target, feature]
+    model.folders.value = [
+      {
+        ...rootFolder,
+        copies: [
+          ...rootFolder.copies,
+          { id: feature.id, kind: 'worktree', branch: 'feature', path: 'feature', changed: 0 },
+        ],
+      },
+    ]
+    await model.selectTarget(feature)
+    port.catalogue.mockResolvedValue({
+      folders: [rootFolder],
+      targets: [target],
+      sessions: [],
+      capabilities: [],
+    } as never)
+    if (trigger === 'stale read') {
+      port.inspect.mockRejectedValueOnce(new ChannelError('stale_resource'))
+      await model.reloadTarget(feature)
+    } else if (trigger === 'startup') await model.start()
+    else await model[trigger as 'refresh' | 'refreshCurrent' | 'reconnected']()
+    expect(model.current.value).toEqual(target)
+    expect(model.error.value).toBe('')
+    expect(port.inspect.mock.calls.at(-1)?.[0]).toEqual(target)
+    expect(stop).toHaveBeenCalled()
+    model.destroy()
+  }
+)

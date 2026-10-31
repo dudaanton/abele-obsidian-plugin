@@ -64,3 +64,35 @@ export function replacementTarget(
   })
   return matches.length === 1 ? matches[0] : undefined
 }
+
+/** Panel-only fallback: never transfers chat bindings or grants to another checkout. */
+export function panelReplacementTarget(
+  previous: PathTarget,
+  previousFolders: FolderSummary[],
+  targets: PathTarget[],
+  folders: FolderSummary[]
+): PathTarget | undefined {
+  const matched = replacementTarget(previous, previousFolders, targets, folders)
+  if (matched) return matched
+  if (previous.incarnation || previous.kind !== 'worktree') return
+  const before = previousFolders.filter((folder) => folder.id === previous.projectId)
+  const after = folders.filter((folder) => folder.id === previous.projectId)
+  if (before.length !== 1 || after.length !== 1) return
+  const old = before[0],
+    folder = after[0]
+  if (!old.git || !folder.git || folder.missing || old.path !== folder.path) return
+  // A disappearing secondary checkout may fall back to the project's primary checkout,
+  // not an arbitrary replacement worktree, even if it uses the same branch name.
+  const copies = old.copies.filter((copy) => copy.id === previous.id)
+  if (copies.length !== 1 || copies[0].kind === 'project') return
+  const roots = targets.filter(
+    (target) =>
+      !target.incarnation &&
+      target.nodeId === previous.nodeId &&
+      target.registrationId === previous.registrationId &&
+      target.projectId === previous.projectId &&
+      target.kind === 'worktree' &&
+      location(target, folders)?.kind === 'root'
+  )
+  return roots.length === 1 ? roots[0] : undefined
+}

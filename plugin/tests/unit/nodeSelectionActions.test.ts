@@ -68,6 +68,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.clearAllMocks()
   f.choose = undefined
+  f.items = []
 })
 const target = {
   registrationId: 'sample-registration',
@@ -151,9 +152,10 @@ describe('selected node file context', () => {
     expect(f.session).toHaveBeenCalledWith(target, 'New chat', 'fake')
     expect(f.confirm).not.toHaveBeenCalled()
   })
-  it('finds a chat in the place search under its branch and opens it, offering nothing it cannot do', () => {
+  it('finds a chat in the place search under its branch and opens it, offering nothing it cannot do', async () => {
     const opened = vi.fn()
     pickNodePathPlace(model(), opened)
+    await vi.waitFor(() => expect(f.choose).toBeTypeOf('function'))
     const chat = f.items.find((i) => i.kind === 'Chat')!
     expect(chat).toMatchObject({ title: 'Sample chat', note: 'sample-app / trunk · Today' })
     // Only places and chats are listed: no rows standing for unsupported chat actions.
@@ -161,15 +163,17 @@ describe('selected node file context', () => {
     f.choose!(chat)
     expect(opened).toHaveBeenCalledWith('sample-session')
   })
-  it('marks a worktree gone from disk by its glyph and words', () => {
+  it('marks a worktree gone from disk by its glyph and words', async () => {
     const m = model() as unknown as { folders: { value: { copies: { missing?: boolean }[] }[] } }
     m.folders.value[0].copies[0].missing = true
     pickNodePathPlace(m as never, vi.fn())
+    await vi.waitFor(() => expect(f.choose).toBeTypeOf('function'))
     expect(f.items[0]).toMatchObject({ icon: 'folder-x', kind: 'Not found on the node' })
   })
   it('lists each worktree with its changed files and shows the chosen one in the panel', async () => {
     const m = model() as unknown as { select: ReturnType<typeof vi.fn> }
     pickNodePathPlace(m as never, vi.fn())
+    await vi.waitFor(() => expect(f.choose).toBeTypeOf('function'))
     const place = f.items[0] as (typeof f.items)[number] & { count?: { value: number } }
     expect(place).toMatchObject({ title: 'sample-app / trunk', count: { value: 2 } })
     f.choose!(place)
@@ -177,8 +181,9 @@ describe('selected node file context', () => {
   })
   it.fails(
     'BUG: chat rename and delete require session mutations not yet exposed by the node protocol',
-    () => {
+    async () => {
       pickNodePathPlace(model(), vi.fn())
+      await vi.waitFor(() => expect(f.choose).toBeTypeOf('function'))
       expect(
         ['Rename', 'Delete'].every((word) => f.items.some((item) => item.title.startsWith(word)))
       ).toBe(true)

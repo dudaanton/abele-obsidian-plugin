@@ -8,7 +8,7 @@ import { NodePathSnapshotSchema, emptySnapshotChange } from './nodePathSnapshot'
 import { applyPathChanges, type PathTreeBatch } from './nodePathChanges'
 import { nodeActionError } from './errorWords'
 import { NodePathHistoryModel } from './NodePathHistoryModel'
-import { replacementTarget, type TargetLocation } from './nodeTargetIdentity'
+import { panelReplacementTarget, type TargetLocation } from './nodeTargetIdentity'
 import type { PathGit } from './nodePathGit'
 import type { NodeClient } from '@abele/node-client'
 import type { RepositoryRevision } from '@abele/node-protocol'
@@ -387,7 +387,7 @@ export class NodePathModel {
       if (target && !this.hasTarget(target)) {
         if (this.currentFolder.value?.missing && this.current.value?.projectId === target.projectId)
           return
-        const replacement = replacementTarget(
+        const replacement = panelReplacementTarget(
           target,
           folders,
           this.targets.value,
@@ -543,7 +543,8 @@ export class NodePathModel {
           )
             return
           const replacement =
-            selected && replacementTarget(target, folders, this.targets.value, this.folders.value)
+            selected &&
+            panelReplacementTarget(target, folders, this.targets.value, this.folders.value)
           if (replacement && this.current.value?.id === replacement.id) return
           this.report(error)
           throw error
@@ -722,7 +723,12 @@ export class NodePathModel {
         removedSelected && selected
           ? catalogue.folders.some((f) => f.id === selected.projectId && f.missing)
             ? this.targets.value.find((t) => t.projectId === selected.projectId)
-            : replacementTarget(selected, previousFolders, this.targets.value, catalogue.folders)
+            : panelReplacementTarget(
+                selected,
+                previousFolders,
+                this.targets.value,
+                catalogue.folders
+              )
           : undefined
       for (const target of removed) this.discardTarget(target)
       // Retire the old selection before opening any independently matched replacement.

@@ -820,56 +820,67 @@ export const openFolderForNode = (model: NodePathModel) =>
  * it in the panel; choosing a chat opens it.
  */
 export function pickNodePathPlace(model: NodePathModel, openChat: (id: string) => void): void {
-  const node = NodeService.getInstance().nodes.value.find((n) => n.id === model.registrationId)
-  const chats = (list: NodePathModel['folders']['value'][number]['chats'], where: string) =>
-    (list ?? []).map((chat) => ({
-      id: `chat:${chat.id}`,
-      icon: 'message-square',
-      kind: t('streamB.chat.460b3a'),
-      title: chat.title,
-      note: [where, chat.when].filter(Boolean).join(' · '),
-    }))
-  const items = model.folders.value.flatMap((folder) =>
-    folder.git && !folder.missing
-      ? folder.copies.flatMap((copy) => [
-          {
-            id: copy.id,
-            // A worktree gone from disk says so by its glyph and in its tooltip, as everywhere.
-            icon: copyIcon(copy),
-            kind: copyKind(copy),
-            title: `${folder.name} / ${copy.branch}`,
-            note: copy.path,
-            ...(copy.changed
-              ? { count: { value: copy.changed, label: t('streamB.changedFiles.4743a8') } }
-              : {}),
-            current: copy.id === model.selected.value,
-          },
-          ...chats(copy.chats, `${folder.name} / ${copy.branch}`),
-        ])
-      : [
-          {
-            id: folder.id,
-            icon: 'folder',
-            kind: t('streamB.folder.74ccd4'),
-            title: folder.name,
-            note: folder.path,
-            current: folder.id === model.selected.value,
-          },
-          ...chats(folder.chats, folder.name),
-        ]
-  )
-  new NodeSuggestModal(
-    app(),
-    items,
-    node?.label != null
-      ? t('streamB.folderBranchOrChatOn.4055f1', { v0: node.label })
-      : t('streamBMeta.6e72d9e69a'),
-    (item) =>
-      item.id.startsWith('chat:')
-        ? openChat(item.id.slice(5))
-        : nodePathAction(() => model.select(item.id)),
-    t('streamB.noFolderOrBranchMatches.5b24c7')
-  ).open()
+  nodePathAction(async () => {
+    const connection = NodeService.getInstance().connection(model.registrationId)
+    // Offline the last catalogue is useful; online always ask before presenting a snapshot.
+    if (connection.state.value === 'connected') {
+      try {
+        await model.refresh()
+      } catch (error) {
+        nodeErrorNotice(error, t('streamB.nodeActionFailed.35c41e'))
+      }
+    }
+    const node = NodeService.getInstance().nodes.value.find((n) => n.id === model.registrationId)
+    const chats = (list: NodePathModel['folders']['value'][number]['chats'], where: string) =>
+      (list ?? []).map((chat) => ({
+        id: `chat:${chat.id}`,
+        icon: 'message-square',
+        kind: t('streamB.chat.460b3a'),
+        title: chat.title,
+        note: [where, chat.when].filter(Boolean).join(' · '),
+      }))
+    const items = model.folders.value.flatMap((folder) =>
+      folder.git && !folder.missing
+        ? folder.copies.flatMap((copy) => [
+            {
+              id: copy.id,
+              // A worktree gone from disk says so by its glyph and in its tooltip, as everywhere.
+              icon: copyIcon(copy),
+              kind: copyKind(copy),
+              title: `${folder.name} / ${copy.branch}`,
+              note: copy.path,
+              ...(copy.changed
+                ? { count: { value: copy.changed, label: t('streamB.changedFiles.4743a8') } }
+                : {}),
+              current: copy.id === model.selected.value,
+            },
+            ...chats(copy.chats, `${folder.name} / ${copy.branch}`),
+          ])
+        : [
+            {
+              id: folder.id,
+              icon: 'folder',
+              kind: t('streamB.folder.74ccd4'),
+              title: folder.name,
+              note: folder.path,
+              current: folder.id === model.selected.value,
+            },
+            ...chats(folder.chats, folder.name),
+          ]
+    )
+    new NodeSuggestModal(
+      app(),
+      items,
+      node?.label != null
+        ? t('streamB.folderBranchOrChatOn.4055f1', { v0: node.label })
+        : t('streamBMeta.6e72d9e69a'),
+      (item) =>
+        item.id.startsWith('chat:')
+          ? openChat(item.id.slice(5))
+          : nodePathAction(() => model.select(item.id)),
+      t('streamB.noFolderOrBranchMatches.5b24c7')
+    ).open()
+  })
 }
 /**
  * Compare with…: every branch, remote branch and tag the worktree can be set against. The
@@ -964,9 +975,7 @@ export function showNodePathPlaceMenu(
   if (network.supported) {
     menu.addItem((i) => {
       i.setTitle(
-        online
-          ? t('streamB.codexNetwork')
-          : `${t('streamB.codexNetwork')} — ${t('debug.offline')}`
+        online ? t('streamB.codexNetwork') : `${t('streamB.codexNetwork')} — ${t('debug.offline')}`
       )
         .setIcon('globe')
         .setChecked(network.enabled.value)

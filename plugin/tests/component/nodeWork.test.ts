@@ -12,7 +12,12 @@ import { ref } from 'vue'
 import { vi } from 'vitest'
 
 vi.mock('@/node/NodeService', () => ({
-  NodeService: { getInstance: () => ({ nodes: { value: [] } }) },
+  NodeService: {
+    getInstance: () => ({
+      nodes: { value: [] },
+      connection: () => ({ state: { value: 'connected' } }),
+    }),
+  },
 }))
 vi.mock('@/stores/GlobalStore', () => ({ GlobalStore: { getInstance: () => ({ app: {} }) } }))
 import FileTree from '@/components/nodeWork/FileTree.vue'
@@ -77,9 +82,12 @@ describe('place search', () => {
       choose = (this as unknown as { onChoose: typeof choose }).onChoose
     })
     const select = vi.fn(async () => {})
-    const model = { registrationId: 'r', folders: ref([folder]), selected: ref('c1'), select }
+    const refresh = vi.fn(async () => {})
+    const model = { registrationId: 'r', folders: ref([folder]), selected: ref('c1'), select, refresh }
     pickNodePathPlace(model as never, () => {})
-    expect(items.map((i) => i.title)).toEqual(['sample-repo / main', 'sample-repo / feature'])
+    await vi.waitFor(() =>
+      expect(items.map((i) => i.title)).toEqual(['sample-repo / main', 'sample-repo / feature'])
+    )
     expect(items[0].count?.value).toBe(2)
     // No count for a worktree with nothing changed, rather than a zero.
     expect(items[1].count).toBeUndefined()
