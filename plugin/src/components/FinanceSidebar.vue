@@ -204,41 +204,43 @@
           </span>
         </div>
       </div>
-      <template v-if="!periodEmpty">
-        <Tabs
-          v-model="chartTab"
-          :tabs="chartTabs"
-          level="secondary"
-          class="abele-finance-sidebar__chart-tabs"
+      <Tabs
+        v-model="chartTab"
+        :tabs="chartTabs"
+        level="secondary"
+        class="abele-finance-sidebar__chart-tabs"
+      />
+      <template v-if="chartTab === 'expenses' || chartTab === 'income'">
+        <Chart
+          v-if="pieData.length"
+          :active="active"
+          :source="pieData"
+          :render="renderPieChart"
+          :created="createPieChart"
+          class="abele-finance-sidebar__pie-chart"
         />
-        <template v-if="chartTab === 'expenses' || chartTab === 'income'">
-          <Chart
-            v-if="pieData.length"
-            :active="active"
-            :source="pieData"
-            :render="renderPieChart"
-            :created="createPieChart"
-            class="abele-finance-sidebar__pie-chart"
-          />
-          <EmptyState v-else class="abele-finance-sidebar__pie-empty" :text="t('area.noData')" />
-        </template>
-        <template v-else-if="chartTab === 'calendar'">
-          <Chart
-            :active="active"
-            :source="[calendarData, store.weekStartsOnMonday.value]"
-            :render="renderCalendarChart"
-            class="abele-finance-sidebar__calendar-chart"
-          />
-        </template>
-        <template v-else-if="chartTab === 'networth'">
-          <Chart
-            :active="active"
-            :source="networthData"
-            :render="renderNetworthChart"
-            :created="createNetworthChart"
-            class="abele-finance-sidebar__networth-chart"
-          />
-        </template>
+        <EmptyState
+          v-else
+          class="abele-finance-sidebar__pie-empty"
+          :text="chartTab === 'income' ? t('area.noIncomeYet') : t('area.noExpensesYet')"
+        />
+      </template>
+      <template v-else-if="chartTab === 'calendar'">
+        <Chart
+          :active="active"
+          :source="[calendarData, store.weekStartsOnMonday.value]"
+          :render="renderCalendarChart"
+          class="abele-finance-sidebar__calendar-chart"
+        />
+      </template>
+      <template v-else-if="chartTab === 'networth'">
+        <Chart
+          :active="active"
+          :source="networthData"
+          :render="renderNetworthChart"
+          :created="createNetworthChart"
+          class="abele-finance-sidebar__networth-chart"
+        />
       </template>
     </section>
 

@@ -43,6 +43,8 @@ export const tasks = {
   'area.savings': 'Сбережения',
   'area.lent': 'Выдано в долг',
   'area.returned': 'Возвращено',
+  'area.noExpensesYet': 'Трат пока нет',
+  'area.noIncomeYet': 'Доходов пока нет',
   'area.noData': 'Нет данных',
   'area.recentTransactions': 'Последние операции',
   'area.closeTheSearch': 'Закрыть поиск',

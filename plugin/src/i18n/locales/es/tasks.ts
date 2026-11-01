@@ -43,6 +43,8 @@ export const tasks = {
   'area.savings': 'Ahorros',
   'area.lent': 'Prestado',
   'area.returned': 'Devuelto',
+  'area.noExpensesYet': 'Aún no hay gastos',
+  'area.noIncomeYet': 'Aún no hay ingresos',
   'area.noData': 'Sin datos',
   'area.recentTransactions': 'Transacciones recientes',
   'area.closeTheSearch': 'Cerrar búsqueda',

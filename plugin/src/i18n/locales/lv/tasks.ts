@@ -43,6 +43,8 @@ export const tasks = {
   'area.savings': 'Uzkrājumi',
   'area.lent': 'Aizdots',
   'area.returned': 'Atdots',
+  'area.noExpensesYet': 'Izdevumu vēl nav',
+  'area.noIncomeYet': 'Ienākumu vēl nav',
   'area.noData': 'Nav datu',
   'area.recentTransactions': 'Jaunākie darījumi',
   'area.closeTheSearch': 'Aizvērt meklēšanu',
