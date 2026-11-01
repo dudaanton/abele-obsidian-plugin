@@ -305,6 +305,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   private retryTimer: number | null = null
   private retryCancel: (() => void) | null = null
   private retryHasOutput = false
+  private requestRetryHandled = false
   private allChatMessages: ChatMessage[] = []
   private activeLeafId: string | null = null
   private pendingBranchCut: string | undefined
@@ -1760,6 +1761,8 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         this.reconnecting.value = event.state
         break
       case 'message_start':
+        this.error.value = null
+        this.errorPresentation.value = null
         this.streamingContent.value = ''
         this.streamingThinking.value = ''
         this.streamStartTime = 0
@@ -2058,6 +2061,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       const settings = { ...DEFAULT_RETRY, ...(AbeleConfig.getInstance().ai.autoRetry ?? {}) }
       for (let attempt = 0; ; attempt++) {
         this.retryHasOutput = false
+        this.requestRetryHandled = false
         await this.runAgentLoopOnce()
 
         const failure = this.error.value
@@ -2089,6 +2093,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         if (
           this.pendingToolCalls.value.length ||
           this.retryHasOutput ||
+          this.requestRetryHandled ||
           this.turnAborted ||
           this.destroyed ||
           generation !== this.generation
@@ -2219,6 +2224,41 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
           if (this.destroyed || generation !== this.generation) return
           checkpoint(messages)
           this.markDirty()
+        },
+        retryRequest: async (failure, attempt) => {
+          // AgentLoop owns the request boundary; never restart the whole turn afterwards.
+          this.requestRetryHandled = true
+          const settings = { ...DEFAULT_RETRY, ...(AbeleConfig.getInstance().ai.autoRetry ?? {}) }
+          const attempts = isTransportFailure(failure)
+            ? Math.max(2, settings.attempts)
+            : settings.attempts
+          if (
+            attempt >= attempts ||
+            !isTransient(failure) ||
+            controller.signal.aborted ||
+            this.turnAborted ||
+            this.destroyed ||
+            generation !== this.generation ||
+            this.pendingToolCalls.value.length
+          )
+            return false
+          console.debug('[Abele AI] retrying request', {
+            attempt: attempt + 1,
+            of: attempts,
+            failure,
+          })
+          const carryOn = await this.waitBeforeRetry(
+            backoffDelay(attempt + 1, settings.firstDelayMs),
+            attempt + 1,
+            attempts
+          )
+          return (
+            carryOn &&
+            !controller.signal.aborted &&
+            !this.turnAborted &&
+            !this.destroyed &&
+            generation === this.generation
+          )
         },
         streamOptions: {
           promptCacheKey,

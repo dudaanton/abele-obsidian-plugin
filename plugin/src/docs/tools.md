@@ -26,6 +26,15 @@ credentials/model configuration stay on the node. Reviewing a workspace uses ret
 content/diff identities, never coincidentally named vault files. A reported installed provider
 is not proof of model credentials or accepted extension/compaction capabilities.
 
+## Empty model-request failures
+
+An empty transient model failure can be retried within the current agent turn, including after
+completed tools. Only the failed model request is repeated with the same prepared context and
+tool definitions; completed calls and their results are not replayed. A request that streamed
+text, thinking or tool-call output is not blindly retried. Transport failures get two retries
+by default; configured retry counts and exponential delays still apply. Stop and chat close
+cancel the countdown. Branch navigation remains blocked while the turn or retry is active.
+
 ## Tool discovery
 
 **By section** (the default) offers the core tools from the first request: the file tools,

@@ -201,6 +201,79 @@ describe('trying again on its own', () => {
     expect(session.error.value).toBeNull()
   })
 
+  it.each(['recover', 'stop', 'close', 'branch'])(
+    'handles an empty model failure after a completed tool: %s',
+    async (action) => {
+      const { OpenAIClient } = await import('@/ai/client/OpenAIClient')
+      const execute = vi
+        .fn()
+        .mockResolvedValue({ content: [{ type: 'text', text: 'Sample tool result' }] })
+      vi.spyOn(session, 'getTools').mockReturnValue([
+        { name: 'sample_tool', description: 'Sample', parameters: {}, execute },
+      ] as never)
+      vi.spyOn(session, 'needsApproval').mockReturnValue(false)
+      const requests: Message[][] = []
+      vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(
+        async function* (_model, _system, messages) {
+          if (!messages.some((m) => m.role === 'user' && m.content === 'Sample question')) {
+            yield { type: 'done' as const, message: answered('Summary') }
+            return
+          }
+          requests.push(structuredClone(messages))
+          if (requests.length === 1) {
+            yield {
+              type: 'done' as const,
+              message: {
+                ...answered(''),
+                content: [
+                  {
+                    type: 'toolCall' as const,
+                    id: 'sample-call',
+                    name: 'sample_tool',
+                    arguments: {},
+                  },
+                ],
+                stopReason: 'toolUse' as const,
+              },
+            }
+          } else if (requests.length === 2) {
+            yield {
+              type: 'error' as const,
+              error: 'Request timed out after 300s',
+              message: failed('Request timed out after 300s'),
+            }
+          } else yield { type: 'done' as const, message: answered('recovered') }
+        }
+      )
+
+      const done = session.sendMessage('Sample question')
+      await vi.advanceTimersByTimeAsync(500)
+      expect(session.retrying.value).toMatchObject({ attempt: 1, of: 2 })
+      if (action === 'stop') session.abort()
+      if (action === 'close') session.destroy()
+      if (action === 'branch') {
+        // Branch navigation is fenced while a turn (including its retry) is active.
+        expect(session.branchSwitchBlocked).toBe(true)
+        expect(session.switchBranch(session.allMessages.value[0].id)).toBe(false)
+        session.abort()
+      }
+      await vi.advanceTimersByTimeAsync(20_000)
+      await done
+
+      expect(execute).toHaveBeenCalledTimes(1)
+      expect(session.retrying.value).toBeNull()
+      if (action !== 'recover') {
+        expect(requests).toHaveLength(2)
+        return
+      }
+      expect(requests).toHaveLength(3)
+      expect(requests[2]).toEqual(requests[1])
+      expect(requests[2].map((m) => m.role)).toContain('toolResult')
+      expect(session.error.value).toBeNull()
+      expect(session.allMessages.value.at(-1)?.content).toBe('recovered')
+    }
+  )
+
   it('exhausts two automatic transport retries', async () => {
     loopThat([failed('Failed to fetch')])
     await sendThrough()

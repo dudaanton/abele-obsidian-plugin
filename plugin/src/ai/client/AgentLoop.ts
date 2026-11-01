@@ -33,6 +33,8 @@ export interface AgentLoopOptions {
   /** A tool answered by name although it is not offered: an old name an agent may still call. */
   hiddenTool?: (name: string) => AgentTool | undefined
   messages: Message[]
+  /** Retry only this empty failed request; completed tools are outside this boundary. */
+  retryRequest?: (failure: string, attempt: number) => Promise<boolean>
   streamOptions?: StreamOptions
   /** Publish accumulated history after each completed message, not only a whole tool batch. */
   onHistory?: (messages: Message[]) => void
@@ -160,7 +162,8 @@ export class AgentLoop {
           opts.systemPrompt,
           context,
           requestTools,
-          { ...opts.streamOptions, signal }
+          { ...opts.streamOptions, signal },
+          opts.retryRequest
         )
 
         /*
@@ -290,7 +293,8 @@ export class AgentLoop {
     systemPrompt: string,
     messages: Message[],
     tools: AgentTool[],
-    options: StreamOptions
+    options: StreamOptions,
+    retryRequest?: AgentLoopOptions['retryRequest']
   ): Promise<AssistantMessage> {
     const toolDefs = tools.map((t) => ({
       name: t.name,
@@ -308,10 +312,12 @@ export class AgentLoop {
       timestamp: Date.now(),
     })
 
+    let attempt = 0
     let resumedWhileHidden = false
     try {
       for (;;) {
         const request = new SuspendedRequest(options.signal)
+        let hasOutput = false
         let result: AssistantMessage | null = null
         const partial = empty()
         let block: AssistantMessage['content'][number] | undefined
@@ -330,6 +336,7 @@ export class AgentLoop {
               if (event.type === 'done') result = event.message
               else if (event.type === 'error') result = event.message ?? empty(event.error)
               else {
+                hasOutput = true
                 request.progress()
                 // Some transports throw on abort rather than returning their assembled turn.
                 // Keep what was actually streamed even in that case.
@@ -435,6 +442,19 @@ export class AgentLoop {
                 }
               : { type: 'done', message: result },
         })
+        if (
+          result.stopReason === 'error' &&
+          !hasOutput &&
+          !result.content.length &&
+          !options.signal?.aborted &&
+          retryRequest
+        ) {
+          const carryOn = await abortable(
+            retryRequest(result.errorMessage ?? 'Model connection failed', attempt++),
+            options.signal
+          )
+          if (carryOn && !options.signal?.aborted) continue
+        }
         return result
       }
     } finally {

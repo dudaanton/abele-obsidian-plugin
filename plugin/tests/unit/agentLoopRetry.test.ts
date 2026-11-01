@@ -11,7 +11,12 @@ import { AgentLoop } from '@/ai/client/AgentLoop'
 import { OpenAIClient } from '@/ai/client/OpenAIClient'
 import type { AssistantMessage, Message, ModelConfig } from '@/ai/client'
 
-const model = { id: 'big', name: 'Big', contextWindow: 100, maxTokens: 10 } as unknown as ModelConfig
+const model = {
+  id: 'big',
+  name: 'Big',
+  contextWindow: 100,
+  maxTokens: 10,
+} as unknown as ModelConfig
 
 const user = (text: string): Message => ({ role: 'user', content: text, timestamp: 1 }) as never
 
@@ -29,14 +34,16 @@ const turn = (over: Partial<AssistantMessage>): AssistantMessage =>
 let requests: Message[][]
 
 const streams = (message: AssistantMessage, event: 'done' | 'error' = 'done') => {
-  vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(
-    async function* (_model, _system, messages) {
-      requests.push([...(messages as Message[])])
-      yield event === 'done'
-        ? { type: 'done' as const, message }
-        : { type: 'error' as const, error: message.errorMessage ?? 'failed', message }
-    } as never
-  )
+  vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(async function* (
+    _model,
+    _system,
+    messages
+  ) {
+    requests.push([...(messages as Message[])])
+    yield event === 'done'
+      ? { type: 'done' as const, message }
+      : { type: 'error' as const, error: message.errorMessage ?? 'failed', message }
+  } as never)
 }
 
 const run = (messages: Message[]) =>
@@ -110,5 +117,112 @@ describe('an ordinary turn', () => {
     const result = await run([user('summarise these notes')])
 
     expect(result.messages.map((m) => m.role)).toEqual(['user', 'assistant'])
+  })
+})
+
+describe('single-request retry boundary', () => {
+  it.each(['error event', 'throw'])('retries an empty failure after tools: %s', async (failure) => {
+    const execute = vi
+      .fn()
+      .mockResolvedValue({ content: [{ type: 'text', text: 'Sample result' }] })
+    const retryRequest = vi.fn().mockResolvedValue(true)
+    const beforeIteration = vi.fn().mockReturnValue([])
+    vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(
+      async function* (_m, _s, messages) {
+        requests.push(structuredClone(messages))
+        if (requests.length === 1) {
+          yield {
+            type: 'done' as const,
+            message: turn({
+              stopReason: 'toolUse',
+              content: [
+                { type: 'toolCall', id: 'sample-call', name: 'sample_tool', arguments: {} },
+              ],
+            }),
+          }
+        } else if (requests.length === 2) {
+          if (failure === 'throw') throw new Error('Failed to fetch')
+          yield {
+            type: 'error' as const,
+            error: 'Failed to fetch',
+            message: turn({ stopReason: 'error', errorMessage: 'Failed to fetch' }),
+          }
+        } else
+          yield {
+            type: 'done' as const,
+            message: turn({ content: [{ type: 'text', text: 'Recovered' }] }),
+          }
+      }
+    )
+    const result = await new AgentLoop().run({
+      model,
+      systemPrompt: '',
+      messages: [user('Sample question')],
+      retryRequest,
+      beforeIteration,
+      tools: [{ name: 'sample_tool', label: 'Sample', description: '', parameters: {}, execute }],
+    })
+    expect(execute).toHaveBeenCalledTimes(1)
+    expect(requests).toHaveLength(3)
+    expect(requests[2]).toEqual(requests[1])
+    expect(beforeIteration).toHaveBeenCalledTimes(2)
+    expect(retryRequest).toHaveBeenCalledExactlyOnceWith('Failed to fetch', 0)
+    expect(result.messages.map((m) => m.role)).toEqual([
+      'user',
+      'assistant',
+      'toolResult',
+      'assistant',
+    ])
+  })
+
+  it.each(['text_delta', 'thinking_delta', 'tool_call_start', 'content'])(
+    'never retries its own partial output: %s',
+    async (output) => {
+      const retryRequest = vi.fn().mockResolvedValue(true)
+      vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(async function* () {
+        if (output !== 'content')
+          yield {
+            type: output,
+            delta: 'Sample',
+            toolCallId: 'sample-call',
+            toolName: 'sample_tool',
+          } as never
+        yield {
+          type: 'error' as const,
+          error: 'Failed to fetch',
+          message: turn({
+            stopReason: 'error',
+            errorMessage: 'Failed to fetch',
+            content: output === 'content' ? [{ type: 'text', text: 'Partial' }] : [],
+          }),
+        }
+      })
+      await new AgentLoop().run({
+        model,
+        systemPrompt: '',
+        tools: [],
+        messages: [user('Sample')],
+        retryRequest,
+      })
+      expect(retryRequest).not.toHaveBeenCalled()
+    }
+  )
+
+  it('counts retries per request and stops when the policy declines', async () => {
+    const retryRequest = vi
+      .fn()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValue(false)
+    streams(turn({ stopReason: 'error', errorMessage: 'Failed to fetch' }), 'error')
+    await new AgentLoop().run({
+      model,
+      systemPrompt: '',
+      tools: [],
+      messages: [user('Sample')],
+      retryRequest,
+    })
+    expect(requests).toHaveLength(3)
+    expect(retryRequest.mock.calls.map((call) => call[1])).toEqual([0, 1, 2])
   })
 })
