@@ -747,6 +747,31 @@ it.each(['background', 'unload'])(
   }
 )
 
+it('records host visibility transitions beside sync diagnostics', async () => {
+  const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+  const f = inspectionFixture()
+  f.release()
+  try {
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await f.ui.sync(id)
+    const runtime = Reflect.get(f.host, 'live').get(id)
+    const log = vi.spyOn(runtime.trace, 'log')
+    visibility.mockReturnValue('hidden')
+    await f.host.foreground(false)
+    expect(log).toHaveBeenCalledWith(
+      'sync: request lifecycle visible=false watch-gap=false page=hidden'
+    )
+    visibility.mockReturnValue('visible')
+    await f.host.foreground(true)
+    expect(log).toHaveBeenCalledWith(
+      'sync: request lifecycle visible=true watch-gap=true page=visible'
+    )
+  } finally {
+    await f.host.close()
+  }
+})
+
 it('does not flush a paused connection when leaving the foreground or unloading', async () => {
   const f = inspectionFixture()
   f.release()

@@ -408,6 +408,10 @@ export class TokenEngines {
   async foreground(visible: boolean): Promise<void> {
     if (this.closed) return
     const watchGap = this.backgrounded
+    for (const runtime of this.live.values())
+      runtime.trace.log(
+        `sync: request lifecycle visible=${visible} watch-gap=${watchGap} page=${typeof document === 'undefined' ? 'unknown' : document.visibilityState}`
+      )
     this.backgrounded = !visible
     if (visible && (await this.ui.itemSets.refreshAll((id) => this.live.has(id)))) {
       this.start()
@@ -937,8 +941,11 @@ export class TokenEngines {
       })
       physicalLedger.observeCommittedEntries((entries) => ordinary.acknowledgeWrites(entries))
       const waitForIndex = () => ordinary.waitForStartupIndex(startup.signal)
-      await (this.deps.startupTimeline?.stage('connection', 'Waiting for host index', waitForIndex) ??
-        waitForIndex())
+      await (this.deps.startupTimeline?.stage(
+        'connection',
+        'Waiting for host index',
+        waitForIndex
+      ) ?? waitForIndex())
       assertActive()
       if ((await ordinary.needsRecoveryHandshake()) || (await state.getExternalState()) !== null)
         await stage('Checking server restore generation', async () => {

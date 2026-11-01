@@ -43,6 +43,7 @@ for (const fault of [
   'live-recovery',
   'composed',
   'directory-projection',
+  'directory-interruption',
   'admission',
   'pause-notification',
   'pause-admission',
@@ -66,6 +67,7 @@ for (const fault of [
     // The test's signal stops this pull when the case times out. Otherwise it keeps running
     // beside the next case, through the next case's desktop filesystem port.
     async ({ signal: ended }) => {
+      const directoryCase = fault === 'directory-projection' || fault === 'directory-interruption'
       const normal = ![
         'directory-flush',
         'publication',
@@ -74,24 +76,24 @@ for (const fault of [
         'occupied-target',
         'second-ledger-abort',
       ].includes(fault)
-      const count =
-        fault === 'directory-projection'
-          ? 2048
-          : fault.startsWith('install-fingerprint-single')
-            ? 1
-            : fault === 'acknowledgement-reads'
-              ? 32
-              : fault === 'batch-tail'
-                ? 65
-                : fault === 'second-ledger-abort' || fault === 'ordered-operations'
-                  ? 128
-                  : normal
-                    ? Number(process.env.PEER_PULL_FILES ?? (fault === 'none' ? 33000 : 64))
-                    : 8
+      const count = directoryCase
+        ? 2048
+        : fault.startsWith('install-fingerprint-single')
+          ? 1
+          : fault === 'acknowledgement-reads'
+            ? 32
+            : fault === 'batch-tail'
+              ? 65
+              : fault === 'second-ledger-abort' || fault === 'ordered-operations'
+                ? 128
+                : normal
+                  ? Number(process.env.PEER_PULL_FILES ?? (fault === 'none' ? 33000 : 64))
+                  : 8
       const size = normal ? Number(process.env.PEER_PULL_BYTES ?? 4096) : 4096
       const root = await disk.realpath(await disk.mkdtemp(join(tmpdir(), 'sample-peer-pull-')))
       const app = buildFakeVault([])
-      if (fault === 'directory-projection')
+      let adapterLists = 0
+      if (directoryCase)
         Object.assign(app.vault.adapter, {
           stat: async (path: string) => {
             const stat = await disk.stat(join(root, path)).catch((error: NodeJS.ErrnoException) => {
@@ -108,6 +110,7 @@ for (const fault of [
             )
           },
           list: async (path: string) => {
+            adapterLists++
             const entries = await disk.readdir(join(root, path), { withFileTypes: true })
             const name = (entry: { name: string }) => (path ? path + '/' + entry.name : entry.name)
             return {
@@ -118,14 +121,14 @@ for (const fault of [
         })
       // The directory manifest is installed before its file payloads in a real pull.
       // Populate that native tree; an empty adapter would hide whole-tree projections.
-      if (fault === 'directory-projection')
+      if (directoryCase)
         for (let i = 0; i < 128; i++) {
           const path = `Notes/Section ${i}`
           await disk.mkdir(join(root, path), { recursive: true })
           await app.vault.adapter.mkdir(path)
         }
       const factory = new IDBFactory()
-      const host = await HostSyncStorage.open(factory, 'sample-peer', app)
+      let host = await HostSyncStorage.open(factory, 'sample-peer', app)
       let state = await IndexedDbStateStore.open(factory, 'sample-peer')
       if (fault === 'ordered-operations') {
         // The local file is already gone. The earlier remote deletion must retire
@@ -278,106 +281,133 @@ for (const fault of [
       let captures = 0,
         recoveredLive = false,
         admissions = 0
-      const stopped = new AbortController()
+      let stopped = new AbortController()
       const inflight: Promise<unknown>[] = []
-      let files = new ObsidianFileSystem(app as unknown as App, {
-        storage: host,
-        ledger: state,
-        ...(fault === 'acknowledgement-reads' ? { prepareStartupInventory: async () => {} } : {}),
-        ...(fault === 'install-fingerprint-inflight'
-          ? {
-              onEngineWrite: (path) => {
-                if (!path.endsWith('.bin')) return
-                const watcher = new WatchReports({
-                  fs: files,
-                  expected,
-                  debounceMs: 60000,
-                  onChange: () => {},
-                })
-                watcher.noticed.add(path)
-                inflight.push(watcher.examine().then((changed) => expect(changed).toBe(false)))
-              },
-            }
-          : {}),
-        ...(fault === 'admission' || fault === 'pause-admission'
-          ? {
-              beforeEngineMutation: async () => {
-                admissions++
-                if (fault === 'pause-admission') stopped.abort()
-              },
-            }
-          : {}),
-        ...(fault === 'scoped' || fault === 'composed' || fault === 'directory-projection'
-          ? { connectionId: 'sample-connection', fileScope: 'Notes' }
-          : {}),
-      })
+      const makeFiles = () =>
+        new ObsidianFileSystem(app as unknown as App, {
+          storage: host,
+          ledger: state,
+          ...(fault === 'acknowledgement-reads' || fault === 'directory-interruption'
+            ? { prepareStartupInventory: async () => {} }
+            : {}),
+          ...(fault === 'install-fingerprint-inflight'
+            ? {
+                onEngineWrite: (path) => {
+                  if (!path.endsWith('.bin')) return
+                  const watcher = new WatchReports({
+                    fs: files,
+                    expected,
+                    debounceMs: 60000,
+                    onChange: () => {},
+                  })
+                  watcher.noticed.add(path)
+                  inflight.push(watcher.examine().then((changed) => expect(changed).toBe(false)))
+                },
+              }
+            : {}),
+          ...(fault === 'admission' || fault === 'pause-admission'
+            ? {
+                beforeEngineMutation: async () => {
+                  admissions++
+                  if (fault === 'pause-admission') stopped.abort()
+                },
+              }
+            : {}),
+          ...(fault === 'scoped' || fault === 'composed' || directoryCase
+            ? { connectionId: 'sample-connection', fileScope: 'Notes' }
+            : {}),
+        })
+      let files = makeFiles()
       state.observeCommittedEntries((entries) => files.acknowledgeWrites(entries))
       let directoryCalls = 0,
-        directoryItems = 0
+        directoryItems = 0,
+        childCalls = 0,
+        absentHits = 0,
+        absentMisses = 0
       const directoryPort = Symbol.for('abele.sync.inventory-directories-v1')
-      const readDirectories = Reflect.get(files, directoryPort).bind(files)
-      Object.assign(files, {
-        [directoryPort]: async (...args: unknown[]) => {
-          const rows = await readDirectories(...args)
-          directoryCalls++
-          directoryItems += rows.length
-          return rows
-        },
-      })
-      let composed: import('@abele/sync-sdk/core').FileSystem | undefined
-      if (fault === 'composed' || fault === 'directory-projection') {
-        const placement = new LocalFolderPlacement('Notes', 'Notes')
-        const representation = await ExternalRepresentation.open({
-          state: null,
-          ledger: state,
-          fs: placement.fileSystem(files),
-          emptyView: {
-            ledgerId: 'sample-ledger',
-            binding: {
-              endpoint: 'https://sync.example.invalid',
-              vaultId: 'sample-vault',
-              mode: 'personal',
-              principalId: 'sample-principal',
-              principalType: 'device',
-              grantId: null,
-              generation: 1,
-              credentialAssociation: 'sample-slot',
-            },
+      const instrumentDirectories = () => {
+        const readDirectories = Reflect.get(files, directoryPort).bind(files)
+        const childPort = Symbol.for('abele.sync.inventory-children-v1')
+        const absentPort = Symbol.for('abele.sync.index-absent-v1')
+        const children = Reflect.get(files, childPort).bind(files)
+        const absent = Reflect.get(files, absentPort).bind(files)
+        Object.assign(files, {
+          [childPort]: (...args: unknown[]) => {
+            childCalls++
+            return children(...args)
           },
-          assertOwned: () => {},
-          scriptsFolder: () => 'Scripts',
-          verify: async () => {
-            throw new Error('unexpected verification')
+          [absentPort]: async (...args: unknown[]) => {
+            const result = await absent(...args)
+            if (result) absentHits++
+            else absentMisses++
+            return result
           },
-          installProjection: async () => {
-            throw new Error('unexpected installation')
+          [directoryPort]: async (...args: unknown[]) => {
+            const rows = await readDirectories(...args)
+            directoryCalls++
+            directoryItems += rows.length
+            return rows
           },
         })
-        const includes = (path: string) => path === 'Notes' || path.startsWith('Notes/')
-        const locks = new PathCoordinator(),
-          manager = new TokenOffloadCoordinator(locks)
-        const coordinated = coordinatedFileSystem(
-          manager.fileSystem(placement.localFileSystem(representation.fileSystem()), includes),
-          locks,
-          () => {},
-          async (paths) => {
-            for await (const _ of files.placementFiles(paths)) {
-              /* preserve */
-            }
-          }
-        )
-        composed = placement.fileSystem(
-          scopedFileSystem(
-            coordinated,
-            (path) => {
-              if (!includes(path)) throw new Error('sample scope refusal')
-            },
-            includes,
-            connectionPrivateRoot('sample-connection'),
-            fault === 'directory-projection' ? 'Notes' : undefined
-          )
-        )
       }
+      instrumentDirectories()
+      let composed: import('@abele/sync-sdk/core').FileSystem | undefined
+      const makeComposed = async () => {
+        if (fault === 'composed' || directoryCase) {
+          const placement = new LocalFolderPlacement('Notes', 'Notes')
+          const representation = await ExternalRepresentation.open({
+            state: null,
+            ledger: state,
+            fs: placement.fileSystem(files),
+            emptyView: {
+              ledgerId: 'sample-ledger',
+              binding: {
+                endpoint: 'https://sync.example.invalid',
+                vaultId: 'sample-vault',
+                mode: 'personal',
+                principalId: 'sample-principal',
+                principalType: 'device',
+                grantId: null,
+                generation: 1,
+                credentialAssociation: 'sample-slot',
+              },
+            },
+            assertOwned: () => {},
+            scriptsFolder: () => 'Scripts',
+            verify: async () => {
+              throw new Error('unexpected verification')
+            },
+            installProjection: async () => {
+              throw new Error('unexpected installation')
+            },
+          })
+          const includes = (path: string) => path === 'Notes' || path.startsWith('Notes/')
+          const locks = new PathCoordinator(),
+            manager = new TokenOffloadCoordinator(locks)
+          const coordinated = coordinatedFileSystem(
+            manager.fileSystem(placement.localFileSystem(representation.fileSystem()), includes),
+            locks,
+            () => {},
+            async (paths) => {
+              for await (const _ of files.placementFiles(paths)) {
+                /* preserve */
+              }
+            }
+          )
+          composed = placement.fileSystem(
+            scopedFileSystem(
+              coordinated,
+              (path) => {
+                if (!includes(path)) throw new Error('sample scope refusal')
+              },
+              includes,
+              connectionPrivateRoot('sample-connection'),
+              directoryCase ? 'Notes' : undefined
+            )
+          )
+        }
+      }
+      await makeComposed()
       const bytes = new Uint8Array(size).fill(37)
       const payload = (i: number) => {
         const result = bytes.slice()
@@ -390,7 +420,7 @@ for (const fault of [
           file_id: `sample-file-${i}`,
           version_id: `sample-version-${i}`,
           seq: i + 1,
-          path: `Notes/Section ${i % (fault === 'directory-projection' ? 128 : 16)}/Sample ${fault === 'directory-projection' ? 'K ' : ''}${i}.bin`,
+          path: `Notes/Section ${i % (directoryCase ? 128 : 16)}/Sample ${directoryCase ? 'K ' : ''}${i}.bin`,
           sha: await sha256(payload(i)),
           size,
           mtime: 2000,
@@ -413,6 +443,7 @@ for (const fault of [
       sample()
       const expected = new ExpectedWrites()
       try {
+        let stopAfter = 512
         const rawRun = () =>
           pull(
             {
@@ -507,6 +538,7 @@ for (const fault of [
             state,
             {
               signal:
+                fault === 'directory-interruption' ||
                 fault === 'pause-notification' ||
                 fault === 'pause-admission' ||
                 fault === 'pause-mid-batch'
@@ -521,14 +553,22 @@ for (const fault of [
               placementConcurrency: 16,
               onApplied: () => {
                 installed++
+                if (fault === 'directory-interruption' && installed === stopAfter) stopped.abort()
                 if (fault === 'pause-notification' && installed === 1) stopped.abort()
                 if (installed % 256 === 0 || installed === count) sample()
               },
             }
           )
         const run = () =>
-          fault === 'directory-projection'
-            ? Reflect.get(files, Symbol.for('abele.sync.inventory-pass-v1')).call(files, rawRun)
+          directoryCase
+            ? Reflect.get(files, Symbol.for('abele.sync.inventory-pass-v1')).call(
+                files,
+                async () => {
+                  if (fault === 'directory-interruption')
+                    await Reflect.get(files, directoryPort).call(files)
+                  return rawRun()
+                }
+              )
             : rawRun()
         if (fault === 'ordered-operations') {
           const report = await run()
@@ -578,6 +618,8 @@ for (const fault of [
           if (fault === 'sealed-cache') expect(reusable.size).toBeGreaterThan(0)
           // Reopen the ledger and filesystem capabilities; no process-local batch proof survives.
           state.close()
+          host.close()
+          host = await HostSyncStorage.open(factory, 'sample-peer', app)
           state = await IndexedDbStateStore.open(factory, 'sample-peer')
           files = new ObsidianFileSystem(app as unknown as App, { storage: host, ledger: state })
           state.observeCommittedEntries((entries) => files.acknowledgeWrites(entries))
@@ -792,8 +834,104 @@ for (const fault of [
             expect((await state.get(item.path))?.versionId).toBe(item.version_id)
           return
         }
+        if (fault === 'directory-interruption') {
+          const phases: {
+            phase: string
+            installed: number
+            calls: number
+            rows: number
+            children: number
+            lists: number
+            absentHits: number
+            absentMisses: number
+          }[] = []
+          const record = (phase: string) => {
+            phases.push({
+              phase,
+              installed,
+              calls: directoryCalls,
+              rows: directoryItems,
+              children: childCalls,
+              lists: adapterLists,
+              absentHits,
+              absentMisses,
+            })
+            directoryCalls =
+              directoryItems =
+              childCalls =
+              adapterLists =
+              absentHits =
+              absentMisses =
+                0
+          }
+          const settleHostIndex = async () => {
+            const indexed = []
+            for (const item of items) {
+              const stat = await disk.stat(join(root, item.path)).catch(() => null)
+              if (stat)
+                indexed.push({
+                  path: item.path,
+                  content: 'x'.repeat(stat.size),
+                  mtime: stat.mtimeMs,
+                  ctime: stat.birthtimeMs,
+                })
+            }
+            const settled = buildFakeVault(indexed)
+            // Reindex/reload exposes the installed files, not an empty synthetic index.
+            for (const key of [
+              'getFiles',
+              'getMarkdownFiles',
+              'getAbstractFileByPath',
+              'getFileByPath',
+              'getAllLoadedFiles',
+              'getRoot',
+            ] as const)
+              Object.assign(app.vault, { [key]: settled.vault[key].bind(settled.vault) })
+          }
+          await expect(run()).rejects.toBeDefined()
+          record('before-pause')
+          await settleHostIndex()
+          stopped = new AbortController()
+          stopAfter = 1024
+          await expect(run()).rejects.toBeDefined()
+          record('after-resume')
+          await settleHostIndex()
+          // A restarted engine reopens its ledger and reconstructs every path adapter.
+          stopped = new AbortController()
+          stopAfter = -1
+          state.close()
+          host.close()
+          host = await HostSyncStorage.open(factory, 'sample-peer', app)
+          state = await IndexedDbStateStore.open(factory, 'sample-peer')
+          // Browser transactions do not remain in an ever-growing scheduler history.
+          // The reopened handles need the same fake-only pruning as the original ones.
+          for (const reopened of [
+            Reflect.get(host, 'db') as IDBDatabase,
+            Reflect.get(Reflect.get(state, 'connection'), 'db') as IDBDatabase,
+          ]) {
+            const transaction = reopened.transaction.bind(reopened)
+            reopened.transaction = ((...args: Parameters<typeof reopened.transaction>) => {
+              discardFinishedFakeTransactions(reopened)
+              return transaction(...args)
+            }) as typeof reopened.transaction
+          }
+          state.observeCommittedEntries((entries) => files.acknowledgeWrites(entries))
+          files = makeFiles()
+          instrumentDirectories()
+          await makeComposed()
+          await run()
+          record('after-restart')
+          console.log('[directory-interruption-counts]', JSON.stringify(phases))
+          for (const phase of phases) {
+            expect(phase.calls, phase.phase).toBeLessThanOrEqual(4)
+            expect(phase.rows, phase.phase).toBeLessThanOrEqual(count * 4)
+          }
+          for (const item of items)
+            expect(await sha256(await disk.readFile(join(root, item.path)))).toBe(item.sha)
+          return
+        }
         const report = await run()
-        if (fault === 'directory-projection') {
+        if (directoryCase) {
           console.log(
             '[directory-projection-counts]',
             JSON.stringify({ count, directoryCalls, directoryItems })
@@ -862,7 +1000,9 @@ for (const fault of [
       ? 3_600_000
       : fault === 'none'
         ? 1_200_000
-        : fault === 'install-fingerprint-backlog' || fault === 'directory-projection'
+        : fault === 'install-fingerprint-backlog' ||
+            fault === 'directory-projection' ||
+            fault === 'directory-interruption'
           ? 120_000
           : 30_000
   )
