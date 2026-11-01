@@ -484,15 +484,37 @@ function parseLegacy(content: string): ParsedChat {
   }
 }
 
+/** Compare detached committed JSON values without constructing another serialized history. */
+function sameRecord(left: unknown, right: unknown, recordRoot = false): boolean {
+  // Match JSON's scalar normalization without serializing historical objects.
+  if (typeof right === 'number' && !Number.isFinite(right)) right = null
+  if (left === right) return true
+  if (left === null || right === null || typeof left !== 'object' || typeof right !== 'object')
+    return false
+  if (Array.isArray(left) !== Array.isArray(right)) return false
+  if (Array.isArray(left) && Array.isArray(right))
+    return (
+      left.length === right.length && left.every((value, index) => sameRecord(value, right[index]))
+    )
+  const a = left as Record<string, unknown>
+  const b = right as Record<string, unknown>
+  // JSON omits undefined object properties; the record discriminator is not part of the message.
+  const keys = Object.keys(a).filter((key) => (!recordRoot || key !== 'k') && a[key] !== undefined)
+  const other = Object.keys(b).filter((key) => (!recordRoot || key !== 'k') && b[key] !== undefined)
+  return (
+    keys.length === other.length &&
+    keys.every((key) => Object.prototype.hasOwnProperty.call(b, key) && sameRecord(a[key], b[key]))
+  )
+}
+
 /**
- * Tracks what a chat's file already holds, so a save writes only what changed.
- *
  * One writer per open chat. It is deliberately ignorant of files and I/O: it answers what
  * should be written, and is told afterwards that the write succeeded.
  */
 export class ChatLogWriter {
   private metaLine = ''
   private messageLines = new Map<string, string>()
+  private committedMessages = new Map<string, unknown>()
   private internalCount = 0
   /** Exact committed internal records: equal counts alone cannot detect sync edits. */
   private internalLines: string[] = []
@@ -517,6 +539,9 @@ export class ChatLogWriter {
     this.legacySnapshot = null
     this.metaLine = parsed.metadata ? metaLine(parsed.metadata) : ''
     this.messageLines = new Map(parsed.messages.map((m) => [m.id, messageLine(m)]))
+    this.committedMessages = new Map(
+      Array.from(this.messageLines, ([id, line]) => [id, JSON.parse(line)])
+    )
     this.internalCount = parsed.internalMessages.length
     this.internalLines = parsed.internalMessages.map(internalLine)
     this.records = parsed.records
@@ -536,6 +561,7 @@ export class ChatLogWriter {
     this.legacySnapshot = null
     this.metaLine = ''
     this.messageLines = new Map()
+    this.committedMessages = new Map()
     this.internalCount = 0
     this.internalLines = []
     this.records = 0
@@ -600,8 +626,8 @@ export class ChatLogWriter {
     if (meta !== this.metaLine) lines.push(meta)
 
     for (const message of snapshot.messages) {
-      const line = messageLine(message)
-      if (this.messageLines.get(message.id) !== line) lines.push(line)
+      if (!sameRecord(this.committedMessages.get(message.id), message, true))
+        lines.push(messageLine(message))
     }
 
     for (const message of snapshot.internalMessages.slice(this.internalCount)) {
@@ -643,6 +669,7 @@ export class ChatLogWriter {
       } else if (line.startsWith(MSG_START)) {
         const message = JSON.parse(line) as { id: string }
         this.messageLines.set(message.id, JSON.stringify(message))
+        this.committedMessages.set(message.id, JSON.parse(this.messageLines.get(message.id)))
       } else if (line.startsWith('{"k":"int"')) {
         this.internalLines.push(JSON.stringify(JSON.parse(line)))
         this.internalCount++

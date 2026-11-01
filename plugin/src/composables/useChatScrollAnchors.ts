@@ -27,7 +27,11 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
   /** Takes the topmost rendered message as the anchor: the page is revealed above it. */
   const captureAnchor = () => {
     const container = messagesContainer.value
-    const first = container?.querySelector<HTMLElement>('.abele-chat-msg')
+    const top = container?.getBoundingClientRect().top ?? 0
+    const first =
+      Array.from(container?.querySelectorAll<HTMLElement>('.abele-chat-msg') ?? []).find(
+        (el) => el.getBoundingClientRect().bottom > top
+      ) ?? container?.querySelector<HTMLElement>('.abele-chat-msg')
     anchor = container && first ? { el: first, offset: offsetOf(first, container) } : null
   }
 

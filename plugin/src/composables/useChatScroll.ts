@@ -1,6 +1,6 @@
 import { watch, nextTick, onUnmounted, type Ref } from 'vue'
 import type { ChatMessage } from '@/ai/types'
-import { useTailPagedList } from './useTailPagedList'
+import { useChatRenderWindow } from './useChatRenderWindow'
 import { offsetOf, useChatScrollAnchors } from './useChatScrollAnchors'
 
 export const AUTO_SCROLL_THRESHOLD_PX = 60
@@ -31,6 +31,7 @@ export function useChatScroll(options: ChatScrollOptions) {
   /** How close to the top counts as asking for the messages above. */
   const LOAD_OLDER_THRESHOLD_PX = 200
   let shouldAutoScroll = true
+  let fingerDown = false
 
   /**
    * Where the code last left the scroll, for telling its own scrolling from the reader's.
@@ -61,12 +62,17 @@ export function useChatScroll(options: ChatScrollOptions) {
    */
   const {
     visible: visibleMessages,
-    hasMore: hasOlder,
-    hidden: olderCount,
-    showMore: showOlder,
+    hasOlder,
+    hasNewer,
+    start: olderCount,
+    showOlder,
+    showNewer,
     reset: resetWindow,
     showFrom: showMessagesFrom,
-  } = useTailPagedList(() => messages.value)
+  } = useChatRenderWindow(
+    () => messages.value,
+    () => shouldAutoScroll && !fingerDown
+  )
 
   const anchors = useChatScrollAnchors({
     messagesContainer,
@@ -107,7 +113,6 @@ export function useChatScroll(options: ChatScrollOptions) {
    * A finger on the screen. Nothing is scrolled under it, whichever way it is about to move:
    * following the end resumes once it lets go at the end, as the scroll events then say.
    */
-  let fingerDown = false
   const fingerOn = (event: Event) => {
     fingerDown = true
     readerTakesOver(event)
@@ -119,7 +124,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     const el = messagesContainer.value
     if (!el) return
     bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
-    shouldAutoScroll = bottomGap < AUTO_SCROLL_THRESHOLD_PX
+    shouldAutoScroll = !hasNewer.value && bottomGap < AUTO_SCROLL_THRESHOLD_PX
   }
 
   /**
@@ -136,6 +141,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     if (!el || !hasOlder.value || revealing) return
 
     revealing = true
+    shouldAutoScroll = false
     captureAnchor()
     showOlder()
     void nextTick(() => {
@@ -143,6 +149,20 @@ export function useChatScroll(options: ChatScrollOptions) {
       anchors.nextFrame(el.win, () => {
         revealing = false
         revealUntilScrollable()
+      })
+    })
+  }
+
+  const loadNewer = () => {
+    const el = messagesContainer.value
+    if (!el || !hasNewer.value || revealing) return
+    revealing = true
+    captureAnchor()
+    showNewer()
+    void nextTick(() => {
+      holdAnchorAWhile(el)
+      anchors.nextFrame(el.win, () => {
+        revealing = false
       })
     })
   }
@@ -210,7 +230,7 @@ export function useChatScroll(options: ChatScrollOptions) {
   const returnTo = async (place: ReadingPlace) => {
     const index = messages.value.findIndex((m) => m.id === place.messageId)
     if (index >= 0) {
-      showMessagesFrom(Math.min(place.hidden, index))
+      showMessagesFrom(Math.max(0, index - 5))
       await nextTick()
       const el = messagesContainer.value
       const target = el?.querySelector<HTMLElement>(
@@ -243,13 +263,14 @@ export function useChatScroll(options: ChatScrollOptions) {
     // The reader has taken over; whatever was being held is where they left it.
     anchors.anchor = null
     bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
-    shouldAutoScroll = bottomGap < AUTO_SCROLL_THRESHOLD_PX
+    shouldAutoScroll = !hasNewer.value && bottomGap < AUTO_SCROLL_THRESHOLD_PX
     if (el.scrollTop < LOAD_OLDER_THRESHOLD_PX) loadOlder()
+    else if (bottomGap < LOAD_OLDER_THRESHOLD_PX) loadNewer()
   }
 
   const doScroll = () => {
     if (!shouldAutoScroll || fingerDown) return
-    nextTick(() => {
+    void nextTick(() => {
       const el = messagesContainer.value
       // Asked again: the reader may have scrolled away in the tick between.
       if (!el || !shouldAutoScroll || fingerDown) return
@@ -259,6 +280,7 @@ export function useChatScroll(options: ChatScrollOptions) {
 
   const scrollOnUserSend = () => {
     shouldAutoScroll = true
+    resetWindow()
     doScroll()
   }
 

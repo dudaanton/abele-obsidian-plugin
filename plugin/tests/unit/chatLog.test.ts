@@ -5,7 +5,7 @@
  * weighs, so most of these are about the *plan* — whether a change appends one line, rewrites
  * the file, or does nothing at all.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   serializeChat,
   serializeMetadata,
@@ -342,5 +342,64 @@ describe('a comment chat', () => {
 
     expect(parseChatMetadata(updated)?.anchor).toEqual({ note: 'New.md' })
     expect(parseChat(updated).messages).toHaveLength(1)
+  })
+})
+
+describe('append preparation work', () => {
+  it.each([Infinity, -Infinity, NaN])(
+    'keeps JSON-normalized numeric tool parameters clean: %s',
+    (value) => {
+      const state = snapshot({ messages: [message('sample-old')] })
+      state.messages[0].toolParams = { value }
+      const writer = new ChatLogWriter()
+      writer.adopt(parseChat(serializeChat(state)))
+      expect(writer.plan(state).kind).toBe('noop')
+    }
+  )
+
+  it('detects changes to nested discriminator-named tool parameters', () => {
+    const state = snapshot({ messages: [message('sample-old')] })
+    state.messages[0].toolParams = { nested: { k: 'before' } }
+    const writer = new ChatLogWriter()
+    writer.adopt(parseChat(serializeChat(state)))
+    ;(state.messages[0].toolParams.nested as { k: string }).k = 'after'
+    const plan = writer.plan(state)
+    expect(plan.kind).toBe('append')
+    if (plan.kind === 'append') expect(plan.data).toContain('after')
+  })
+
+  it('does not serialize unchanged historical visible messages', () => {
+    const state = snapshot({
+      messages: Array.from({ length: 2000 }, (_, i) =>
+        message(`sample-${i}`, 'sample '.repeat(820))
+      ),
+    })
+    const writer = new ChatLogWriter()
+    writer.adopt(parseChat(serializeChat(state)))
+    state.messages.push(message('sample-new', 'Sample new turn'))
+    const stringify = vi.spyOn(JSON, 'stringify')
+    try {
+      const plan = writer.plan(state)
+      expect(plan.kind).toBe('append')
+      const visible = stringify.mock.calls.filter(
+        ([value]) => value && typeof value === 'object' && 'k' in value && value.k === 'msg'
+      )
+      expect(visible).toHaveLength(1)
+    } finally {
+      stringify.mockRestore()
+    }
+  })
+
+  it('detects in-place nested edits after a pending append has committed', () => {
+    const state = snapshot({ messages: [message('sample-old')] })
+    const writer = new ChatLogWriter()
+    writer.adopt(parseChat(serializeChat(state)))
+    state.messages[0].toolParams = { sample: { text: 'before' } }
+    const pending = writer.plan(state)
+    ;(state.messages[0].toolParams.sample as { text: string }).text = 'after'
+    writer.commit(state, pending)
+    const next = writer.plan(state)
+    expect(next.kind).toBe('append')
+    if (next.kind === 'append') expect(next.data).toContain('after')
   })
 })

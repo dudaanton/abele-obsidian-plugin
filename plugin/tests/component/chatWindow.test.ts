@@ -713,3 +713,76 @@ describe('coming back from a tab a delegated run was holding', () => {
     expect(model.container.scrollTop).toBe(DEFAULT_TAIL_PAGE_SIZE * 100)
   })
 })
+
+describe('bounded bidirectional history', () => {
+  it('keeps the visible reading anchor when either edge is evicted', async () => {
+    messages.value = conversation(2000)
+    const wrapper = mountAttached()
+    const container = wrapper.find('.abele-ai-chat__messages')
+    const el = container.element as HTMLElement
+    let top = 0
+    Object.defineProperty(el, 'scrollTop', {
+      configurable: true,
+      get: () => top,
+      set: (value: number) => {
+        top = value
+      },
+    })
+    Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => 800 })
+    Object.defineProperty(el, 'scrollHeight', {
+      configurable: true,
+      get: () => el.querySelectorAll('.abele-chat-msg').length * 100,
+    })
+    el.getBoundingClientRect = () => ({ top: 0, bottom: 800, height: 800 }) as DOMRect
+    const measure = () => {
+      Array.from(el.querySelectorAll<HTMLElement>('.abele-chat-msg')).forEach((message, index) => {
+        message.getBoundingClientRect = () =>
+          ({
+            top: index * 100 - top,
+            bottom: (index + 1) * 100 - top,
+            height: 100,
+          }) as DOMRect
+      })
+    }
+    const move = async (position: number) => {
+      await container.trigger('wheel')
+      top = position
+      measure()
+      await container.trigger('scroll')
+      await nextTick()
+      measure()
+      await advance(80)
+    }
+    measure()
+    await move(0)
+    await move(0)
+    expect(mounted(wrapper)).toBe(90)
+    const oldestBefore = el.querySelector<HTMLElement>('.abele-chat-msg')!
+    await move(0)
+    expect(mounted(wrapper)).toBe(90)
+    expect(oldestBefore.isConnected).toBe(true)
+    expect(oldestBefore.getBoundingClientRect().top).toBe(0)
+
+    // Now read near the lower edge: the first mounted row is offscreen and will be evicted.
+    top = el.scrollHeight - 850
+    measure()
+    const anchor = Array.from(el.querySelectorAll<HTMLElement>('.abele-chat-msg')).find(
+      (message) => message.getBoundingClientRect().bottom > 0
+    )!
+    const offset = anchor.getBoundingClientRect().top
+    await move(top)
+    expect(mounted(wrapper)).toBe(90)
+    expect(anchor.isConnected).toBe(true)
+    expect(anchor.getBoundingClientRect().top).toBe(offset)
+
+    // New arrivals must not drag this historical reading window to the latest turn.
+    const ids = wrapper.findAllComponents(AiChatMessage).map((row) => row.props('message').id)
+    messages.value.push(
+      ...conversation(100).map((message) => ({ ...message, id: `new-${message.id}` }))
+    )
+    await nextTick()
+    expect(wrapper.findAllComponents(AiChatMessage).map((row) => row.props('message').id)).toEqual(
+      ids
+    )
+  })
+})
