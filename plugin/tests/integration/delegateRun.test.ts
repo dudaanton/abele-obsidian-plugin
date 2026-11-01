@@ -27,7 +27,7 @@ vi.mock('@/ai/client/OpenAIClient', () => {
     async *stream(_model: ModelConfig, system: string, messages: Message[]) {
       // Snapshotted: the loop appends its own turn to this very array afterwards.
       seen.push({ system, messages: [...messages] })
-      const last = messages[messages.length - 1]
+      const last = [...messages].reverse().find((message) => message.role === 'user')
       const text = typeof last?.content === 'string' ? last.content : ''
       const reply = replies(text)
 
@@ -242,8 +242,13 @@ describe('a delegated run', () => {
     expect(result.branches.map((b) => b.result)).toEqual(['handled alpha', 'handled beta'])
     // Two separate conversations, neither carrying the other's history.
     expect(seen).toHaveLength(2)
-    expect(seen[0].messages).toHaveLength(1)
-    expect(seen[1].messages).toHaveLength(1)
+    for (const request of seen) {
+      expect(request.messages.map((message) => message.role)).toEqual(['user', 'system'])
+      expect(request.messages[1]).toMatchObject({
+        contextSnapshot: true,
+        content: expect.stringContaining('This chat has no node access'),
+      })
+    }
   })
 
   it('finishes as done when every branch succeeded', async () => {

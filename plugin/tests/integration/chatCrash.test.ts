@@ -30,7 +30,7 @@ import { destroyChatsAfterEach } from '../helpers/chatTeardown'
 vi.mock('@/ai/client/OpenAIClient', () => {
   class OpenAIClient {
     async *stream(_model: ModelConfig, _system: string, messages: Message[]) {
-      const last = messages[messages.length - 1]
+      const last = [...messages].reverse().find((message) => message.role === 'user')
       const asked = typeof last?.content === 'string' ? last.content : ''
       const reply = `reply to ${asked}`
 
