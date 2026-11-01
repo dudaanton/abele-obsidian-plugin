@@ -1365,7 +1365,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
               .then(() => client.operationResult(record.operation_id))
               .catch((): undefined => undefined)
             if (known?.error) {
-              await mutation!.store
+              await mutation.store
                 .settle(record, 'rejected', { error: known.error })
                 .catch((failure) =>
                   console.error(
@@ -1379,7 +1379,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
                 { operation_id: record.operation_id, state: 'rejected' }
               )
             }
-            await mutation!.store
+            await mutation.store
               .settle(record, 'outcome_unknown')
               .catch((failure) =>
                 console.error(
@@ -1455,20 +1455,46 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
             throw new Error(
               'Edit text must match exactly; node_edit requires one unique occurrence'
             )
+          if (before.text.length + count * (replacement.length - old.length) > 2 * 1024 * 1024)
+            throw new Error('Edited file exceeds 2 MiB; split the file before editing')
           after = parts.join(replacement)
+          if (new TextEncoder().encode(after).byteLength > 2 * 1024 * 1024)
+            throw new Error('Edited file exceeds 2 MiB; split the file before editing')
+        }
+        const useSnippet = name !== 'node_write' && after.length > 32768
+        let patch: { old_text: string; new_text: string; all: boolean } | undefined
+        if (useSnippet) {
+          if (!supportsCapability(await safe(() => client.describe()), 'node_file_snippet_v1'))
+            throw new Error(
+              'Editing files above 32768 characters requires node_file_snippet_v1; update the node'
+            )
+          patch = {
+            old_text: z
+              .string()
+              .min(1)
+              .max(16384, 'Split the edit into smaller unique snippets')
+              .parse(params.old_text),
+            new_text: z
+              .string()
+              .max(16384, 'Split the edit into smaller unique snippets')
+              .parse(params.new_text),
+            all: name === 'node_replace',
+          }
         }
         const request = git
           ? protocol.RepositoryWriteSchema.parse({
               worktree_id: id,
               path: sourcePath,
               expected_content_id: expected,
-              text: after,
+              text: patch ? '' : after,
+              ...(patch ? { patch } : {}),
             })
           : protocol.FileWriteSchema.parse({
               workspace_id: id,
               path: sourcePath,
               expected_content_id: expected,
-              text: after,
+              text: patch ? '' : after,
+              ...(patch ? { patch } : {}),
             })
         return perform(
           await reserve(

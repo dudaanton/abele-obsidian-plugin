@@ -1062,3 +1062,67 @@ describe('what the node file tools tell a model that cannot reach a file yet', (
     expect(client.getProject).not.toHaveBeenCalled()
   })
 })
+
+it('edits a file above 32 KiB using a short unique snippet', async () => {
+  const { client, call } = setup()
+  const before = 'sample line\n'.repeat(6000) + 'unique old'
+  const after = before.replace('unique old', 'unique new')
+  const expected = digest(before)
+  client.readFile.mockResolvedValue({
+    ...(await client.readFile()),
+    size: before.length,
+    content_id: expected,
+  })
+  client.readContent.mockImplementation(async () => ({
+    offset: 0,
+    total: before.length,
+    base64: btoa(before),
+  }))
+  client.describe.mockResolvedValue({
+    node_id: 'sample-node',
+    capabilities: {
+      capabilities: { node_file_snippet_v1: { status: 'supported', evidence: 'test' } },
+    },
+  })
+  client.fileMutationResult.mockResolvedValue({
+    ...(await client.fileMutationResult()),
+    expected_content_id: expected,
+    predecessor_content_id: expected,
+    content_id: digest(after),
+  })
+  const result = await call('node_edit', {
+    path: 'sample.txt',
+    expected_content_id: expected,
+    old_text: 'unique old',
+    new_text: 'unique new',
+  })
+  expect(result.content[0].text).toContain('saved')
+  expect(client.writeFile).toHaveBeenCalledWith(
+    expect.objectContaining({
+      text: '',
+      patch: { old_text: 'unique old', new_text: 'unique new', all: false },
+      expected_content_id: expected,
+    }),
+    'sample-write'
+  )
+})
+
+it('refuses a large-file edit on an older node before sending a write', async () => {
+  const { client, call } = setup()
+  const before = 'x'.repeat(40000) + 'unique old'
+  client.readFile.mockResolvedValue({
+    ...(await client.readFile()),
+    size: before.length,
+    content_id: digest(before),
+  })
+  client.readContent.mockResolvedValue({ offset: 0, total: before.length, base64: btoa(before) })
+  await expect(
+    call('node_edit', {
+      path: 'sample.txt',
+      expected_content_id: digest(before),
+      old_text: 'unique old',
+      new_text: 'unique new',
+    })
+  ).rejects.toThrow(/update the node/)
+  expect(client.writeFile).not.toHaveBeenCalled()
+})

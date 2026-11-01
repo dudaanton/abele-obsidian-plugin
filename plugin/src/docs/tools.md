@@ -1391,6 +1391,20 @@ picker, shell, stage or push is exposed by this toolset. Delegation tools use th
 | `node_git_blame` | Attribution for `path`, optionally `start` and `count` |
 | `node_worktree_switch` | Select an already scoped worktree inside this chat's current folder |
 
+For large-file changes, prefer `node_edit` with a unique exact snippet, or
+`node_replace` for every exact match. On nodes advertising `node_file_snippet_v1`,
+results above 32768 characters use bounded node-side snippets: each old/new snippet
+is at most 16384 characters and the resulting UTF-8 file is at most 2 MiB.
+The same expected-content hash, approval, durable replay and recovery apply; older
+nodes refuse with an update hint. `node_write` remains a complete-text operation
+limited to 32768 characters; it is not a chunked upload. Existing files retain their
+inode and permissions through the existing journaled write path; this is not a
+filesystem compare-and-swap against external editors.
+
+`node_command_run` command text and each argv item are bounded at 32768 characters.
+Split longer commands; use snippet edits instead of embedding full files in commands.
+The separate `output_bytes` limit (1024–16384 per stream) bounds output, not command text.
+
 Node file reads and listings try ordinary visibility first, retrying ignored content only
 when a path is reported ignored or excluded. Set `include_ignored: true` explicitly
 to request ignored content with `node_read`, `node_open`, `node_ls` or `node_search`.

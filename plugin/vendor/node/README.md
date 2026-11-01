@@ -151,3 +151,7 @@ random loopback listener, never the installed service:
 ```sh
 ABELE_NODE_CLI=/path/to/node/packages/node-daemon/dist/cli.js npm run test:node
 ```
+
+Large-file snippet writes retain the existing vendored compatibility patches.
+`patches/large-file-snippets.patch` records the bounded write and command-guidance
+source delta; only the files/manager build artifacts are refreshed in this slice.
