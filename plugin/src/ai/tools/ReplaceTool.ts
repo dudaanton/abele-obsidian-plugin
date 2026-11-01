@@ -166,7 +166,13 @@ export function createReplaceTool(opts?: {
         const raw = await app.vault.read(file)
         const updated = replaceNoteBody(raw, newContent)
         signal?.throwIfAborted()
-        await noteFileToolScriptWrite(app, file.path, updated, opts?.scriptAuthor)
+        await noteFileToolScriptWrite(
+          app,
+          file.path,
+          updated,
+          opts?.scriptAuthor,
+          ctx?.session?.scriptReviewChatId
+        )
         signal?.throwIfAborted()
         await app.vault.modify(file, updated)
       }
@@ -183,7 +189,12 @@ export function createReplaceTool(opts?: {
       if (newPath !== path) {
         signal?.throwIfAborted()
         if (!opts?.scriptAuthor)
-          await noteAgentScriptWrite(app, newPath, await app.vault.read(file))
+          await noteAgentScriptWrite(
+            app,
+            newPath,
+            await app.vault.read(file),
+            ctx?.session?.scriptReviewChatId
+          )
         assertExternalDestinationAvailable(app, newPath)
         await app.fileManager.renameFile(file, newPath)
       }

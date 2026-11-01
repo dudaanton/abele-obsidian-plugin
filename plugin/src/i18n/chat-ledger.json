@@ -772,5 +772,14 @@
   },
   "chat.fullLogCopyFailed": {
     "englishHash": "20ba7673237a60f61abc22515982b3e7d405dadc5f7b3f1d2a7426fb1b5a26c9"
+  },
+  "chat.scriptChanged": {
+    "englishHash": "434a3fe7b261f664bd39e2a9e512aede95a8762520f6a516c829e528eb24f9a6"
+  },
+  "chat.scriptsChanged": {
+    "englishHash": "b58f2eb42204d25443f24e8bf71bfd6c6336a43d0fe698b035f439416976ef05"
+  },
+  "chat.reviewScripts": {
+    "englishHash": "552e425de43e12fc97c2b0ca14848411831b4f0018b5f3b3437403c4e4172ef2"
   }
 }

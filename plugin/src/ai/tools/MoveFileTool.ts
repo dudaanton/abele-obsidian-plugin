@@ -59,7 +59,8 @@ export function createMoveFileTool(opts?: {
           app,
           file.path,
           safeTo,
-          await vaultDisk(app.vault).read(file.path)
+          await vaultDisk(app.vault).read(file.path),
+          ctx?.session?.scriptReviewChatId
         )
       await app.fileManager.renameFile(file, safeTo)
       if (!opts?.skipScope) scopeOf(ctx).addFile(safeTo)

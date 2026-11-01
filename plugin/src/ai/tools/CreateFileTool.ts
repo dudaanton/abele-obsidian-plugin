@@ -53,7 +53,13 @@ export function createCreateFileTool(opts?: {
         }
       }
       signal?.throwIfAborted()
-      await noteFileToolScriptWrite(app, safePath, content, opts?.scriptAuthor)
+      await noteFileToolScriptWrite(
+        app,
+        safePath,
+        content,
+        opts?.scriptAuthor,
+        ctx?.session?.scriptReviewChatId
+      )
       signal?.throwIfAborted()
       assertExternalDestinationAvailable(app, safePath)
       await app.vault.create(safePath, content)

@@ -72,7 +72,7 @@ export function createCreateScriptTool(): AgentTool {
         throw new Error(`Script already exists: ${path}. Use edit tool to modify it.`)
       }
 
-      await noteAgentScriptWrite(app, path, content)
+      await noteAgentScriptWrite(app, path, content, ctx?.session?.scriptReviewChatId)
       assertExternalDestinationAvailable(app, path)
       await app.vault.create(path, content)
       scopeOf(ctx).addFile(path)

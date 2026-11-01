@@ -51,7 +51,14 @@ export function createCopyFileTool(opts?: {
       const content = chatCopyBytes(file.path, file.basename, await app.vault.readBinary(file))
       signal?.throwIfAborted()
       // Ordinary attachments keep their bytes; a chat never exports its private fields.
-      if (!opts?.scriptAuthor) await noteFileToolScriptCopy(app, file.path, safeTo, content)
+      if (!opts?.scriptAuthor)
+        await noteFileToolScriptCopy(
+          app,
+          file.path,
+          safeTo,
+          content,
+          ctx?.session?.scriptReviewChatId
+        )
       assertExternalDestinationAvailable(app, safeTo)
       await app.vault.createBinary(safeTo, content)
       scopeOf(ctx).invalidate()

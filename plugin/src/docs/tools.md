@@ -1614,3 +1614,11 @@ Native node delegation and its permissions remain separate.
   `{ok:false,error,line,column,snippet}`; positions are 1-based when available (0 otherwise).
   Runs automatically by default and never creates or changes a note. Validate before writing
   a `mermaid` or `pele` block. See `vault` → `diagrams` for all supported types.
+
+### Reviewing scripts written in a chat
+
+When a chat’s file tools write a script version that needs owner review, that chat shows a
+muted review line above its input instead of a persistent notification. The action reviews
+only the exact waiting versions written by that chat, using the existing review dialog.
+Confirmed, deferred or removed versions disappear from the line. Other sources retain the
+ordinary notification; closing the chat does not turn its versions into notifications.

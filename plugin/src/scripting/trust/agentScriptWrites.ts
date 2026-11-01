@@ -9,6 +9,7 @@ interface AgentScriptWrites {
   paths: string[]
   hashes: string[]
   approved: string[]
+  chats?: Record<string, string>
 }
 
 function state(app: App): AgentScriptWrites {
@@ -46,7 +47,8 @@ export function agentScriptWaiting(app: App, path: string, hash?: string): boole
 export async function noteAgentScriptWrite(
   app: App,
   path: string,
-  content?: string | ArrayBuffer
+  content?: string | ArrayBuffer,
+  chatId?: string
 ): Promise<void> {
   if (!path.endsWith('.js')) return
   const before = state(app)
@@ -57,11 +59,24 @@ export async function noteAgentScriptWrite(
   )
   // Re-read after hashing: concurrent writes and owner decisions must not be lost.
   const current = state(app)
-  if (!current.hashes.includes(hash)) save(app, { ...current, hashes: [...current.hashes, hash] })
+  const key = `${path}\0${hash}`
+  save(app, {
+    ...current,
+    hashes: current.hashes.includes(hash) ? current.hashes : [...current.hashes, hash],
+    ...(chatId ? { chats: { ...current.chats, [key]: chatId } } : {}),
+  })
 }
 
 /** Only an owner authoring/review site, or an explicitly authorized script run, calls this. */
 export function confirmAgentScript(app: App, hash: string): void {
   const value = state(app)
   if (!value.approved.includes(hash)) save(app, { ...value, approved: [...value.approved, hash] })
+}
+
+/** Presentation provenance only: never grants execution authority. */
+export function agentScriptChat(app: App, path: string, hash?: string): string | undefined {
+  void version.value
+  if (!hash) return undefined
+  const chat = state(app).chats?.[`${path}\0${hash}`]
+  return typeof chat === 'string' && chat ? chat : undefined
 }

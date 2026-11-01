@@ -1,4 +1,6 @@
 import { t } from '@/i18n'
+import { ref } from 'vue'
+import { agentScriptChat } from './trust/agentScriptWrites'
 /**
  * Putting scripts from elsewhere in front of the person: one at a time, all that wait, and the
  * notice that says some arrived. The rules of what waits are `ScriptTrust.ts`; the dialog is
@@ -12,9 +14,11 @@ import { reviewScript } from './reviewScript'
 import type { ScriptService } from './ScriptService'
 import type { ParsedScript } from './types'
 
+const dismissVersion = ref(0)
 const DISMISSED_NOTICE_KEY = 'abele-script-notice-dismissed'
 const noticeVersion = (script: ParsedScript) => `${script.path}\0${script.hash}`
 function dismissedNotices(): Set<string> {
+  void dismissVersion.value
   const saved: unknown = GlobalStore.getInstance().app?.loadLocalStorage?.(DISMISSED_NOTICE_KEY)
   return new Set(
     Array.isArray(saved)
@@ -32,6 +36,7 @@ function deferNotice(script: ParsedScript) {
     DISMISSED_NOTICE_KEY,
     [...dismissed].slice(-256)
   )
+  dismissVersion.value++
 }
 
 /**
@@ -105,7 +110,7 @@ export class WaitingScriptsNotice {
   constructor(private readonly service: Pick<ScriptService, 'waitingScripts' | 'reviewWaiting'>) {}
 
   announce(): void {
-    const waiting = this.service.waitingScripts()
+    const waiting = noticeScripts(this.service.waitingScripts())
     const dismissed = dismissedNotices()
     const fresh = waiting.filter((s) => {
       const key = noticeVersion(s)
@@ -137,7 +142,7 @@ export class WaitingScriptsNotice {
 
   /** Closes the notice once nothing it could review is waiting any more. */
   settle(): void {
-    if (this.notice && !this.service.waitingScripts().length) this.hide()
+    if (this.notice && !noticeScripts(this.service.waitingScripts()).length) this.hide()
   }
 
   hide(): void {
@@ -149,4 +154,24 @@ export class WaitingScriptsNotice {
   forget(): void {
     this.announced.clear()
   }
+}
+
+function noticeScripts(scripts: ParsedScript[]): ParsedScript[] {
+  const app = GlobalStore.getInstance().app
+  return scripts.filter((s) => !agentScriptChat(app, s.path, s.hash))
+}
+
+/** Waiting versions belonging to this chat, excluding versions explicitly deferred. */
+export function chatWaitingScripts(
+  service: Pick<ScriptService, 'waitingScripts'>,
+  chatId?: string
+): ParsedScript[] {
+  if (!chatId) return []
+  const dismissed = dismissedNotices()
+  const app = GlobalStore.getInstance().app
+  return service
+    .waitingScripts()
+    .filter(
+      (s) => agentScriptChat(app, s.path, s.hash) === chatId && !dismissed.has(noticeVersion(s))
+    )
 }

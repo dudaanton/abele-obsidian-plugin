@@ -1,4 +1,8 @@
 export const chat = {
+  'chat.scriptChanged': 'Script modificado: {name}',
+  'chat.scriptsChanged': 'Scripts modificados: {count}',
+  'chat.reviewScripts': 'Revisar',
+
   'chat.copyFullLog': 'Copiar el registro completo del chat (incluye datos privados)',
   'chat.fullLogCopied': 'Registro completo del chat copiado al portapapeles',
   'chat.fullLogCopyFailed': 'No se pudo copiar el registro completo del chat',

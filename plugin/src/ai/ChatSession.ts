@@ -328,6 +328,10 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       ? this.chatIdentity
       : undefined
   }
+  /** Durable owner for device-local script review presentation. */
+  get scriptReviewChatId(): string | undefined {
+    return this.delegationParentId ?? this.currentChatFile.value?.path
+  }
   public readonly bindingRecoveries = shallowRef<ChatBindingRecovery[]>([])
   private get bindingRecovery(): ChatBindingRecovery[] | undefined {
     return this.bindingRecoveries.value.length ? this.bindingRecoveries.value : undefined
@@ -2654,6 +2658,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
       toolResult = await abortable(
         tool.execute(tc.id, args, signal, {
           scope: this.scopeResolver,
+          session: this,
           interactive: this.kind !== 'run',
           approved,
         }),

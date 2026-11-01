@@ -1,4 +1,8 @@
 export const chat = {
+  'chat.scriptChanged': 'Skripts mainīts: {name}',
+  'chat.scriptsChanged': 'Mainīti skripti: {count}',
+  'chat.reviewScripts': 'Pārskatīt',
+
   'chat.copyFullLog': 'Kopēt pilnu sarunas žurnālu (ietver privātus datus)',
   'chat.fullLogCopied': 'Pilns sarunas žurnāls nokopēts starpliktuvē',
   'chat.fullLogCopyFailed': 'Neizdevās nokopēt pilnu sarunas žurnālu',

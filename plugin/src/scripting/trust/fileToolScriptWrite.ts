@@ -10,9 +10,12 @@ export function noteFileToolScriptWrite(
   app: App,
   path: string,
   text: string,
-  scriptAuthor = false
+  scriptAuthor = false,
+  chatId?: string
 ): Promise<void> {
-  return scriptAuthor ? noteLocalScriptWrite(path, text) : noteAgentScriptWrite(app, path, text)
+  return scriptAuthor
+    ? noteLocalScriptWrite(path, text)
+    : noteAgentScriptWrite(app, path, text, chatId)
 }
 
 /** Copying already executable owner code retains that exact content's authority. A staged
@@ -21,7 +24,8 @@ export async function noteFileToolScriptCopy(
   app: App,
   from: string,
   to: string,
-  content: string | ArrayBuffer
+  content: string | ArrayBuffer,
+  chatId?: string
 ): Promise<void> {
   if (!to.endsWith('.js')) return
   if (isScriptPath(from)) {
@@ -33,5 +37,5 @@ export async function noteFileToolScriptCopy(
       // Copying unapproved code is allowed, but it receives no execution authority.
     }
   }
-  await noteAgentScriptWrite(app, to, content)
+  await noteAgentScriptWrite(app, to, content, chatId)
 }

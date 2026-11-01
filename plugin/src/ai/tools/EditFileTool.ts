@@ -48,7 +48,13 @@ export function createEditFileTool(opts?: {
       // A function, not the string: in a replacement string `$&` and `$'` are patterns, not text.
       const updated = content.replace(old_string, () => new_string)
       signal?.throwIfAborted()
-      await noteFileToolScriptWrite(app, file.path, updated, opts?.scriptAuthor)
+      await noteFileToolScriptWrite(
+        app,
+        file.path,
+        updated,
+        opts?.scriptAuthor,
+        ctx?.session?.scriptReviewChatId
+      )
       signal?.throwIfAborted()
       await app.vault.modify(file, updated)
       return {

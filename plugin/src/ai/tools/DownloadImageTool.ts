@@ -113,7 +113,12 @@ async function downloadToVault(
     counter++
   }
 
-  await noteAgentScriptWrite(app, targetPath, response.arrayBuffer)
+  await noteAgentScriptWrite(
+    app,
+    targetPath,
+    response.arrayBuffer,
+    ctx?.session?.scriptReviewChatId
+  )
   const saved = await createImportedBinary(
     app,
     targetPath,

@@ -232,7 +232,7 @@ empty bootstrap, not magically undo that unsupported old deletion.
 
 ## Agent-authored script approvals
 
-Vault-scoped device-local storage `abele-agent-script-writes` holds `{paths, hashes, approved}`:
+Vault-scoped device-local storage `abele-agent-script-writes` holds `{paths, hashes, approved, chats?}`:
 arrays of executable paths touched by agent file tools, SHA-256 hashes of their full contents,
 and exact hashes approved by the owner or an explicitly authorized script-tool run. It is
 independent of `abele-script-trust` and its optional foreign-script switch. Holds are saved
@@ -3499,3 +3499,7 @@ The device-local debugger workspace state retains each session's entry path alon
 source mappings and attachment identity. File points are routed by that entry's package,
 independently of the session being viewed. Points awaiting an attached process stay pending
 for their node folder during the plugin session.
+
+The optional `chats` map associates an exact `path\0hash` script version with its writing
+chat’s durable identity (or saved chat path for legacy chats). This device-local presentation
+metadata restores the review line when that chat reopens; it grants no execution authority.

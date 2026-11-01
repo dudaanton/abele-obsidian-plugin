@@ -431,6 +431,7 @@
           "
         />
       </div>
+      <ChatScriptReview v-if="session" :chat-id="session.scriptReviewChatId" />
       <!-- Input -->
       <AiChatInput
         ref="chatInput"
@@ -588,6 +589,7 @@ import { useChatNavigation } from '@/composables/useChatNavigation'
 export type { BranchInfo } from '@/composables/useChatBranchInfo'
 import { useChatKeyboardGap } from '@/composables/useChatKeyboardGap'
 import AiChatInput from './AiChatInput.vue'
+import ChatScriptReview from './ChatScriptReview.vue'
 import AiChatTabs from './AiChatTabs.vue'
 import ChatSwitcher from './chatTree/ChatSwitcher.vue'
 import FolderAccessModal from './chatTree/FolderAccessModal.vue'

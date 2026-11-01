@@ -44,7 +44,13 @@ export function createWriteFileTool(opts?: {
       guardChatWrite(file.path)
       const old = await app.vault.read(file)
       signal?.throwIfAborted()
-      await noteFileToolScriptWrite(app, file.path, content, opts?.scriptAuthor)
+      await noteFileToolScriptWrite(
+        app,
+        file.path,
+        content,
+        opts?.scriptAuthor,
+        ctx?.session?.scriptReviewChatId
+      )
       signal?.throwIfAborted()
       if (opts?.expectedContent !== undefined) {
         await app.vault.process(file, (current) => {
