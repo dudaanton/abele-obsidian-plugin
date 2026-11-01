@@ -1492,7 +1492,10 @@ the chat's grant to that root remains sufficient for command execution and statu
 If no target is given, a single folder in the chat's scope may be inferred; otherwise
 supply an explicit target. An older supplied session can resolve its bound worktree,
 but execution still uses a command context. A worktree takes
-precedence over accompanying project metadata. Integration also accepts `workspace_id`
+precedence over accompanying project metadata. An exact worktree grant in the chat sends
+that ID directly without enumerating project catalogues, including both integration targets.
+Scope is checked again before execution; the node validates the live target independently.
+Integration also accepts `workspace_id`
 and `source_workspace_id` aliases. Never create unmanaged worktrees through commands.
 Optional `cwd` stays inside that target; `timeout_ms` bounds execution and `output_bytes`
 sets each output tail (1024–16384 bytes). The node must advertise `command_context_v1`.

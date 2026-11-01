@@ -213,6 +213,20 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
         }
         for (const worktree of [params.worktree_id, params.source_worktree_id]) {
           if (typeof worktree !== 'string') continue
+          // An exact chat grant already carries the owning project. Send that ID
+          // directly; the node validates live identity and execution authority.
+          const exact = entries.find(
+            (entry) =>
+              entry.kind === 'target' &&
+              entry.target.kind === 'worktree' &&
+              entry.target.worktree_id === worktree
+          )
+          if (exact && exact.kind === 'target') {
+            guards.push(
+              requireDelegationScope(parent, nodeId, exact.project_id, undefined, worktree)
+            )
+            continue
+          }
           let found = false
           for (const project of new Set(
             entries.flatMap((entry) => (entry.kind !== 'node' ? [entry.project_id] : []))

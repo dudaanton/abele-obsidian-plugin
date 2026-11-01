@@ -405,6 +405,9 @@ it('refuses every manager operation on an older node without sending a mutation'
 it.each(['confirm-all', 'allow-edit', 'allow-all'] as const)(
   'uses the effective owner mode %s even when a model supplies bypass',
   async (mode) => {
+    const worktrees = vi.fn(async () => {
+      throw new Error('stale_cursor: unrelated project catalogue changed')
+    })
     const command = vi.fn(async () => ({
       session_id: 'sample-session',
       run_id: 'sample-run',
@@ -429,9 +432,7 @@ it.each(['confirm-all', 'allow-edit', 'allow-all'] as const)(
             capabilities: { capabilities: { command_context_v1: { status: 'supported' } } },
           }),
           repository: {
-            worktrees: async () => ({
-              entries: [{ worktree_id: 'sample-tree', workspace_id: 'sample-workspace' }],
-            }),
+            worktrees,
           },
         },
       }),
@@ -462,6 +463,8 @@ it.each(['confirm-all', 'allow-edit', 'allow-all'] as const)(
       permission_mode: 'bypass',
       session_id: 'sample-provider-session',
     })
+    expect(worktrees).not.toHaveBeenCalled()
+    expect(command.mock.calls[0][1]).toMatchObject({ worktree_id: 'sample-tree' })
     expect(command.mock.calls[0][4]).toBe(mode === 'allow-all' ? 'bypass' : 'ask')
   }
 )
@@ -704,3 +707,81 @@ it('sends retained manager operations through the real SDK outbox with the exact
     store.close()
   }
 })
+
+it.each(['allowed', 'source-outside', 'revoked'] as const)(
+  'validates exact integration grants without catalogues: %s',
+  async (scenario) => {
+    const worktrees = vi.fn(async () => ({ entries: [], cursor: null }))
+    const integration = vi.fn(async (...args: unknown[]) => {
+      if (scenario === 'revoked')
+        chat.overrides.value.nodeScope = chat.overrides.value.nodeScope.filter(
+          (entry) =>
+            entry.kind === 'target' &&
+            entry.target.kind === 'worktree' &&
+            entry.target.worktree_id === 'sample-source'
+        )
+      ;(args[6] as () => void)()
+      return { run_id: 'sample-run', state: 'running' }
+    })
+    const chat = {
+      overrides: ref({
+        nodeScope: [
+          'sample-target',
+          ...(scenario === 'source-outside' ? [] : ['sample-source']),
+        ].map((worktree_id) => ({
+          kind: 'target',
+          node_id: 'sample-node',
+          project_id: 'sample-project',
+          target: { kind: 'worktree', worktree_id },
+          access: 'run',
+        })),
+      }),
+      permissionMode: ref('allow-all'),
+      getToolMode: () => 'auto',
+      recordNodeCommandOperation: vi.fn(),
+      ensureDelegationParentId: async () => 'sample-parent',
+    } as unknown as ChatSession
+    vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+      nodes: { value: [{ id: 'sample-node' }] },
+      connection: () => ({
+        connect: async () => {},
+        refreshDelegations: async () => {},
+        client: {
+          describe: async () => ({
+            capabilities: {
+              capabilities: {
+                integration_context_v1: { status: 'supported' },
+                delegation_without_grant: { status: 'supported' },
+              },
+            },
+          }),
+          repository: { worktrees },
+        },
+        manager: { integration },
+      }),
+    } as never)
+    const result = createNodeManagerTools(chat)
+      .find((tool) => tool.name === 'node_git_integrate')!
+      .execute('sample-call', {
+        node: 'sample-node',
+        operation_id: 'sample-operation',
+        justification: 'Integrate tested changes.',
+        worktree_id: 'sample-target',
+        source_worktree_id: 'sample-source',
+        target_branch: 'main',
+        source_branch: 'work/sample',
+        expected_target_head: 'a'.repeat(40),
+        expected_source_head: 'b'.repeat(40),
+      })
+    if (scenario === 'allowed') {
+      await result
+      expect(integration).toHaveBeenCalledTimes(1)
+      expect(worktrees).not.toHaveBeenCalled()
+    } else {
+      await expect(result).rejects.toThrow(
+        scenario === 'revoked' ? /node chips/i : /worktree_not_found/
+      )
+      if (scenario === 'source-outside') expect(integration).not.toHaveBeenCalled()
+    }
+  }
+)
