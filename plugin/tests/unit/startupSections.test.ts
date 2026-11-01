@@ -4,8 +4,11 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { TemplateService } from '@/templates/TemplateService'
 import { useVault } from '../helpers/testEnv'
 
+const disposals: Array<() => void> = []
+
 // Characterize the existing sections before moving them out of the lifecycle class.
 afterEach(() => {
+  for (const dispose of disposals.splice(0)) dispose()
   vi.restoreAllMocks()
   vi.useRealTimers()
 })
@@ -93,6 +96,7 @@ describe('startup sections', () => {
     Object.assign(app.workspace, { onLayoutReady: (fn: () => void) => ready.push(fn) })
     const plugin = Object.assign(Object.create(AbelePlugin.prototype), {
       app,
+      register: (dispose: () => void) => disposals.push(dispose),
       registerEvent: events,
       registerObsidianProtocolHandler: protocol,
     })

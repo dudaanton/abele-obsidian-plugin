@@ -98,7 +98,7 @@ import '@/composables/useFooterView'
 import { prepareTokenConnections } from './sync/tokenRegistryPreparation'
 import { prepareHostSyncStorage } from './sync/hostSyncStorage'
 import { DurableTokenSecrets, desktopCredentialCipher } from './sync/durableTokenSecrets'
-import { recordTeardown } from './sync/teardownBarrier'
+import { pendingTeardown, recordTeardown } from './sync/teardownBarrier'
 import { tokenUi, TokenUi } from './sync/tokenUi'
 import { SyncStartupTimeline, timedSyncTransport } from './sync/startupTimeline'
 import { openDeviceReviews } from './sync/openDeviceReviews'
@@ -299,8 +299,10 @@ export default class AbelePlugin extends Plugin {
       await startupStepAsync('locale catalog', () =>
         initializePluginLocale(this, currentLocale().format)
       )
+      if (this.unloaded) return
       // First, so it runs before every other layout-ready callback registered below.
       this.app.workspace.onLayoutReady(() => {
+        if (this.unloaded) return
         markLoad('layoutStart')
         this.syncTimeline.mark('layout-ready')
       })
@@ -314,6 +316,7 @@ export default class AbelePlugin extends Plugin {
       } // Ensure process is defined for Node.js compatibility
 
       await startupStepAsync('settings', () => AbeleConfig.getInstance().loadSettings())
+      if (this.unloaded) return
       startupStep('zen mode', () => registerZen(this))
       startupStep('mobile background', () => {
         if (!Platform.isMobile) return
@@ -336,6 +339,7 @@ export default class AbelePlugin extends Plugin {
       })
       // Before either sync host can write: preserve local execution decisions, not access state.
       await startupStepAsync('local script approvals', () => preserveLocalScriptVersions(this.app))
+      if (this.unloaded) return
       // Settings were just replaced wholesale; anything resolving an agent must see the new set.
       startupStep('agents', () => AgentRegistry.getInstance().notifyConfigReloaded())
 
@@ -350,6 +354,14 @@ export default class AbelePlugin extends Plugin {
         let desktopSecrets: DurableTokenSecrets | undefined
         const config = AbeleConfig.getInstance(),
           loaded = config.takeLoadedSync()
+        // Storage may finish opening after unload. It is still owned by startup until
+        // the engine's teardown is registered, so close it instead of installing it.
+        const abandoned = () => {
+          if (!this.unloaded) return false
+          hostStorage?.close()
+          desktopSecrets?.close()
+          return true
+        }
         try {
           const keychain = {
             get: (id: string) => secretStore.getLocal(id) || null,
@@ -365,7 +377,15 @@ export default class AbelePlugin extends Plugin {
               desktopCredentialCipher()
             )
           }
+          if (abandoned()) return
           const tokenSecrets = desktopSecrets ?? keychain
+          // Keep the prior writer's teardown barrier before opening its replacement store.
+          await pendingTeardown(this.app)
+          if (abandoned()) return
+          // Registry preparation reuses this host store. Own its handle before awaiting
+          // the registry so an unload at either opening can close every acquired store.
+          hostStorage = await prepareHostSyncStorage(this.app, window.indexedDB)
+          if (abandoned()) return
           const registry = await prepareTokenConnections(
             this.app,
             {
@@ -379,6 +399,7 @@ export default class AbelePlugin extends Plugin {
             loaded?.sync,
             window.indexedDB
           )
+          if (abandoned()) return
           await desktopSecrets?.migrate(
             registry
               .records()
@@ -388,11 +409,12 @@ export default class AbelePlugin extends Plugin {
                 )
               )
           )
-          hostStorage = await prepareHostSyncStorage(this.app, window.indexedDB)
+          if (abandoned()) return
           this.syncTimeline.mark('db-open')
           if (loaded !== null) {
             config.acknowledgeSyncMigration()
             await config.rewrite()
+            if (abandoned()) return
           }
           const reviewKey = 'abele-sync-device-review-id-v1'
           let reviewId = this.app.loadLocalStorage(reviewKey)
@@ -408,6 +430,10 @@ export default class AbelePlugin extends Plugin {
             configRoots: [this.app.vault.configDir],
             scriptsFolder: AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts',
           })
+          if (abandoned()) {
+            reviews.close()
+            return
+          }
           const transport = timedSyncTransport(transportOf({}), this.syncTimeline)
           const ui = new TokenUi(registry, tokenSecrets, transport, reviews)
           tokenUi.value = ui
@@ -510,13 +536,16 @@ export default class AbelePlugin extends Plugin {
           )
         }
       })
+      if (this.unloaded) return
       await startupStepAsync('synced secrets', () =>
         secretStore.load().catch((e) => {
           console.error('[Abele] the synced secrets could not be opened', (e as Error)?.message)
         })
       )
+      if (this.unloaded) return
       // After the store: a token moved out of the settings lands in it when it is open here.
       await startupStepAsync('legacy secrets', () => AbeleConfig.getInstance().moveLegacySecrets())
+      if (this.unloaded) return
       // Announce before layout-ready so cold-start links wait for the first pull.
 
       startupStep('settings look', () => applySettingsLook(AbeleConfig.getInstance()))
@@ -525,7 +554,9 @@ export default class AbelePlugin extends Plugin {
         if (Platform.isDesktopApp)
           this.register(enlargeSettingsWindow((this.app as any).setting ?? {}, window))
       })
-      this.app.workspace.onLayoutReady(() => startupStep('sync', () => this.initSync()))
+      this.app.workspace.onLayoutReady(() => {
+        if (!this.unloaded) startupStep('sync', () => this.initSync())
+      })
 
       // The store takes the week start and the rest of what it draws from out of the settings.
       startupStep('store', () => GlobalStore.getInstance().init(this.app))
@@ -553,6 +584,7 @@ export default class AbelePlugin extends Plugin {
       // and getFileCache() return complete data.
       // One step each: an index that throws no longer keeps the ones after it from being built.
       this.app.workspace.onLayoutReady(() => {
+        if (this.unloaded) return
         startupStep('tasks index', () => GlobalStore.getInstance().initTasksList())
         startupStep('finance index', () => GlobalStore.getInstance().initFinance())
         startupStep('time tracking index', () => GlobalStore.getInstance().initTimeTracking())
@@ -636,6 +668,7 @@ export default class AbelePlugin extends Plugin {
       // registration/layout work, not the asynchronous jobs launched by the callbacks.
       if (!this.unloaded)
         this.app.workspace.onLayoutReady(() => {
+          if (this.unloaded) return
           this.starting = false
           markLoad('layoutEnd')
         })
@@ -741,6 +774,7 @@ export default class AbelePlugin extends Plugin {
       this.scriptsFolderStarted = ai.scriptsFolder
       const generation = (this.scriptStartGeneration = (this.scriptStartGeneration ?? 0) + 1)
       this.app.workspace.onLayoutReady(() => {
+        if (this.unloaded) return
         if (!this.scriptsStarted || generation !== this.scriptStartGeneration) return
         const atStart = this.starting
         // A settings migration may start this before view-type registration on a reload.

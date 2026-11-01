@@ -1,3 +1,4 @@
+import { onPluginLayoutReady } from '@/helpers/pluginLayoutReady'
 /**
  * Switches the plugin's drawing of properties on and off with its setting, at once: a change
  * made in the settings or arriving from another device redraws the Properties panels on screen,
@@ -52,7 +53,7 @@ export function registerPropertyWidgets(plugin: Plugin): void {
   // Drawn once the layout is there: panels already open from the last session were drawn
   // before the plugin loaded. `file` and `files` get their types then, when the vault's own
   // are known, so notes that already have them show cards without a type picked by hand.
-  plugin.app.workspace.onLayoutReady(() => {
+  onPluginLayoutReady(plugin, () => {
     if (widgets.active) assignFileKeys(plugin.app)
     redrawProperties(plugin.app)
   })

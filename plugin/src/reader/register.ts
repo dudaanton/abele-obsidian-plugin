@@ -1,3 +1,4 @@
+import { onPluginLayoutReady } from '@/helpers/pluginLayoutReady'
 import { t } from '@/i18n'
 /**
  * The book reader's hooks into Obsidian: the tab type, `.epub` files opening in it, "Open in
@@ -139,7 +140,7 @@ export function registerReader(plugin: Plugin): void {
     if (on && !taken) void adoptPdfLeaves(app, BOOK_VIEW_TYPE)
     taken = on
   }
-  app.workspace.onLayoutReady(apply)
+  onPluginLayoutReady(plugin, apply)
   const stop = watch(
     settingsSlice(() => currentReaderSettings().pdfInReader),
     apply

@@ -1,3 +1,4 @@
+import { onPluginLayoutReady } from '@/helpers/pluginLayoutReady'
 /**
  * Today's exchange rates wired into the running plugin: the cache file beside its settings (this
  * device only, never synced), the network through `requestUrl`, the two settings, and the moments
@@ -53,7 +54,7 @@ export function startExchangeRates(plugin: Plugin): ExchangeRateService {
   )
   exchangeRates.refresh = () => void service.refresh()
 
-  plugin.app.workspace.onLayoutReady(() => {
+  onPluginLayoutReady(plugin, () => {
     void service.load().then(() => {
       if (service.due()) void service.refresh()
     })

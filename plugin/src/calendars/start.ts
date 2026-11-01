@@ -1,3 +1,4 @@
+import { onPluginLayoutReady } from '@/helpers/pluginLayoutReady'
 /**
  * The calendars wired into the running plugin: the cache file beside its settings, the network
  * through `requestUrl`, the keychain for the links and passwords, and the moments they are read.
@@ -55,7 +56,7 @@ export function startCalendars(plugin: Plugin): CalendarService {
   })
   setCalendars(service)
 
-  plugin.app.workspace.onLayoutReady(() => {
+  onPluginLayoutReady(plugin, () => {
     // The kept events first, so the lists fill at once; the network after.
     void service.load().then(() => {
       if (config.calendars.feeds.some((f) => f.enabled)) void service.refresh()

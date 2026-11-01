@@ -1,3 +1,4 @@
+import { onPluginLayoutReady } from '@/helpers/pluginLayoutReady'
 import { t } from '@/i18n'
 import type { ItemView, Menu, Plugin, View, WorkspaceLeaf } from 'obsidian'
 import { defineComponent, h, reactive } from 'vue'
@@ -212,7 +213,7 @@ export function registerZen(plugin: Plugin): void {
       windows.delete(win.document)
     })
   )
-  workspace.onLayoutReady(() => {
+  onPluginLayoutReady(plugin, () => {
     scan()
     workspace.iterateAllLeaves((leaf) => {
       if (

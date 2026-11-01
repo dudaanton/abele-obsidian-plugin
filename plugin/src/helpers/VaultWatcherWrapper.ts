@@ -80,7 +80,7 @@ export class VaultWatcherWrapper {
   }
 
   static destroy() {
-    VaultWatcherWrapper.getInstance().cleanup()
+    this.instance?.cleanup()
     this.instance = null
   }
 

@@ -1,3 +1,4 @@
+import { onPluginLayoutReady } from '@/helpers/pluginLayoutReady'
 /**
  * A highlight's forms, in its note, shown as a link: tapped, the book opens with its search on
  * those forms, every place they stand listed (`wordsSearch.ts`). Where the note has them written —
@@ -247,7 +248,7 @@ export function registerFormsLinks(plugin: Plugin): void {
   plugin.registerMarkdownPostProcessor(formsLinkPostProcessor)
   plugin.registerEditorExtension(editorLinks(app))
   const reload = (): void => void loadFrames(app)
-  app.workspace.onLayoutReady(reload)
+  onPluginLayoutReady(plugin, reload)
   plugin.register(watch(settingsSlice(templatePaths), reload))
   plugin.registerEvent(
     app.vault.on('modify', (file) => {

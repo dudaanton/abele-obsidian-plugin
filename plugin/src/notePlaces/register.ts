@@ -1,3 +1,4 @@
+import { onPluginLayoutReady } from '@/helpers/pluginLayoutReady'
 /**
  * Notes come back where they were left: the scroll and the cursor of each, kept on this device.
  *
@@ -274,7 +275,7 @@ export function registerNotePlaces(plugin: Plugin): void {
     if (currentPlaceKeeper() === k) setPlaceKeeper(null)
   })
 
-  app.workspace.onLayoutReady(() => {
+  onPluginLayoutReady(plugin, () => {
     // The vault is listed by now: a place for a note that is gone is dropped.
     k.prune((path) => !!app.vault.getFileByPath(path))
     void adoptAndWarn(plugin, k, store)

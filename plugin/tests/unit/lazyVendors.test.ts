@@ -2,10 +2,8 @@
 import { expect, it } from 'vitest'
 import { build } from 'vite'
 import { runInNewContext } from 'node:vm'
-import { singleFileLazyPlugin } from '../../scripts/single-file-lazy.mjs'
-import { lazyVendorsPlugin } from '../../scripts/lazy-vendors.mjs'
 
-it('initializes optional CommonJS libraries once on use, never during module evaluation', async () => {
+it('initializes standard CommonJS libraries once and preserves their APIs', async () => {
   const yaml = '/sample/node_modules/js-yaml/index.js'
   const qr = '/sample/node_modules/jsqr/dist/jsQR.js'
   const zip = '/sample/node_modules/fflate/lib/browser.cjs'
@@ -32,10 +30,13 @@ it('initializes optional CommonJS libraries once on use, never during module eva
           if (id === qr) return `globalThis.initialized.push('qr'); module.exports = x => x;`
         },
       },
-      lazyVendorsPlugin(),
-      singleFileLazyPlugin(),
     ],
-    build: { write: false, minify: false, lib: { entry: '/sample/entry.js', formats: ['cjs'] } },
+    build: {
+      commonjsOptions: { ignore: ['stream'] },
+      write: false,
+      minify: false,
+      lib: { entry: '/sample/entry.js', formats: ['cjs'] },
+    },
   })
   const outputs = (Array.isArray(code) ? code : [code]).flatMap((one) => one.output)
   const chunk = outputs.find((one) => one.type === 'chunk')!
@@ -49,7 +50,8 @@ it('initializes optional CommonJS libraries once on use, never during module eva
       throw new Error('Unexpected native import')
     },
   })
-  expect(initialized).toEqual([])
+  // Standard bundling eagerly evaluates imports; the removed proxies deferred them.
+  expect(initialized).toHaveLength(4)
   expect(module.exports.read()).toEqual(['sample', 'pixels', 'bytes', 'archive'])
   expect(module.exports.read()).toEqual(['sample', 'pixels', 'bytes', 'archive'])
   expect(initialized).toEqual(['yaml', 'qr', 'zip', 'archive'])
@@ -57,7 +59,7 @@ it('initializes optional CommonJS libraries once on use, never during module eva
   expect(module.exports.derived()).toBe('derived')
 })
 
-it('keeps real YAML, QR and compression APIs intact without eager table construction', async () => {
+it('keeps real YAML, QR and compression APIs intact in the standard bundle', async () => {
   const { resolve } = await import('node:path')
   const zip = resolve('node_modules/fflate/lib/browser.cjs')
   const archive = resolve('node_modules/jszip/lib/index.js')
@@ -92,10 +94,13 @@ it('keeps real YAML, QR and compression APIs intact without eager table construc
             )
         },
       },
-      lazyVendorsPlugin(),
-      singleFileLazyPlugin(),
     ],
-    build: { write: false, minify: false, lib: { entry: '/sample-real.js', formats: ['cjs'] } },
+    build: {
+      commonjsOptions: { ignore: ['stream'] },
+      write: false,
+      minify: false,
+      lib: { entry: '/sample-real.js', formats: ['cjs'] },
+    },
   })
   const outputs = (Array.isArray(code) ? code : [code]).flatMap((one) => one.output)
   const initialized: string[] = [],
@@ -112,10 +117,11 @@ it('keeps real YAML, QR and compression APIs intact without eager table construc
       throw new Error('No optional native streams')
     },
   })
-  expect(initialized).toEqual([])
+  // Standard bundling eagerly evaluates imports; the removed proxies deferred them.
+  expect(initialized).toHaveLength(4)
   expect(module.exports.run()).toEqual({ yaml: { sample: true, n: 3 }, zip: [1, 2, 3], qr: null })
   expect(module.exports.run()).toEqual({ yaml: { sample: true, n: 3 }, zip: [1, 2, 3], qr: null })
-  expect(initialized).toHaveLength(3)
+  expect(initialized).toHaveLength(4)
   expect(
     Object.keys(module.exports.zip)
       .filter((key) => key !== 'default')

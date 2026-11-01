@@ -67,6 +67,161 @@ async function fixture() {
   console.debug('[production sharing] initial exchange complete')
   return { ...native, id, owner, token, shared, server }
 }
+it.each([
+  'locale catalog',
+  'settings',
+  'local script approvals',
+  'sync connection',
+  'synced secrets',
+  'legacy secrets',
+  'settings tab',
+  'views',
+  'presentations',
+  'bases views',
+  'vue',
+  'editor',
+  'workspace events',
+  'commands',
+  'links',
+])('stops startup at %s on unload and permits an immediate clean reload', async (group) => {
+  let stopped = false
+  let draining: Promise<void> | undefined
+  const late: string[] = []
+  const measure = performance.measure.bind(performance)
+  let unload: () => Promise<void>
+  const spy = vi.spyOn(performance, 'measure').mockImplementation((...args) => {
+    const name = String(args[0])
+    if (stopped && name.startsWith('abele:start:')) late.push(name)
+    const result = measure(...args)
+    if (name === `abele:start:${group}` && !stopped) {
+      stopped = true
+      draining = unload()
+    }
+    return result
+  })
+  try {
+    const interrupted = await bootProductionPlugin(code, (_plugin, close) => {
+      unload = close
+    })
+    hosts.push(interrupted)
+    await draining
+    expect(stopped).toBe(true)
+    expect(late).toEqual([])
+    expect(document.getElementById('abele-vue-root')).toBeNull()
+  } finally {
+    spy.mockRestore()
+  }
+  const replacement = await device()
+  expect(replacement.settings()).toBeInstanceOf(HTMLElement)
+})
+
+it.each([
+  'registerViews',
+  'registerBasesViews',
+  'initializeVue',
+  'registerEditor',
+  'registerWorkspaceEvents',
+  'registerCommands',
+  'registerLinks',
+])('does not register after unload while %s awaits its task or import', async (method) => {
+  let stopped = false
+  let draining: Promise<void> | undefined
+  const late: string[] = []
+  const interrupted = await bootProductionPlugin(code, (plugin, close) => {
+    for (const name of [
+      'register',
+      'registerEvent',
+      'registerInterval',
+      'registerDomEvent',
+      'registerView',
+      'registerBasesView',
+      'registerExtensions',
+      'registerEditorExtension',
+      'registerMarkdownPostProcessor',
+      'registerMarkdownCodeBlockProcessor',
+      'registerObsidianProtocolHandler',
+      'addSettingTab',
+      'addCommand',
+      'addRibbonIcon',
+    ]) {
+      const register = plugin[name].bind(plugin)
+      plugin[name] = (...args: unknown[]) => {
+        if (stopped) {
+          late.push(name)
+          console.debug('[startup interruption] late registration', name, new Error().stack)
+        }
+        return register(...args)
+      }
+    }
+    const registerGroup = plugin[method].bind(plugin)
+    plugin[method] = async () => {
+      const waiting = registerGroup()
+      stopped = true
+      draining = close()
+      await waiting
+    }
+  })
+  hosts.push(interrupted)
+  await draining
+  expect(stopped).toBe(true)
+  expect(late).toEqual([])
+  expect(document.getElementById('abele-vue-root')).toBeNull()
+  const replacement = await device()
+  expect(replacement.settings()).toBeInstanceOf(HTMLElement)
+})
+
+it.each(['abele-sync-device-credentials-v1', 'abele-sync-host-v1'])(
+  'abandons pending %s startup storage on unload without leaking handles or installing an engine',
+  async (database) => {
+    let stopped = false
+    let draining: Promise<void> | undefined
+    let spy: ReturnType<typeof vi.spyOn> | undefined
+    const late: string[] = []
+    const opened: IDBDatabase[] = []
+    const closed = new Set<IDBDatabase>()
+    try {
+      const interrupted = await bootProductionPlugin(code, (plugin, close) => {
+        const register = plugin.register.bind(plugin)
+        plugin.register = (dispose: () => void) => {
+          if (stopped) late.push('register')
+          return register(dispose)
+        }
+        const factory = window.indexedDB
+        const open = factory.open.bind(factory)
+        spy = vi.spyOn(factory, 'open').mockImplementation((name, version) => {
+          const request = open(name, version)
+          request.addEventListener('success', () => {
+            const db = request.result
+            opened.push(db)
+            const closeDatabase = db.close.bind(db)
+            db.close = () => {
+              closed.add(db)
+              closeDatabase()
+            }
+          })
+          if (name === database && !stopped) {
+            stopped = true
+            draining = close()
+          }
+          return request
+        })
+      })
+      hosts.push(interrupted)
+      await draining
+      expect(stopped).toBe(true)
+      expect(late).toEqual([])
+      // The plugin's initial no-engine sentinel is null. Startup must leave it unchanged.
+      expect(interrupted.plugin.tokenEngines).toBeNull()
+      expect(opened.length).toBeGreaterThan(0)
+      expect(opened.filter((db) => !closed.has(db)).map((db) => db.name)).toEqual([])
+    } finally {
+      spy?.mockRestore()
+    }
+    const replacement = await device()
+    expect(replacement.settings()).toBeInstanceOf(HTMLElement)
+  }
+)
+
 it('gives the host a task boundary between production registration groups', async () => {
   let active = true,
     turn = 0

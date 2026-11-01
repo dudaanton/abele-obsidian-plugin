@@ -1,3 +1,4 @@
+import { onPluginLayoutReady } from '@/helpers/pluginLayoutReady'
 import { t } from '@/i18n'
 import {
   type Editor,
@@ -69,7 +70,7 @@ export function registerAiFeatures(
       { immediate: true }
     )
   )
-  plugin.app.workspace.onLayoutReady(() => {
+  onPluginLayoutReady(plugin, () => {
     void agents.start()
   })
   plugin.registerEvent(
@@ -212,7 +213,7 @@ export function registerAiFeatures(
 
   // The same question at startup, which is where most of it is answered: the index is plugin
   // device's own cache (`chat-index.json`), so every chat another device wrote is behind.
-  plugin.app.workspace.onLayoutReady(() => {
+  onPluginLayoutReady(plugin, () => {
     void ChatStorage.getInstance().refreshHistory()
   })
 
@@ -322,10 +323,10 @@ export function registerAiFeatures(
       }),
   })
   // Over the workspace, so only once there is one to be over.
-  plugin.app.workspace.onLayoutReady(() => applyQuickButton())
+  onPluginLayoutReady(plugin, () => applyQuickButton())
 
   // Command buttons among the icons at the top right of a note; see `headerButtons/viewActions.ts`.
-  plugin.app.workspace.onLayoutReady(() => {
+  onPluginLayoutReady(plugin, () => {
     const commands = new HeaderCommands()
     setHeaderCommands(commands)
     commands.start(plugin)
@@ -334,7 +335,7 @@ export function registerAiFeatures(
   // The first start in a vault: no settings file yet. The documentation is the way in, and it
   // is shown once — the settings are written straight after, so the next start is not a first.
   if (AbeleConfig.getInstance().freshInstall) {
-    plugin.app.workspace.onLayoutReady(() => {
+    onPluginLayoutReady(plugin, () => {
       void openUserDocs(plugin.app)
       void AbeleConfig.getInstance().saveSettings()
     })

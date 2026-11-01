@@ -1,3 +1,4 @@
+import { onPluginLayoutReady } from '@/helpers/pluginLayoutReady'
 import { t } from '@/i18n'
 import type { App, Plugin } from 'obsidian'
 import { noticeWithActions } from '@/components/obsidian/notice'
@@ -25,7 +26,7 @@ export function registerChangelog(plugin: Plugin): void {
         write: (value) => app.saveLocalStorage(CHANGELOG_VERSION_KEY, value),
       },
       runningVersion,
-      (callback) => app.workspace.onLayoutReady(callback),
+      (callback) => onPluginLayoutReady(plugin, callback),
       (range) => showOffer(app, range)
     )
   )

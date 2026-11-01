@@ -1,3 +1,4 @@
+import { onPluginLayoutReady } from '@/helpers/pluginLayoutReady'
 import { t } from '@/i18n'
 import { ViewPlugin } from '@codemirror/view'
 import { editorInfoField, Notice, TFile, TFolder, type Plugin } from 'obsidian'
@@ -18,7 +19,7 @@ export function registerCanvas(plugin: Plugin): void {
   canvasDocuments(app).registerLifecycle(plugin)
   plugin.registerView(CANVAS_VIEW_TYPE, (leaf) => new CanvasView(leaf))
   plugin.registerView(CANVAS_IMAGE_VIEW_TYPE, (leaf) => new CanvasImageView(leaf))
-  app.workspace.onLayoutReady(() => {
+  onPluginLayoutReady(plugin, () => {
     plugin.register(canvasNewFileLocation(app, () => AbeleConfig.getInstance().canvasViewer))
   })
   let pending = 0,
@@ -40,7 +41,7 @@ export function registerCanvas(plugin: Plugin): void {
         })
     }, 40)
   }
-  app.workspace.onLayoutReady(adopt)
+  onPluginLayoutReady(plugin, adopt)
   plugin.registerEvent(app.workspace.on('file-open', adopt))
   plugin.registerEvent(app.workspace.on('layout-change', adopt))
   plugin.registerEvent(

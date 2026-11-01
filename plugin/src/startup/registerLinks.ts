@@ -1,3 +1,4 @@
+import { onPluginLayoutReady } from '@/helpers/pluginLayoutReady'
 import { TFile } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { TemplateService } from '@/templates/TemplateService'
@@ -35,7 +36,7 @@ export function registerLinks(plugin: Plugin) {
   })
 
   // Register default template hook only after workspace is ready
-  plugin.app.workspace.onLayoutReady(() => {
+  onPluginLayoutReady(plugin, () => {
     plugin.registerEvent(
       plugin.app.vault.on('create', async (file) => {
         if (!(file instanceof TFile)) return

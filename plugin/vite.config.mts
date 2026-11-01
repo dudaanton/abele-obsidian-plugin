@@ -14,9 +14,6 @@ import { syncPlacementPlugin } from './scripts/sync-placement.mjs'
 import { syncSdkBrowserPlugin } from './scripts/sync-sdk-browser.mjs'
 import { singleZodV3Plugin } from './scripts/single-zod-v3.mjs'
 import { hyperFormulaCataloguePlugin } from './scripts/hyperformula-catalogue.mjs'
-import { schemaPurityPlugin } from './scripts/schema-purity.mjs'
-import { singleFileLazyPlugin } from './scripts/single-file-lazy.mjs'
-import { lazyVendorsPlugin } from './scripts/lazy-vendors.mjs'
 import { i18nAssetsPlugin } from './scripts/i18n-assets.mjs'
 import { deferredPackagePlugin } from './scripts/deferred-package.mjs'
 
@@ -98,8 +95,6 @@ export default defineConfig(async ({ mode }) => {
         // JSZip's browser distribution embeds legacy polyfills, bypassing package aliases.
         // Use its modular entry so both schedulers can be replaced without editing dependencies.
         jszip: path.resolve(__dirname, 'node_modules/jszip/lib/index.js'),
-        'js-yaml': path.resolve(__dirname, 'node_modules/js-yaml/index.js'),
-        fflate: path.resolve(__dirname, 'node_modules/fflate/lib/browser.cjs'),
         immediate: path.resolve(__dirname, 'src/shims/immediate.ts'),
         setimmediate: path.resolve(__dirname, 'src/shims/setimmediate.ts'),
       },
@@ -116,9 +111,6 @@ export default defineConfig(async ({ mode }) => {
         target: BUILD_TARGET,
         minify: optimized,
       }),
-      schemaPurityPlugin(),
-      singleFileLazyPlugin(),
-      lazyVendorsPlugin(),
       i18nAssetsPlugin(__dirname),
       syncPlacementPlugin(),
       syncSdkBrowserPlugin(),
@@ -190,9 +182,8 @@ export default defineConfig(async ({ mode }) => {
       outDir: 'build',
       rollupOptions: {
         output: {
-          // Keep dynamic imports lazy while shipping one file; singleFileLazyPlugin embeds
-          // the rendered chunks as cached factories rather than eager inline imports.
-          inlineDynamicImports: false,
+          // The installed plugin ships one JavaScript file, including dynamic imports.
+          inlineDynamicImports: true,
           // The first statement of the file: the load-time probe tells Obsidian reading and
           // compiling `main.js` apart from the modules running. See `src/helpers/loadMarks.ts`.
           intro: EVAL_START_INTRO,

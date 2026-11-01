@@ -61,9 +61,14 @@ export async function productionPluginCode(): Promise<string> {
   return stdout
 }
 
-export async function bootProductionPlugin(code: string) {
+export async function bootProductionPlugin(
+  code: string,
+  prepared?: (plugin: any, unload: () => Promise<void>) => void
+) {
   const app = buildFakeVault([]) as any
   app.appId = 'sample-' + crypto.randomUUID()
+  app.vault.getConfig = (key: string) =>
+    key === 'tabSize' ? 4 : key === 'showIndentGuide' ? true : undefined
   const ready: Array<() => void> = []
   let layoutReady = false
   Object.assign(app.workspace, {
@@ -188,7 +193,8 @@ export async function bootProductionPlugin(code: string) {
   const safeStorage = {
     isEncryptionAvailable: () => true,
     encryptString: (value: string) => Buffer.from(value.split('').reverse().join('')),
-    decryptString: (value: Uint8Array) => Buffer.from(value).toString().split('').reverse().join(''),
+    decryptString: (value: Uint8Array) =>
+      Buffer.from(value).toString().split('').reverse().join(''),
   }
   Object.defineProperty(window, 'electron', {
     configurable: true,
@@ -231,8 +237,25 @@ export async function bootProductionPlugin(code: string) {
     registerObsidianProtocolHandler: () => {},
     addRibbonIcon: () => {},
   })
+  let closed = false
+  const close = async () => {
+    if (closed) return
+    closed = true
+    const host = plugin.tokenEngines
+    try {
+      plugin.onunload()
+    } finally {
+      for (const dispose of disposals.splice(0).reverse()) dispose()
+    }
+    await host?.close()
+    for (const listener of [...destroyed]) listener()
+    if (handlers.size) throw new Error('Sample window retained IPC handlers after destruction')
+  }
+  prepared?.(plugin, close)
   await plugin.onload()
   layoutReady = true
+  // Deliberately deliver callbacks even after unloading, as a host callback already queued
+  // before unload can still run. The plugin must fence its own work.
   ready.splice(0).forEach((fn) => fn())
   return {
     app,
@@ -249,15 +272,6 @@ export async function bootProductionPlugin(code: string) {
       tab.display()
       return tab.containerEl as HTMLElement
     },
-    close: async () => {
-      const host = plugin.tokenEngines
-      plugin.onunload()
-      // The plugin closes this synchronously and records its async work in the reload barrier.
-      // Awaiting it here is cleanup observation, never fixture-installed teardown wiring.
-      await host?.close()
-      for (const listener of [...destroyed]) listener()
-      if (handlers.size) throw new Error('Sample window retained IPC handlers after destruction')
-      for (const dispose of disposals.splice(0).reverse()) dispose()
-    },
+    close,
   }
 }

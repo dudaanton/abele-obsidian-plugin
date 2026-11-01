@@ -1,3 +1,4 @@
+import { onPluginLayoutReady } from '@/helpers/pluginLayoutReady'
 import { t } from '@/i18n'
 import { MarkdownView, Platform, TFile, TFolder, type Plugin, type WorkspaceLeaf } from 'obsidian'
 import { newDeck } from './newDeck'
@@ -169,7 +170,7 @@ export function registerSlides(plugin: Plugin): void {
     window.clearTimeout(pending)
     pending = window.setTimeout(sync, 30)
   }
-  app.workspace.onLayoutReady(schedule)
+  onPluginLayoutReady(plugin, schedule)
   plugin.registerEvent(app.workspace.on('file-open', schedule))
   plugin.registerEvent(app.workspace.on('layout-change', schedule))
   plugin.registerEvent(app.metadataCache.on('changed', schedule))

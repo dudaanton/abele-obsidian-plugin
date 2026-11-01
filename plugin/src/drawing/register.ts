@@ -1,3 +1,4 @@
+import { onPluginLayoutReady } from '@/helpers/pluginLayoutReady'
 import { t } from '@/i18n'
 /** Picture editing and read-only legacy drawing compatibility. */
 import { ViewPlugin } from '@codemirror/view'
@@ -40,7 +41,7 @@ export function registerDrawing(plugin: Plugin): void {
     () => app.workspace.getLeavesOfType('image').map((leaf) => leaf.view as unknown as PictureTab),
     (path) => void openImageInk(app, path)
   )
-  app.workspace.onLayoutReady(() => pens.sync())
+  onPluginLayoutReady(plugin, () => pens.sync())
   plugin.registerEvent(app.workspace.on('layout-change', () => pens.sync()))
   plugin.registerEvent(app.workspace.on('file-open', () => pens.sync()))
   plugin.register(() => pens.stop())
