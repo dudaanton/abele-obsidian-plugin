@@ -44,6 +44,7 @@ for (const fault of [
   'composed',
   'directory-projection',
   'directory-interruption',
+  'path-candidates',
   'admission',
   'pause-notification',
   'pause-admission',
@@ -67,7 +68,10 @@ for (const fault of [
     // The test's signal stops this pull when the case times out. Otherwise it keeps running
     // beside the next case, through the next case's desktop filesystem port.
     async ({ signal: ended }) => {
-      const directoryCase = fault === 'directory-projection' || fault === 'directory-interruption'
+      const directoryCase =
+        fault === 'directory-projection' ||
+        fault === 'directory-interruption' ||
+        fault === 'path-candidates'
       const normal = ![
         'directory-flush',
         'publication',
@@ -77,7 +81,9 @@ for (const fault of [
         'second-ledger-abort',
       ].includes(fault)
       const count = directoryCase
-        ? 2048
+        ? fault === 'path-candidates'
+          ? 2000
+          : 2048
         : fault.startsWith('install-fingerprint-single')
           ? 1
           : fault === 'acknowledgement-reads'
@@ -122,7 +128,7 @@ for (const fault of [
       // The directory manifest is installed before its file payloads in a real pull.
       // Populate that native tree; an empty adapter would hide whole-tree projections.
       if (directoryCase)
-        for (let i = 0; i < 128; i++) {
+        for (let i = 0; i < (fault === 'path-candidates' ? 1 : 128); i++) {
           const path = `Notes/Section ${i}`
           await disk.mkdir(join(root, path), { recursive: true })
           await app.vault.adapter.mkdir(path)
@@ -287,7 +293,9 @@ for (const fault of [
         new ObsidianFileSystem(app as unknown as App, {
           storage: host,
           ledger: state,
-          ...(fault === 'acknowledgement-reads' || fault === 'directory-interruption'
+          ...(fault === 'acknowledgement-reads' ||
+          fault === 'directory-interruption' ||
+          fault === 'path-candidates'
             ? { prepareStartupInventory: async () => {} }
             : {}),
           ...(fault === 'install-fingerprint-inflight'
@@ -351,6 +359,7 @@ for (const fault of [
         })
       }
       instrumentDirectories()
+      let coreChildren = 0
       let composed: import('@abele/sync-sdk/core').FileSystem | undefined
       const makeComposed = async () => {
         if (fault === 'composed' || directoryCase) {
@@ -408,6 +417,20 @@ for (const fault of [
         }
       }
       await makeComposed()
+      if (fault === 'path-candidates') {
+        const target = composed!
+        composed = new Proxy(target, {
+          get(fs, key) {
+            const value = Reflect.get(fs, key)
+            if (key === 'listChildren' || key === Symbol.for('abele.sync.inventory-children-v1'))
+              return (...args: unknown[]) => {
+                coreChildren++
+                return value.apply(fs, args)
+              }
+            return typeof value === 'function' ? value.bind(fs) : value
+          },
+        })
+      }
       const bytes = new Uint8Array(size).fill(37)
       const payload = (i: number) => {
         const result = bytes.slice()
@@ -420,7 +443,7 @@ for (const fault of [
           file_id: `sample-file-${i}`,
           version_id: `sample-version-${i}`,
           seq: i + 1,
-          path: `Notes/Section ${i % (directoryCase ? 128 : 16)}/Sample ${directoryCase ? 'K ' : ''}${i}.bin`,
+          path: `Notes/Section ${i % (fault === 'path-candidates' ? 1 : directoryCase ? 128 : 16)}/Sample ${directoryCase ? 'K ' : ''}${i}.bin`,
           sha: await sha256(payload(i)),
           size,
           mtime: 2000,
@@ -553,14 +576,18 @@ for (const fault of [
               placementConcurrency: 16,
               onApplied: () => {
                 installed++
+                if (fault === 'path-candidates' && installed === 1)
+                  Object.assign(app.metadataCache, { isCacheClean: () => false })
                 if (fault === 'directory-interruption' && installed === stopAfter) stopped.abort()
                 if (fault === 'pause-notification' && installed === 1) stopped.abort()
                 if (installed % 256 === 0 || installed === count) sample()
               },
             }
           )
+        // Indexed hosts run pull inside the engine's inventory pass, including
+        // publication proofs for parents that the host has not indexed yet.
         const run = () =>
-          directoryCase
+          directoryCase || fault === 'acknowledgement-reads'
             ? Reflect.get(files, Symbol.for('abele.sync.inventory-pass-v1')).call(
                 files,
                 async () => {
@@ -931,6 +958,17 @@ for (const fault of [
           return
         }
         const report = await run()
+        if (fault === 'path-candidates') {
+          console.log('[path-candidate-counts]', {
+            installed,
+            coreChildren,
+            childCalls,
+            directoryCalls,
+            directoryItems,
+          })
+          expect(installed).toBe(2000)
+          expect(coreChildren).toBe(0)
+        }
         if (directoryCase) {
           console.log(
             '[directory-projection-counts]',
@@ -1001,6 +1039,7 @@ for (const fault of [
       : fault === 'none'
         ? 1_200_000
         : fault === 'install-fingerprint-backlog' ||
+            fault === 'path-candidates' ||
             fault === 'directory-projection' ||
             fault === 'directory-interruption'
           ? 120_000

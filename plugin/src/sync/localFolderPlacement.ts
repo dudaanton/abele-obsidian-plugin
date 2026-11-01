@@ -1,6 +1,6 @@
 import { PRIVATE_REMOVAL_FILES, privateRemovalFileSystem } from './privateRemovalFileSystem'
 import { pathAdmission } from '@abele/sync-sdk/core'
-import { AbeleError } from '@abele/sync-sdk/protocol'
+import { caseKey, AbeleError } from '@abele/sync-sdk/protocol'
 import { FINGERPRINT_UPLOAD, UPLOAD_READ } from './mobileWholeRead'
 import type { FileSystem, StateStore, StateEntry, AtomicStage } from '@abele/sync-sdk/core'
 import { assertPhysicalPath } from './external/projection'
@@ -46,6 +46,7 @@ export const placementMethods = {
   conditionalFile: 'opaque',
   conditionalOwnership: 'opaque',
   trustedIndexIdentities: 'opaque',
+  trustedPathCandidates: 'opaque',
   conditionalCapture: 'opaque',
   installedFile: 'opaque',
   discardInstallation: 'opaque',
@@ -227,6 +228,47 @@ export class LocalFolderPlacement {
                 )
         }
         const value = Reflect.get(target, key)
+        if (key === 'trustedPathCandidates' && value) {
+          const port: NonNullable<FileSystem['trustedPathCandidates']> = value
+          return {
+            lookup: async (directory: string, name: string) => {
+              const root = placement.server
+              if (directory === '' || root.startsWith(directory + '/')) {
+                const next = root
+                  .split('/')
+                  .slice(0, directory ? directory.split('/').length + 1 : 1)
+                  .join('/')
+                if (caseKey(next.slice(next.lastIndexOf('/') + 1)) !== caseKey(name)) return []
+                const local = placement.local,
+                  split = local.lastIndexOf('/')
+                const rows = await port.lookup(
+                  split < 0 ? '' : local.slice(0, split),
+                  local.slice(split + 1)
+                )
+                return rows
+                  ?.filter((row) => row.path === local)
+                  .map((row) =>
+                    next === root
+                      ? { ...row, path: next }
+                      : { path: next, kind: 'directory' as const }
+                  )
+              }
+              if (directory !== root && !directory.startsWith(root + '/')) return undefined
+              const rows = await port.lookup(placement.toLocal(directory), name)
+              return rows?.map((row) => ({
+                ...row,
+                path: placement.toServer(row.path, 'trustedPathCandidates.lookup', true),
+              }))
+            },
+            lstat: async (path: string) => {
+              if (placement.server.startsWith(path + '/')) {
+                const stat = await port.lstat(placement.local)
+                return stat?.kind === 'directory' ? { kind: 'directory' as const } : stat
+              }
+              return port.lstat(placement.toLocal(path))
+            },
+          } satisfies NonNullable<FileSystem['trustedPathCandidates']>
+        }
         if (typeof value !== 'function') return value
         if (
           key === Symbol.for('abele.sync.unchanged-index-path-v1') ||

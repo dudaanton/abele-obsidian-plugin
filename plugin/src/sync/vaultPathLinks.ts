@@ -140,6 +140,17 @@ export async function assertVaultMetadataPath(
   )
 }
 
+/** Candidate leaves are not followed; their ancestry is checked afresh, not from inventory. */
+async function assertVaultCandidatePath(
+  adapter: DataAdapter & LinkAdapter,
+  path: string
+): Promise<void> {
+  if (Reflect.get(adapter, Symbol.for('abele.sync.scoped-adapter-v1')))
+    return Reflect.get(adapter, Symbol.for('abele.sync.scoped-candidate-path-guard-v1'))(path)
+  const parent = path.slice(0, Math.max(0, path.lastIndexOf('/')))
+  await assertVaultPath(adapter, parent)
+}
+
 export async function assertVaultPath(
   adapter: DataAdapter & LinkAdapter,
   path: string
@@ -824,6 +835,8 @@ interface NodeFsPromises {
   ): Promise<{
     isSymbolicLink(): boolean
     isFile?(): boolean
+    isDirectory?(): boolean
+    birthtimeMs?: number
     dev?: unknown
     ino?: unknown
     birthtimeNs?: unknown
@@ -853,6 +866,9 @@ interface NodeFsPromises {
   }>
 }
 export interface NativeFs {
+  pathCandidateStat?(
+    path: string
+  ): Promise<{ kind: 'file' | 'directory' | 'symlink' | 'other'; birth?: number } | null>
   fileIdentity?(path: string): Promise<string | null>
   fileContentRevision?(path: string): Promise<string | null>
   restoreDirectoryExclusive?(from: string, to: string): Promise<void>
@@ -932,6 +948,28 @@ export function nativeOf(
       await reconcile(path)
     },
   }
+  if (fsp.lstat)
+    native.pathCandidateStat = async (path) => {
+      await assertVaultCandidatePath(adapter, path)
+      assertEffect([path], false)
+      try {
+        const stat = await fsp.lstat(at(path))
+        assertEffect([path], false)
+        return {
+          kind: stat.isSymbolicLink()
+            ? 'symlink'
+            : stat.isDirectory?.()
+              ? 'directory'
+              : stat.isFile?.()
+                ? 'file'
+                : 'other',
+          birth: stat.birthtimeMs,
+        }
+      } catch (error) {
+        if (['ENOENT', 'ENOTDIR'].includes((error as { code?: string }).code ?? '')) return null
+        throw error
+      }
+    }
   if (fsp.lstat)
     native.fileIdentity = async (path) => {
       await assertVaultMetadataPath(adapter, path)
@@ -2146,6 +2184,11 @@ export function connectionAdapter(
         }
       }
       if (key === CONNECTION_ROOT_SYMLINK) return rootSymlink
+      if (key === Symbol.for('abele.sync.scoped-candidate-path-guard-v1'))
+        return (path: string) => {
+          check(path, 'stat')
+          return assertVaultCandidatePath(adapter, path)
+        }
       if (key === Symbol.for('abele.sync.scoped-metadata-path-guard-v1'))
         return (path: string) => {
           check(path, 'stat')

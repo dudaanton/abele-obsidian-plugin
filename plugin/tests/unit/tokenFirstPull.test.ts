@@ -220,6 +220,8 @@ it.each([
           size: stat.size,
           mtimeMs: stat.mtime,
           ctimeMs: stat.ctime,
+          // Match the creation time returned by this host adapter.
+          birthtimeMs: stat.ctime,
           isSymbolicLink: () => false,
           isDirectory: () => stat.type === 'folder',
           isFile: () => stat.type === 'file',

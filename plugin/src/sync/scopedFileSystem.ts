@@ -1,3 +1,4 @@
+import { caseKey } from '@abele/sync-sdk/protocol'
 import { PRIVATE_REMOVAL_FILES, privateRemovalFileSystem } from './privateRemovalFileSystem'
 import { FINGERPRINT_UPLOAD, UPLOAD_READ } from './mobileWholeRead'
 import { pathAdmission, EngineError, type FileSystem, type AtomicStage } from '@abele/sync-sdk/core'
@@ -75,6 +76,41 @@ export function scopedFileSystem(
         }
       }
       const value = Reflect.get(target, key)
+      if (key === 'trustedPathCandidates' && value) {
+        const port: NonNullable<FileSystem['trustedPathCandidates']> = value
+        const root = () =>
+          typeof scopeRootInput === 'function' ? scopeRootInput() : scopeRootInput
+        return {
+          lookup: async (directory: string, name: string) => {
+            const scope = root()
+            const ancestor = scope && (directory === '' || scope.startsWith(directory + '/'))
+            if (ancestor) {
+              const next = scope
+                .split('/')
+                .slice(0, directory ? directory.split('/').length + 1 : 1)
+                .join('/')
+              if (caseKey(next.slice(next.lastIndexOf('/') + 1)) !== caseKey(name)) return []
+              const rows = await port.lookup(directory, name)
+              return rows
+                ?.filter((row) => row.path === next)
+                .map((row) => (next === scope ? row : { path: row.path, kind: row.kind }))
+            }
+            if (!includes(directory)) return undefined
+            assertPath(directory)
+            const rows = await port.lookup(directory, name)
+            return rows?.filter((row) => includes(row.path))
+          },
+          lstat: async (path: string) => {
+            const scope = root()
+            if (scope && scope.startsWith(path + '/')) {
+              const stat = await port.lstat(scope)
+              return stat?.kind === 'directory' ? { kind: 'directory' as const } : stat
+            }
+            assertPath(path)
+            return port.lstat(path)
+          },
+        } satisfies NonNullable<FileSystem['trustedPathCandidates']>
+      }
       if (typeof value !== 'function') return value
       if (key === Symbol.for('abele.sync.local-scan-revision-v1'))
         return () => {

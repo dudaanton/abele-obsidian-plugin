@@ -1,3 +1,4 @@
+import { indexedPathBucket, invalidateIndexedPathCandidates } from './indexedPathCandidates'
 import { PRIVATE_REMOVAL_FILES, privateRemovalFileSystem } from './privateRemovalFileSystem'
 import { inspectedAbsent, invalidateInspectedAbsence } from './inspectionDirectories'
 import { SyncTaskBudget, yieldSyncTask } from './syncTaskBudget'
@@ -322,6 +323,88 @@ export class ObsidianFileSystem implements FileSystem {
   get trustedIndexIdentities(): true | undefined {
     return this.prepareStartupInventory ? true : undefined
   }
+  private candidateDirectories = new WeakMap<object, { path: string; identity: Promise<string> }>()
+  get trustedPathCandidates(): FileSystem['trustedPathCandidates'] {
+    const native = this.native
+    if (
+      !this.prepareStartupInventory ||
+      !native?.pathCandidateStat ||
+      this.discovery?.roots.length === 0 ||
+      (this.discovery !== undefined && !this.scopedRoot())
+    )
+      return undefined
+    // Before a scoped root has an index row, its virtual traversal ancestors may
+    // not exist yet. Keep bootstrap on the existing contained physical fallback.
+    const scope = this.scopedRoot()
+    if (scope && !(this.app.vault.getAbstractFileByPath(scope) instanceof TFolder)) return undefined
+    return {
+      lookup: async (directory, name) => {
+        if (
+          // A pass already waited for startup indexing. Content metadata can become
+          // busy during a pull without making the vault's current children stale.
+          (!this.inventory && !this.indexReady()) ||
+          name.startsWith('.') ||
+          directory.split('/').some((part) => part.startsWith('.')) ||
+          (directory !== '' &&
+            !this.withinFileScope(directory) &&
+            !this.scopedRoot()?.startsWith(directory + '/'))
+        )
+          return undefined
+        if (directory) assertPhysicalPath(directory)
+        assertPhysicalPath(name)
+        if (name.includes('/')) return undefined
+        const rows = indexedPathBucket(this.app.vault, directory, name, this.indexWaitSignal?.())
+        if (rows === undefined) return undefined
+        // An installed parent may precede its host index row. Its existing physical
+        // spelling fallback remains authoritative until that row arrives.
+        const child = directory ? directory + '/' + name : name
+        if (
+          rows.length === 0 &&
+          (this.inventory?.publishedParents?.has(child) ||
+            (this.withinFileScope(child) && this.directories.knownIdentity(child) !== undefined))
+        )
+          return undefined
+        const result = []
+        for (const row of rows) {
+          const ancestor = row.kind === 'directory' && this.scopedRoot()?.startsWith(row.path + '/')
+          if ((!this.withinFileScope(row.path) && !ancestor) || !this.inventoryVisible(row.path))
+            continue
+          if (ancestor) result.push({ path: row.path, kind: row.kind })
+          else if (row.kind === 'file') result.push({ path: row.path, kind: row.kind })
+          else {
+            let saved = this.candidateDirectories.get(row.node)
+            if (!saved || saved.path !== row.path) {
+              saved = {
+                path: row.path,
+                identity: Promise.resolve(
+                  this.directories.knownIdentity(row.path) ??
+                    this.directories.identity(row.path, true)
+                ),
+              }
+              this.candidateDirectories.set(row.node, saved)
+              const pending = saved
+              void saved.identity.catch(() => {
+                if (this.candidateDirectories.get(row.node) === pending)
+                  this.candidateDirectories.delete(row.node)
+              })
+            }
+            result.push({ path: row.path, kind: row.kind, identity: await saved.identity })
+          }
+        }
+        return result
+      },
+      lstat: async (path) => {
+        assertPhysicalPath(path)
+        if (!this.withinFileScope(path))
+          throw new EngineError('protocol', 'Candidate path is outside the connection')
+        const stat = await native.pathCandidateStat(path)
+        if (!stat) return null
+        return stat.kind === 'directory' && typeof stat.birth === 'number'
+          ? { kind: stat.kind, identity: this.directories.knownIdentity(path, stat.birth) }
+          : { kind: stat.kind }
+      },
+    }
+  }
   /** A named host event or pending adapter write invalidates the read-only index shortcut. */
   [Symbol.for('abele.sync.unchanged-index-path-v1')](path: string): boolean {
     return this.unchangedIndexReason(path) === 'hit'
@@ -625,6 +708,8 @@ export class ObsidianFileSystem implements FileSystem {
   }
   private async inventoryPass<T>(work: () => Promise<T>): Promise<T> {
     if (this.inventoryDepth === 0) {
+      invalidateIndexedPathCandidates(this.app.vault)
+      this.candidateDirectories = new WeakMap()
       await this.waitForStartupIndex()
       this.indexFallback = false
       this.indexReady()
@@ -642,7 +727,8 @@ export class ObsidianFileSystem implements FileSystem {
       created = false
     ) => {
       invalidateMetadataInventory(this.app.vault)
-      this.directories.invalidateInventory()
+      // File membership changes do not change a directory birth/identity.
+      if (file.children) this.directories.invalidateInventory()
       this.invalidateRootChain([file.path, ...(previous ? [previous] : [])])
       if (!inventory) return
       for (const path of [file.path, ...(previous ? [previous] : [])]) {
@@ -1920,6 +2006,7 @@ export class ObsidianFileSystem implements FileSystem {
             'syncFile',
             'sameObject',
             'fileIdentity',
+            'pathCandidateStat',
           ],
           false
         )

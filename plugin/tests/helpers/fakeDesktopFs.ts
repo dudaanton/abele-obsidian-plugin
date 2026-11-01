@@ -90,6 +90,8 @@ export function withDesktopFs(
           size: 'size' in stat ? stat.size : 0,
           mtimeMs: 'mtime' in stat ? stat.mtime : 0,
           ctimeMs: 'ctime' in stat ? stat.ctime : 0,
+          // The host's ctime is creation time, represented by native birthtimeMs.
+          birthtimeMs: 'ctime' in stat ? stat.ctime : 0,
           isSymbolicLink: () => false,
           isDirectory: () => stat.type === 'folder',
           isFile: () => stat.type === 'file',

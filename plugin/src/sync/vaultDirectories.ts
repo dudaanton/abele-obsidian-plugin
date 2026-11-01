@@ -86,6 +86,7 @@ export class VaultDirectories {
     this.storage.saveLocalStorage(KEY, records)
     if (JSON.stringify(this.storage.loadLocalStorage(KEY)) !== expected)
       throw new Error('Local directory identity was not stored')
+    this.identitySnapshot = undefined
   }
   private removals() {
     return removalSchema.parse(this.storage.loadLocalStorage(REMOVALS) ?? [])
@@ -342,6 +343,16 @@ export class VaultDirectories {
     await this.disk.mkdir(path)
     this.saveRemovals(this.removals().filter((one) => one.path !== path))
   }
+  /** Saved evidence only: a candidate probe must never certify a replacement. */
+  knownIdentity(path: string, birth?: number): string | undefined {
+    this.assertPath(path, 'known identity', true)
+    let saved: { birth: number; identity: string } | undefined
+    if (this.inventoryUsers) {
+      this.identitySnapshot ??= new Map(this.records().map((one) => [one.path, one]))
+      saved = this.identitySnapshot.get(path)
+    } else saved = this.records().find((one) => one.path === path)
+    return saved && (birth === undefined || saved.birth === birth) ? saved.identity : undefined
+  }
   /** A received directory needs only its own identity, not another walk of the vault. */
   async identity(path: string, advisory = false): Promise<string> {
     this.assertPath(path, 'identity', true)
@@ -356,7 +367,10 @@ export class VaultDirectories {
     // A miss/effect always reloads the shared document before publishing a change.
     const records = this.records()
     const same = records.find((one) => one.path === path && one.birth === stat.ctime)
-    if (same) return same.identity
+    if (same) {
+      this.identitySnapshot?.set(path, same)
+      return same.identity
+    }
     const identity = crypto.randomUUID()
     this.save([
       ...records.filter((one) => one.path !== path),

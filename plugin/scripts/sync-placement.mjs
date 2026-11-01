@@ -906,8 +906,10 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         )
         code = replaceOnce(
           code,
-          'for (const child of await fs.listChildren(parent)) {\n                const checkpoint = work.step();\n                if (checkpoint)\n                    await checkpoint;\n                result.add(child);',
-          'for (const child of await inventoryChildren(fs, parent, path)) {\n                const checkpoint = work.step();\n                if (checkpoint) await checkpoint;\n                result.add(child);'
+          'const children = candidates ?? (await fs.listChildren(parent));',
+          // An indexed port's undefined answer requires the physical fallback, not
+          // another host-index shortcut. Hosts without the port keep their existing path.
+          'const children = candidates ?? (await (indexed ? fs.listChildren(parent) : inventoryChildren(fs, parent, path)));'
         )
       } else if (file.endsWith('/pullPlace.js')) {
         code = replaceOnce(
@@ -975,7 +977,9 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
                 await this.fs[Symbol.for('abele.sync.replay-stage-v1')]?.() === false))) &&
             (await fingerprintFile(this.fs, path, this.hash)).sha !== entry.sha)`
         )
-        code = `import { settledStat } from './apply.js';\nimport { receiveToStage as receivePlacementSource } from './streaming.js';\n` + code
+        code =
+          `import { settledStat } from './apply.js';\nimport { receiveToStage as receivePlacementSource } from './streaming.js';\n` +
+          code
         if (!code.includes('fingerprintFile(this.fs,'))
           throw boundaryError(id, 'fingerprintFile(this.fs,', 0, 'at least 1')
         code = code.replaceAll('fingerprintFile(this.fs,', 'fingerprintPlacementFile(this.fs,')
