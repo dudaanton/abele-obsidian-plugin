@@ -8,6 +8,7 @@ import { createServer } from 'node:http'
 import { connect, type Socket } from 'node:net'
 import { evalLong, evalRaw, reloadApp } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
+import { shotDir } from './helpers/shots'
 
 // The node side panel's own views, in the desktop and phone shells: the place row and its search
 // over every worktree, one gone from disk among them; the header's modes, with a repository's
@@ -17,14 +18,14 @@ import { targets } from './helpers/target'
 // in its own tab; and a change staged, committed and another discarded from the panel.
 targets('desktop')
 const cli = process.env.ABELE_NODE_CLI
-const shots = process.env.ABELE_E2E_SHOTS
+const shots = shotDir('abele-node-sidebar')
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const prelude = `const api=window.__abeleTest,nodes=api.NodeService.getInstance();const wait=ms=>new Promise(r=>setTimeout(r,ms));const until=async f=>{for(let i=0;i<400;i++){if(f())return;await wait(50)}throw Error('Node side panel did not settle: '+f.toString())};const visible=selector=>[...document.querySelectorAll(selector)].find(el=>el.getBoundingClientRect().width>0&&getComputedStyle(el).visibility!=='hidden'&&!el.closest('.workspace-leaf.mod-hidden'));const rowOf=(root,text)=>[...root.querySelectorAll('.tree-item-self')].find(r=>r.querySelector('.abele-tree-item__text')?.textContent===text);const closeMenu=()=>document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));const drawer=async()=>{if(!app.isMobile)return;await wait(300);app.workspace.leftSplit.expand();await until(()=>visible('.abele-node-place__row'))};const tab=m=>visible('.abele-node-modes [role="tab"][aria-label^="'+m+'"]');const shownMode=m=>tab(m)?.getAttribute('aria-selected')==='true';const pickMode=async m=>{await until(()=>tab(m));if(!shownMode(m))tab(m).click();await until(()=>shownMode(m))};const menuItem=t=>[...document.querySelectorAll('.menu-item')].find(i=>i.textContent.includes(t));const placeMenu=async t=>{closeMenu();await drawer();visible('.abele-node-place > .abele-obsidian-icon').click();await until(()=>menuItem(t));return menuItem(t)};const suggestion=t=>[...document.querySelectorAll('.suggestion-item')].find(i=>i.querySelector('.suggestion-title')?.textContent===t);const closePrompt=async()=>{const input=document.querySelector('.prompt-input');input?.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}));await wait(150);if(document.querySelector('.prompt'))document.querySelector('.modal-container .modal-bg')?.click();await until(()=>!document.querySelector('.prompt'))};const group=(tree,t)=>[...tree.querySelectorAll('.abele-file-tree__group')].find(g=>g.querySelector(':scope > .tree-item-self .abele-tree-item__text')?.textContent===t);const reopenPanel=async id=>{for(const leaf of app.workspace.getLeavesOfType('abele-node-sidebar'))leaf.detach();const leaf=app.workspace.getLeftLeaf(false);await leaf.setViewState({type:'abele-node-sidebar',active:true,state:{registrationId:id}});await app.workspace.revealLeaf(leaf);if(app.isMobile)app.workspace.leftSplit.expand();await until(()=>visible('.abele-node-panel_ready .abele-node-place__row'))};`
 async function capture(name: string) {
-  if (!shots) return
   await evalLong(
     `(async()=>{await new Promise(r=>setTimeout(r,300));const path=${JSON.stringify(resolve(shots, 'node-sidebar-' + name + '.png'))};require('fs').mkdirSync(require('path').dirname(path),{recursive:true});const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(path,image.toPNG());return 'captured'})()`
   )
+  console.log('Screenshot:', resolve(shots, 'node-sidebar-' + name + '.png'))
 }
 
 const deep = [
@@ -201,6 +202,17 @@ it('shows changed files, a missing worktree, the external worktree switch and a 
         `(async()=>{${prelude}const model=api.NodePathService.getInstance().model(${reg});await model.refresh();model.panelMode.value='files';await model.select(${root});await drawer();await until(()=>shownMode('Changes'));if(!tab('Files')||!tab('History'))throw Error('The header lacks the Files or History mode: '+visible('.abele-node-modes')?.outerHTML);if(!tab('Changes').getAttribute('aria-label').startsWith('Changes: 6 files'))throw Error('The Changes mode does not count the changed files: '+tab('Changes').getAttribute('aria-label'));if(visible('.abele-node-panel .nav-action-button[aria-label="Refresh"]')||visible('.abele-node-panel__node'))throw Error('The old header glyphs or node row stand beside a selected place');if(visible('.abele-node-place__name')?.textContent!=='trunk')throw Error('The place row does not name the branch: '+visible('.abele-node-place')?.textContent);if(visible('.abele-node-place__where')?.textContent!=='sample-repository')throw Error('The folder is not named under the branch: '+visible('.abele-node-place')?.textContent);const tree=visible('.abele-file-tree');await until(()=>tree.textContent.includes('SampleSettingsPanel.vue')&&group(tree,'Changes')&&group(tree,'Staged'));if(tree.querySelector('.abele-file-tree__mode'))throw Error('The tree draws its own mode glyphs under the panel modes');const changes=group(tree,'Changes'),staged=group(tree,'Staged'),at=(g,p)=>g.querySelector('.tree-item-self[data-path="'+p+'"]');if(!at(changes,${JSON.stringify(deep[0])})||at(staged,${JSON.stringify(deep[0])}))throw Error('The unstaged file is not under Changes alone: '+tree.textContent);if(!at(staged,${JSON.stringify(deep[1])})||!at(staged,${JSON.stringify(deep[2])}))throw Error('The staged files are not under Staged: '+staged.textContent);if(group(tree,'Committed'))throw Error('A Committed group on a branch that is not ahead of its base');if(!rowOf(staged,'packages/sample-app/src')||!rowOf(staged,'components/panels/settings'))throw Error('A folder holding one folder was not joined into one row: '+staged.textContent);return 'changed tree'})()`
       )
       await capture(prefix + '-changed-tree')
+      // Hold catalogue completion to capture the real picker opening with an empty cache.
+      try {
+        await evalLong(
+          `(async()=>{${prelude}await drawer();const model=api.NodePathService.getInstance().model(${reg}),folders=model.folders.value,refresh=model.refresh;let release;model.refresh=()=>new Promise(r=>{release=r});window.__abelePickerCaptureCleanup=()=>{model.refresh=refresh;release?.()};try{model.folders.value=[];visible('.abele-node-place__row').click()}finally{model.folders.value=folders}await until(()=>document.querySelector('.prompt progress'));if(document.querySelectorAll('.prompt').length!==1||document.querySelector('.prompt .suggestion-item'))throw Error('The empty-cache picker did not open alone before refresh');return 'empty picker loading'})()`
+        )
+        await capture(prefix + '-place-empty-loading')
+      } finally {
+        await evalLong(
+          `(async()=>{${prelude}window.__abelePickerCaptureCleanup?.();delete window.__abelePickerCaptureCleanup;await closePrompt();return 'picker restored'})()`
+        )
+      }
       // The place search lists every worktree, the one shown marked, the one gone from disk saying
       // so; picking another switches the panel, which opens it on its files when nothing changed.
       await evalLong(
