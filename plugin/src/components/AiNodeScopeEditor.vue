@@ -391,7 +391,18 @@ async function refreshStatus() {
         }
       })
     )
-    if (entries.value === snapshot) states.value = Object.fromEntries(result)
+    if (entries.value === snapshot) {
+      const next = Object.fromEntries(result)
+      const connected = snapshot.filter((entry) => {
+        const key = nodeScopeKey(entry)
+        return next[key]?.connected && !states.value[key]?.connected
+      })
+      states.value = next
+      const found = await Promise.all(
+        connected.map(async (entry) => [nodeScopeKey(entry), await nodeScopeNames(entry)] as const)
+      )
+      if (entries.value === snapshot) names.value = { ...names.value, ...Object.fromEntries(found) }
+    }
   } finally {
     refreshingStatus = false
   }

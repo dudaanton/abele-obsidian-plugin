@@ -39,3 +39,35 @@ it('lists every branch across pages, including a project with just one branch, a
   expect(choices.every((c) => c.entry.access === 'read')).toBe(true)
   expect(worktrees).toHaveBeenCalledWith({ project_id: 'sample-many', cursor: 'sample-next' })
 })
+
+it.each(['stale_resource', 'repository_unavailable'])(
+  'keeps healthy projects selectable when one project reports %s',
+  async (code) => {
+    const host = {
+      nodes: () => [{ id: 'sample-registration', label: 'Sample node' }],
+      connection: () => ({
+        client: {
+          connected: true,
+          listProjects: async () =>
+            ['missing', 'healthy'].map((id) => ({
+              project_id: id,
+              root_path: `/samples/${id}`,
+              repository_path: `/samples/${id}`,
+            })),
+          repository: {
+            worktrees: async ({ project_id }: { project_id: string }) => {
+              if (project_id === 'missing') throw Object.assign(new Error(code), { code })
+              return {
+                entries: [{ worktree_id: 'healthy-tree', branch: 'main', path_label: '/healthy' }],
+                cursor: null,
+              }
+            },
+          },
+        },
+      }),
+    }
+    const choices = await nodeFolderChoices(host as never)
+    expect(choices.some((c) => c.entry.kind === 'target' && c.branch === 'main')).toBe(true)
+    expect(choices.some((c) => c.entry.project_id === 'missing')).toBe(false)
+  }
+)

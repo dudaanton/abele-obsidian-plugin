@@ -1335,7 +1335,10 @@ folder to search connected projects and branches; or use Give a chat access in t
 Save as agent default copies the chat's complete access and asking mode for new chats.
 
 A model starts with `node_nodes`, then `node_folders` for one node, which lists each folder's
-`project` ID, whether it is Git, and its worktree or workspace IDs. Every other tool takes
+`project` ID, whether it is Git, and its worktree or workspace IDs. A disappeared or stale
+folder is listed with `missing: true` and no targets; it does not prevent listing healthy
+folders. This does not relax identity or access checks for operations on a selected target.
+Every other tool takes
 `node`, `project`, `workspace` (opaque target ID), and `target_kind` (`worktree` for Git,
 `workspace` for a plain folder). Omit all three IDs when the chat was given exactly one folder
 or worktree, or after `node_worktree_switch` chose one; a chat that may reach more is told to

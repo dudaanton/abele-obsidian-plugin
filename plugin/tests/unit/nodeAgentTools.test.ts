@@ -758,6 +758,26 @@ describe('Obsidian chat node tools', () => {
     expect(session.saveForRelease).toHaveBeenCalled()
     await expect(call('node_worktree_switch', { project: 'other-project' })).rejects.toThrow()
   })
+  it.each(['stale_resource', 'repository_unavailable'])(
+    'isolates a missing project in node_folders (%s)',
+    async (code) => {
+      const { call, session, ledger, client } = setup()
+      session.overrides.value.nodeScope = [{ kind: 'node', node_id: 'sample-node', access: 'read' }]
+      ledger.approve(session, { 'sample-node': 'sample-pin:0' })
+      client.listProjects.mockResolvedValue([
+        { ...project, project_id: 'missing-project', root_path: '/missing' },
+        project,
+      ])
+      client.listWorkspaces.mockImplementation(async (...args: unknown[]) => {
+        if (args[0] === 'missing-project') throw Object.assign(new Error(code), { code })
+        return [workspace]
+      })
+      const result = await call('node_folders')
+      expect(result.content[0].text).toContain('sample-project')
+      expect(result.content[0].text).toContain('missing-project')
+      expect(result.content[0].text).toContain('"missing": true')
+    }
+  )
   it('never grants scope from an approved generic call or leaks unrelated catalogue entries', async () => {
     const { call, session, ledger, client } = setup()
     client.listProjects.mockResolvedValue([

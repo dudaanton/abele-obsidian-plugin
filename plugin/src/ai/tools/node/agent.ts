@@ -523,68 +523,86 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
               )
             )
               continue
-            const workspaces = []
-            let workspaceAfter: string | undefined
-            for (let page = 0; page < 64; page++) {
-              const batch = await safe(() =>
-                connection.client.listWorkspaces(project.project_id, workspaceAfter)
-              )
-              workspaces.push(
-                ...batch.filter((workspace) =>
-                  scopes.some((entry) =>
-                    coversNodeScope(
-                      entry,
-                      {
-                        node_id: node,
-                        project_id: project.project_id,
-                        target: { kind: 'workspace', workspace_id: workspace.workspace_id },
-                      },
-                      'read'
-                    )
-                  )
-                )
-              )
-              if (batch.length < 100) break
-              workspaceAfter = batch.at(-1)!.workspace_id
-            }
-            const worktrees = []
-            if (project.repository_path) {
-              let cursor: string | undefined
+            try {
+              const workspaces = []
+              let workspaceAfter: string | undefined
               for (let page = 0; page < 64; page++) {
                 const batch = await safe(() =>
-                  connection.client.repository.worktrees({ project_id: project.project_id, cursor })
+                  connection.client.listWorkspaces(project.project_id, workspaceAfter)
                 )
-                worktrees.push(
-                  ...batch.entries.filter((entry) =>
-                    scopes.some((scope) =>
+                workspaces.push(
+                  ...batch.filter((workspace) =>
+                    scopes.some((entry) =>
                       coversNodeScope(
-                        scope,
+                        entry,
                         {
                           node_id: node,
                           project_id: project.project_id,
-                          target: { kind: 'worktree', worktree_id: entry.worktree_id },
+                          target: { kind: 'workspace', workspace_id: workspace.workspace_id },
                         },
                         'read'
                       )
                     )
                   )
                 )
-                if (!batch.cursor) break
-                if (cursor === batch.cursor) throw new Error('Invalid worktree cursor')
-                cursor = batch.cursor
+                if (batch.length < 100) break
+                workspaceAfter = batch.at(-1)!.workspace_id
               }
+              const worktrees = []
+              if (project.repository_path) {
+                let cursor: string | undefined
+                for (let page = 0; page < 64; page++) {
+                  const batch = await safe(() =>
+                    connection.client.repository.worktrees({
+                      project_id: project.project_id,
+                      cursor,
+                    })
+                  )
+                  worktrees.push(
+                    ...batch.entries.filter((entry) =>
+                      scopes.some((scope) =>
+                        coversNodeScope(
+                          scope,
+                          {
+                            node_id: node,
+                            project_id: project.project_id,
+                            target: { kind: 'worktree', worktree_id: entry.worktree_id },
+                          },
+                          'read'
+                        )
+                      )
+                    )
+                  )
+                  if (!batch.cursor) break
+                  if (cursor === batch.cursor) throw new Error('Invalid worktree cursor')
+                  cursor = batch.cursor
+                }
+              }
+              result.push({
+                project: project.project_id,
+                label: project.root_path,
+                git: !!project.repository_path,
+                workspaces: workspaces.map((workspace) => ({
+                  workspace_id: workspace.workspace_id,
+                  kind: workspace.kind,
+                  state: workspace.state,
+                })),
+                worktrees,
+              })
+            } catch (error) {
+              if (childReadGuard) await childReadGuard()
+              guard()
+              const code = (error as { code?: string }).code
+              if (code !== 'stale_resource' && code !== 'repository_unavailable') throw error
+              result.push({
+                project: project.project_id,
+                label: project.root_path,
+                git: !!project.repository_path,
+                missing: true,
+                workspaces: [],
+                worktrees: [],
+              })
             }
-            result.push({
-              project: project.project_id,
-              label: project.root_path,
-              git: !!project.repository_path,
-              workspaces: workspaces.map((workspace) => ({
-                workspace_id: workspace.workspace_id,
-                kind: workspace.kind,
-                state: workspace.state,
-              })),
-              worktrees,
-            })
           }
           if (projects.length < 100) return retain(result)
           const next = projects.at(-1)!.project_id

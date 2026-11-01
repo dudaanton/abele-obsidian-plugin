@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const node = vi.hoisted(() => ({
   connected: false,
+  paged: false,
   worktrees: [] as { worktree_id: string; branch: string; path_label: string }[],
 }))
 vi.mock('@/ai/tools/node/owner', () => ({
@@ -34,7 +35,12 @@ const sampleConnection = () => ({
         repository_path: '/work/sample-app',
       },
     ],
-    repository: { worktrees: async () => ({ entries: node.worktrees }) },
+    repository: {
+      worktrees: async ({ cursor }: { cursor?: string }) =>
+        node.paged && !cursor
+          ? { entries: [], cursor: 'sample-next' }
+          : { entries: node.worktrees },
+    },
   },
 })
 import { forgetNodeScopeNames, nodeScopeNames } from '@/ai/tools/node/scopeNames'
@@ -47,6 +53,7 @@ const place = {
 beforeEach(() => {
   forgetNodeScopeNames()
   node.connected = false
+  node.paged = false
   node.worktrees = []
 })
 
@@ -79,4 +86,11 @@ describe('the names of a place on a node', () => {
     node.worktrees.push({ worktree_id: 'sample-tree', branch: 'refs/heads/main', path_label: '/x' })
     expect((await nodeScopeNames(place)).branch).toBe('main')
   })
+})
+
+it('resolves branch labels beyond the first catalogue page', async () => {
+  node.connected = true
+  node.paged = true
+  node.worktrees = [{ worktree_id: 'sample-tree', branch: 'refs/heads/topic', path_label: '/x' }]
+  expect((await nodeScopeNames(place)).branch).toBe('topic')
 })

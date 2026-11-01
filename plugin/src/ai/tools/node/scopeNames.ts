@@ -100,8 +100,18 @@ function branchNames(nodeId: string, projectId: string, git: boolean) {
       const names = new Map<string, string>()
       const client = await clientOf(nodeId)
       if (git) {
-        const { entries } = await client.repository.worktrees({ project_id: projectId })
-        for (const w of entries) names.set(w.worktree_id, shortBranch(w.branch, w.path_label))
+        let cursor: string | undefined
+        const seen = new Set<string>()
+        for (let page = 0; page < 64; page++) {
+          const batch = await client.repository.worktrees({ project_id: projectId, cursor })
+          for (const w of batch.entries)
+            names.set(w.worktree_id, shortBranch(w.branch, w.path_label))
+          if (!batch.cursor) break
+          if (seen.has(batch.cursor) || page === 63)
+            throw new Error('Node folder list exceeds the page limit')
+          seen.add(batch.cursor)
+          cursor = batch.cursor
+        }
       } else {
         for (const w of await client.listWorkspaces(projectId))
           names.set(w.workspace_id, lastPart(w.path))

@@ -67,7 +67,24 @@ export async function nodeFolderChoices(host: NodeAgentHost): Promise<NodeFolder
       let cursor: string | undefined
       const seen = new Set<string>()
       for (let page = 0; page < 64; page++) {
-        const batch = await client.repository.worktrees({ project_id: project.project_id, cursor })
+        let batch
+        try {
+          batch = await client.repository.worktrees({ project_id: project.project_id, cursor })
+        } catch (error) {
+          // A vanished registration is not a failure of the other folders on this node.
+          const code = (error as { code?: string }).code
+          if (code !== 'stale_resource' && code !== 'repository_unavailable') throw error
+          for (let index = out.length - 1; index >= 0; index--) {
+            const entry = out[index]!.entry
+            if (
+              entry.kind !== 'node' &&
+              entry.node_id === node.id &&
+              entry.project_id === project.project_id
+            )
+              out.splice(index, 1)
+          }
+          break
+        }
         for (const tree of batch.entries) {
           const generated = generatedWorktreeId(tree.branch) ?? generatedWorktreeId(tree.path_label)
           const title =

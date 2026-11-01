@@ -437,3 +437,60 @@ describe('node scope beside vault scope and in the header', () => {
     view.unmount()
   })
 })
+
+it('refreshes grant labels after the node connects without changing the grant', async () => {
+  vi.useFakeTimers()
+  const session = setup()
+  session.overrides.value.nodeScope = [
+    {
+      kind: 'target',
+      node_id: 'reconnected-node',
+      project_id: 'reconnected-project',
+      target: { kind: 'worktree', worktree_id: 'reconnected-tree' },
+      access: 'read',
+    },
+  ] as never
+  let connected = false
+  mocks.host.mockResolvedValue({
+    nodes: () => [{ id: 'reconnected-node', label: 'Sample node' }],
+    connection: () => ({
+      client: {
+        get connected() {
+          return connected
+        },
+        describe: async () => ({ providers: [] }),
+        listProjects: async () => [
+          {
+            project_id: 'reconnected-project',
+            root_path: '/samples/reconnected-app',
+            repository_path: '/samples/reconnected-app',
+          },
+        ],
+        repository: {
+          worktrees: async () => ({
+            entries: [
+              {
+                worktree_id: 'reconnected-tree',
+                branch: 'refs/heads/topic',
+                path_label: '/samples/topic',
+              },
+            ],
+          }),
+        },
+      },
+    }),
+  })
+  const view = mount(AiNodeScopeEditor, { props: { session } })
+  try {
+    await flushPromises()
+    connected = true
+    await vi.advanceTimersByTimeAsync(1100)
+    await flushPromises()
+    expect(view.text()).toContain('reconnected-app')
+    expect(view.text()).toContain('topic')
+    expect(view.text()).not.toContain('reconnected-tree')
+  } finally {
+    view.unmount()
+    vi.useRealTimers()
+  }
+})
