@@ -19,7 +19,6 @@ import './styles.css'
 import { GlobalStore } from './stores/GlobalStore'
 import { registerFocusRelease } from './helpers/fieldFocus'
 import { createApp, App as VueApp, watch } from 'vue'
-import VueEntry from './App.vue'
 import { AbeleConfig } from './services/AbeleConfig'
 import { AgentRegistry } from './ai/agents/AgentRegistry'
 import { mobileBackground } from './ai/mobileBackground'
@@ -31,34 +30,9 @@ import './commands/noteMenu'
 import './commands/noteActions'
 import './scripting/scriptPath'
 import './templates/TemplateService'
-import './editor/TaskPlugin'
-import './editor/GalleryPlugin'
-import './editor/galleryPostProcessor'
-import '@/components/obsidian/markdownParts'
-import './editor/MermaidPlugin'
-import './editor/EditorSyntax'
-import './mermaid/mermaidBlocks'
-import './editor/FootnotePlugin'
-import './editor/HighlightPlugin'
-import './editor/highlightPostProcessor'
-import '@/editor/CommentPlugin'
-import './views/TimelineSidebarView'
-import './views/TodoSidebarView'
-import './views/AiSidebarView'
-import './views/FinanceSidebarView'
-import './views/AccountsSidebarView'
 import { revealSidebarView } from './views/revealSidebarView'
-import './views/TimeTrackingSidebarView'
-import './views/ScriptRunsView'
-import './views/UserDocsView'
 import { registerChangelog } from './changelog/register'
-import './views/ScriptView'
-import './bases/ChartView'
 import './analytics/sources/baseProbe'
-import './bases/FindAndReplaceView'
-import './bases/CalendarView'
-import './bases/TimelineView'
-import './views/CodeView'
 import { registerDrawing } from './drawing/register'
 import { registerCanvas } from './canvas/register'
 import { registerReader } from './reader/register'
@@ -72,7 +46,6 @@ import { NodeService } from './node/NodeService'
 import { AgentsService } from './agents/AgentsService'
 import { closeAgents } from './agents/openAgents'
 import { CommentService } from './ai/CommentService'
-import './comments/register'
 import { ScriptService } from './scripting/ScriptService'
 import { AutomationService } from './automations/AutomationService'
 import { ScriptViewService } from './scripting/view/ScriptViewService'
@@ -89,24 +62,17 @@ import weekday from 'dayjs/plugin/weekday'
 import updateLocale from 'dayjs/plugin/updateLocale'
 import dayOfYear from 'dayjs/plugin/dayOfYear'
 import dayjs from 'dayjs'
-import { AbeleSettingTab } from './settings'
-import './editor/HeaderExtension'
 import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
 import { exposeTestApi } from '@/testing/exposeTestApi'
 import './helpers/vaultUtils'
 import './helpers/runAfterSync'
 import './helpers/protocolHandler'
 import './helpers/linkHandler'
-import './editor/ChartCodeblock'
-import './editor/MapCodeblock'
-import './ai/messageCards'
 import { SnippetService } from './services/SnippetService'
 import { startCalendars } from './calendars/start'
 import { startExchangeRates } from './finance/rates/start'
 import '@/audio/voiceModal'
 import { registerLineLinks } from './lineLinks/register'
-import './checkboxes/register'
-import './columns/register'
 import './columns/styles.css'
 import { registerAttachmentRules } from './media/attachmentRulesHook'
 import { registerNotePlaces } from './notePlaces/register'
@@ -115,6 +81,7 @@ import { secrets, setSecrets } from '@/secrets/SecretStore'
 import { createPluginSecrets } from '@/secrets/host'
 import { initializeDestinations, checkRequestDestinations } from '@/secrets/destinations'
 import { setRequestGuard } from '@/helpers/http'
+import { yieldSyncTask } from './sync/syncTaskBudget'
 import { markLoad } from '@/helpers/loadMarks'
 import { uninstallUntrustedGuard } from '@/markdown/renderUntrusted'
 import { beginStartup, startupStep, startupStepAsync } from '@/helpers/startupSteps'
@@ -137,19 +104,13 @@ import { SyncStartupTimeline, timedSyncTransport } from './sync/startupTimeline'
 import { openDeviceReviews } from './sync/openDeviceReviews'
 import { transportOf } from './sync/environment'
 import { watchTheFront, watchSyncQuit } from './sync/phone'
-import { TokenEngines } from './sync/tokenEngines'
+import type { TokenEngines } from './sync/tokenEngines'
 import { renderStatus, type SyncStatus } from './sync/status'
 import { unrenderKit } from './components/obsidian/mount'
 import { tokenStatus } from './sync/tokenStatus'
 import { mountPhoneSyncAction } from './sync/phoneSyncAction'
 import { openAbeleSettings } from './components/settings/settingsTab'
 // Keep the extracted section last so its dependencies do not reorder the existing styles.
-import { registerCoreCommands } from '@/startup/registerCoreCommands'
-import { registerViews } from '@/startup/registerViews'
-import { registerBasesViews } from '@/startup/registerBasesViews'
-import { registerEditor } from '@/startup/registerEditor'
-import { registerWorkspaceEvents } from '@/startup/registerWorkspaceEvents'
-import { registerLinks } from '@/startup/registerLinks'
 import { registerAiFeatures } from '@/startup/registerAiFeatures'
 
 // Every module imported above has run its top-level code by now. See `helpers/loadMarks.ts`.
@@ -164,11 +125,14 @@ export default class AbelePlugin extends Plugin {
   readonly tokenHostStartup: { state: 'starting' | 'ready' | 'failed'; error?: string } = {
     state: 'starting',
   }
+  private unloaded = false
   private syncStarted = false
   private vueApp: VueApp | null = null
   private headerCommands: HeaderCommands | null = null
 
-  initializeVue() {
+  async initializeVue() {
+    const { default: VueEntry } = await import('./App.vue')
+    if (this.unloaded) return
     const rootContainer = createDiv()
     rootContainer.id = 'abele-vue-root'
     document.body.appendChild(rootContainer)
@@ -380,6 +344,8 @@ export default class AbelePlugin extends Plugin {
       const secretStore = createPluginSecrets(this)
       setSecrets(secretStore)
       await startupStepAsync('sync connection', async () => {
+        const { TokenEngines } = await import('./sync/tokenEngines')
+        if (this.unloaded) return
         let hostStorage: Awaited<ReturnType<typeof prepareHostSyncStorage>> | undefined
         let desktopSecrets: DurableTokenSecrets | undefined
         const config = AbeleConfig.getInstance(),
@@ -392,7 +358,12 @@ export default class AbelePlugin extends Plugin {
           }
           if (!Platform.isMobile) {
             const identity = (this.app as typeof this.app & { appId?: string }).appId
-            desktopSecrets = await DurableTokenSecrets.open(window.indexedDB, identity ?? '', keychain, desktopCredentialCipher())
+            desktopSecrets = await DurableTokenSecrets.open(
+              window.indexedDB,
+              identity ?? '',
+              keychain,
+              desktopCredentialCipher()
+            )
           }
           const tokenSecrets = desktopSecrets ?? keychain
           const registry = await prepareTokenConnections(
@@ -409,11 +380,13 @@ export default class AbelePlugin extends Plugin {
             window.indexedDB
           )
           await desktopSecrets?.migrate(
-            registry.records().flatMap((record) =>
-              [record.secretReference, record.pending?.secretReference].filter(
-                (reference): reference is string => !!reference
+            registry
+              .records()
+              .flatMap((record) =>
+                [record.secretReference, record.pending?.secretReference].filter(
+                  (reference): reference is string => !!reference
+                )
               )
-            )
           )
           hostStorage = await prepareHostSyncStorage(this.app, window.indexedDB)
           this.syncTimeline.mark('db-open')
@@ -436,12 +409,7 @@ export default class AbelePlugin extends Plugin {
             scriptsFolder: AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts',
           })
           const transport = timedSyncTransport(transportOf({}), this.syncTimeline)
-          const ui = new TokenUi(
-            registry,
-            tokenSecrets,
-            transport,
-            reviews
-          )
+          const ui = new TokenUi(registry, tokenSecrets, transport, reviews)
           tokenUi.value = ui
           this.register(
             this.syncTimeline.subscribe(({ phase, elapsedMs, at }) => {
@@ -594,14 +562,21 @@ export default class AbelePlugin extends Plugin {
         void startupStepAsync('chat tabs', () => ChatService.getInstance().restoreTabs())
       })
 
-      this.addSettingTab(new AbeleSettingTab(this.app, this))
+      await startupStepAsync('settings tab', async () => {
+        await yieldSyncTask()
+        if (this.unloaded) return
+        const { AbeleSettingTab } = await import('./settings')
+        if (!this.unloaded) this.addSettingTab(new AbeleSettingTab(this.app, this))
+      })
+      if (this.unloaded) return
 
       // On a phone a tap beside a field does not take its focus away, so the keyboard stays up.
       registerFocusRelease(this)
 
       console.debug('Abele Plugin loaded.')
 
-      startupStep('views', () => this.registerViews())
+      await startupStepAsync('views', () => this.registerViews())
+      if (this.unloaded) return
 
       // GitHub issues, pull requests, discussions and files in tabs of their own; off by default.
       startupStep('github', () => registerGithub(this))
@@ -615,6 +590,8 @@ export default class AbelePlugin extends Plugin {
       startupStep('drawings', () => registerDrawing(this))
       startupStep('canvas diagrams', () => registerCanvas(this))
       startupStep('presentations', () => registerSlides(this))
+      await yieldSyncTask()
+      if (this.unloaded) return
 
       // Links to lines of a note — `[[Note#L10-L12]]` — open at those lines; and a way to copy one.
       startupStep('line links', () => registerLineLinks(this))
@@ -631,60 +608,87 @@ export default class AbelePlugin extends Plugin {
       // The linter: notes checked against rules of the person's choosing, a tab listing what is wrong.
       startupStep('linter', () => registerLinter(this))
 
-      startupStep('bases views', () => this.registerBasesViews())
+      await startupStepAsync('bases views', () => this.registerBasesViews())
+      if (this.unloaded) return
 
-      startupStep('vue', () => this.initializeVue())
+      await yieldSyncTask()
+      if (this.unloaded) return
+      await startupStepAsync('vue', () => this.initializeVue())
+      if (this.unloaded) return
 
-      startupStep('editor', () => this.registerEditor())
+      await startupStepAsync('editor', () => this.registerEditor())
+      if (this.unloaded) return
 
-      startupStep('workspace events', () => this.registerWorkspaceEvents())
+      await startupStepAsync('workspace events', () => this.registerWorkspaceEvents())
+      if (this.unloaded) return
 
-      startupStep('commands', () => this.registerCommands())
+      await startupStepAsync('commands', () => this.registerCommands())
+      if (this.unloaded) return
       startupStep('changelog', () => registerChangelog(this))
 
       // AI Agent — conditional on settings, and switched on later as often as at startup
       startupStep('agent', () => this.syncAiFeatures())
 
-      startupStep('links', () => this.registerLinks())
+      await startupStepAsync('links', () => this.registerLinks())
+      if (this.unloaded) return
     } finally {
       // Last even with AI disabled or an unexpected startup failure. These bracket synchronous
       // registration/layout work, not the asynchronous jobs launched by the callbacks.
-      this.app.workspace.onLayoutReady(() => {
-        this.starting = false
-        markLoad('layoutEnd')
-      })
+      if (!this.unloaded)
+        this.app.workspace.onLayoutReady(() => {
+          this.starting = false
+          markLoad('layoutEnd')
+        })
       markLoad('onloadEnd')
     }
   }
 
   /** The panes the plugin opens: the sidebars, the code and documentation tabs. */
-  private registerViews() {
-    registerViews(this)
+  private async registerViews() {
+    await yieldSyncTask()
+    if (this.unloaded) return
+    const { registerViews } = await import('@/startup/registerViews')
+    if (!this.unloaded) registerViews(this)
   }
 
   /** The views the plugin adds to bases. */
-  private registerBasesViews() {
-    registerBasesViews(this)
+  private async registerBasesViews() {
+    await yieldSyncTask()
+    if (this.unloaded) return
+    const { registerBasesViews } = await import('@/startup/registerBasesViews')
+    if (!this.unloaded) registerBasesViews(this)
   }
 
   /** What the plugin adds to notes: editor extensions, post-processors and code blocks. */
-  private registerEditor() {
-    registerEditor(this)
+  private async registerEditor() {
+    await yieldSyncTask()
+    if (this.unloaded) return
+    const { registerEditor } = await import('@/startup/registerEditor')
+    if (!this.unloaded) registerEditor(this)
   }
 
   /** The plugin's answers to what happens in the workspace, and its menu items. */
-  private registerWorkspaceEvents() {
-    registerWorkspaceEvents(this)
+  private async registerWorkspaceEvents() {
+    await yieldSyncTask()
+    if (this.unloaded) return
+    const { registerWorkspaceEvents } = await import('@/startup/registerWorkspaceEvents')
+    if (!this.unloaded) registerWorkspaceEvents(this)
   }
 
   /** The commands and ribbon icons that are there whatever the settings. */
-  private registerCommands() {
-    registerCoreCommands(this)
+  private async registerCommands() {
+    await yieldSyncTask()
+    if (this.unloaded) return
+    const { registerCoreCommands } = await import('@/startup/registerCoreCommands')
+    if (!this.unloaded) registerCoreCommands(this)
   }
 
   /** `obsidian://abele` links, and the default template for notes made from outside. */
-  private registerLinks() {
-    registerLinks(this)
+  private async registerLinks() {
+    await yieldSyncTask()
+    if (this.unloaded) return
+    const { registerLinks } = await import('@/startup/registerLinks')
+    if (!this.unloaded) registerLinks(this)
   }
 
   /** True once the agent's commands and ribbon icon are on the screen. */
@@ -771,6 +775,7 @@ export default class AbelePlugin extends Plugin {
   }
 
   onunload() {
+    this.unloaded = true
     uninstallUntrustedGuard()
     setRequestGuard(undefined)
     setSecrets(null)

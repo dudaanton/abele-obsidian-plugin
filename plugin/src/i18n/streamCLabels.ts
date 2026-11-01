@@ -2,15 +2,21 @@ import { t } from './index'
 import { english } from './catalogs'
 import type { MessageKey } from './types'
 
-const metadata = new Map<string, MessageKey>(
-  Object.entries(english)
-    .filter(([, value]) => typeof value === 'string' && !value.includes('{'))
-    .map(([key, value]) => [value as string, key as MessageKey])
-)
+let metadata: Map<string, MessageKey> | undefined
+function labelMetadata(): Map<string, MessageKey> {
+  if (!metadata) {
+    metadata = new Map<string, MessageKey>(
+      Object.entries(english)
+        .filter(([, value]) => typeof value === 'string' && !value.includes('{'))
+        .map(([key, value]) => [value as string, key as MessageKey])
+    )
+  }
+  return metadata
+}
 
 /** Only plugin-authored control metadata enters here, never document text or identifiers. */
 export function streamCUI(text: string): string {
-  const key = metadata.get(text)
+  const key = labelMetadata().get(text)
   return key ? (t as (key: MessageKey) => string)(key) : text
 }
 // Only known color, width and shape IDs enter this display projection.

@@ -68,7 +68,7 @@ describe('opening the Node sidebar command', () => {
       addCommand,
       addRibbonIcon: vi.fn(),
     })
-    plugin.registerViews()
+    await plugin.registerViews()
     const command = addCommand.mock.calls.find(([command]) => command.id === 'open-node')![0]
     command.callback()
     await flushPromises()

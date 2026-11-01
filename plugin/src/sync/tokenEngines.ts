@@ -22,7 +22,7 @@ import {
 } from '@abele/sync-sdk/core'
 import { RESTORE_HEADER, fenceHostGeneration, assertResponseGeneration } from './restoreFence'
 import { ConnectionEngines, type ConnectionRuntime } from './connectionEngines'
-import { TokenEngineRuntime } from './tokenEngineRuntime'
+import type { TokenEngineRuntime } from './tokenEngineRuntime'
 import type { TokenConnectionRecord } from './tokenConnectionRegistry'
 import { TokenUi, connectionError, connectStage, failureDetails } from './tokenUi'
 import { waitingCode, waitingReason } from './notSynced'
@@ -1135,6 +1135,8 @@ export class TokenEngines {
             else await capture()
           }
         )
+        const { TokenEngineRuntime } = await import('./tokenEngineRuntime')
+        assertActive()
         if (!this.ui.reviews) throw new Error('Device reviews are not available')
         const current = this.ui.registry.records().find((one) => one.id === record.id)
         fence.assertReady()

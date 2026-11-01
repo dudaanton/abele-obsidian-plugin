@@ -1,3 +1,4 @@
+import { lazyArray } from '@/helpers/lazyArray'
 import gettingStarted from './getting-started.md?raw'
 import groups from './groups.md?raw'
 import tasks from './tasks.md?raw'
@@ -168,7 +169,9 @@ export function unwrap(source: string): string {
   return out.join('\n')
 }
 
-export const USER_DOCS: UserDocPage[] = FILES.map(([id, source]) => parse(id, source))
+export const USER_DOCS: UserDocPage[] = lazyArray(() =>
+  FILES.map(([id, source]) => parse(id, source))
+)
 
 export function findPage(id: string): UserDocPage | null {
   return USER_DOCS.find((page) => page.id === id) ?? null

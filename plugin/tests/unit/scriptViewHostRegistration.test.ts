@@ -29,7 +29,7 @@ describe('script view host registration', () => {
     plugin.syncAiFeatures()
     expect(init).toHaveBeenCalledOnce()
   })
-  it.each([false, true])('registers the host with script indexing enabled=%s', (enabled) => {
+  it.each([false, true])('registers the host with script indexing enabled=%s', async (enabled) => {
     ScriptViewService.destroy()
     AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, enabled, scriptsEnabled: enabled }
     const plugin = Object.create(AbelePlugin.prototype)
@@ -44,7 +44,7 @@ describe('script view host registration', () => {
       addCommand: vi.fn(),
       addRibbonIcon: vi.fn(),
     })
-    plugin.registerViews()
+    await plugin.registerViews()
     expect(defaultViewHost()).toBe(ScriptViewService.getInstance())
     expect(plugin.registerView).toHaveBeenCalledWith('abele-debug-view', expect.any(Function))
     expect(plugin.registerDomEvent).toHaveBeenCalledWith(document, 'keydown', expect.any(Function))

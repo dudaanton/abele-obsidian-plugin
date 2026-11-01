@@ -11,10 +11,10 @@ afterEach(() => {
 })
 
 describe('startup sections', () => {
-  it('registers the same bases views, chart controls and defaults in order', () => {
+  it('registers the same bases views, chart controls and defaults in order', async () => {
     const registerBasesView = vi.fn()
     const plugin = Object.assign(Object.create(AbelePlugin.prototype), { registerBasesView })
-    plugin.registerBasesViews()
+    await plugin.registerBasesViews()
     expect(
       registerBasesView.mock.calls.map(([id, descriptor]) => [id, descriptor.name, descriptor.icon])
     ).toEqual([
@@ -102,7 +102,7 @@ describe('startup sections', () => {
     const apply = vi
       .spyOn(TemplateService.getInstance(), 'applyDefaultTemplate')
       .mockResolvedValue(undefined)
-    plugin.registerLinks()
+    await plugin.registerLinks()
     expect(protocol.mock.calls[0][0]).toBe('abele')
     expect(events).not.toHaveBeenCalled()
     ready.forEach((fn) => fn())

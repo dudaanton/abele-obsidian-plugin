@@ -39,6 +39,7 @@ describe('startup mark boundaries', () => {
       const names = {
         markLoad: (name: string) => events.push(name),
         beginStartup: noop,
+        yieldSyncTask: async () => {},
         dayjs: { extend: noop },
         weekday: {},
         updateLocale: {},

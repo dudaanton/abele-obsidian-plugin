@@ -19,7 +19,10 @@ vi.mock('@/helpers/startupSteps', () => ({
   startupStep: (name: string, run: () => void) => {
     if (name === 'links' || (name === 'workspace events' && enabledSteps.workspaceEvents)) run()
   },
-  startupStepAsync: async () => {},
+  startupStepAsync: async (name: string, run: () => Promise<void>) => {
+    if (name === 'links' || (name === 'workspace events' && enabledSteps.workspaceEvents))
+      await run()
+  },
 }))
 vi.mock('@/secrets/host', () => ({ createPluginSecrets: () => ({}) }))
 vi.mock('@/secrets/SecretStore', async (importOriginal) => ({

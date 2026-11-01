@@ -1,4 +1,4 @@
-import { beforeAll, afterEach, expect, it } from 'vitest'
+import { beforeAll, afterEach, expect, it, vi } from 'vitest'
 import { AccessClient, V2EngineClient } from '@abele/sync-sdk/core'
 import { v2Server } from '@abele/sync-server/tests/helpers/v2Server.js'
 import { createUser } from '@abele/sync-server/src/access/tokens.js'
@@ -67,6 +67,34 @@ async function fixture() {
   console.debug('[production sharing] initial exchange complete')
   return { ...native, id, owner, token, shared, server }
 }
+it('gives the host a task boundary between production registration groups', async () => {
+  let active = true,
+    turn = 0
+  const tick = () => {
+    if (active) {
+      turn++
+      setImmediate(tick)
+    }
+  }
+  setImmediate(tick)
+  const turns = new Map<string, number>()
+  const measure = performance.measure.bind(performance)
+  const spy = vi.spyOn(performance, 'measure').mockImplementation((...args) => {
+    turns.set(String(args[0]), turn)
+    return measure(...args)
+  })
+  try {
+    await device()
+    expect(turns.get('abele:start:line links')).toBeGreaterThan(
+      turns.get('abele:start:presentations')!
+    )
+    expect(turns.get('abele:start:vue')).toBeGreaterThan(turns.get('abele:start:bases views')!)
+  } finally {
+    active = false
+    spy.mockRestore()
+  }
+})
+
 it('boots the unmodified production bundle with native token controls and no test API', async () => {
   const native = await device()
   expect((window as unknown as { __abeleTest?: unknown }).__abeleTest).toBeUndefined()

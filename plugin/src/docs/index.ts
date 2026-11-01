@@ -1,3 +1,4 @@
+import { lazyArray } from '@/helpers/lazyArray'
 import overview from './overview.md?raw'
 import vault from './vault.md?raw'
 import agent from './agent.md?raw'
@@ -83,7 +84,7 @@ function parse(id: string, source: string): DocSection {
   return { id, title, summary: summaryLines.join('\n').trim(), topics }
 }
 
-export const DOCS: DocSection[] = FILES.map(([id, source]) => parse(id, source))
+export const DOCS: DocSection[] = lazyArray(() => FILES.map(([id, source]) => parse(id, source)))
 
 /** Every section, with what is in it — the cheapest thing to read and the way in. */
 export function tableOfContents(): string {

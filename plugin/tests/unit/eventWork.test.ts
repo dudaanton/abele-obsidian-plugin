@@ -34,7 +34,7 @@ function pluginFor(app: unknown) {
 }
 
 describe('workspace work is bounded', () => {
-  it('cleans orphaned widgets once for twenty tab switches and cancels pending work on unload', () => {
+  it('cleans orphaned widgets once for twenty tab switches and cancels pending work on unload', async () => {
     vi.useFakeTimers()
     const app = useVault([])
     const handlers = new Map<string, (leaf: unknown) => void>()
@@ -49,9 +49,10 @@ describe('workspace work is bounded', () => {
       .spyOn(GlobalStore.getInstance(), 'cleanupOrphanedWidgets')
       .mockImplementation(() => {})
     const plugin = pluginFor(app)
-    const registerEvents = (AbelePlugin.prototype as unknown as { registerWorkspaceEvents(): void })
-      .registerWorkspaceEvents
-    registerEvents.call(plugin)
+    const registerEvents = (
+      AbelePlugin.prototype as unknown as { registerWorkspaceEvents(): Promise<void> }
+    ).registerWorkspaceEvents
+    await registerEvents.call(plugin)
     for (let i = 0; i < 20; i++)
       handlers.get('active-leaf-change')!({ view: { getViewType: () => 'markdown', file: null } })
     vi.advanceTimersByTime(500)
