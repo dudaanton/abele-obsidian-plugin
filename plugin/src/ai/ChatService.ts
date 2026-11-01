@@ -1,3 +1,4 @@
+import { nodeSectionLive } from './toolSections'
 import { UiError, uiMessage } from '@/i18n/streamBErrors'
 
 import { t } from '@/i18n'
@@ -1654,9 +1655,15 @@ export class ChatService {
   async getTurnContext(session: ChatSession): Promise<string> {
     const registry = AgentRegistry.getInstance()
     const agent = session.agent.value ?? registry.defaultAgent()
-    const context = (
+    const anchored = (
       await this.withCommentContext(session, agent ? registry.memoryPrompt(agent) : '')
     ).trim()
+    const nodes = nodeSectionLive(
+      session.effectiveNodeScope,
+      session.overrides.value.nodeTarget,
+      session.permissionMode.value
+    )
+    const context = [anchored, nodes].filter(Boolean).join('\n\n')
     return context
       ? `Current context snapshot (supersedes earlier context snapshots):\n\n${context}`
       : ''

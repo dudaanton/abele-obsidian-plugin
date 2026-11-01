@@ -26,6 +26,13 @@ credentials/model configuration stay on the node. Reviewing a workspace uses ret
 content/diff identities, never coincidentally named vault files. A reported installed provider
 is not proof of model credentials or accepted extension/compaction capabilities.
 
+Node access may be granted or revoked while a vault agent turn is running. The next model
+request refreshes its permitted tools and appends the current node scope, selected target and
+write mode in an immutable context snapshot after stable history, alongside memory and anchored
+context. Earlier snapshots and the base system prompt are not rewritten. A missing grant is a
+reason to recheck `node_nodes`, not to assume the entire turn has no node tools. Changing access
+does not automatically restart an already finished turn. Execution-time access checks still apply.
+
 ## Empty model-request failures
 
 An empty transient model failure can be retried within the current agent turn, including after

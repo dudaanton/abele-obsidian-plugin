@@ -2288,6 +2288,9 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
               ? 'Current context snapshot (supersedes earlier context snapshots):\n\nNo current agent memory or anchored context.'
               : '')
           if (content && content !== previous?.content) {
+            console.debug('[Abele chat] context snapshot updated', {
+              nodeScopes: this.effectiveNodeScope.length,
+            })
             const snapshot: Message = {
               role: 'system',
               contextSnapshot: true,

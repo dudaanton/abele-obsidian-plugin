@@ -10,6 +10,7 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
+import { nodeSectionLive } from '@/ai/toolSections'
 import type { ChatSession } from '@/ai/ChatSession'
 
 /** The slice of ChatSession that getSystemPrompt actually reads. */
@@ -21,6 +22,9 @@ function fakeSession(
   } = {}
 ): ChatSession {
   return {
+    overrides: ref({}),
+    effectiveNodeScope: [],
+    permissionMode: ref('confirm-all'),
     customSystemPrompt: ref(overrides.customSystemPrompt ?? ''),
     customSystemPromptNotePath: ref(overrides.customSystemPromptNotePath ?? ''),
     // The prompt comes from the session's own agent, so a fake without one is not a chat.
@@ -149,7 +153,8 @@ describe('agent memory in the current context', () => {
     const session = fakeSession({ agentId: agent.id })
     expect(await ChatService.getInstance().getSystemPrompt(session)).toBe('Agent.')
     expect(await ChatService.getInstance().getTurnContext(session)).toBe(
-      'Current context snapshot (supersedes earlier context snapshots):\n\nRemember:\n- Answer in Russian'
+      'Current context snapshot (supersedes earlier context snapshots):\n\nRemember:\n- Answer in Russian\n\n' +
+        nodeSectionLive([], undefined, 'confirm-all')
     )
   })
 
@@ -164,7 +169,8 @@ describe('agent memory in the current context', () => {
 
     expect(prompt).toBe('Code.')
     expect(await ChatService.getInstance().getTurnContext(fakeSession({ agentId: coder.id }))).toBe(
-      ''
+      'Current context snapshot (supersedes earlier context snapshots):\n\n' +
+        nodeSectionLive([], undefined, 'confirm-all')
     )
   })
 

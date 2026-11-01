@@ -48,7 +48,7 @@ export const TOOL_SECTIONS: readonly ToolSectionDefinition[] = [
       return t('streamBMeta.354509b1c9')
     },
     description:
-      "Projects on the person's paired computers (nodes): reading and searching code in a project folder or Git worktree, editing files there, checking Git status, diffs, branches and history, the open repository tabs, handing a task to a coding agent that runs on a node, reading a run the debugger recorded there, and the project's saved HTTP requests. Open this whenever the person talks about a project, repository, branch, worktree, commit or a source file that is not a vault note. Not for vault notes — the file tools handle those.",
+      "Projects on the person's paired computers (nodes): reading and searching code in a project folder or Git worktree, editing files there, checking Git status, diffs, branches and history, the open repository tabs, handing a task to a coding agent that runs on a node, reading a run the debugger recorded there, and the project's saved HTTP requests. Open this whenever the person talks about a project, repository, branch, worktree, commit or a source file that is not a vault note. Not for vault notes — the file tools handle those. The person can grant node access while you work; recheck with node_nodes before ending because access was missing.",
     howTo: [
       'Work in this order:',
       '1. `node_nodes` — the nodes this chat may use and whether each is online.',

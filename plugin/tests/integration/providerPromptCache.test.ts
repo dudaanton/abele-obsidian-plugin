@@ -7,7 +7,7 @@ import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { OpenAIClient } from '@/ai/client/OpenAIClient'
-import type { ModelConfig } from '@/ai/client'
+import type { AgentTool, ModelConfig } from '@/ai/client'
 import { useVault } from '../helpers/testEnv'
 
 const model = {
@@ -195,6 +195,60 @@ it.each([true, false])(
   }
 )
 
+it('refreshes node grants and revocations between model steps without rewriting history or waking a finished turn', async () => {
+  AbeleConfig.getInstance().ai.providers[0].apiMode = 'chat-completions'
+  const tools = vi.mocked((session as unknown as { getTools(): AgentTool[] }).getTools)
+  tools.mockRestore()
+  const requests: { messages: { role: string; content: string }[]; tools: unknown[] }[] = []
+  fetch.mockImplementation(async (_url, init) => {
+    requests.push(JSON.parse(String(init!.body)))
+    const step = requests.length
+    if (step === 1)
+      session.overrides.value.nodeScope = [{ kind: 'node', node_id: 'sample-node', access: 'run' }]
+    if (step === 2) session.overrides.value.nodeScope = []
+    const delta =
+      step < 3
+        ? {
+            tool_calls: [
+              {
+                index: 0,
+                id: `sample-${step}`,
+                type: 'function',
+                function: {
+                  name: 'open_nodes',
+                  arguments: '{}',
+                },
+              },
+            ],
+          }
+        : { content: 'Finished.' }
+    return new Response(
+      'data: ' +
+        JSON.stringify({ choices: [{ delta, finish_reason: step < 3 ? 'tool_calls' : 'stop' }] }) +
+        '\n\ndata: [DONE]\n\n'
+    )
+  })
+  await session.sendMessage('Read the sample twice while access changes.')
+  expect(requests).toHaveLength(3)
+  const [first, granted, revoked] = requests
+  expect(granted.messages.slice(0, first.messages.length)).toEqual(first.messages)
+  expect(revoked.messages.slice(0, granted.messages.length)).toEqual(granted.messages)
+  expect(first.messages.at(-1)?.content).toContain('This chat has no node access')
+  expect(granted.messages.at(-1)?.content).toContain('sample-node')
+  expect(granted.messages.at(-1)?.content).toContain('run commands')
+  expect(revoked.messages.at(-1)?.content).toContain('This chat has no node access')
+  expect(JSON.stringify(first.tools)).not.toContain('"name":"node_command_run"')
+  expect(JSON.stringify(granted.tools)).toContain('"name":"node_command_run"')
+  expect(JSON.stringify(revoked.tools)).not.toContain('"name":"node_command_run"')
+  const snapshots = session.messagesForModel().filter((m) => m.role === 'system').length
+  session.overrides.value.nodeScope = [{ kind: 'node', node_id: 'another-node', access: 'read' }]
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  expect(fetch).toHaveBeenCalledTimes(3)
+  session.overrides.value.nodeScope = []
+  await session.sendMessage('Same access.')
+  expect(session.messagesForModel().filter((m) => m.role === 'system')).toHaveLength(snapshots)
+})
+
 it('supersedes forgotten memory without rewriting the previous snapshot', async () => {
   const registry = AgentRegistry.getInstance()
   const agent = registry.defaultAgent()!
@@ -207,7 +261,8 @@ it('supersedes forgotten memory without rewriting the previous snapshot', async 
   await session.sendMessage('Second')
   const second = JSON.parse(String(fetch.mock.calls.at(-1)![1]!.body)).messages
   expect(second.slice(0, first.length)).toEqual(first)
-  expect(second.at(-1).content).toContain('No current agent memory or anchored context.')
+  expect(second.at(-1).content).not.toContain('A remembered preference.')
+  expect(second.at(-1).content).toContain('This chat has no node access')
   const count = session.messagesForModel().length
   await session.sendMessage('Third')
   expect(session.messagesForModel()).toHaveLength(count + 2)
