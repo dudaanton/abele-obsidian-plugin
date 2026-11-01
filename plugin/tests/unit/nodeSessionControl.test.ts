@@ -224,3 +224,27 @@ describe('modelLabel', () => {
     expect(modelLabel('sample-model')).toBe('sample-model')
   })
 })
+
+it('remembers only successful explicit effort choices, never reported settings', async () => {
+  const c = client()
+  const rememberEffort = vi.fn()
+  const k = new NodeSessionControl(() => c, 's1', {
+    open: vi.fn(),
+    report: vi.fn(),
+    rememberEffort,
+  })
+  await k.read()
+  expect(rememberEffort).not.toHaveBeenCalled()
+  await k.change({ effort: 'high' })
+  expect(rememberEffort).toHaveBeenCalledExactlyOnceWith('high')
+  c.configureSession.mockRejectedValueOnce(new Error('sample refusal'))
+  await k.change({ effort: 'low' })
+  expect(rememberEffort).toHaveBeenCalledTimes(1)
+})
+it('shows the effort exactly as the node reports its default', async () => {
+  const { control: k } = control(
+    client(state({ settings: { ...state().settings, effort: 'default' } }))
+  )
+  await k.read()
+  expect(k.view(provider(), journal)!.settings.effort).toBe('default')
+})

@@ -1,3 +1,4 @@
+import { rememberNodeAgentEffort } from './nodeAgentTools'
 import { responseSchema } from '@abele/channel-protocol'
 import { UiError, uiMessage, uiErrorMessage, presentUiError, uiField } from '@/i18n/streamBErrors'
 import { presenterSnapshot } from './presenterSnapshot'
@@ -223,6 +224,8 @@ export class NodeChatPresenter implements ChatPresentationSession {
   ) {
     this.reference = NodeReferenceSchema.parse(reference)
     this.control = new NodeSessionControl(() => connection.client, reference.sessionId, {
+      rememberEffort: (effort) =>
+        rememberNodeAgentEffort(reference.nodeId, this.provider.value, effort),
       rememberMode: (mode) => rememberSessionOwnerMode(reference.nodeId, reference.sessionId, mode),
       report: (error) => this.report(error),
       open: (sessionId) => this.openSession?.(sessionId),

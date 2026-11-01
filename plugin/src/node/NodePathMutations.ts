@@ -11,6 +11,7 @@ import {
   FileWriteSchema,
   type WorktreeEntry,
 } from '@abele/node-protocol'
+import { nodeAgentSessionSettings } from './nodeAgentTools'
 import { wirePathTarget } from './nodePathChat'
 import type { PathTarget } from './NodePathModel'
 interface PathIntent {
@@ -242,7 +243,13 @@ export class NodePathMutations {
     provider: 'fake' | 'claude' | 'pi' | 'codex' | 'acp',
     agent?: string
   ) {
-    const params = { title, provider, target: wirePathTarget(target), ...(agent ? { agent } : {}) }
+    const params = {
+      title,
+      provider,
+      target: wirePathTarget(target),
+      ...(agent ? { agent } : {}),
+      settings: nodeAgentSessionSettings(target.nodeId, provider),
+    }
     return this.intent(
       'session.create',
       params,

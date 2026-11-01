@@ -1317,3 +1317,14 @@ it('transfers a provider API mode with its existing key reference and models', (
   expect(received.ai.providers[0]).toEqual(source.ai.providers[0])
   expect(entry.secretIds).toEqual(['key-p1'])
 })
+
+it('round-trips remembered node effort with the whole node agent definition', () => {
+  const base = settings()
+  const node = { id: 'sample-node', name: 'Sample node', provider: 'codex', effort: 'high' }
+  base.ai.agents = [createAgent({ id: 'sample-node-agent', node })]
+  const entry = find(collectEntries(base), 'ai-agents', 'sample-node-agent')!
+  expect(entry.data).toMatchObject({ node })
+  const destination = settings()
+  destination.ai.agents = []
+  expect(applyEntries([entry], destination).ai.agents[0].node).toEqual(node)
+})

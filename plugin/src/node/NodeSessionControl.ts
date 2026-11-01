@@ -108,6 +108,7 @@ export const SESSION_COMMANDS: NodeSessionLive['commands'] = [
 export interface SessionActions {
   open: (sessionId: string) => void
   report: (error: unknown) => void
+  rememberEffort?: (effort: string) => Promise<void> | void
   rememberMode?: (mode: OwnerPermissionMode) => Promise<void> | void
   beforeStop?: () => Promise<void>
 }
@@ -175,6 +176,7 @@ export class NodeSessionControl {
         ...(patch.account ? { account: patch.account } : {}),
         ...(patch.mode ? { permission_mode: WIRE_MODE[patch.mode] as never } : {}),
       })
+      if (patch.effort) await this.actions.rememberEffort?.(patch.effort)
     })
   }
 

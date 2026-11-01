@@ -1,3 +1,4 @@
+import { SessionSettingsSchema } from '@abele/node-protocol'
 import { reactive } from 'vue'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { contentHash } from '@/ai/readGuard'
@@ -40,4 +41,21 @@ export function ensureNodeAgents(nodeId: string, name: string, providers: string
         })
       )
     })
+}
+
+/** Only an explicit owner choice seeds future sessions; reported defaults never become preferences. */
+export function rememberNodeAgentEffort(nodeId: string, provider: string, effort: string): void {
+  const parsed = SessionSettingsSchema.safeParse({ effort })
+  if (!parsed.success) return
+  const registry = AgentRegistry.getInstance()
+  const agent = ensureNodeAgents(nodeId, nodeId, [provider])[0]
+  if (agent?.node) registry.update(agent.id, { node: { ...agent.node, effort } })
+}
+
+/** Snapshot for creation only: never applied to an existing chat. Absence leaves the node in charge. */
+export function nodeAgentSessionSettings(nodeId: string, provider: string) {
+  const effort = AgentRegistry.getInstance().get(`node_${contentHash(nodeId)}_${provider}`)?.node
+    ?.effort
+  const parsed = SessionSettingsSchema.safeParse({ effort })
+  return parsed.success && parsed.data.effort ? { effort: parsed.data.effort } : {}
 }

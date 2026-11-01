@@ -3428,6 +3428,13 @@ Startup removes orphaned registration caches belonging to this vault installatio
 preserving current registrations and caches whose ownership cannot be established (including
 other installations and legacy paired caches).
 
+An explicit reasoning-effort choice is stored as `ai.agents[].node.effort` for that node/provider.
+It travels with the whole agent definition in settings transfer. New chats snapshot this choice
+into their creation settings; existing chats keep their own settings. Without a stored choice,
+effort is omitted so the node/provider chooses its default. The pill displays the node's reported
+session effort, not a plugin fallback; older nodes may report `low` without exposing a distinct
+provider-default value.
+
 Node-hosted agent definitions live in the ordinary `ai.agents` list with a `node` identity
 (node ID, display name and provider). Their ordinary permission mode, scope and tool modes
 travel through the Agents settings-transfer section. They are excluded from vault model
