@@ -7,7 +7,7 @@ import { ensureNodeAgents } from '@/node/nodeAgentTools'
 import { NodeObsidianTools } from '@/node/NodeObsidianTools'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import { IDBFactory } from 'fake-indexeddb'
-import type { NodeClient } from '@abele/node-client'
+import { MemoryClientStore, NodeClient } from '@abele/node-client'
 import { ChannelError } from '@abele/channel-protocol'
 import { ObsidianToolsSnapshotSchema, PromptSchema } from '@abele/node-protocol'
 import { rememberSessionOwnerMode } from '@/node/sessionOwnerMode'
@@ -28,17 +28,48 @@ it.each([
     const agent = ensureNodeAgents('sample-node', 'Sample node', ['fake'])[0]!
     agent.permissionMode = own
     const store = new NodeClientStore('sample-mode-' + crypto.randomUUID(), new IDBFactory())
-    const sessionState = vi.fn(async () => ({
+    const client = new NodeClient(
+      { url: 'ws://127.0.0.1:1/channel', profile: 'local-token-v1', token: 'sample-token' },
+      new MemoryClientStore()
+    )
+    const request = vi.spyOn(client, 'request').mockResolvedValue({
+      session_id: 'sample',
       live: false,
+      process: 'idle',
+      run_id: 'sample-run',
+      turn: null,
+      background_tasks: [],
+      context: {
+        run_id: 'sample-run',
+        total_tokens: 100,
+        max_tokens: 1000,
+        percentage: 10,
+        auto_compact_threshold: null,
+        auto_compact_enabled: true,
+        model: null,
+        categories: [],
+      },
+      compacting: false,
+      settings: {
+        model: 'default',
+        effort: 'default',
+        account: 'default',
+        permission_mode: remote,
+        continue_after_compaction: true,
+        continuation_text: 'Continue.',
+        messaging: true,
+      },
+      process_settings: null,
+      restart_pending: false,
+      watchers: 1,
+      idle_since: null,
       tool_permissions: {
         permission_mode: remote,
         status: 'supported',
         per_action_approval: true,
       },
-    }))
-    const client = {
-      sessionState,
-    } as unknown as NodeClient
+    })
+    const snapshotError = vi.spyOn(console, 'debug')
     const runtime = new NodeObsidianTools(client, store, 'sample-node', 'Sample node')
     try {
       if (choice) rememberSessionOwnerMode('sample-node', 'sample', choice)
@@ -57,7 +88,12 @@ it.each([
       internal.permissionSnapshots = true
       await internal.snapshot('sample', agent.id)
       await internal.snapshot('sample', agent.id)
-      expect(sessionState).toHaveBeenCalledTimes(1)
+      expect(request).toHaveBeenCalledTimes(1)
+      expect(request).toHaveBeenCalledWith('session.state', { session_id: 'sample' })
+      expect(snapshotError).not.toHaveBeenCalledWith(
+        '[Abele node] session permission snapshot unavailable',
+        expect.anything()
+      )
       expect(internal.adapter('sample', agent.id, 'test').agent().permissionMode).toBe(expected)
       expect(internal.adapter('sample', agent.id, 'test').asks('create')).toBe(
         expected === 'confirm-all'
@@ -70,6 +106,7 @@ it.each([
       expect(internal.adapter('sample', agent.id, 'test').asks('create')).toBe(true)
     } finally {
       await runtime.destroy()
+      snapshotError.mockRestore()
       store.close()
     }
   }
