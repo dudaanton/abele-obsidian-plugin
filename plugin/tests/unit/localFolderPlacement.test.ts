@@ -338,3 +338,25 @@ it('maps exclusive removal retention destinations and preserves the capture capa
     effect: { kind: 'remove', retainAt: 'Moved/private/sample' },
   })
 })
+
+it('does not project the whole directory inventory for each scoped ancestor check', async () => {
+  const placement = new LocalFolderPlacement('Shared', 'Moved')
+  const inventory = Symbol.for('abele.sync.inventory-directories-v1')
+  const children = Symbol.for('abele.sync.inventory-children-v1')
+  const rows = Array.from({ length: 2048 }, (_, i) => ({ path: `Moved/Folder${i}` }))
+  const read = vi.fn(async () => [{ path: 'Moved', kind: 'directory' }, ...rows])
+  const disk = Object.assign(new MemoryFileSystem(), {
+    [inventory]: read,
+    [Symbol.for('abele.sync.inventory-directory-v1')]: async () => ({
+      path: 'Moved',
+      kind: 'directory',
+    }),
+    [children]: async () => [],
+  })
+  const fs = placement.fileSystem(disk)
+  for (let i = 0; i < 2048; i++)
+    expect(await Reflect.get(fs, children)('', `Shared/Folder${i}/sample.bin`)).toEqual([
+      { path: 'Shared', kind: 'directory' },
+    ])
+  expect(read).not.toHaveBeenCalled()
+})

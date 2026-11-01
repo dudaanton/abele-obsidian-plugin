@@ -246,6 +246,9 @@ it.each([false, true])(
     const check = async () => {
       await fs.mkdir('New/inner')
       await fs.mkdir('Existing/empty/child')
+      // Finishing identity reads must not retire names the host has not indexed yet.
+      if (inPass)
+        await Reflect.get(fs, Symbol.for('abele.sync.inventory-directories-v1')).call(fs, true)
       expect(await children.call(fs, '', 'New/inner')).toContainEqual(
         expect.objectContaining({ path: 'New', kind: 'directory' })
       )
@@ -774,7 +777,12 @@ describe('ObsidianFileSystem — the names it is given', () => {
     const paths = (await listed(fs)).map((info) => info.path)
     expect(paths).toContain(note)
     expect(paths).toContain(settings)
-    expect(await fs.stat(note)).toEqual({ path: note, size: 5, mtime: 11, ctime: expect.any(Number) })
+    expect(await fs.stat(note)).toEqual({
+      path: note,
+      size: 5,
+      mtime: 11,
+      ctime: expect.any(Number),
+    })
     expect(read(await fs.read(note))).toBe('north')
     // And nothing landed under the tidied-up name beside it.
     expect(paths).not.toContain(normalizePath(note))

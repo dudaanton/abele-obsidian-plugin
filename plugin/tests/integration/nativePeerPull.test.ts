@@ -42,6 +42,7 @@ for (const fault of [
   'coordinated',
   'live-recovery',
   'composed',
+  'directory-projection',
   'admission',
   'pause-notification',
   'pause-admission',
@@ -73,20 +74,56 @@ for (const fault of [
         'occupied-target',
         'second-ledger-abort',
       ].includes(fault)
-      const count = fault.startsWith('install-fingerprint-single')
-        ? 1
-        : fault === 'acknowledgement-reads'
-          ? 32
-          : fault === 'batch-tail'
-            ? 65
-            : fault === 'second-ledger-abort' || fault === 'ordered-operations'
-              ? 128
-              : normal
-                ? Number(process.env.PEER_PULL_FILES ?? (fault === 'none' ? 33000 : 64))
-                : 8
+      const count =
+        fault === 'directory-projection'
+          ? 2048
+          : fault.startsWith('install-fingerprint-single')
+            ? 1
+            : fault === 'acknowledgement-reads'
+              ? 32
+              : fault === 'batch-tail'
+                ? 65
+                : fault === 'second-ledger-abort' || fault === 'ordered-operations'
+                  ? 128
+                  : normal
+                    ? Number(process.env.PEER_PULL_FILES ?? (fault === 'none' ? 33000 : 64))
+                    : 8
       const size = normal ? Number(process.env.PEER_PULL_BYTES ?? 4096) : 4096
       const root = await disk.realpath(await disk.mkdtemp(join(tmpdir(), 'sample-peer-pull-')))
       const app = buildFakeVault([])
+      if (fault === 'directory-projection')
+        Object.assign(app.vault.adapter, {
+          stat: async (path: string) => {
+            const stat = await disk.stat(join(root, path)).catch((error: NodeJS.ErrnoException) => {
+              if (error.code === 'ENOENT') return null
+              throw error
+            })
+            return (
+              stat && {
+                type: stat.isDirectory() ? 'folder' : 'file',
+                size: stat.size,
+                mtime: stat.mtimeMs,
+                ctime: stat.birthtimeMs,
+              }
+            )
+          },
+          list: async (path: string) => {
+            const entries = await disk.readdir(join(root, path), { withFileTypes: true })
+            const name = (entry: { name: string }) => (path ? path + '/' + entry.name : entry.name)
+            return {
+              files: entries.filter((one) => one.isFile()).map(name),
+              folders: entries.filter((one) => one.isDirectory()).map(name),
+            }
+          },
+        })
+      // The directory manifest is installed before its file payloads in a real pull.
+      // Populate that native tree; an empty adapter would hide whole-tree projections.
+      if (fault === 'directory-projection')
+        for (let i = 0; i < 128; i++) {
+          const path = `Notes/Section ${i}`
+          await disk.mkdir(join(root, path), { recursive: true })
+          await app.vault.adapter.mkdir(path)
+        }
       const factory = new IDBFactory()
       const host = await HostSyncStorage.open(factory, 'sample-peer', app)
       let state = await IndexedDbStateStore.open(factory, 'sample-peer')
@@ -270,13 +307,25 @@ for (const fault of [
               },
             }
           : {}),
-        ...(fault === 'scoped' || fault === 'composed'
+        ...(fault === 'scoped' || fault === 'composed' || fault === 'directory-projection'
           ? { connectionId: 'sample-connection', fileScope: 'Notes' }
           : {}),
       })
       state.observeCommittedEntries((entries) => files.acknowledgeWrites(entries))
+      let directoryCalls = 0,
+        directoryItems = 0
+      const directoryPort = Symbol.for('abele.sync.inventory-directories-v1')
+      const readDirectories = Reflect.get(files, directoryPort).bind(files)
+      Object.assign(files, {
+        [directoryPort]: async (...args: unknown[]) => {
+          const rows = await readDirectories(...args)
+          directoryCalls++
+          directoryItems += rows.length
+          return rows
+        },
+      })
       let composed: import('@abele/sync-sdk/core').FileSystem | undefined
-      if (fault === 'composed') {
+      if (fault === 'composed' || fault === 'directory-projection') {
         const placement = new LocalFolderPlacement('Notes', 'Notes')
         const representation = await ExternalRepresentation.open({
           state: null,
@@ -324,7 +373,8 @@ for (const fault of [
               if (!includes(path)) throw new Error('sample scope refusal')
             },
             includes,
-            connectionPrivateRoot('sample-connection')
+            connectionPrivateRoot('sample-connection'),
+            fault === 'directory-projection' ? 'Notes' : undefined
           )
         )
       }
@@ -340,7 +390,7 @@ for (const fault of [
           file_id: `sample-file-${i}`,
           version_id: `sample-version-${i}`,
           seq: i + 1,
-          path: `Notes/Section ${i % 16}/Sample ${i}.bin`,
+          path: `Notes/Section ${i % (fault === 'directory-projection' ? 128 : 16)}/Sample ${fault === 'directory-projection' ? 'K ' : ''}${i}.bin`,
           sha: await sha256(payload(i)),
           size,
           mtime: 2000,
@@ -363,7 +413,7 @@ for (const fault of [
       sample()
       const expected = new ExpectedWrites()
       try {
-        const run = () =>
+        const rawRun = () =>
           pull(
             {
               manifest: async (cursor: string | null, limit: number) => {
@@ -476,6 +526,10 @@ for (const fault of [
               },
             }
           )
+        const run = () =>
+          fault === 'directory-projection'
+            ? Reflect.get(files, Symbol.for('abele.sync.inventory-pass-v1')).call(files, rawRun)
+            : rawRun()
         if (fault === 'ordered-operations') {
           const report = await run()
           expect(report.held).toEqual([])
@@ -739,6 +793,14 @@ for (const fault of [
           return
         }
         const report = await run()
+        if (fault === 'directory-projection') {
+          console.log(
+            '[directory-projection-counts]',
+            JSON.stringify({ count, directoryCalls, directoryItems })
+          )
+          expect(directoryCalls).toBeLessThanOrEqual(4)
+          expect(directoryItems).toBeLessThanOrEqual(count * 4)
+        }
         if (fault === 'acknowledgement-reads')
           expect(contentReads, 'pull acknowledgement must reuse installed transfer bytes').toBe(0)
         if (count >= 33000) {
@@ -800,7 +862,7 @@ for (const fault of [
       ? 3_600_000
       : fault === 'none'
         ? 1_200_000
-        : fault === 'install-fingerprint-backlog'
+        : fault === 'install-fingerprint-backlog' || fault === 'directory-projection'
           ? 120_000
           : 30_000
   )

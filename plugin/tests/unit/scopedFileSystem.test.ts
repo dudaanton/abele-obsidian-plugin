@@ -196,3 +196,23 @@ it('refuses a conditional capture whose private destination escapes the connecti
   ).rejects.toThrow('outside scope')
   expect(conditionalFile).not.toHaveBeenCalled()
 })
+
+it('checks a scope ancestor without enumerating unrelated directories', async () => {
+  const inventory = Symbol.for('abele.sync.inventory-directories-v1')
+  const children = Symbol.for('abele.sync.inventory-children-v1')
+  const read = vi.fn(async () => [{ path: 'Shared' }])
+  const disk = Object.assign(new MemoryFileSystem(), {
+    [inventory]: read,
+    [Symbol.for('abele.sync.inventory-directory-v1')]: async (path: string) => {
+      expect(path).toBe('Shared')
+      return { path, kind: 'directory' }
+    },
+    [children]: async () => [],
+  })
+  const fs = scopedFileSystem(disk, assertPath, includes, undefined, 'Shared')
+  for (let i = 0; i < 2048; i++)
+    expect(await Reflect.get(fs, children)('', `Shared/Folder${i}/sample.bin`)).toEqual([
+      { path: 'Shared', kind: 'directory' },
+    ])
+  expect(read).not.toHaveBeenCalled()
+})

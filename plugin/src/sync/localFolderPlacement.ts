@@ -295,13 +295,13 @@ export class LocalFolderPlacement {
         )
           return value.bind(target)
         if (key === Symbol.for('abele.sync.inventory-directories-v1'))
-          return async () => {
+          return async (...args: unknown[]) => {
             // Capture the current scope once per scan. A subsequent scan observes a local follow.
             const root = placement.local,
               prefix = root + '/'
             const budget = new SyncTaskBudget()
             const projected = []
-            for (const item of await value.call(target)) {
+            for (const item of await value.call(target, ...args)) {
               if (item.path === root || item.path.startsWith(prefix))
                 projected.push({
                   ...item,
@@ -348,6 +348,13 @@ export class LocalFolderPlacement {
                 ...recovery
               )
             )
+        if (key === Symbol.for('abele.sync.inventory-directory-v1'))
+          return async (path: string) => {
+            const row = await value.call(target, placement.toLocal(path))
+            return row
+              ? { ...row, path: placement.toServer(row.path, String(key) + '.result', true) }
+              : null
+          }
         if (key === 'listChildren' || key === Symbol.for('abele.sync.inventory-children-v1'))
           return async (parent: string, ...args: unknown[]) => {
             if (parent === '' || placement.server.startsWith(parent + '/')) {
@@ -356,13 +363,16 @@ export class LocalFolderPlacement {
                 .slice(0, parent ? parent.split('/').length + 1 : 1)
                 .join('/')
               if (path !== placement.server) return [{ path, kind: 'directory' }]
+              // A scoped ancestor needs one directory proof, not a projection of
+              // every directory for every incoming file.
+              const lookup = Reflect.get(target, Symbol.for('abele.sync.inventory-directory-v1'))
               const read = Reflect.get(target, Symbol.for('abele.sync.inventory-directories-v1'))
-              const directories = read
-                ? await read.call(target)
-                : await Array.fromAsync(target.listDirectories?.() ?? [])
-              const root = directories.find(
-                (item: { path: string }) => item.path === placement.local
-              )
+              const root = lookup
+                ? await lookup.call(target, placement.local)
+                : (read
+                    ? await read.call(target)
+                    : await Array.fromAsync(target.listDirectories?.() ?? [])
+                  ).find((item: { path: string }) => item.path === placement.local)
               return root ? [{ ...root, path, kind: 'directory' }] : []
             }
             const children = await value.call(target, placement.toLocal(parent), ...args)

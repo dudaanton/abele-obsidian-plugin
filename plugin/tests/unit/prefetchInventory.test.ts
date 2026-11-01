@@ -99,7 +99,7 @@ it('reports local event revisions without filesystem operations and retires them
   expect(revision('sample.md')).toBeUndefined()
 })
 
-it('keeps file-only preflight separate from the full directory inventory', async () => {
+it('keeps file-only preflight separate from complete parent membership', async () => {
   const app = buildFakeVault([
     { path: 'Shared/existing.md', content: 'sample note' },
     { path: 'Shared/nested/another.md', content: 'another note' },
@@ -116,7 +116,8 @@ it('keeps file-only preflight separate from the full directory inventory', async
         expect.objectContaining({ path: 'Shared/nested', kind: 'directory' }),
       ])
     )
-    expect(directories).toHaveBeenCalledOnce()
+    // Complete parent membership must not enumerate the entire vault for each file.
+    expect(directories).not.toHaveBeenCalled()
   })
 })
 
@@ -135,5 +136,56 @@ it('retains hidden-file coverage when preflight requests only files', async () =
         expect.objectContaining({ path: '.obsidian/sample.json', kind: 'file' }),
       ])
     )
+  })
+})
+
+it('reuses unchanged directory identities when indexed sibling files arrive', async () => {
+  const app = buildFakeVault([{ path: 'Shared/Folder/note.md', content: 'sample' }])
+  const fs = new ObsidianFileSystem(app as never)
+  const identities = vi.spyOn(Reflect.get(fs, 'directories'), 'identity')
+  await Reflect.get(fs, Symbol.for('abele.sync.inventory-pass-v1')).call(fs, async () => {
+    for (let i = 0; i < 32; i++) {
+      const file = await app.vault.create(`Shared/sample-${i}.md`, 'sample')
+      app.emit('vault', 'create', file)
+      const rows = await Reflect.get(fs, Symbol.for('abele.sync.inventory-children-v1')).call(
+        fs,
+        'Shared',
+        'Shared/target.md'
+      )
+      expect(rows).toContainEqual(
+        expect.objectContaining({ path: 'Shared/Folder', kind: 'directory' })
+      )
+      expect(rows).toContainEqual({ path: file.path, kind: 'file' })
+    }
+    expect(identities).toHaveBeenCalledTimes(1)
+    // A directory notification must retire that proof even while its indexed row remains.
+    app.emit('vault', 'delete', { path: 'Shared/Folder', children: [] })
+    expect(
+      await Reflect.get(fs, Symbol.for('abele.sync.inventory-children-v1')).call(
+        fs,
+        'Shared',
+        'Shared/target.md'
+      )
+    ).toContainEqual(expect.objectContaining({ path: 'Shared/Folder', kind: 'directory' }))
+    expect(identities).toHaveBeenCalledTimes(2)
+  })
+})
+
+it('keeps indexed file occupancy without importing sibling directory identities into a group inventory', async () => {
+  const app = buildFakeVault([
+    { path: 'Shared/group.md', content: 'sample' },
+    { path: 'Shared/existing.md', content: 'sample existing bytes' },
+    { path: 'Shared/Unrelated/local.md', content: 'sample local bytes' },
+  ])
+  const fs = new ObsidianFileSystem(app as never, {
+    discovery: { roots: [], includes: (path) => path === 'Shared/group.md' },
+  })
+  const identities = vi.spyOn(Reflect.get(fs, 'directories'), 'identity')
+  await Reflect.get(fs, pass).call(fs, async () => {
+    const rows = await Reflect.get(fs, inventory).call(fs, 'Shared', 'Shared/existing.md')
+    // Occupancy protects an existing equal file from a redundant download or overwrite.
+    expect(rows).toContainEqual({ path: 'Shared/existing.md', kind: 'file' })
+    expect(rows.filter((row: { kind: string }) => row.kind === 'directory')).toEqual([])
+    expect(identities).not.toHaveBeenCalled()
   })
 })

@@ -124,7 +124,13 @@ export function scopedFileSystem(
           return value.call(target, path)
         }
       if (key === Symbol.for('abele.sync.inventory-directories-v1'))
-        return async () => includedChildren(await value.call(target), includes)
+        return async (...args: unknown[]) =>
+          includedChildren(await value.call(target, ...args), includes)
+      if (key === Symbol.for('abele.sync.inventory-directory-v1'))
+        return (path: string) => {
+          assertPath(path)
+          return value.call(target, path)
+        }
       if (key === 'listChildren' || key === Symbol.for('abele.sync.inventory-children-v1'))
         return async (parent: string, ...args: unknown[]) => {
           const scopeRoot = typeof scopeRootInput === 'function' ? scopeRootInput() : scopeRootInput
@@ -134,15 +140,14 @@ export function scopedFileSystem(
               .slice(0, parent ? parent.split('/').length + 1 : 1)
               .join('/')
             if (path === scopeRoot) {
+              const lookup = Reflect.get(target, Symbol.for('abele.sync.inventory-directory-v1'))
               const read = Reflect.get(target, Symbol.for('abele.sync.inventory-directories-v1'))
-              const directories = read
-                ? await read.call(target)
-                : await (async () => {
-                    const result = []
-                    for await (const entry of target.listDirectories?.() ?? []) result.push(entry)
-                    return result
-                  })()
-              const directory = directories.find((one: { path: string }) => one.path === path)
+              const directory = lookup
+                ? await lookup.call(target, path)
+                : (read
+                    ? await read.call(target)
+                    : await Array.fromAsync(target.listDirectories?.() ?? [])
+                  ).find((one: { path: string }) => one.path === path)
               return directory ? [{ ...directory, kind: 'directory' }] : []
             }
             return [{ path, kind: 'directory' }]

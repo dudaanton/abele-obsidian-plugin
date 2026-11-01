@@ -199,6 +199,7 @@ interface InventoryPass {
   parentFolders?: Set<string>
   publishedParents?: Set<string>
   directories?: Promise<DirectoryInfo[]>
+  directoryIdentities: InventoryCache<Promise<InventoryChild | null>>
   listings: InventoryCache<Promise<ListedFiles>>
   stats: InventoryCache<Promise<Stat | null>>
   mutations: Set<string>
@@ -221,6 +222,7 @@ const WATCH_PROOF_MS = 300_000
 const STARTUP_INDEX_POLL_MS = 50
 const INVENTORY_PASS = Symbol.for('abele.sync.inventory-pass-v1')
 const INVENTORY_DIRECTORIES = Symbol.for('abele.sync.inventory-directories-v1')
+const INVENTORY_CHILDREN = Symbol.for('abele.sync.inventory-children-v1')
 const normalizationPossible = (path: string) =>
   path !== path.normalize('NFC') || path.normalize('NFD') !== path
 
@@ -745,6 +747,9 @@ export class ObsidianFileSystem implements FileSystem {
       configRevision: this.configRevision(),
       children: cache(),
       indexedChildren: cache(),
+      // File arrivals change parent membership, not the identity of existing folders.
+      // Directory/ancestor events and polling still invalidate their own proofs.
+      directoryIdentities: new InventoryCache((path) => this.pathRevision(path, inventory)),
     }
     return inventory
   }
@@ -823,7 +828,15 @@ export class ObsidianFileSystem implements FileSystem {
       if ((attempt + 1) % INVENTORY_READ_ATTEMPTS === 0) await yieldSyncTask()
     }
   }
-  async [Symbol.for('abele.sync.inventory-children-v1')](
+  async [Symbol.for('abele.sync.inventory-directory-v1')](path: string) {
+    const parent = folderOf(path).replace(/^\/$/, '')
+    return (
+      (await this[INVENTORY_CHILDREN](parent, path)).find(
+        (row) => row.path === path && row.kind === 'directory'
+      ) ?? null
+    )
+  }
+  async [INVENTORY_CHILDREN](
     parent: string,
     target: string,
     filesOnly = false
@@ -840,18 +853,32 @@ export class ObsidianFileSystem implements FileSystem {
     const read = async () => {
       // Download preflight needs only file membership, not directory identities.
       // Do not populate the full placement inventory with this narrower snapshot.
-      const indexedOnly = filesOnly && !target.split('/').some((part) => part.startsWith('.'))
-      const directories = indexedOnly ? [] : await this[INVENTORY_DIRECTORIES]()
-      // Discovery may itself have revealed a Unicode alias at this parent.
-      if (inventory.listings.wasRead(parent)) return this.listChildren(parent)
+      const hidden = target.split('/').some((part) => part.startsWith('.'))
+      if (hidden) return this.listChildren(parent)
       const node = (
         parent === '' ? this.app.vault.getRoot() : this.app.vault.getAbstractFileByPath(parent)
       ) as {
         children?: { path: string; children?: unknown[] }[]
       } | null
+      if (!node) return this.listChildren(parent)
       const files = new Set(
-        (node?.children ?? []).filter((one) => !one.children).map((one) => one.path)
+        (node.children ?? []).filter((one) => !one.children).map((one) => one.path)
       )
+      // Only this parent's indexed folders and published-but-not-indexed parents
+      // belong to its membership. Never enumerate/project the entire directory tree
+      // for each incoming file; ordinary indexed files still need no raw listing.
+      // A group has no directory namespace. Preserve file occupancy checks, but
+      // never import another connection's indexed folders or directory identities.
+      const directoryNamespace = this.discovery?.roots.length !== 0
+      const folders = new Set(
+        filesOnly || !directoryNamespace
+          ? []
+          : (node.children ?? [])
+              .filter((one) => one.children && this.withinFileScope(one.path))
+              .map((one) => one.path)
+      )
+      for (const path of inventory.publishedParents ?? [])
+        if (directoryNamespace && folderOf(path).replace(/^\/$/, '') === parent) folders.add(path)
       // Indexed siblings already prove membership. Only watcher-lagged names need I/O.
       for (const path of this.awaitingIndex)
         if (
@@ -862,22 +889,20 @@ export class ObsidianFileSystem implements FileSystem {
           files.add(path)
       return [
         ...[...files].map((path) => ({ path, kind: 'file' as const })),
-        ...(await Promise.all(
-          [...(inventory.publishedParents ?? [])]
-            .filter(
-              (path) =>
-                folderOf(path).replace(/^\/$/, '') === parent &&
-                !directories.some((one) => one.path === path)
+        ...(
+          await Promise.all(
+            [...folders].map((path) =>
+              inventory.directoryIdentities.stable(path, async () => {
+                if (!this.inventoryVisible(path) || (await this.isSymlink(path))) return null
+                return {
+                  path,
+                  kind: 'directory' as const,
+                  identity: await this.directories.identity(path, true),
+                }
+              })
             )
-            .map(async (path) => ({
-              path,
-              kind: 'directory' as const,
-              identity: await this.directories.identity(path, true),
-            }))
-        )),
-        ...directories
-          .filter((one) => folderOf(one.path).replace(/^\/$/, '') === parent)
-          .map((one) => ({ path: one.path, kind: 'directory' as const, identity: one.identity })),
+          )
+        ).filter((row): row is NonNullable<typeof row> => row !== null),
       ]
     }
     const children = filesOnly ? await read() : await inventory.indexedChildren.stable(parent, read)
@@ -979,7 +1004,12 @@ export class ObsidianFileSystem implements FileSystem {
     const parents = [...inventory.publishedParents]
     // Retain membership until all identity reads have settled; a failed pass is discarded.
     for (const path of parents) await this.rememberInventoryParents(path)
-    for (const path of parents) inventory.publishedParents.delete(path)
+    // Identity settlement does not imply the host has observed membership yet.
+    // Keep lagging names available to parent reads until the index contains them.
+    for (const path of parents) {
+      const indexed = this.app.vault.getAbstractFileByPath(path) as { children?: unknown[] } | null
+      if (indexed?.children) inventory.publishedParents.delete(path)
+    }
   }
   private async rememberInventoryParents(path: string): Promise<void> {
     if (!path || (this.discovery && this.discovery.roots.length === 0)) return
@@ -2123,6 +2153,11 @@ export class ObsidianFileSystem implements FileSystem {
       'folder',
       true
     )
+    if (this.inventory) {
+      this.inventory.publishedParents ??= new Set()
+      for (const prefix of prefixes)
+        if (this.withinFileScope(prefix)) this.inventory.publishedParents.add(prefix)
+    }
     await this.rememberInventoryParents(path)
   }
   async moveDirectory(from: string, to: string): Promise<void> {
@@ -3760,7 +3795,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.updateInventory(paths, known)
     for (const path of paths) {
       const parent = known === 'file' ? folderOf(path).replace(/^\/$/, '') : path
-      if (known === 'file' && this.inventory?.directories !== undefined) {
+      if (known === 'file' && this.inventory) {
         // Publication proves these parents exist. Expose membership immediately, but batch
         // their durable birth/identity reads before directory inventory is consumed again.
         const inventory = this.inventory
