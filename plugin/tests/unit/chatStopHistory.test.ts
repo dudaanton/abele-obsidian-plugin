@@ -617,7 +617,12 @@ describe('durable stopped turns', () => {
       expect(next[imageIndex]).toMatchObject({ content: image.content })
 
       holder.createBranch(beforeRead)
-      expect(holder.messagesForModel()).toHaveLength(1)
+      expect(holder.messagesForModel()).toHaveLength(2)
+      expect(holder.messagesForModel()[1]).toMatchObject({
+        role: 'system',
+        contextSnapshot: true,
+        content: expect.stringContaining('This chat has no node access'),
+      })
       expect(holder.messagesForModel()[0]).toMatchObject({
         role: 'user',
         content: 'Inspect the sample image and update the sample note',

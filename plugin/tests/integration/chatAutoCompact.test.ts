@@ -348,6 +348,7 @@ describe('automatic compaction inside a tool loop', () => {
       })
       expect(requests[1].slice(1).map((m) => m.role)).toEqual([
         'user',
+        'system',
         'assistant',
         'toolResult',
         'toolResult',
@@ -361,6 +362,7 @@ describe('automatic compaction inside a tool loop', () => {
       expect(session.messagesForModel().map((m) => m.role)).toEqual([
         'system',
         'user',
+        'system',
         'assistant',
         'toolResult',
         'toolResult',
@@ -377,9 +379,14 @@ describe('automatic compaction inside a tool loop', () => {
     queueCorrection = true
     await session.sendMessage('Complete the sample request')
     expect(helpers).toHaveLength(1)
-    expect(requests[1].at(-1)).toMatchObject({
+    expect(requests[1].at(-2)).toMatchObject({
       role: 'user',
       content: 'Preserve the sample correction',
+    })
+    expect(requests[1].at(-1)).toMatchObject({
+      role: 'system',
+      contextSnapshot: true,
+      content: expect.stringContaining('This chat has no node access'),
     })
     expect(session.messagesForModel().filter((m) => m.role === 'toolResult')).toHaveLength(2)
     expect(session.queuedMessages.value).toEqual([])
@@ -400,6 +407,7 @@ describe('automatic compaction inside a tool loop', () => {
     expect(requests[1].map((m) => m.role)).toEqual([
       'system',
       'user',
+      'system',
       'assistant',
       'toolResult',
       'toolResult',
@@ -417,6 +425,7 @@ describe('automatic compaction inside a tool loop', () => {
     expect(requests[2].map((m) => m.role)).toEqual([
       'system',
       'user',
+      'system',
       'assistant',
       'toolResult',
       'toolResult',
@@ -427,6 +436,7 @@ describe('automatic compaction inside a tool loop', () => {
     expect(session.messagesForModel().map((m) => m.role)).toEqual([
       'system',
       'user',
+      'system',
       'assistant',
       'toolResult',
       'toolResult',
@@ -448,6 +458,7 @@ describe('automatic compaction inside a tool loop', () => {
     expect(session.messagesForModel().map((m) => m.role)).toEqual([
       'system',
       'user',
+      'system',
       'assistant',
       'toolResult',
       'toolResult',
@@ -462,6 +473,7 @@ describe('automatic compaction inside a tool loop', () => {
       'user',
       'assistant',
       'user',
+      'system',
       'assistant',
       'toolResult',
       'toolResult',
