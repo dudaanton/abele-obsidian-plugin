@@ -30,3 +30,13 @@ export function controlTiming(launchAt, events, receipt) {
     pluginLoadToIdleMs: idleAt == null || loadAt == null ? null : idleAt - loadAt,
   }
 }
+
+export function strictWindowEvidence(startAt, endAt, device, entries, wire) {
+  const inside = row => row.device === device && row.at >= startAt && row.at <= endAt
+  const generations = entries.filter(row => inside(row) && row.event === 'renderer-start')
+  const interruptions = [...wire, ...entries].filter(row => inside(row) &&
+    (row.event === 'trigger' || /^reindex-/.test(row.event) || /hash-tracepoint-setup/.test(row.event)))
+  return { startAt, endAt, device, generations: generations.map(row => row.at), interruptions,
+    complete: Number.isFinite(startAt) && Number.isFinite(endAt) && endAt >= startAt &&
+      generations.length === 1 && interruptions.length === 0 }
+}

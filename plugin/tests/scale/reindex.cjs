@@ -50,13 +50,24 @@ exports.clickRebuild = async function (app, document, receipt, pendingFile) {
     await globalThis.__scaleReindexCoverage.begin(receipt.id)
   const operation = { ...receipt, scheduledAt: Date.now() }
   // Delay so the CLI can return the receipt before the real button reloads the window.
-  setTimeout(() => {
+  setTimeout(async () => {
+    let receiptCapture
+    try {
+      if (globalThis.__scaleCaptureBoundary) receiptCapture = await globalThis.__scaleCaptureBoundary(receipt.id)
+    }
+    catch { receiptCapture = { id: receipt.id, complete: false } }
     const clicked = { ...operation, at: Date.now() }
+    if (receiptCapture) clicked.receiptCapture = receiptCapture
     fs.writeFileSync(pendingFile, JSON.stringify(clicked))
     appendEvidence(
       pendingFile.slice(0, pendingFile.lastIndexOf('.' + receipt.device + '.reindex.json')),
       { ...clicked, event: 'reindex-click' }
     )
+    const root = app.vault?.adapter?.getBasePath?.()
+    const configFile = root && path.join(root, '.scale-observer.json')
+    if (configFile && fs.existsSync(configFile) && JSON.parse(fs.readFileSync(configFile, 'utf8')).continuousCpu)
+      fs.writeFileSync(path.join(root, '.obsidian/community-plugins.json'),
+        JSON.stringify(['scale-observer']))
     buttons[0].click()
   }, 100)
   return operation

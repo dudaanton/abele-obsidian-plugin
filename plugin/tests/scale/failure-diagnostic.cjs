@@ -16,15 +16,15 @@ exports.serialize = function serialize(value, seen = new WeakSet()) {
 exports.shouldWrapFingerprints = config =>
   config.failureDiagnostic && config.captureFingerprintCallers === true
 
+let fingerprintSequence = 0
 exports.wrapFingerprints = function (Class, emit) {
   if (!Class?.prototype || Class.prototype.__scaleFingerprintWrapped) return
   Object.defineProperty(Class.prototype, '__scaleFingerprintWrapped', { value: true })
-  let sequence = 0
   for (const key of ['fingerprint', 'fingerprintFresh', Symbol.for('abele.sync.fingerprint-fresh-v1'), Symbol.for('abele.sync.fingerprint-pull-v1')]) {
     const original = Class.prototype[key]
     if (typeof original !== 'function') continue
     Class.prototype[key] = function (...args) {
-      const id = `${Date.now()}:${++sequence}`
+      const id = `${Date.now()}:${++fingerprintSequence}`
       const method = String(key)
       const stack = new Error().stack
       emit({ event: 'fingerprint-start', id, method, path: args[0], fresh: args[2], stack })

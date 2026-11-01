@@ -84,7 +84,7 @@ export function declaredInterruptions(full) {
   ]
 }
 
-export function classifyReindexHashes(operation, entries, settledAt, knownShas) {
+export function classifyReindexHashes(operation, entries, settledAt, knownShas, wire = []) {
   const completedAt = entries.find(
     (row) =>
       row.event === 'reindex-complete' && row.id === operation.id && row.device === operation.device
@@ -102,10 +102,26 @@ export function classifyReindexHashes(operation, entries, settledAt, knownShas) 
     /\b(?:Object\.seal|nativeInstallBatch|Puller\.sha256\S* \[as hash\]|VaultWriter\.publishAbsent)/.test(
       row.stack ?? ''
     )
+  const queued = (row) => {
+    if (!/^[a-f0-9]{64}$/.test(row.sha) || !/V2EngineClient\.multipart/.test(row.stack ?? '') ||
+        !/V2EngineClient\.putBlobSource/.test(row.stack ?? '')) return false
+    const parts = wire.filter(x => x.device === operation.device && x.event === 'start' &&
+      x.method === 'PUT' && x.sent > 0 && x.at <= row.at &&
+      new RegExp(`^/v2/uploads/${row.sha}/[^/]+/\\d+$`).test(x.route ?? ''))
+    const part = parts.at(-1)
+    if (!part) return false
+    const uploadId = part.route.split('/')[4]
+    const sameSession = parts.some(x => x.at < operation.at && x.route.split('/')[4] === uploadId)
+    const intent = entries.some(x => x.device === operation.device &&
+      x.event === 'interruption-receipts' && x.id === operation.id && x.complete === true &&
+      x.completedAt < operation.at && x.uploads?.some(u => u.sha === row.sha))
+    return sameSession || intent
+  }
   const during = relevant.filter((row) => row.at <= (completedAt ?? Infinity))
   const after = relevant.filter((row) => row.at > (completedAt ?? Infinity))
   return {
-    reindexHashes: during.filter((row) => !isPayloadDigest(row)),
+    reindexHashes: during.filter((row) => !isPayloadDigest(row) && !queued(row)),
+    queuedUploadDigests: during.filter(queued),
     inReindexPayloadDigests: during.filter(isPayloadDigest),
     payloadDigests: after.filter(isPayloadDigest),
     otherPostReindexHashes: after.filter((row) => !isPayloadDigest(row)),

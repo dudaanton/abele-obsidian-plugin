@@ -146,7 +146,27 @@ exports.createStallProfiler = function ({
       path,
     })
   }
+  const begin = async (at) => {
+    await command('Profiler.start')
+    startedAt = at
+    startAcknowledgedAt = Date.now()
+    emit({ event: 'cpu-profile-start', startedAt: at, startAcknowledgedAt })
+  }
   return {
+    running() { return startedAt !== undefined && !disabled },
+    async restart(at) {
+      while (busy) await new Promise(resolve => setTimeout(resolve, 10))
+      if (disabled) throw new Error('Continuous profiler unavailable')
+      busy = true
+      try {
+        if (startedAt !== undefined) await finish(at)
+        await begin(at)
+      } catch (error) {
+        disabled = true
+        emit({ event: 'cpu-profile-unavailable' })
+        throw error
+      } finally { busy = false }
+    },
     heartbeat(at) {
       heartbeatAt = at
     },
@@ -160,10 +180,7 @@ exports.createStallProfiler = function ({
         )
           await finish(at)
         if (startedAt === undefined && (continuous || at - heartbeatAt >= stallMs)) {
-          await command('Profiler.start')
-          startedAt = at
-          startAcknowledgedAt = Date.now()
-          emit({ event: 'cpu-profile-start', startedAt: at })
+          await begin(at)
         }
       } catch {
         disabled = true
@@ -213,10 +230,12 @@ exports.openEvidencePort = function (id, serializedConfig) {
   return channel
 }
 const ownedContents = new Map()
+const continuousChannels = new Map()
 const coverageWatches = new Map()
 exports.beginReindexCoverage = (channel, id) => coverageWatches.get(channel)?.begin(id)
 exports.endReindexCoverage = (channel) => coverageWatches.get(channel)?.end()
 exports.unwatch = (channel) => watches.get(channel)?.()
+exports.profileReady = (channel) => watches.has(channel)
 exports.watch = async function (id, serializedConfig) {
   const config = JSON.parse(serializedConfig)
   const watchStartedAt = Date.now()
@@ -229,6 +248,11 @@ exports.watch = async function (id, serializedConfig) {
   const { randomUUID } = require('node:crypto')
   const wc = webContents.fromId(id),
     channel = `scale-heartbeat-${id}-${randomUUID()}`
+  const existing = continuousChannels.get(id)
+  if (config.continuousCpu && existing?.evidence === config.evidence) {
+    await existing.restart()
+    return existing.channel
+  }
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- The renderer and profiler share one host-owned append queue.
   const evidence = require('./evidence-writer.cjs').writerFor(config.evidence)
   const emit = (e) =>
@@ -338,7 +362,7 @@ exports.watch = async function (id, serializedConfig) {
   }
   const closeHashTracepoints = await exports.armHashTracepoints(
     transport,
-    config.javascriptHashTracepoints,
+    config.strictRestartMeasurement ? [] : config.javascriptHashTracepoints,
     config.javascriptHashBoundary,
     emit,
     exports.caughtExceptionPauseFile(config)
@@ -404,6 +428,7 @@ exports.watch = async function (id, serializedConfig) {
     closed = true
     closing = (async () => {
       watches.delete(channel)
+      continuousChannels.delete(id)
       coverageWatches.delete(channel)
       closeHashTracepoints()
       wc.removeListener('destroyed', destroyed)
@@ -425,7 +450,9 @@ exports.watch = async function (id, serializedConfig) {
     void close().catch(() => {})
   }
   const navigating = (_event, _url, inPlace, mainFrame) => {
-    if (mainFrame && !inPlace) destroyed()
+    // Replacing a continuous watch on reload can stop the new generation's
+    // profiler and mislabel its short tail as a full capture.
+    if (!config.continuousCpu && mainFrame && !inPlace) destroyed()
   }
   try {
     await transport.sendCommand('Profiler.enable')
@@ -435,6 +462,7 @@ exports.watch = async function (id, serializedConfig) {
     ipcMain.on(channel, heartbeat)
     profiler.heartbeat(Date.now())
     if (config.continuousCpu) await profiler.poll(Date.now())
+    if (config.continuousCpu && !profiler.running()) throw new Error('Profiler start failed')
     timer = setInterval(() => {
       void profiler.poll(Date.now())
     }, 25)
@@ -450,6 +478,8 @@ exports.watch = async function (id, serializedConfig) {
     watches.set(channel, close)
     coverageWatches.set(channel, { begin: beginCoverage, end: endCoverage })
     ownedContents.set(id, close)
+    if (config.continuousCpu) continuousChannels.set(id, { channel, evidence: config.evidence,
+      restart: () => profiler.restart(Date.now()) })
     return channel
   } catch {
     await close()

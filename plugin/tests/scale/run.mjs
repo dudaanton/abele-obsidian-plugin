@@ -27,6 +27,8 @@ import {
 } from './reindex.mjs'
 import { openServer, verifyServerLimits, verifyUploadPresence } from './local-server.mjs'
 import diagnostics from './diagnostics.cjs'
+import receiptCapture from './receipt-capture.cjs'
+import { classifyRecoveryRead, linkFingerprint } from './recovery-receipts.mjs'
 import {
   noticeSummary,
   profileSummary,
@@ -47,7 +49,7 @@ import { generate, inventory, shapes, planVault } from './generate.mjs'
 import { WireProxy } from './proxy.mjs'
 import { visibilityExperiment, targetedBudgets, postSealEvidence } from './targeted.mjs'
 import { visibilityPayloadProgress, largeFileThroughput } from './payload-progress.mjs'
-import { settleRestartDevices, controlTiming } from './restart.mjs'
+import { settleRestartDevices, controlTiming, strictWindowEvidence } from './restart.mjs'
 import { triggerComparisonAtRestart } from './restart-trigger.mjs'
 import { enablePluginWhenReady } from './startup-enable.mjs'
 import { validateBuildReceipt } from './build.mjs'
@@ -344,6 +346,9 @@ export async function setupVault(config, root, device) {
     const from = join(config.buildDir, name === 'styles.css' ? 'main.css' : name)
     await copyFile(from, join(root, '.obsidian/plugins/abele', name))
   }
+  const main = join(root, '.obsidian/plugins/abele/main.js')
+  if (config.continuousCpu)
+    await writeFile(main, receiptCapture.instrumentReceiptAccess(await readFile(main, 'utf8')))
   const observer = join(root, '.obsidian/plugins/scale-observer')
   await mkdir(observer, { recursive: true })
   await copyFile(join(here, 'observer.cjs'), join(observer, 'main.js'))
@@ -357,6 +362,8 @@ export async function setupVault(config, root, device) {
   await copyFile(join(here, 'index-wait-capture.cjs'), join(observer, 'index-wait-capture.cjs'))
   await copyFile(join(here, 'failure-diagnostic.cjs'), join(observer, 'failure-diagnostic.cjs'))
   await copyFile(join(here, 'control-error.cjs'), join(observer, 'control-error.cjs'))
+  for (const name of ['receipt-capture.cjs', 'profile-gate.cjs'])
+    await copyFile(join(here, name), join(observer, name))
   await writeFile(
     join(observer, 'manifest.json'),
     JSON.stringify({
@@ -398,6 +405,9 @@ export async function setupVault(config, root, device) {
       writeObserver: join(observer, 'writes.cjs'),
       reindexObserver: join(observer, 'reindex.cjs'),
       diagnostics: join(observer, 'diagnostics.cjs'),
+      receiptCapture: join(observer, 'receipt-capture.cjs'),
+      fingerprintObserver: join(observer, 'failure-diagnostic.cjs'),
+      profileGate: join(observer, 'profile-gate.cjs'),
       profileOnly: join(observer, 'profile-only.cjs'),
       metadataCache: join(observer, 'metadata-cache.cjs'),
       indexWaitCapture: join(observer, 'index-wait-capture.cjs'),
@@ -644,7 +654,16 @@ export async function run(config) {
     ).catch(() => appProcess.kill('SIGKILL'))
     appProcess = null
   }
-  const start = async ({ passive = false } = {}) => {
+  const start = async ({ passive = false, strict = false } = {}) => {
+    for (const device of devices) {
+      const file = join(device.root, '.scale-observer.json')
+      const observer = await readEvidenceJson(file)
+      observer.strictRestartMeasurement = strict
+      await writeEvidenceJson(file, observer)
+      const managed = observer.continuousCpu && !['control', 'profile-only', 'diagnostic'].includes(observer.mode)
+      await writeEvidenceJson(join(device.root, '.obsidian/community-plugins.json'),
+        managed ? ['scale-observer'] : ['scale-observer', 'abele'])
+    }
     const at = Date.now()
     appProcess = spawn(config.app, config.appArgs ?? [], { stdio: 'ignore' })
     appProcess.on('error', () => {})
@@ -830,8 +849,15 @@ export async function run(config) {
       return event
     }
     const mark = (kind) => {
-      report.interruptions.push({ kind, triggered: true, at: Date.now() })
+      report.interruptions.push({ id: kind, kind, device: kind === 'pause mid-pull' ? '1' : '0',
+        triggered: true, at: Date.now() })
       checkpoint(true)
+    }
+    const captureBoundary = async (device, id) => {
+      const receipt = await device.evaluate(`return await globalThis.__scaleCaptureBoundary?.(${JSON.stringify(id)}) ?? {id:${JSON.stringify(id)},complete:false}`)
+      ;(report.interruptionReceipts ??= []).push(receipt)
+      checkpoint(true)
+      return receipt
     }
     const reindex = async (id, device, proxy, nextBreakpoint = null) => {
       const declared = report.declaredInterruptions.find((one) => one.id === id)
@@ -939,6 +965,7 @@ export async function run(config) {
       report.targeted.A = {complete:report.firstUploadSettled && report.peerPullSettled}
     } else {
     await triggered(p, 'large-upload', () => a.connect(tokenFiles[0]))
+    await captureBoundary(a, 'kill mid-large-file')
     await stop(true)
     p.release()
     mark('kill mid-large-file')
@@ -968,23 +995,27 @@ export async function run(config) {
       async () => {await primaryHealthy();return p.events.find((e) => e.event === 'trigger' && e.kind === 'batch')},
       config.timeoutMs
     )
+    await captureBoundary(a, 'quit mid-batch')
     await stop(false)
     p.release()
     mark('quit mid-batch')
     phase('comparison interruption')
     await triggered(p, 'comparison', start)
+    await captureBoundary(a, 'quit during comparison')
     await stop(false)
     p.release()
     mark('quit during comparison')
     await start()
     phase('network and plugin interruption')
     await a.inFlight(p, 'network interruption in flight')
+    await captureBoundary(a, 'network drop')
     p.drop()
     mark('network drop')
     await sleep(2000)
     p.offline = false
     await a.sync()
     await a.inFlight(p, 'plugin interruption in flight')
+    await captureBoundary(a, 'plugin disable-enable')
     await a.invalidateJob()
     report.pluginDisable = await a.pluginEnabled(false)
     report.pluginEnable = await a.pluginEnabled(true)
@@ -1004,6 +1035,7 @@ export async function run(config) {
     const peerDownloadAt = Date.now()
     await b.ready()
     await triggered(q, 'pull', () => b.connect(tokenFiles[1]))
+    await captureBoundary(b, 'pause mid-pull')
     const pauseAt = Date.now()
     report.pauseActionAt = await b.paused(true)
     report.pauseControllerAt = pauseAt
@@ -1067,33 +1099,14 @@ export async function run(config) {
     phase('synced restart')
     const restartAt = Date.now()
     report.restartAt = restartAt
-    if (!config.targeted && (config.reindex === true || config.shape === 'scale'))
-      await triggerComparisonAtRestart(p, start, triggered)
-    else await start()
-    report.deviceRestartIdleAt = await settleRestartDevices(
-      devices,
-      settle,
-      report.settleTimings ?? [],
-      async () => {
-        await reindex('reindex-restart-comparison', a, p)
-        await wait(
-          'restart first server request',
-          () =>
-            proxies.every((proxy) =>
-              proxy.events.some((e) => e.event === 'start' && e.at >= restartAt)
-            ),
-          60000
-        ).catch(() => {})
-        report.deviceRestartRequestMs = proxies.map((proxy) => {
-          const first = proxy.events.find((e) => e.event === 'start' && e.at >= restartAt)
-          return first ? first.at - restartAt : null
-        })
-        report.restartRequestMs = report.deviceRestartRequestMs.every((value) => value !== null)
-          ? Math.max(...report.deviceRestartRequestMs)
-          : undefined
-      }
-    )
-    await endReindex('reindex-restart-comparison', a)
+    await start({ strict: true })
+    report.deviceRestartIdleAt = await settleRestartDevices(devices, settle, report.settleTimings ?? [])
+    report.deviceRestartRequestMs = proxies.map(proxy => {
+      const first = proxy.events.find(e => e.event === 'start' && e.at >= restartAt)
+      return first ? first.at - restartAt : null
+    })
+    report.restartRequestMs = report.deviceRestartRequestMs.every(value => value !== null)
+      ? Math.max(...report.deviceRestartRequestMs) : undefined
     report.restartIdleMs = report.deviceRestartIdleAt.every(Number.isFinite)
       ? Math.max(...report.deviceRestartIdleAt) - restartAt
       : undefined
@@ -1117,6 +1130,18 @@ export async function run(config) {
     phase('post-run heap diagnostics')
     for (const device of devices) await captureSettledHeap(device, 'post-run')
     await stop(false)
+    if (!config.targeted && (config.reindex === true || config.shape === 'scale')) {
+      phase('restart comparison')
+      const comparisonAt = Date.now()
+      await triggerComparisonAtRestart(p, start, triggered)
+      await reindex('reindex-restart-comparison', a, p)
+      await settle(a, 'separate comparison device A')
+      await settle(b, 'separate comparison device B')
+      await endReindex('reindex-restart-comparison', a)
+      report.comparisonRestart = { at: comparisonAt, endedAt: Date.now(),
+        activity: await Promise.all(devices.map(device => device.activityEvidence())) }
+      await stop(false)
+    }
     if (config.shape === 'scale' || config.targeted) {
       phase('stopped-app changes')
       try {
@@ -1498,7 +1523,7 @@ export async function run(config) {
           saved.operation,
           entries,
           saved.settledAt ?? end?.at ?? Infinity,
-          knownShas
+          knownShas, proxy.events
         )
         const hashUnknown = hashes.some(
           (row) => row.source === 'unknown' && fileHashes.has(row.sha)
@@ -1536,6 +1561,7 @@ export async function run(config) {
         })
         result.postReindexPayloadDigests = classifiedHashes.payloadDigests.length
         result.inReindexPayloadDigests = classifiedHashes.inReindexPayloadDigests.length
+        result.queuedUploadDigests = classifiedHashes.queuedUploadDigests
         result.otherPostReindexHashes = classifiedHashes.otherPostReindexHashes.length
         result.settledAt = saved.settledAt ?? null
         result.afterIndexUntilSettle = {
@@ -1633,6 +1659,8 @@ export async function run(config) {
       report.restartReadEvidence = devices.map((_, i) =>
         restartReadMetrics(entries, String(i), report.restartAt, report.deviceRestartIdleAt?.[i])
       )
+      report.strictRestartWindows = devices.map((_, i) => strictWindowEvidence(
+        report.restartAt, report.deviceRestartIdleAt?.[i], String(i), entries, report.wire))
       report.restartContentReadBytes = report.restartReadEvidence.every((e) => e.complete)
         ? report.restartReadEvidence.reduce((n, e) => n + e.syncBytes, 0)
         : undefined
@@ -1655,17 +1683,49 @@ export async function run(config) {
         await serverSession.close().catch(() => {
           report.cleanupFailure = true
         })
+      report.profileCoverageRequired = config.continuousCpu === true
+      const pullStartAt = report.phases.find(row => row.name === 'second device pull')?.at
+      const observed = postSealEvidence(entries, '1', { untilAt: pullStartAt + report.peerInitialDownloadMs })
+      const boundaries = report.interruptions.map(interruption => {
+        const id = interruption.id ?? interruption.kind
+        const row = entries.findLast(x => x.event === 'interruption-receipts' &&
+          x.id === id && x.device === interruption.device)
+        const interruptedAt = interruption?.at
+        if (!row) return { id, device: interruption.device, interruptedAt, complete: false, targets: [] }
+        const recoveryEndedAt = entries.find(x => x.device === row.device && x.at > interruptedAt &&
+          ['primary-state', 'device-state'].includes(x.event) && x.snapshot?.rows?.length &&
+          x.snapshot.rows.every(r => r.status === 'idle') && x.snapshot.engines?.length &&
+          x.snapshot.engines.every(e => e.state === 'idle' && e.lastSyncAt))?.at
+        const changed = entries.some(x => x.device === row.device && x.event === 'write-start' &&
+          x.source === 'abele' && x.at > row.completedAt && x.at < interruptedAt &&
+          row.targets.some(t => t.target === x.path || t.stage === x.path))
+        return { ...row, interruptedAt, recoveryEndedAt, complete: row.complete && !changed }
+      })
+      const classified = observed.plugin.map(row => {
+        const path = linkFingerprint(row, entries)
+        const targets = boundaries.flatMap(b => b.targets ?? []).filter(t =>
+          t.sha === row.sha && (t.target === path || t.stage === path))
+        const names = new Set(targets.map(t => t.target))
+        const target = names.size === 1 ? targets[0] : undefined
+        const read = { ...row, target: target?.target, stage: path === target?.stage ? path : undefined }
+        return { ...read, recovery: classifyRecoveryRead(read, boundaries) }
+      })
+      const readbacks = classified.filter(row => row.recovery.status !== 'RECOVERY')
+      report.postSealProofRequired = true
+      report.installedFileReadbackCount = readbacks.length
+      report.installedFileReadbackBytes = readbacks.reduce((n, row) => n + (row.bytes ?? 0), 0)
+      report.installedFileReadbackStacks = readbacks.slice(0, 200)
+      report.recoveryVerifications = classified.filter(row => row.recovery.status === 'RECOVERY')
+      report.rawPostSealPluginCount = classified.length
+      report.unknownInstalledReadbackCount = observed.unknown.length
+      report.postSealObservationComplete = observed.seals.length > 0 &&
+        entries.some(row => row.device === '1' && row.event === 'hash-observer-ready' && row.at < pullStartAt) &&
+        !entries.some(row => row.device === '1' && row.event === 'hash-observer-unavailable')
       if (config.targeted) {
         const syncNow = entries.find(row => row.event === 'targeted-sync-now' && row.device === '0')
         if (report.targeted.C) report.targeted.C.syncDuringIndexWait =
           syncNow?.indexWaiting === true || syncNow?.cacheClean === false
         report.targetedSyncNow = syncNow ?? null
-        const pullStartAt = report.phases.find(row=>row.name==='second device pull')?.at
-        const observed = postSealEvidence(entries,'1', {untilAt:pullStartAt+report.peerInitialDownloadMs})
-        const readbacks = observed.plugin
-        report.installedFileReadbackCount = readbacks.length
-        report.installedFileReadbackBytes = readbacks.reduce((n,row)=>n+(row.bytes??0),0)
-        report.installedFileReadbackStacks = readbacks.slice(0,200)
         report.hostInstalledReadbackCount = observed.host.length
         report.hostInstalledReadbackBytes = observed.host.reduce((n,row)=>n+(row.bytes??0),0)
         report.hostInstalledReadbackStacks = observed.host.slice(0,20)

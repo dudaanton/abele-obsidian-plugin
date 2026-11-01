@@ -47,7 +47,13 @@ module.exports = class extends Plugin {
     if (config.mode === 'control' || config.mode === 'profile-only' || config.mode === 'diagnostic') {
       const receipt = { observerStartedAt: Date.now() }
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Control errors retain startup diagnostics only.
-      const { captureControlError } = require(config.controlError)
+      const { captureControlError } = config.controlError ? require(config.controlError) : {
+        captureControlError: (_receipt, state) => {
+          if (state.rows.some(row => row.status === 'error'))
+            throw new Error('Control error diagnostic unavailable')
+          return false
+        },
+      }
       const save = () => fs.writeFileSync(config.controlReceipt, JSON.stringify(receipt))
       save()
       const diagnostic = config.mode === 'diagnostic'
@@ -63,11 +69,10 @@ module.exports = class extends Plugin {
             ),
           })
         : null
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable observer helper.
-      const { createMetadataCacheCapture } = require(config.metadataCache)
-      const metadataCache = createMetadataCacheCapture(this.app, receipt, save)
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable observer helper.
-      const { createIndexWaitCapture } = require(config.indexWaitCapture)
+      const metadataCache = config.metadataCache
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable observer helper.
+        ? require(config.metadataCache).createMetadataCacheCapture(this.app, receipt, save)
+        : { poll() {}, finish() {}, close() {} }
       const screenshot = config.waitScreenshot
         ? async () => {
             // eslint-disable-next-line @typescript-eslint/no-require-imports -- Host-only screenshot bridge.
@@ -77,7 +82,10 @@ module.exports = class extends Plugin {
             return true
           }
         : undefined
-      const indexWait = createIndexWaitCapture(receipt, save, screenshot)
+      const indexWait = config.indexWaitCapture
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable observer helper.
+        ? require(config.indexWaitCapture).createIndexWaitCapture(receipt, save, screenshot)
+        : { poll() {}, finish() {} }
       let profile
       if (config.mode === 'profile-only') {
         try {
@@ -118,10 +126,10 @@ module.exports = class extends Plugin {
         const ui = host?.ui
         if (!ui) return
         const rows = ui.rows.value
-        indexWait.poll(Object.values(ui.activity.value))
+        indexWait.poll(Object.values(ui.activity?.value ?? {}))
         const engines = [...host.live.values()].map((runtime) => runtime.engine.status)
         if (captureControlError(receipt, { rows, engines,
-          activity: Object.entries(ui.activity.value).map(([id, value]) => ({ id, ...value })) },
+          activity: Object.entries(ui.activity?.value ?? {}).map(([id, value]) => ({ id, ...value })) },
           save, () => globalThis.__scalePollFailureCapture?.())) {
           sawActive = true
           return
@@ -177,6 +185,31 @@ module.exports = class extends Plugin {
       )
     globalThis.__scaleFlushEvidence = () => evidenceIpc.invoke(evidenceChannel)
     globalThis.__scaleEmitEvidence = emit
+    if (config.receiptCapture && config.fingerprintObserver) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Read-only disposable diagnostics.
+      const receiptCapture = require(config.receiptCapture)
+      globalThis.__scaleCaptureBoundary = async id => {
+        const receipt = await receiptCapture.captureBoundary({ id, device: config.device,
+          app: this.app, emit })
+        const file = path.join(config.profileDirectory, `${config.device}-${id.replace(/[^a-zA-Z0-9-]/g, '-')}-receipts.json`)
+        fs.mkdirSync(config.profileDirectory, { recursive: true })
+        fs.writeFileSync(file, JSON.stringify(receipt))
+        await globalThis.__scaleFlushEvidence()
+        return { id, at: receipt.at, completedAt: receipt.completedAt, complete: receipt.complete, file }
+      }
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Argument-to-digest linkage only.
+      const fingerprints = require(config.fingerprintObserver)
+      globalThis.__scaleWrapFingerprints = Class => fingerprints.wrapFingerprints(Class, row => {
+        if (row.event === 'fingerprint-error') {
+          const { error: _error, ...safe } = row
+          emit({ ...safe, category: 'fingerprint failed' })
+        } else emit(row)
+      })
+      this.register(() => {
+        delete globalThis.__scaleCaptureBoundary
+        delete globalThis.__scaleWrapFingerprints
+      })
+    }
     emit({ event: 'renderer-start', pid: globalThis.process?.pid ?? null })
     if (config.targeted) {
       const lifecycle = kind => emit({event:'targeted-lifecycle',kind,
@@ -381,6 +414,8 @@ module.exports = class extends Plugin {
         remote.getCurrentWebContents().id,
         JSON.stringify(config)
       )
+      if (config.continuousCpu && !diagnostic.profileReady(channel))
+        throw new Error('Continuous profiler did not acknowledge startup')
       globalThis.__scaleStopProfiles = () => diagnostic.unwatch(channel)
       globalThis.__scaleReindexCoverage = {
         begin: (id) => diagnostic.beginReindexCoverage(channel, id),
@@ -395,11 +430,17 @@ module.exports = class extends Plugin {
       const heartbeat = setInterval(() => ipcRenderer.send(channel), 25)
       this.register(() => {
         clearInterval(heartbeat)
-        void diagnostic.unwatch(channel)
+        if (!config.continuousCpu) void diagnostic.unwatch(channel)
       })
     } catch {
       emit({ event: 'cpu-profile-unavailable' })
+      if (config.continuousCpu) throw new Error('Continuous profiling required before product load')
     }
     reindexObserver.observeRebuild(this.app, config, emit, (dispose) => this.register(dispose))
+    if (config.continuousCpu) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable startup gate.
+      const { enableAfterProfile } = require(config.profileGate)
+      await enableAfterProfile(Promise.resolve(), () => this.app.plugins.enablePlugin('abele'))
+    }
   }
 }

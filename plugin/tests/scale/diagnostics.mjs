@@ -67,6 +67,7 @@ export async function profileSummary(tasks, captures, load) {
     )
     const counts = {},
       frames = []
+    const intervals = []
     for (const capture of matches) {
       if (!cache.has(capture.path))
         cache.set(
@@ -76,6 +77,11 @@ export async function profileSummary(tasks, captures, load) {
       while (cache.size > 4) cache.delete(cache.keys().next().value)
       const profile = await cache.get(capture.path)
       if (!profile) continue
+      if (capture.clock && Number.isFinite(profile.startTime) && Number.isFinite(profile.endTime))
+        intervals.push([
+          capture.clock.afterAt + profile.startTime / 1000 - capture.clock.timestampMs,
+          capture.clock.beforeAt + profile.endTime / 1000 - capture.clock.timestampMs,
+        ])
       const nodes = new Map(profile.nodes.map((n) => [n.id, n])),
         parents = new Map()
       for (const node of profile.nodes)
@@ -120,12 +126,19 @@ export async function profileSummary(tasks, captures, load) {
         if (frames.length < 20 && stack.length) frames.push({ source, stack })
       }
     }
+    let coveredUntil = task.startedAt
+    for (const [start, end] of intervals.sort((a, b) => a[0] - b[0]))
+      if (start <= coveredUntil) coveredUntil = Math.max(coveredUntil, end)
+    const attributionPass = coveredUntil >= task.startedAt + task.durationMs &&
+      frames.length > 0 && !counts.unknown
     results.push({
       ...task,
       profiles: matches.map((c) => c.path),
       samplesBySource: counts,
       source: Object.keys(counts).length ? 'sampled' : 'unknown',
       frames,
+      attributionPass,
+      profileWindowComplete: coveredUntil >= task.startedAt + task.durationMs,
       coverage: matches.some((capture) => capture.continuous)
         ? 'Continuous low-rate samples were armed before product load. Missing/censored segments and mixed stacks remain unknown.'
         : 'Tail samples only; the watchdog threshold and debugger command latency precede capture. Mixed stacks remain mixed, missing samples remain unknown.',

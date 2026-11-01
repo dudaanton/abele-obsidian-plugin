@@ -52,6 +52,9 @@ export function targetedBudgets(report) {
       t.E?.complete &&
       report.installedFileReadbackBytes === 0 &&
       (report.unknownInstalledReadbackCount ?? 0) === 0 &&
+      (!report.postSealProofRequired || report.postSealObservationComplete === true) &&
+      (!(report.profileCoverageRequired || report.longTaskAttribution?.length) || report.longTaskAttribution?.every(row => row.attributionPass)) &&
+      (!report.strictRestartWindows || report.strictRestartWindows.every(row => row.complete)) &&
       report.mismatches?.length === 0,
   }
   return Object.entries(conditions).map(([name, passed]) => ({

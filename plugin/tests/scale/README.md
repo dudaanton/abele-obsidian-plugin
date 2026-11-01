@@ -567,3 +567,35 @@ journal under `state/server-final` before deleting disposable server storage. A 
 the copied files. This excludes blob payloads; full server byte verification remains separate.
 A failed evidence copy retains the source storage and fails cleanup rather than discarding it.
 The guardian's later disk-state copy cannot substitute for this pre-disposal capture.
+
+Strict restart timing uses a clean app generation: no comparison hold, rebuild, reload,
+or hash-tracepoint breakpoint is scheduled inside that measurement. `strictRestartWindows`
+requires exactly one observed renderer generation per device and no interruption trigger.
+The comparison/rebuild restart runs afterwards in its own `restart comparison` phase, with
+separate activity evidence. Report the host-index wait independently for each generation.
+
+Continuous profiling is acknowledged before the observer enables/evaluates the product.
+Only the observer is enabled on disk for these launches/rebuilds; the main-process profiler
+survives renderer navigation instead of replacing a running watch. Control mode retains
+ordinary loading without profiling. Coverage uses the actual calibrated profile timestamps,
+not the claimed receipt duration: missing prefixes, sample gaps and unknown stacks fail
+attribution. Mixed sampled stacks do not prove that all time belongs to the plugin.
+
+Queued upload payload digests are reported separately from reindex-created hashes only
+when multipart caller stacks match an already active upload session or the rebuild's own
+pre-click snapshot proves the SHA was queued. A previous scan/hash alone is insufficient.
+The same-SHA session, intent snapshot and digest receipts remain in the evidence.
+
+`interruption-receipts` captures allowlisted pending pull intents, ledger acknowledgement,
+live identity-bound installation proof presence, committed host private-stage records and
+queued upload sources. Snapshot transaction failures remain explicitly incomplete. The
+continuous-profile fixture appends a diagnostic accessor and fingerprint argument hooks
+to the disposable copy of the verified bundle; the source artifact is unchanged. This is
+diagnostic perturbation, not a production build measurement.
+
+Zero post-seal read-back remains required. The only separate `recoveryVerifications` are
+reads joined by exact target/SHA (and exact private-stage path when applicable) to the
+latest declared interruption before its observed recovery idle, with a complete snapshot proving an unacknowledged intent
+and absent usable identity receipt. A missing/later incomplete snapshot, ambiguous target,
+intervening observed target write, acknowledged installation or unexplained caller fails.
+Raw post-seal reads and allowed recovery checks are both retained; neither is hidden.

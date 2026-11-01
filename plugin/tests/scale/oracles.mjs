@@ -115,6 +115,17 @@ export function budgets(m) {
   const timing = (name, value, limit) =>
     check(name, value, `< ${limit} ms`, Number.isFinite(value) && value < limit)
   return [
+    ...(m.strictRestartWindows ? [check('clean strict restart windows',
+      m.strictRestartWindows.filter(row => !row.complete).length, 0,
+      m.strictRestartWindows.length === 2 && m.strictRestartWindows.every(row => row.complete))] : []),
+    ...(m.profileCoverageRequired || m.longTaskAttribution?.length ? [check('long task attribution',
+      m.longTaskAttribution?.filter(row => !row.attributionPass).length,
+      'every task has covering samples and stacks',
+      Array.isArray(m.longTaskAttribution) && m.longTaskAttribution.every(row => row.attributionPass))] : []),
+    ...(m.postSealProofRequired ? [check('installed file read-back', m.installedFileReadbackBytes,
+      '0 unexplained bytes; explicit boundary-proven recovery only',
+      m.postSealObservationComplete === true && m.installedFileReadbackBytes === 0 &&
+      m.unknownInstalledReadbackCount === 0)] : []),
     timing(
       'restart first request',
       m.startupClock === 'plugin-load' ? m.restartPluginRequestMs : m.restartRequestMs,
