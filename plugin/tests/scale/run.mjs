@@ -46,6 +46,7 @@ import { decodeAccessToken, encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { generate, inventory, shapes, planVault } from './generate.mjs'
 import { WireProxy } from './proxy.mjs'
 import { visibilityExperiment, targetedBudgets, postSealEvidence } from './targeted.mjs'
+import { visibilityPayloadProgress, largeFileThroughput } from './payload-progress.mjs'
 import { settleRestartDevices, controlTiming } from './restart.mjs'
 import { triggerComparisonAtRestart } from './restart-trigger.mjs'
 import { enablePluginWhenReady } from './startup-enable.mjs'
@@ -1685,8 +1686,13 @@ export async function run(config) {
           }))
           segment.quitOrUnload = report.lifecycleEvents.filter(row=>row.at>=segment.beginAt && row.at<segment.endAt && /quit|unload/.test(row.kind))
         }
-        if (report.targeted.A) report.targeted.A.complete &&=
-          report.visibilitySegments?.length === 3 && report.visibilitySegments.every(s=>s.installSeals>0 && s.quitOrUnload.length===0)
+        const payloadProgress = visibilityPayloadProgress(entries, report.visibilitySegments ?? [],
+          { device: '1', scope: report.scope })
+        report.visibilitySegments = payloadProgress.segments
+        report.visibilityPayloadCounting = 'Successful native/handle payload writes at finish; nested layers deduplicated; network receipts alone never credited'
+        report.largeFileThroughput = largeFileThroughput(entries, report.wire, proxies[1].versions,
+          { device: '1', beginAt: pullStartAt, endAt: pullStartAt + report.peerInitialDownloadMs })
+        if (report.targeted.A) report.targeted.A.complete &&= payloadProgress.complete
         if (report.targeted.E) report.targeted.E.complete &&= observed.seals.length > 0
       }
       report.budgets = config.targeted ? targetedBudgets(report) : budgets(report)

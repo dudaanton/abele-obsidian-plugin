@@ -32,6 +32,16 @@ the affected phase. Each invocation needs fresh disposable vaults and an isolate
 scope; reuse the exact built candidate and package caches, not an earlier connection's
 state. A failed invocation resets a consecutive-pass gate; one pass does not qualify it.
 
+Visibility windows require positive confirmed plugin payload bytes written, not a
+completed file: a large ranged transfer can make progress without sealing a file in
+that window. `installedPayloadBytes` counts successful native/handle writes to staging
+or scoped targets at write completion, deduplicating nested layers and excluding host
+and metadata writes. Coverage gaps, zero-byte stalls and quit/unload still fail phase A.
+Seals remain reported independently. `largeFileThroughput` reports each sealed payload
+over 64 MiB from its first content request to its seal, including MiB/s, numeric range
+offsets, response chunk sizes, and sequential/parallel request overlap. Network responses
+alone never count as written-byte progress.
+
 The post-install read-back oracle covers the initial peer pull, as in the qualification
 profile. Host index digests are reported separately. Later rename/replacement digests
 remain in the evidence with their caller stacks; matching an older seal's SHA alone does

@@ -89,6 +89,8 @@ export class WireProxy extends EventEmitter {
       route: url.pathname,
       declaredBytes: Number(req.headers['content-length']) || 0,
     })
+    const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? '')
+    if (range) entry.range = { start: Number(range[1]), end: range[2] ? Number(range[2]) : null }
     this.active.set(id, entry)
     const uploadSha = /^\/v2\/uploads\/([a-f0-9]{64})/.exec(url.pathname)?.[1]
     if (uploadSha && req.method !== 'GET') this.markOwned(uploadSha, id)

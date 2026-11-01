@@ -127,6 +127,7 @@ exports.observeWrites = function (adapter, emit, nativePorts = []) {
               event: 'write-finish',
               generation,
               id,
+              ...(Number.isFinite(value?.bytesWritten) ? { bytesWritten: value.bytesWritten } : {}),
               durationMs: performance.now() - startedAt,
             })
           return value
