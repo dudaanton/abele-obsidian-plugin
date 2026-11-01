@@ -204,7 +204,8 @@ it('restores unsent offline drafts without auto-sending, then sends explicitly a
     }>(`(async () => {
       ${PRELUDE}
       const presenter = chats.getNodeSession(chats.activeTabId.value);
-      await until(() => presenter.connection.state.value === 'offline');
+      // Transport retries stay connecting while the stopped node is unreachable.
+      await until(() => presenter.connection.state.value === 'connecting' && !presenter.connection.client.connected);
       const field = document.querySelector('.abele-node-chat textarea');
       field.value = 'Sample offline follow-up'; field.dispatchEvent(new Event('input',{bubbles:true}));
       field.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',shiftKey:true,bubbles:true}));

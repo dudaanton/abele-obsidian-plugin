@@ -1,4 +1,5 @@
 export const streamB = {
+  'streamB.loadingPlaces': 'Wird geladen…',
   'streamB.readEditRunCommands': 'lesen, bearbeiten und Befehle ausführen',
   'streamB.invalidNodeCodeLink':
     'Dieser Link zum Knotencode ist ungültig. Kopieren Sie den Link erneut vom Knoten.',

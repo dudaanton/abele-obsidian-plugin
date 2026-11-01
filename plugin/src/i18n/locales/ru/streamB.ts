@@ -1,4 +1,5 @@
 export const streamB = {
+  'streamB.loadingPlaces': 'Загрузка…',
   'streamB.readEditRunCommands': 'читать, редактировать и выполнять команды',
   'streamB.invalidNodeCodeLink': 'Ссылка на код ноды повреждена. Скопируйте её с ноды заново.',
   'streamB.showAsCode': 'Показать код',

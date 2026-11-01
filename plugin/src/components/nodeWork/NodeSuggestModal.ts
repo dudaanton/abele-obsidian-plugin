@@ -3,8 +3,6 @@ import { t } from '@/i18n'
 // quick-switcher prompt: type to filter, arrows to move, Enter to choose. Each row is the thing's
 // glyph (its kind in the tooltip), its name, a faint line under it, and a code at the end.
 import { App, SuggestModal, setIcon, setTooltip } from 'obsidian'
-import { h, render } from 'vue'
-import Progress from '@/components/obsidian/Progress.vue'
 import './nodeSuggest.css'
 
 export interface NodeSuggestion {
@@ -39,7 +37,8 @@ export interface NodeSuggestHint {
 
 export class NodeSuggestModal extends SuggestModal<NodeSuggestion> {
   private hintEl?: HTMLElement
-  private loadingEl?: HTMLElement
+  private loading = false
+  private idleEmptyText: string
 
   constructor(
     app: App,
@@ -56,6 +55,7 @@ export class NodeSuggestModal extends SuggestModal<NodeSuggestion> {
       { command: '↵', purpose: t('streamBMeta.89c0a2bd17') },
       { command: 'esc', purpose: t('streamBMeta.29e1c55a84') },
     ])
+    this.idleEmptyText = empty
     this.emptyStateText = empty
     if (hint) this.showHint(hint)
   }
@@ -80,25 +80,19 @@ export class NodeSuggestModal extends SuggestModal<NodeSuggestion> {
   /** The list again, once what the hint asked for is allowed; the hint goes. */
   setItems(items: NodeSuggestion[], empty?: string): void {
     this.items = items
-    if (empty) this.emptyStateText = empty
+    if (empty) this.idleEmptyText = empty
+    this.emptyStateText = this.loading ? t('streamB.loadingPlaces') : this.idleEmptyText
     this.hintEl?.remove()
     this.hintEl = undefined
     this.inputEl.dispatchEvent(new Event('input'))
   }
 
-  /** The shared native progress component; the cached list remains usable. */
+  /** Use Obsidian's own empty row while refreshing; cached matches remain usable. */
   setLoading(loading: boolean): void {
-    if (this.loadingEl) {
-      render(null, this.loadingEl)
-      this.loadingEl.remove()
-      this.loadingEl = undefined
-    }
+    this.loading = loading
+    this.emptyStateText = loading ? t('streamB.loadingPlaces') : this.idleEmptyText
     this.resultContainerEl.setAttribute('aria-busy', String(loading))
-    if (!loading) return
-    const el = createDiv()
-    render(h(Progress, { label: t('streamB.waitingForTheNode.7225c7') }), el)
-    this.resultContainerEl.before(el)
-    this.loadingEl = el
+    this.inputEl.dispatchEvent(new Event('input'))
   }
 
   onClose(): void {
