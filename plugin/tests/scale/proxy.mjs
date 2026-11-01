@@ -2,6 +2,7 @@ import { Agent as HttpAgent, createServer, request as httpRequest } from 'node:h
 import { Agent as HttpsAgent, request as httpsRequest } from 'node:https'
 import { EventEmitter } from 'node:events'
 import * as compression from 'node:zlib'
+import { contentRequestDelay } from './targeted.mjs'
 
 /** Streaming observation outside the renderer. No headers, tokens or bodies enter the trace. */
 export class WireProxy extends EventEmitter {
@@ -19,7 +20,21 @@ export class WireProxy extends EventEmitter {
     this.versions = new Map()
     this.offline = false
     this.sequence = 0
-    this.server = createServer((req, res) => this.forward(req, res))
+    this.server = createServer((req, res) => {
+      const pace = contentRequestDelay(req.method, new URL(req.url, this.upstream).pathname,
+        Date.now(), this.nextContentAt ?? 0, this.contentSpacingMs ?? 0)
+      this.nextContentAt = pace.next
+      if (pace.delay > 0) {
+        req.pause()
+        const timer = setTimeout(() => {
+          if (!req.destroyed && !res.destroyed) {
+            this.forward(req, res)
+            req.resume()
+          }
+        }, pace.delay)
+        res.once('close', () => clearTimeout(timer))
+      } else this.forward(req, res)
+    })
     this.server.on('upgrade', (req, socket, head) => {
       if (this.offline) {
         socket.destroy()

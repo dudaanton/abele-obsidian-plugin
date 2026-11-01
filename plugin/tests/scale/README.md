@@ -11,6 +11,33 @@ remove generated vaults, and release resources even if the transport disappears.
 supervisor writes a lease file containing `{"pid":12345,"exclusive":true}`. The runner
 checks its liveness; this file is a contract with the supervisor, not a security boundary.
 
+## Targeted two-device probe
+
+Set `targeted: true`, `shape: "smoke"`, `reindex: false`, `heapDiagnostics: false`,
+`continuousCpu: true`, `seed: 42`, and
+`parameters: {"files":5000,"bytes":1789569706,"wideFolderFiles":512}` in the supervised
+runner configuration. Run `node tests/scale/run.mjs /test-run/config.json` under the
+same exclusive desktop guardian. This is a separate phase gate, not a scale qualification.
+It uploads and pulls, measures three 180-second foreground/minimized/foreground segments,
+restarts both devices, performs six offline mutations with Sync now during host indexing,
+kills the app after an edit commit is applied but before acknowledgement, and verifies
+every expected byte on both devices and the server. Content GETs alone are paced at
+140 ms aggregate spacing during the visibility experiment. `visibilityDurationMs` and
+`contentSpacingMs` are explicit experiment parameters, never implied product behavior.
+
+`report.json` contains strict A–E budgets, per-device restart timing/read coverage,
+offline deletion and directory checks, error recovery observations, lifecycle events,
+post-install digest stacks, and install seals in 30-second bins. Missing evidence fails
+the affected phase. Each invocation needs fresh disposable vaults and an isolated server
+scope; reuse the exact built candidate and package caches, not an earlier connection's
+state. A failed invocation resets a consecutive-pass gate; one pass does not qualify it.
+
+The post-install read-back oracle covers the initial peer pull, as in the qualification
+profile. Host index digests are reported separately. Later rename/replacement digests
+remain in the evidence with their caller stacks; matching an older seal's SHA alone does
+not establish that a newly installed destination was read back. Unknown callers inside
+the pull window fail the oracle.
+
 ## Durable attempt ownership
 
 `attempt.py` is a portable Unix supervisor using Python 3 and `tar`. Launch it on the

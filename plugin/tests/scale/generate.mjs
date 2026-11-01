@@ -7,7 +7,7 @@ export const shapes = {
   scale: { files: 33000, bytes: 11 * 1024 ** 3 },
 }
 
-export function planVault({ seed = 1, files, bytes }) {
+export function planVault({ seed = 1, files, bytes, wideFolderFiles = 0 }) {
   if (
     !Number.isSafeInteger(seed) ||
     !Number.isSafeInteger(files) ||
@@ -24,6 +24,8 @@ export function planVault({ seed = 1, files, bytes }) {
     if (i === 1) path = 'Notes/case.md'
     if (i === 2) path = '.obsidian/scale-sample.json'
     if (i === 3) path = '.obsidian/plugins/sample-disabled/data.json'
+    if (i >= 128 && i < 128 + wideFolderFiles && i < files - attachments)
+      path = `Notes/Wide/Sample ${i}.md`
     if (i >= files - attachments)
       path = `Attachments/Batch ${i % 9}/Sample ${i}.${i % 2 ? 'pdf' : 'png'}`
     return {

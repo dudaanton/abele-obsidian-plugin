@@ -45,6 +45,7 @@ import { AccessClient, V2EngineClient } from '@abele/sync-sdk/core'
 import { decodeAccessToken, encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { generate, inventory, shapes, planVault } from './generate.mjs'
 import { WireProxy } from './proxy.mjs'
+import { visibilityExperiment, targetedBudgets, postSealEvidence } from './targeted.mjs'
 import { settleRestartDevices, controlTiming } from './restart.mjs'
 import { triggerComparisonAtRestart } from './restart-trigger.mjs'
 import { enablePluginWhenReady } from './startup-enable.mjs'
@@ -391,6 +392,7 @@ export async function setupVault(config, root, device) {
         failureArmed: join(config.output, 'failure-capture-armed'),
       } : {}),
       contentPrefix: config.contentPrefix,
+      targeted: config.targeted === true,
       observeContentReads: false,
       writeObserver: join(observer, 'writes.cjs'),
       reindexObserver: join(observer, 'reindex.cjs'),
@@ -445,6 +447,7 @@ export async function run(config) {
     contentReadObservationWindow: 'synced restart; write and hash observers cover every phase',
     caseRefusals: [],
     primaryActivity: [],
+    ...(config.targeted ? { targeted: {} } : {}),
   }
   const phase = (name) => {
     report.phase = name
@@ -575,6 +578,7 @@ export async function run(config) {
       const first = error.scaleFatalSnapshot ?? (await device.snapshot().catch(() => null))
       if (first?.rows?.some(row=>row.status==='error')) {
         await recoverObservedError(device, step, first)
+        if (config.targeted) await device.idle(config.timeoutMs)
         idle = true
         return true
       }
@@ -905,6 +909,34 @@ export async function run(config) {
     const firstUploadAt = Date.now()
     phase('first upload')
     await start()
+    if (config.targeted) {
+      await a.connect(tokenFiles[0])
+      report.firstUploadSettled = await settle(a, 'first upload')
+      report.initialUploadMs = Date.now() - firstUploadAt
+      report.syncPolicy = await a.policy()
+      phase('second device pull')
+      const pullAt = Date.now()
+      q.contentSpacingMs = config.contentSpacingMs ?? 140
+      await b.connect(tokenFiles[1])
+      const visibility = visible => b.evaluate(`const w=require('@electron/remote').getCurrentWindow();
+        ${visible ? 'w.restore();w.show();w.focus()' : 'w.minimize()'};
+        return {visible:w.isVisible(),minimized:w.isMinimized(),documentVisibility:document.visibilityState}`)
+      report.visibilitySegments = await visibilityExperiment({ visibility, sleep,
+        durationMs: config.visibilityDurationMs ?? 180000,
+        sample: async () => {
+          const snapshot = await b.snapshot()
+          if (snapshot?.rows?.some(row => row.status === 'error'))
+            await recoverObservedError(b, 'second device pull visibility', snapshot)
+          const state = await b.evaluate(`const w=require('@electron/remote').getCurrentWindow();return {visible:w.isVisible(),minimized:w.isMinimized(),documentVisibility:document.visibilityState}`)
+          checkpoint(true)
+          return {at:Date.now(),state,snapshot,activity:await b.activityEvidence()}
+        },
+      })
+      q.contentSpacingMs = 0
+      report.peerPullSettled = await settle(b, 'second device pull')
+      report.peerInitialDownloadMs = Date.now() - pullAt
+      report.targeted.A = {complete:report.firstUploadSettled && report.peerPullSettled}
+    } else {
     await triggered(p, 'large-upload', () => a.connect(tokenFiles[0]))
     await stop(true)
     p.release()
@@ -1003,6 +1035,8 @@ export async function run(config) {
     report.peerPullSettled = await settle(b, 'second device pull')
     await endReindex('reindex-peer-download', b)
     report.peerInitialDownloadMs = Date.now() - peerDownloadAt
+    }
+    if (!config.targeted) {
     phase('edits and settle')
     const edits = [
       { device: a, path: `${prefix}/Notes/Device A.md`, text: '# Device A\n' },
@@ -1025,13 +1059,14 @@ export async function run(config) {
       await settle(a, `edit cycle ${i} device A`)
       await settle(b, `edit cycle ${i} device B`)
     }
+    }
     await writeFile(join(config.output, 'expected-inventory.json'), JSON.stringify(expected))
     await stop(false)
     await enableRestartReadEvidence(devices.map((device) => device.root))
     phase('synced restart')
     const restartAt = Date.now()
     report.restartAt = restartAt
-    if (config.reindex === true || config.shape === 'scale')
+    if (!config.targeted && (config.reindex === true || config.shape === 'scale'))
       await triggerComparisonAtRestart(p, start, triggered)
     else await start()
     report.deviceRestartIdleAt = await settleRestartDevices(
@@ -1077,11 +1112,13 @@ export async function run(config) {
       })
     )
     report.strictRestartActivity = await Promise.all(devices.map((device) => device.activityEvidence()))
+    if (config.targeted) report.targeted.B = {complete:report.deviceRestartIdleAt.every(Number.isFinite)}
     phase('post-run heap diagnostics')
     for (const device of devices) await captureSettledHeap(device, 'post-run')
     await stop(false)
-    if (config.shape === 'scale') {
+    if (config.shape === 'scale' || config.targeted) {
       phase('stopped-app changes')
+      try {
       const plan = planOfflineChanges(prefix, expected)
       const beforeRows = new Map((await manifest(token)).filter(file => file.kind !== 'directory').map(file => [file.path, file]))
       for (const path of [plan.sized, plan.sameSize, plan.deleted, ...plan.moves.map(move => move.from)])
@@ -1099,6 +1136,8 @@ export async function run(config) {
         plan, changed, sameSizeMtimeBefore: sameSizeBefore.mtimeMs,
         sameSizeMtimeAfter: sameSizeAfter.mtimeMs, phaseSamples: [],
       }
+      if (config.targeted)
+        await writeFile(join(a.root, '.scale-sync-during-index'), 'armed')
       checkpoint(true)
       let polling = false
       let lastPoll = Promise.resolve()
@@ -1182,7 +1221,45 @@ export async function run(config) {
       report.offlineCheck.peerContentRequests = q.events.filter(e =>
         e.at >= report.offlineCheck.restartedAt && e.event === 'start' &&
         /^\/v2\/files\//.test(e.route ?? '') && /\/content/.test(e.route ?? '')).length
+      if (config.targeted) report.targeted.C = {complete:true}
       phase('stopped-app changes verified')
+      } catch (error) {
+        if (!config.targeted || error.scaleFatalSnapshot) throw error
+        report.targeted.C = {complete:false}
+        report.failures.push({step:'offline correctness',reason:'Offline change oracle failed',
+          snapshots:await Promise.all(devices.map(device=>device.snapshot().catch(()=>null)))})
+      }
+      await stop(false)
+    }
+    if (config.targeted) {
+      phase('crash during edit commit')
+      await start()
+      await settle(a, 'crash precondition primary')
+      await settle(b, 'crash precondition peer')
+      const since = Date.now()
+      p.breakpoint = 'batch'
+      const batch = expected.filter(file => /\/Sample.*\.md$/.test(file.path)).slice(50, 82)
+      for (const [index, file] of batch.entries()) {
+        const text = `# Commit crash sample ${index}\n`
+        await a.evaluate(`await app.vault.modify(app.vault.getAbstractFileByPath(${JSON.stringify(file.path)}),${JSON.stringify(text)});return true`)
+        Object.assign(file,{size:Buffer.byteLength(text),sha:sha(text)})
+      }
+      await a.sync()
+      const cut = await wait('targeted edit commit applied before acknowledgement', () =>
+        p.events.find(e => e.at >= since && e.event === 'trigger' && e.kind === 'batch'), 120000)
+      // No renderer round trips between the held commit and kill.
+      appProcess.kill('SIGKILL')
+      await stop(true,{minimal:true})
+      p.release()
+      report.targeted.D = {commitCut:cut.serverApplied === true,cutAt:cut.at}
+      await start()
+      report.targeted.D.primaryIdle = await settle(a, 'crash resume primary')
+      await b.sync()
+      report.targeted.D.peerIdle = await settle(b, 'crash resume peer')
+      report.targeted.D.tokenPresent = await a.evaluate(`${host}return u.registry.records().length>0 && [...h.live.values()].length>0`)
+      report.targeted.D.activity = await a.activityEvidence()
+      report.targeted.D.complete = report.targeted.D.primaryIdle && report.targeted.D.peerIdle
+      await writeFile(join(config.output,'expected-inventory.json'),JSON.stringify(expected))
       await stop(false)
     }
     phase('byte verification')
@@ -1236,8 +1313,12 @@ export async function run(config) {
     report.serverFiles = serverFiles.length
     report.verifiedFiles += serverFiles.length
     report.verificationComplete = true
+    if (config.targeted) report.targeted.E = {complete:report.mismatches.length === 0 &&
+      Object.values(report.offlineCheck?.deletedAbsent ?? {}).length === 3 &&
+      Object.values(report.offlineCheck.deletedAbsent).every(Boolean)}
     if (report.failures.length)
       report.failure = 'Device settle checks failed; byte evidence was still collected'
+    if (!config.targeted) {
     phase('control restart')
     for (const [index, device] of devices.entries()) {
       const file = join(device.root, '.scale-observer.json')
@@ -1282,6 +1363,7 @@ export async function run(config) {
       activity: controlActivity,
     }
     await stop(false, { minimal: true })
+    }
     phase('complete')
   } catch (error) {
     if (error.scaleFatalSnapshot && Number.isInteger(error.scaleFatalDevice))
@@ -1572,7 +1654,42 @@ export async function run(config) {
         await serverSession.close().catch(() => {
           report.cleanupFailure = true
         })
-      report.budgets = budgets(report)
+      if (config.targeted) {
+        const syncNow = entries.find(row => row.event === 'targeted-sync-now' && row.device === '0')
+        if (report.targeted.C) report.targeted.C.syncDuringIndexWait =
+          syncNow?.indexWaiting === true || syncNow?.cacheClean === false
+        report.targetedSyncNow = syncNow ?? null
+        const pullStartAt = report.phases.find(row=>row.name==='second device pull')?.at
+        const observed = postSealEvidence(entries,'1', {untilAt:pullStartAt+report.peerInitialDownloadMs})
+        const readbacks = observed.plugin
+        report.installedFileReadbackCount = readbacks.length
+        report.installedFileReadbackBytes = readbacks.reduce((n,row)=>n+(row.bytes??0),0)
+        report.installedFileReadbackStacks = readbacks.slice(0,200)
+        report.hostInstalledReadbackCount = observed.host.length
+        report.hostInstalledReadbackBytes = observed.host.reduce((n,row)=>n+(row.bytes??0),0)
+        report.hostInstalledReadbackStacks = observed.host.slice(0,20)
+        report.unknownInstalledReadbackCount = observed.unknown.length
+        report.unknownInstalledReadbackStacks = observed.unknown.slice(0,200)
+        report.laterPostSealPluginCount = observed.laterPlugin.length
+        report.laterPostSealPluginBytes = observed.laterPlugin.reduce((n,row)=>n+(row.bytes??0),0)
+        report.laterPostSealPluginStacks = observed.laterPlugin.slice(0,200)
+        report.laterPostSealUnknownCount = observed.laterUnknown.length
+        report.installSeals = observed.seals
+        report.lifecycleEvents = entries.filter(row => /targeted-lifecycle/.test(row.event))
+        for (const segment of report.visibilitySegments ?? []) {
+          segment.installSeals = report.installSeals.filter(row=>row.at>=segment.beginAt && row.at<segment.endAt).length
+          segment.filesPerSecond = segment.installSeals / ((segment.endAt-segment.beginAt)/1000)
+          segment.bins = Array.from({length:Math.ceil((segment.endAt-segment.beginAt)/30000)},(_,i)=>({
+            beginAt:segment.beginAt+i*30000,
+            count:report.installSeals.filter(row=>row.at>=segment.beginAt+i*30000 && row.at<Math.min(segment.endAt,segment.beginAt+(i+1)*30000)).length,
+          }))
+          segment.quitOrUnload = report.lifecycleEvents.filter(row=>row.at>=segment.beginAt && row.at<segment.endAt && /quit|unload/.test(row.kind))
+        }
+        if (report.targeted.A) report.targeted.A.complete &&=
+          report.visibilitySegments?.length === 3 && report.visibilitySegments.every(s=>s.installSeals>0 && s.quitOrUnload.length===0)
+        if (report.targeted.E) report.targeted.E.complete &&= observed.seals.length > 0
+      }
+      report.budgets = config.targeted ? targetedBudgets(report) : budgets(report)
       if (report.evidenceReadFailures)
         await saveFailureCheckpoint(
           config.output,

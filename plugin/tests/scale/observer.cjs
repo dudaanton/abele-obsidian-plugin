@@ -178,6 +178,34 @@ module.exports = class extends Plugin {
     globalThis.__scaleFlushEvidence = () => evidenceIpc.invoke(evidenceChannel)
     globalThis.__scaleEmitEvidence = emit
     emit({ event: 'renderer-start', pid: globalThis.process?.pid ?? null })
+    if (config.targeted) {
+      const lifecycle = kind => emit({event:'targeted-lifecycle',kind,
+        visible:evidenceRemote.getCurrentWindow().isVisible(),
+        minimized:evidenceRemote.getCurrentWindow().isMinimized(),
+        documentVisibility:document.visibilityState})
+      this.registerDomEvent(window,'beforeunload',()=>lifecycle('beforeunload'))
+      this.registerDomEvent(window,'unload',()=>lifecycle('unload'))
+      this.registerDomEvent(document,'visibilitychange',()=>lifecycle('visibilitychange'))
+      const quitting = () => lifecycle('before-quit')
+      evidenceRemote.app.on('before-quit',quitting)
+      this.register(()=>evidenceRemote.app.removeListener('before-quit',quitting))
+      lifecycle('observer-load')
+      const trigger = path.join(this.app.vault.adapter.getBasePath(),'.scale-sync-during-index')
+      if (fs.existsSync(trigger)) {
+        const timer = setInterval(()=>{
+          const ui = this.app.plugins?.plugins?.abele?.tokenEngines?.ui
+          if (!ui?.rows.value.length) return
+          const indexWaiting = Object.values(ui.activity.value).some(a=>a.indexWaiting===true)
+          const cacheClean = this.app.metadataCache.isCacheClean()
+          if (!indexWaiting && cacheClean) return
+          clearInterval(timer)
+          fs.unlinkSync(trigger)
+          emit({event:'targeted-sync-now',indexWaiting,cacheClean})
+          for (const row of ui.rows.value) void ui.sync(row.id).catch(()=>{})
+        },25)
+        this.register(()=>clearInterval(timer))
+      }
+    }
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable observer module.
     const reindexObserver = require(config.reindexObserver)
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Observe native ports before product load.
