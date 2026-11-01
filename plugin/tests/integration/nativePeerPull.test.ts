@@ -54,6 +54,8 @@ for (const fault of [
   'install-fingerprint-notification',
   'install-fingerprint-folder-notification',
   'install-fingerprint-repeat',
+  'install-fingerprint-pull',
+  'install-fingerprint-pull-invalidated',
   'install-fingerprint-inflight',
   'install-fingerprint-publication',
   'install-fingerprint-single',
@@ -677,6 +679,8 @@ for (const fault of [
           fault === 'install-fingerprint-notification' ||
           fault === 'install-fingerprint-folder-notification' ||
           fault === 'install-fingerprint-repeat' ||
+          fault === 'install-fingerprint-pull' ||
+          fault === 'install-fingerprint-pull-invalidated' ||
           fault === 'install-fingerprint-inflight' ||
           fault === 'install-fingerprint-publication' ||
           fault === 'install-fingerprint-single' ||
@@ -745,12 +749,28 @@ for (const fault of [
             if (fault === 'install-fingerprint-repeat')
               for (const item of items)
                 expect((await files.fingerprint(item.path)).sha).toBe(item.sha)
-            if (fault === 'install-fingerprint-invalidated') {
+            if (fault === 'install-fingerprint-pull') {
+              // Equal-file adoption must honor the same verified installation proof as
+              // an own-write watcher; an untrusted scan hint is still insufficient.
+              for (const item of items)
+                expect(
+                  (await files[Symbol.for('abele.sync.fingerprint-pull-v1')](item.path)).sha
+                ).toBe(item.sha)
+              expect(contentReads).toBe(0)
+            }
+            if (
+              fault === 'install-fingerprint-invalidated' ||
+              fault === 'install-fingerprint-pull-invalidated'
+            ) {
               // Another filesystem instance shares the host's mutation fence. Even a write
               // that restores the same stat must retire the earlier installation receipt.
               const item = items[0]
               await host.withScanMutation([files.pathKey(item.path)], async () => {})
-              expect((await files.fingerprint(item.path)).sha).toBe(item.sha)
+              const result =
+                fault === 'install-fingerprint-pull-invalidated'
+                  ? await files[Symbol.for('abele.sync.fingerprint-pull-v1')](item.path)
+                  : await files.fingerprint(item.path)
+              expect(result.sha).toBe(item.sha)
               expect(contentReads).toBeGreaterThan(0)
               return
             }

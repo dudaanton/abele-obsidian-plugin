@@ -2918,6 +2918,57 @@ it('shows a structured refusal while the cycle is still uploading', async () => 
   }
 })
 
+it('merges 33k retained offline refusals in linear work on a status update', async () => {
+  const f = inspectionFixture()
+  f.release()
+  try {
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await f.ui.sync(id)
+    const runtime = Reflect.get(f.host, 'live').get(id)
+    let reads = 0
+    const rows = Array.from({ length: 33_000 }, (_, i) => ({
+      get path() {
+        reads++
+        return `Notes/sample-${i}.md`
+      },
+      reason: 'Sample connection unavailable',
+      waiting: true,
+    }))
+    vi.spyOn(runtime, 'pushRefusalRows').mockImplementation(function* () {
+      for (const row of rows)
+        yield {
+          get path() {
+            return row.path
+          },
+          code: 'offline',
+        }
+    })
+    f.ui.publish(id, { refused: rows })
+    reads = 0
+    const some = Array.prototype.some
+    const comparisons = vi
+      .spyOn(Array.prototype, 'some')
+      .mockImplementation(function (predicate, context) {
+        return some.call(this, (value, index, array) => {
+          if (array.length >= 33_000 && ++reads > 33_000 * 8)
+            throw new Error('Status merge exceeded the linear comparison budget')
+          return predicate.call(context, value, index, array)
+        })
+      })
+    await Reflect.get(f.host, 'changed').call(f.host, id, {
+      ...runtime.engine.status,
+      state: 'syncing',
+      pending: 33_000,
+    })
+    comparisons.mockRestore()
+    expect(f.ui.activity.value[id]?.refused).toHaveLength(33_000)
+    expect(reads).toBeLessThanOrEqual(33_000 * 8)
+  } finally {
+    await f.host.close()
+  }
+})
+
 it.each(['/', 'Notes'])(
   'reuses the settled foreground proof for %s, but inspects a changed path and an expired proof',
   async (folder) => {

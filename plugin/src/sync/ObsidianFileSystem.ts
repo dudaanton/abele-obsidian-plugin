@@ -3205,7 +3205,7 @@ export class ObsidianFileSystem implements FileSystem {
     const native = nativeChunkPort(this.disk)
     return !!(native.open && native.fullPath)
   }
-  async fingerprint(path: string, signal?: AbortSignal, fresh = false) {
+  async fingerprint(path: string, signal?: AbortSignal, fresh = false, waitForInstallation = true) {
     signal?.throwIfAborted()
     this.runtimeFence?.assertReady()
     const local = storageOf(this.app)
@@ -3216,7 +3216,7 @@ export class ObsidianFileSystem implements FileSystem {
     // A file can be indexed before its cohort commits and records its verified hash.
     // The watcher's own-write examination waits for that barrier instead of reading
     // freshly installed bytes while their receipt is still being made durable.
-    const installing = fresh ? host.pendingScanInstallation(key) : undefined
+    const installing = fresh && waitForInstallation ? host.pendingScanInstallation(key) : undefined
     if (installing !== undefined) {
       if (!signal) await installing
       else {
@@ -3409,16 +3409,34 @@ export class ObsidianFileSystem implements FileSystem {
     return this.fingerprint(path, signal, true)
   }
   async [Symbol.for('abele.sync.fingerprint-pull-v1')](path: string) {
+    // Equal-file adoption can reuse a still-bound verified installation receipt.
+    // The fresh path still rejects ordinary scan hints and checks live identity.
+    // Adoption can run inside the installation cohort itself, so it cannot wait
+    // on that cohort's watcher barrier. Without a bound receipt it reads afresh.
+    const read = (target: string) => {
+      const local = storageOf(this.app)
+      const host = local ? durableHostOf(local) : undefined
+      // Portable installations have their own bounded-reader receipts. Preserve
+      // that port's refusal to perform a whole multi-chunk fallback read.
+      if (
+        nativeChunkPort(this.disk).open &&
+        this.fileIdentity &&
+        this.cacheableScanPath(target) &&
+        host?.scanInstallation(this.pathKey(target))
+      )
+        return this.fingerprint(target, undefined, true, false)
+      return this.io.fingerprint(target, undefined, true)
+    }
     let identity
     try {
-      identity = await this.io.fingerprint(path, undefined, true)
+      identity = await read(path)
     } catch (error) {
       if (!(error instanceof EngineError) || error.code !== 'conflict') throw error
       // A case-folding host may expose the same inode under the wire's new spelling.
       // Use the actual directory entry's live receipt, never a same-stat guess.
       const actual = await this.spellingOnDisk(path)
       if (!actual || actual === path) throw error
-      identity = await this.io.fingerprint(actual, undefined, true)
+      identity = await read(actual)
     }
     this.observedBases.set(this.pathKey(path), { sha: identity.sha })
     // Native stats retain fractional milliseconds for source-generation checks.

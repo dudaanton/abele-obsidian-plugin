@@ -1669,9 +1669,14 @@ export class TokenEngines {
     // Starting another attempt is not evidence that previously unsent bytes arrived.
     if (status.state === 'syncing' && !report) {
       const previous = this.ui.activity.value[id]?.refused ?? []
-      activity.refused.push(
-        ...previous.filter((one) => !activity.refused.some((item) => item.path === one.path))
-      )
+      const paths = new Set(activity.refused.map((one) => one.path))
+      const budget = new SyncTaskBudget()
+      for (const one of previous) {
+        // Preserve duplicate retained evidence just as the previous filter did.
+        if (!paths.has(one.path)) activity.refused.push(one)
+        const pause = budget.metadataRow()
+        if (pause !== undefined) await pause
+      }
       activity.pending = Math.max(activity.pending, this.ui.activity.value[id]?.pending ?? 0)
     }
     if (unsent)
@@ -1715,10 +1720,8 @@ export class TokenEngines {
           ...(waitingCode(one.code) ? { waiting: true } : {}),
         }))
       )
-      activity.refused = [
-        ...activity.refused.filter((one) => !refused.some((row) => row.path === one.path)),
-        ...refused,
-      ]
+      const replaced = new Set(refused.map((one) => one.path))
+      activity.refused = [...activity.refused.filter((one) => !replaced.has(one.path)), ...refused]
       activity.conflicts = results.flatMap((one) =>
         one.status === 'conflict' ? [one.conflict_path] : []
       )
@@ -1753,8 +1756,13 @@ export class TokenEngines {
       ) {
         const current = this.ui.activity.value[id]
         const refused = [...(current?.refused ?? [])]
-        for (const item of activity.refused)
-          if (!refused.some((one) => one.path === item.path)) refused.push(item)
+        const paths = new Set(refused.map((one) => one.path))
+        for (const item of activity.refused) {
+          if (!paths.has(item.path)) {
+            paths.add(item.path)
+            refused.push(item)
+          }
+        }
         this.ui.publish(id, {
           completed: activity.completed,
           pending: Math.max(current?.pending ?? 0, report.collisions.length),
@@ -1783,9 +1791,13 @@ export class TokenEngines {
       ) {
         const current = this.ui.activity.value[id]
         const refused = [...(current?.refused ?? [])]
-        for (const path of unsent.paths)
-          if (!refused.some((one) => one.path === path))
+        const paths = new Set(refused.map((one) => one.path))
+        for (const path of unsent.paths) {
+          if (!paths.has(path)) {
+            paths.add(path)
             refused.push({ path, reason: failureReason, waiting: true })
+          }
+        }
         this.ui.publish(id, { refused, pending: Math.max(current?.pending ?? 0, unsent.count) })
       }
       return
