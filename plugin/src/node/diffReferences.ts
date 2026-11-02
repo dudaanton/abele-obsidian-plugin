@@ -55,7 +55,25 @@ export function installDiffReferences(
   let menu: Menu | undefined
   const show = (event: MouseEvent) => {
     const symbol = diffReferenceSymbol(root, event, source())
-    if (!symbol) return false
+    if (!symbol) {
+      const text = (event.target as Element | null)?.closest('.abele-diff__text')
+      if (!text || !root.contains(text)) return false
+      menu?.hide()
+      menu = new Menu()
+      menu.addItem((item) =>
+        item
+          .setTitle(
+            t(
+              text.closest('.abele-diff__line_removed, .abele-diff__line_left')
+                ? 'node.analysis.pastRevision'
+                : 'node.analysis.comparison'
+            )
+          )
+          .setDisabled(true)
+      )
+      menu.showAtMouseEvent(event)
+      return true
+    }
     menu?.hide()
     menu = new Menu()
     menu.addItem((item) =>
@@ -79,6 +97,14 @@ export function installDiffReferences(
       event.stopPropagation()
     }
   }
+  const mousedown = (event: MouseEvent) => {
+    if (event.button !== 0 || !(event.metaKey || event.ctrlKey)) return
+    const symbol = diffReferenceSymbol(root, event, source())
+    if (!symbol) return
+    event.preventDefault()
+    event.stopPropagation()
+    run('definition', symbol)
+  }
   const cancel = () => {
     win.clearTimeout(timer)
     timer = undefined
@@ -97,6 +123,7 @@ export function installDiffReferences(
     }, 500)
   }
   root.addEventListener('contextmenu', contextmenu, true)
+  root.addEventListener('mousedown', mousedown, true)
   const keydown = (event: KeyboardEvent) => {
     if (event.key !== 'F12' || !event.shiftKey || event.altKey || event.ctrlKey || event.metaKey)
       return
@@ -119,6 +146,7 @@ export function installDiffReferences(
     cancel()
     menu?.hide()
     root.removeEventListener('contextmenu', contextmenu, true)
+    root.removeEventListener('mousedown', mousedown, true)
     root.ownerDocument.removeEventListener('keydown', keydown)
     root.removeEventListener('touchstart', touchstart)
     for (const event of ['touchmove', 'touchend', 'touchcancel'])
