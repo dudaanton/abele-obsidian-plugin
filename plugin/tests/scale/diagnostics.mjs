@@ -175,10 +175,15 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
       counts.host ? 'host-only' : 'unattributed'
     const ledger = entryLedgerEvidence(task, captures)
     const entryLedgerConflict = ledger.complete && ledger.overlapMs === 0 && Boolean(counts.abele)
+    // Ledger writes can occupy all but a few milliseconds of a reported task.
+    // Only excuse them when no plugin entry remains and the remainder fits
+    // the one-millisecond rounding of the ledger's epoch timestamps.
+    const ledgerFlushTask = ledger.complete && ledger.overlapMs === 0 &&
+      ledger.harnessMs > 0 && task.durationMs - ledger.harnessMs <= 1
     if (ledger.complete && ledger.overlapMs > 0)
       owner = loadMarker ? 'plugin load' : 'ours during sync'
+    else if (ledgerFlushTask) owner = 'harness-triggered'
     else if (entryLedgerConflict) owner = 'unattributed'
-    else if (ledger.complete && ledger.harnessMs >= task.durationMs) owner = 'harness-triggered'
     else if (ledger.complete && ledger.lifecycle && owner === 'unattributed') owner = 'host-only'
     results.push({
       ...task,
@@ -188,7 +193,7 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
       frames,
       owner,
       attributionSource: ledger.complete && (ledger.overlapMs > 0 || ledger.lifecycle ||
-        ledger.harnessMs >= task.durationMs)
+        ledgerFlushTask)
         ? 'entry ledger' : 'CPU profile',
       entryLedgerComplete: ledger.complete,
       entryLedgerConflict,

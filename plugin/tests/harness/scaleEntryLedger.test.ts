@@ -109,6 +109,44 @@ it('subtracts nested ledger I/O from plugin spans and reports a pure flush as ha
   expect(row.owner).toBe('harness-triggered')
   expect(longTaskVerdict(row).status).toBe('PASS')
 })
+it('attributes a task dominated by a synchronous ledger flush without hiding a real remainder', async () => {
+  const task = { event: 'long-task', device: '0', startedAt: 0, durationMs: 195 }
+  const flush = (endedAt: number) => ({ event: 'plugin-entry-ledger-overhead',
+    device: '0', generation: 'sample', startedAt: 0, endedAt })
+  const [almostAllFlush] = await profileSummary([task], [...coverage, flush(194)], async () => null)
+  expect(almostAllFlush.entryLedgerOverheadMs).toBe(194)
+  expect(almostAllFlush.owner).toBe('harness-triggered')
+  expect(longTaskVerdict(almostAllFlush).status).toBe('PASS')
+
+  const [unexplainedRemainder] = await profileSummary([task], [...coverage, flush(120)], async () => null)
+  expect(unexplainedRemainder.owner).toBe('unattributed')
+  expect(longTaskVerdict(unexplainedRemainder).status).toBe('FAIL')
+  const [shortUnexplainedRemainder] = await profileSummary([task], [...coverage, flush(175)], async () => null)
+  expect(shortUnexplainedRemainder.owner).toBe('unattributed')
+  expect(longTaskVerdict(shortUnexplainedRemainder).status).toBe('FAIL')
+
+  const [pluginRemainder] = await profileSummary([task], [...coverage, flush(120),
+    { event: 'plugin-entry-start', device: '0', generation: 'sample', id: 1, at: 0 },
+    { event: 'plugin-entry-end', device: '0', generation: 'sample', id: 1, at: 195 },
+  ], async () => null)
+  expect(pluginRemainder.pluginEntryOverlapMs).toBe(75)
+  expect(longTaskVerdict(pluginRemainder).status).toBe('FAIL')
+})
+it('uses measured ledger export time when profile samples conflict inside that export', async () => {
+  const captures = [...coverage,
+    { event: 'plugin-entry-ledger-overhead', device: '0', generation: 'sample',
+      startedAt: 0, endedAt: 143 },
+    { event: 'cpu-profile', device: '0', startedAt: 0, endedAt: 150, path: 'sample',
+      clock: { beforeAt: 0, afterAt: 0, timestampMs: 0 } },
+  ]
+  const [row] = await profileSummary([{ event: 'long-task', device: '0', startedAt: 0,
+    durationMs: 143 }], captures, async () => ({ startTime: 0, endTime: 150000,
+      nodes: [{ id: 1, callFrame: { functionName: 'sample', url: 'plugin:abele' } }],
+      samples: [1], timeDeltas: [50000] }))
+  expect(row.entryLedgerConflict).toBe(true)
+  expect(row.owner).toBe('harness-triggered')
+  expect(longTaskVerdict(row).status).toBe('PASS')
+})
 it('flushes entry start and completion synchronously and survives quit', async () => {
   const { createEntryLedger } = require('../scale/entry-ledger.cjs')
   const directory = await mkdtemp(join(tmpdir(), 'sample-entry-'))
