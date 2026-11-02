@@ -416,8 +416,10 @@ export function useChatScroll(options: ChatScrollOptions) {
     // as the render window moves, so following does not wait for another stream chunk.
     sizeObserver = new ResizeObserver(() => {
       if (composing.value) return
-      holdAnchor()
-      holdSteady()
+      // A resize can report layout after the browser has already adjusted its scroll
+      // anchor. Reapplying the reader's anchor here can compensate the same growth
+      // twice. Keep reader holds on their existing mutation/frame path; this observer
+      // only updates the gap and follows the end (or handles an actual box resize).
       keepGapCurrent()
       onBoxResized()
     })
