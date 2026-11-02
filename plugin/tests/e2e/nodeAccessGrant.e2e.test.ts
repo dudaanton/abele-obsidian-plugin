@@ -194,7 +194,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
           if(folder.clientWidth<folder.scrollWidth)throw Error('Short folder name is clipped');
           if(branch.clientWidth<24)throw Error('Branch has no readable width');
           if(${variant === 'missing'}){
-            if(!row.querySelector('[data-icon="folder-x"]'))throw Error('Missing warning absent');
+            if(!row.querySelector('.abele-obsidian-icon__icon svg.lucide-folder-x'))throw Error('Missing warning absent');
             if(getComputedStyle(row.querySelector('.abele-scope-mgr__entry-remove')).opacity!=='1')throw Error('Missing remove hidden');
             if(!place.title.includes('This folder is no longer on Sample workstation.'))throw Error('Missing explanation absent');
           }else if(!place.title.includes('Sample workstation / sample-app / '+expected))throw Error('Full tooltip absent');
