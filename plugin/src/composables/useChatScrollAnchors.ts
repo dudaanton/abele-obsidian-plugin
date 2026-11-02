@@ -131,8 +131,20 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     const inView = (el: Element) => el.getBoundingClientRect().bottom > top + 1
     const item = Array.from(container.children).find(inView)
     if (!item?.instanceOf(HTMLElement)) return null
-    const blocks = item.querySelectorAll<HTMLElement>('.abele-markdown > *')
-    return Array.from(blocks).find((b) => b.getClientRects().length && inView(b)) ?? item
+    const blocks = Array.from(item.querySelectorAll<HTMLElement>('.abele-markdown > *')).filter(
+      (b) => b.getClientRects().length && inView(b)
+    )
+    // Prefer a block whose start the reader can see. The clipped chart or image above
+    // it may still be laying out: holding that block's top does not hold the text below
+    // its changing bottom. Fall back to the clipped block when it fills the viewport.
+    return (
+      blocks.find((b) => {
+        const at = b.getBoundingClientRect().top
+        return at >= top && at < top + container.clientHeight
+      }) ??
+      blocks[0] ??
+      item
+    )
   }
 
   const endSteady = (container?: HTMLElement | null) => {
