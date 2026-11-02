@@ -58,6 +58,16 @@ it('pins an agent-written version to its own chat, without a notice even before 
   expect(view.text()).toBe('')
 })
 
+it('keeps the full name in a tooltip and groups the separator with the review action', async () => {
+  waiting.value[0].meta.name = 'Sample script with a descriptive name'
+  await noteAgentScriptWrite(app as never, 'Scripts/sample.js', text, 'sample-chat')
+  view = mount(ChatScriptReview, { props: { chatId: 'sample-chat' } })
+  expect(view.attributes('title')).toBe('Sample script with a descriptive name')
+  expect(view.get('.abele-chat-script-review__action').get('[aria-hidden="true"]').text()).toBe('·')
+  expect(view.get('.abele-chat-script-review__action button').text()).toBe('Review')
+  expect(view.get('button').attributes('type')).toBe('button')
+})
+
 it('keeps other sources in the existing notice, not in a chat footer', () => {
   new WaitingScriptsNotice({ ...service, reviewWaiting: vi.fn() }).announce()
   expect(document.querySelector('.notice')?.textContent).toContain('Sample')
