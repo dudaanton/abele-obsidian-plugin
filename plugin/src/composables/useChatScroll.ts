@@ -32,6 +32,7 @@ export function useChatScroll(options: ChatScrollOptions) {
   const LOAD_OLDER_THRESHOLD_PX = 200
   let shouldAutoScroll = true
   let fingerDown = false
+  let sendScrollPending = false
 
   /**
    * Where the code last left the scroll, for telling its own scrolling from the reader's.
@@ -93,6 +94,7 @@ export function useChatScroll(options: ChatScrollOptions) {
    * being taken hold of says what the scroll event cannot.
    */
   const readerTakesOver = (event?: Event) => {
+    sendScrollPending = false
     anchors.anchor = null
     // Heading up, said before the frame reports any scroll: a piece of the reply landing in
     // between used to take a reader still near the end back to it, flick after flick.
@@ -252,6 +254,10 @@ export function useChatScroll(options: ChatScrollOptions) {
   const onMessagesScroll = () => {
     const el = messagesContainer.value
     if (!el) return
+    // Sending resets the render window before its queued bottom scroll. The browser
+    // can report that layout adjustment first; it must not cancel the send's intent.
+    // Actual reader input cancels it through readerTakesOver, even before this tick.
+    if (sendScrollPending) return
     // The box has changed height and its observer has not run yet: this is the browser clamping
     // the position to the new box, not the reader, and the observer is about to put the reader
     // back where they were. The browser reports the clamp before it reports the resize.
@@ -275,10 +281,15 @@ export function useChatScroll(options: ChatScrollOptions) {
       // Asked again: the reader may have scrolled away in the tick between.
       if (!el || !shouldAutoScroll || fingerDown) return
       scrollContainerTo(el, el.scrollHeight)
+      sendScrollPending = false
     })
   }
 
   const scrollOnUserSend = () => {
+    // Sending leaves the remembered reading position, including holds still running
+    // from revealing history or completing a reply. They must not undo this scroll.
+    anchors.releaseReader()
+    sendScrollPending = true
     shouldAutoScroll = true
     resetWindow()
     doScroll()

@@ -250,6 +250,12 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
   }
 
   return {
+    releaseReader: () => {
+      anchor = null
+      const container = messagesContainer.value
+      endSteady(container)
+      if (container) releaseFloor(container)
+    },
     captureAnchor,
     holdAnchor,
     holdAnchorAWhile,
