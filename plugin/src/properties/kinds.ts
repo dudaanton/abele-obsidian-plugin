@@ -15,6 +15,8 @@ import { renderLabels } from './labelsWidget'
 import { priorityLevel } from './priority'
 import { renderPriority } from './priorityWidget'
 import type { WidgetContext } from './widgets'
+import { isSelectValue, selectFor, type SelectProperty } from './select'
+import { renderSelect } from './selectWidget'
 
 /** The property names of each kind, read each time a row is drawn. */
 export interface KindLists {
@@ -28,6 +30,8 @@ export interface KindLists {
   labelKeys?: () => readonly string[]
   /** Drawn as links to group notes. */
   groupKeys?: () => readonly string[]
+  /** Picked from a list of options set in the settings. */
+  selectProperties?: () => readonly SelectProperty[]
 }
 
 /** Obsidian's own drawing of a type, for a kind that builds on it; null when it is not there. */
@@ -72,7 +76,14 @@ const KIND_DRAWS: Record<Kind, Draw> = {
 
 /** The row that draws a property, or null when Obsidian's own should. */
 export function pickKind(lists: KindLists, key: string, value: unknown, type: string): Draw | null {
-  const listed: Record<Kind, KindLists[keyof KindLists]> = {
+  // A select names one property exactly, so it comes before the kinds listed by name.
+  if (type === 'text' || type === 'multitext') {
+    const select = selectFor(lists.selectProperties?.(), key)
+    if (select && isSelectValue(value))
+      return (el, v, ctx, ty) =>
+        renderSelect(el, v, ctx, ty, () => selectFor(lists.selectProperties?.(), key) ?? select)
+  }
+  const listed: Record<Kind, (() => readonly string[]) | undefined> = {
     counter: lists.counterKeys,
     date: lists.dateKeys,
     priority: lists.priorityKeys,

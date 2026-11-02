@@ -77,6 +77,7 @@ it('sets the other settings out under headings by what they are about', () => {
     expect(sections.map((s) => s.props('title'))).toEqual([
       'Look',
       'Drawn by Abele in a note',
+      'Properties with a list',
       'Opening notes',
       'Attachment folders',
       'Maps',

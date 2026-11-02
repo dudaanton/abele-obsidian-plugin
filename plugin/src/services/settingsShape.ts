@@ -1,3 +1,4 @@
+import type { SelectProperty } from '@/properties/select'
 import type { Background } from '@/maps/core/model'
 import type { MapStyleChoice } from '@/helpers/mapStyles'
 import { AiSettings, DEFAULT_AI_SETTINGS } from '@/ai/types'
@@ -119,6 +120,8 @@ export interface AbeleSettings {
   priorityProperties?: string[]
   /** Property names drawn as labels: pills, and a field adding one from those the vault uses. */
   labelProperties?: string[]
+  /** Properties picked from a list of options (`properties/select.ts`). */
+  selectProperties?: SelectProperty[]
   /** Property names drawn as groups: link pills, and a field adding a group note. */
   groupProperties?: string[]
   /**
@@ -341,6 +344,7 @@ export const DEFAULT_SETTINGS: Required<Omit<AbeleSettings, 'secretStore'>> = {
   priorityProperties: ['priority'],
   labelProperties: ['labels'],
   groupProperties: ['groups'],
+  selectProperties: [],
   keyboardDiagnostics: false,
   github: { ...DEFAULT_GITHUB_SETTINGS },
   reader: { ...DEFAULT_READER_SETTINGS },

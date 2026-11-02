@@ -140,6 +140,7 @@ const OTHER_KEYS = [
   'dateProperties',
   'priorityProperties',
   'labelProperties',
+  'selectProperties',
   'groupProperties',
 ]
 

@@ -1,5 +1,8 @@
 {
   "files": [
+    "components/settings/SelectPropertiesSettings.vue",
+    "components/properties/SelectPropertyModal.vue",
+    "components/properties/SelectMark.vue",
     "components/obsidian/AnchoredCard.vue",
     "components/obsidian/Avatar.vue",
     "components/obsidian/Badge.vue",

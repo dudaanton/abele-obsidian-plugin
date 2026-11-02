@@ -17,6 +17,7 @@ export function registerPropertyWidgets(plugin: Plugin): void {
     dateKeys: () => config.dateProperties,
     priorityKeys: () => config.priorityProperties,
     labelKeys: () => config.labelProperties,
+    selectProperties: () => config.selectProperties ?? [],
     groupKeys: () => config.groupProperties,
   })
   if (!widgets.load()) return
@@ -29,6 +30,7 @@ export function registerPropertyWidgets(plugin: Plugin): void {
       config.groupProperties,
     ]
       .map((names) => names.join('\n'))
+      .concat(JSON.stringify(config.selectProperties ?? []))
       .join('\0')
   let counters = lists()
 

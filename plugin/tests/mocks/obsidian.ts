@@ -577,6 +577,10 @@ export abstract class AbstractInputSuggest<T> {
     return this.textInputEl.value
   }
 
+  open(): void {
+    this.closed = false
+  }
+
   close(): void {
     this.closed = true
   }

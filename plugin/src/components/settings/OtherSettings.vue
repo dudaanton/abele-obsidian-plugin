@@ -88,6 +88,12 @@
         <Checkbox :is-enabled="editorSyntaxHighlight" @toggle="toggleEditorSyntaxHighlight" />
       </Setting>
     </Section>
+    <SelectPropertiesSettings
+      :model-value="selectProperties"
+      :uses="selectUses"
+      @update:model-value="updateSelectProperties"
+      @rename="renameSelectValue"
+    />
     <Section :title="t('settings.OtherSettings.opening_notes.d2eceee4')">
       <Setting
         :name="t('settings.OtherSettings.remember_where_notes_were_left.1010d0b2')"
@@ -169,6 +175,10 @@ import Input from '../obsidian/Input.vue'
 import Checkbox from '../obsidian/Checkbox.vue'
 import Button from '../obsidian/Button.vue'
 import AttachmentRulesSettings from './AttachmentRulesSettings.vue'
+import SelectPropertiesSettings from './SelectPropertiesSettings.vue'
+import { countUses, type SelectProperty } from '@/properties/select'
+import { renameSelectValueInNotes } from '@/properties/selectRename'
+import { Notice } from 'obsidian'
 import MapBackgroundSettings from './MapBackgroundSettings.vue'
 import MapStylePreview from './MapStylePreview.vue'
 import { openChangelog } from '@/changelog/ChangelogView'
@@ -178,6 +188,27 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { setKeyboardDiagnostics } from '@/helpers/keyboardDiagnostics'
 
 const config = AbeleConfig.getInstance()
+
+const selectProperties = ref<SelectProperty[]>(config.selectProperties ?? [])
+const updateSelectProperties = (list: SelectProperty[]) => {
+  selectProperties.value = list
+  config.selectProperties = list
+  void config.saveSettings()
+}
+const frontmatters = () => {
+  const { app } = GlobalStore.getInstance()
+  return app.vault.getMarkdownFiles().map((f) => app.metadataCache.getFileCache(f)?.frontmatter)
+}
+const selectUses = (key: string, value: string) => countUses(frontmatters, key, value)
+/** Writes the new name of an option into every note that holds the old one under `key`. */
+const renameSelectValue = async (key: string, from: string, to: string) => {
+  try {
+    await renameSelectValueInNotes(GlobalStore.getInstance().app, key, from, to)
+  } catch (error) {
+    console.error('Select property rename failed', error)
+    new Notice(String(error))
+  }
+}
 const showChangelog = () => {
   const app = GlobalStore.getInstance().app
   ;(app as unknown as { setting?: { close?: () => void } }).setting?.close?.()

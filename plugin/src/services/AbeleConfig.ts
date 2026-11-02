@@ -1,3 +1,4 @@
+import type { SelectProperty } from '@/properties/select'
 import type { Background } from '@/maps/core/model'
 import type { MapStyleChoice } from '@/helpers/mapStyles'
 import type { AiChatHistoryEntry, AiSettings } from '@/ai/types'
@@ -96,6 +97,7 @@ export class AbeleConfig {
   public priorityProperties: string[] = []
   public labelProperties: string[] = []
   public groupProperties: string[] = []
+  public selectProperties: SelectProperty[] = []
   public keyboardDiagnostics: boolean
   public github: GithubSettings
   public reader: ReaderSettings

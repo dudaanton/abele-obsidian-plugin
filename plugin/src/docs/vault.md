@@ -13,6 +13,25 @@ PDF exports omit Abele's note header and footer by default. The `pdfIncludeHeade
 boolean in plugin settings includes them when enabled and travels in the Other settings
 section. Note-body blocks are exported regardless of this setting.
 
+## Select properties
+
+Plugin settings retain `selectProperties` (default `[]`) in the Other settings transfer
+section. Each entry has `key` (the frontmatter property name), `multiple` (single choice
+when false), and an ordered `options` array. An option has `value` and optional `icon`
+(Lucide icon name), `color` (kit palette name) and `description`. Property and option
+matching ignores case and surrounding whitespace; no icons, colours, descriptions or
+internal option IDs are written into notes.
+
+Frontmatter stores only the option name as text, or a list of names for multiple choice.
+Unknown names remain as written and are displayed with an empty ring; adding one to the
+list changes the settings, not its stored spelling. Removing a configured option does not
+remove note values. Renaming an option in settings does not rewrite notes automatically:
+the separate Rename in notes action replaces matching scalar/list values under that
+property, rechecking current frontmatter before each awaited write. Unrelated values and
+list entries are preserved. A write failure stops the action; already changed notes can
+remain changed and retrying is safe. With property drawing disabled, Obsidian displays the
+ordinary stored values. Tables and group views do not use select presentation.
+
 ## Chat compaction
 
 A compaction divider stores the continuation summary as a visible system message and an internal
