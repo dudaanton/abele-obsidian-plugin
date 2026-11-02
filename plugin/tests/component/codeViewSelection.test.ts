@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { CodeView } from '@/views/CodeView'
 import { useVault } from '../helpers/testEnv'
+import { EditorView } from '@codemirror/view'
 
 const actions = vi.hoisted(() => ({ note: vi.fn(), chat: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/views/codeSelectionHost', () => ({
@@ -21,6 +22,33 @@ vi.mock('obsidian', async (original) => ({
   },
 }))
 let view: CodeView | undefined
+it('starts selected-word find at the selected occurrence rather than skipping it', () => {
+  useVault([])
+  Object.defineProperty(HTMLElement.prototype, 'setAttr', {
+    configurable: true,
+    value(this: HTMLElement, name: string, value: string) {
+      this.setAttribute(name, value)
+    },
+  })
+  view = Object.assign(Object.create(CodeView.prototype) as CodeView, {
+    contentEl: document.body.createDiv(),
+    file: { path: 'sample.ts', extension: 'ts' },
+    app: {},
+  })
+  view.setViewData('sample sample sample', true)
+  const search = document.querySelector<HTMLElement>('.abele-code-search')!
+  Object.assign(search, {
+    hasClass: (name: string) => search.classList.contains(name),
+  })
+  const editor = EditorView.findFromDOM(document.querySelector('.cm-editor')!)!
+  editor.dispatch({ selection: { anchor: 7, head: 13 } })
+  ;(view as unknown as { toggleSearch(): void }).toggleSearch()
+  expect((document.querySelector('.abele-code-search__input') as HTMLInputElement).value).toBe(
+    'sample'
+  )
+  expect(editor.state.selection.main.from).toBe(7)
+  expect(editor.state.selection.main.to).toBe(13)
+})
 afterEach(() => {
   view?.clear()
   view = undefined

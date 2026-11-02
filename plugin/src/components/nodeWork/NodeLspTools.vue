@@ -90,7 +90,9 @@ const analysisHost = computed(() => header?.host ?? props.glyphHost)
 const connectionForTarget = () =>
   injectedConnection ?? NodeService.connectionIfKnown?.(props.target.registrationId)
 const document = shallowRef<NodeLspDocument>()
+const referencesRevision = ref(0)
 const referencesState = computed(() => {
+  void referencesRevision.value
   const client = connectionForTarget()?.client
   return client
     ? referenceResultsFor(
@@ -126,6 +128,8 @@ watch(
         void (async () => {
           await connection.connect()
           if (stopped) return
+          // The service lookup is not reactive; a connection may arrive after the first render.
+          referencesRevision.value++
           const lease = acquireLspDocument(
             connection.client,
             target.kind === 'worktree' ? { worktree_id: target.id } : { workspace_id: target.id },
@@ -181,6 +185,7 @@ watch(
 )
 async function findReferences(_name: string, position: { line: number; character: number }) {
   const doc = document.value
+  referencesRevision.value++
   const state = referencesState.value
   const connection = connectionForTarget()
   if (!doc || !state || !connection) return

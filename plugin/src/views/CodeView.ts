@@ -217,7 +217,7 @@ export class CodeView extends TextFileView {
         )
         if (sel && !sel.includes('\n')) {
           this.searchInput.value = sel
-          this.doSearch()
+          this.doSearch(this.editor.state.selection.main.from)
         }
       }
       this.searchInput?.focus()
@@ -227,19 +227,19 @@ export class CodeView extends TextFileView {
     }
   }
 
-  private doSearch() {
+  private doSearch(from?: number) {
     if (!this.editor || !this.searchInput) return
     const term = this.searchInput.value
     const query = new SearchQuery({ search: term, caseSensitive: false })
     this.editor.dispatch({ effects: setSearchQuery.of(query) })
     this.updateSearchCount()
-    if (term) this.goToNext()
+    if (term) this.goToNext(from)
   }
 
-  private goToNext() {
+  private goToNext(start?: number) {
     if (!this.editor || !this.searchInput?.value) return
     const doc = this.editor.state.doc
-    const from = this.editor.state.selection.main.to
+    const from = start ?? this.editor.state.selection.main.to
     const cursor = new SearchCursor(doc, this.searchInput.value, from)
     let result = cursor.next()
     if (result.done) {

@@ -3,15 +3,16 @@ import { diffReferenceSymbol, installDiffReferences } from '@/node/diffReference
 import { Menu } from 'obsidian'
 import { mount, flushPromises } from '@vue/test-utils'
 import FileView from '@/components/nodeWork/FileView.vue'
-import { LSP_CONNECTION } from '@/node/lspConnection'
 import { useVault } from '../helpers/testEnv'
+import { NodeService } from '@/node/NodeService'
+import { FILE_DESTINATION } from '@/node/fileNavigation'
 
 it.each(['unified', 'split'] as const)('navigates a rendered %s node diff', async (layout) => {
   useVault([])
   const text = 'const sample = 1\nconsole.log(sample)'
   const definition = vi.fn(async () => [
     {
-      path: 'target.ts',
+      path: 'sample.ts',
       range: {
         start: { line: 0, character: 0 },
         end: { line: 0, character: 6 },
@@ -29,8 +30,14 @@ it.each(['unified', 'split'] as const)('navigates a rendered %s node diff', asyn
       close: async () => {},
       diagnostics: async () => [],
       definition,
+      references: definition,
     },
   }
+  const connection = { client, connect: async () => {}, navigate }
+  const known = vi
+    .spyOn(NodeService, 'connectionIfKnown')
+    .mockReturnValue(connection as never)
+    .mockReturnValueOnce(undefined)
   const view = mount(FileView, {
     props: {
       path: 'sample.ts',
@@ -53,7 +60,7 @@ it.each(['unified', 'split'] as const)('navigates a rendered %s node diff', asyn
     },
     global: {
       stubs: { SelectionBar: true, NodeFileTools: true },
-      provide: { [LSP_CONNECTION as symbol]: { client, connect: async () => {}, navigate } },
+      provide: { [FILE_DESTINATION as symbol]: navigate },
     },
     attachTo: document.body,
   })
@@ -91,6 +98,15 @@ it.each(['unified', 'split'] as const)('navigates a rendered %s node diff', asyn
         expect(navigate).toHaveBeenCalled()
       }
       span.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+      show.mock.contexts.at(-1)!.items[1].handler?.()
+      await flushPromises()
+      expect(view.find('[data-node-references]').exists()).toBe(true)
+      expect(view.findAll('[data-reference-row]')).toHaveLength(1)
+      document.getSelection()?.removeAllRanges()
+      document.getSelection()?.addRange(range)
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F12', shiftKey: true }))
+      await flushPromises()
+      expect(view.findAll('[data-reference-row]')).toHaveLength(1)
       show.mock.contexts.at(-1)!.items[0].handler?.()
       await flushPromises()
       expect(client.lsp.open).toHaveBeenCalledWith(
@@ -108,6 +124,8 @@ it.each(['unified', 'split'] as const)('navigates a rendered %s node diff', asyn
   } finally {
     document.caretRangeFromPoint = original
     show.mockRestore()
+    known.mockRestore()
+    document.getSelection()?.removeAllRanges()
     view.unmount()
   }
 })

@@ -12,6 +12,39 @@ import { findMarksField } from '@/github/find/cmMarks'
 
 let root: HTMLElement
 
+it('starts selected-word find at its code occurrence after focus leaves the editor', async () => {
+  const host = root.appendChild(document.createElement('div'))
+  const viewer = mountCode(host, 'widget widget widget', 'sample.ts')
+  const content = host.querySelector<HTMLElement>('.cm-content')!
+  const origin = document.createRange()
+  origin.setStart(content.querySelector('.cm-line')!.firstChild!, 7)
+  origin.setEnd(content.querySelector('.cm-line')!.firstChild!, 13)
+  const finder = new TabFinder(root, { foldedText: () => null })
+  try {
+    finder.search('widget', false, origin)
+    await finder.reveal()
+    expect(finder.current).toBe(1)
+    expect(EditorView.findFromDOM(content)!.state.selection.main.from).toBe(7)
+  } finally {
+    finder.clear()
+    viewer.destroy()
+  }
+})
+
+it('excludes a retained hidden code pane from comparison matches', () => {
+  const hidden = root.appendChild(document.createElement('div'))
+  hidden.style.display = 'none'
+  const viewer = mountCode(hidden, 'widget widget widget', 'sample.ts')
+  root.appendChild(document.createTextNode('widget widget widget'))
+  const finder = new TabFinder(root, { foldedText: () => null })
+  try {
+    expect(finder.search('widget', false)).toBe(3)
+  } finally {
+    finder.clear()
+    viewer.destroy()
+  }
+})
+
 /** Static markup of the test's own, parsed into an element. */
 const html = (s: string) =>
   new DOMParser().parseFromString(s.trim(), 'text/html').body.firstElementChild as HTMLElement

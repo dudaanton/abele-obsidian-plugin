@@ -103,7 +103,12 @@ const onKey = (e: KeyboardEvent) => {
 }
 
 /** Puts the cursor in the field with what is there selected, for another Cmd+F. */
-const focus = () => {
+const focus = (selection?: string, origin?: Range) => {
+  if (selection) {
+    query.value = selection
+    finder.value?.search(selection, caseSensitive.value, origin)
+    void finder.value?.reveal()
+  }
   const el = inputRef.value?.inputRef as HTMLInputElement | undefined
   el?.focus()
   el?.select()

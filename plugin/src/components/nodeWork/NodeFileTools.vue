@@ -85,11 +85,15 @@ const search = source
     })
   : undefined
 async function showFind() {
+  const selected = props.root?.ownerDocument.getSelection()
+  const selection =
+    selected?.anchorNode && props.root?.contains(selected.anchorNode) ? selected.toString() : ''
+  const origin = selected?.rangeCount ? selected.getRangeAt(0).cloneRange() : undefined
   // A changed file starts as a folded comparison. Find searches its whole file instead.
   emit('find')
   findOpen.value = true
   await nextTick()
-  finder.value?.focus()
+  finder.value?.focus(selection && !/[\r\n]/.test(selection) ? selection : undefined, origin)
 }
 function keydown(event: KeyboardEvent) {
   if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'f') return

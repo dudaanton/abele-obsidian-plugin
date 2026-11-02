@@ -26,6 +26,22 @@ vi.mock('@/github/codeViewer', () => ({
   mountCode: vi.fn(() => ({ destroy: vi.fn(), blame: vi.fn(), requests: vi.fn() })),
 }))
 const views: ReturnType<typeof mount>[] = []
+it('seeds find from a single-line code selection and keeps the query on an empty selection', async () => {
+  const { view } = setup()
+  document.body.appendChild(view.element)
+  await flushPromises()
+  const code = view.get('.abele-file-view').element.appendChild(document.createElement('pre'))
+  code.textContent = 'sample'
+  const range = document.createRange()
+  range.selectNodeContents(code)
+  document.getSelection()!.removeAllRanges()
+  document.getSelection()!.addRange(range)
+  await view.get('[data-node-find]').trigger('click')
+  expect((view.get('[role=search] input').element as HTMLInputElement).value).toBe('sample')
+  document.getSelection()!.removeAllRanges()
+  await view.get('[data-node-find]').trigger('click')
+  expect((view.get('[role=search] input').element as HTMLInputElement).value).toBe('sample')
+})
 it('bounds linked ranges to the current document before expanding line decorations', async () => {
   useVault([])
   const view = mount(FileView, {

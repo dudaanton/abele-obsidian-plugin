@@ -113,12 +113,24 @@ export class TabFinder {
   }
 
   /** Searches the tab afresh and makes the first match at or after the old current one current. */
-  search(query: string, caseSensitive: boolean): number {
+  search(query: string, caseSensitive: boolean, origin?: Range): number {
     const keep = this.query === query && this.caseSensitive === caseSensitive ? this.index : 0
     this.query = query
     this.caseSensitive = caseSensitive
     this.collect()
     this.index = this.flat.length ? Math.min(Math.max(keep, 0), this.flat.length - 1) : -1
+    if (origin) {
+      const next = this.flat.findIndex(([r, i]) => {
+        const run = this.runs[r]
+        if (run.kind === 'code') {
+          if (!run.view.contentDOM.contains(origin.startContainer)) return false
+          return run.ranges[i][0] >= run.view.posAtDOM(origin.startContainer, origin.startOffset)
+        }
+        const dom = run.kind === 'text' ? this.domRange(run, run.ranges[i]) : null
+        return !!(dom && dom.compareBoundaryPoints(Range.START_TO_START, origin) >= 0)
+      })
+      if (next >= 0) this.index = next
+    }
     this.paint()
     this.watch()
     this.onChange()
@@ -226,6 +238,7 @@ export class TabFinder {
       if (node.nodeType !== Node.ELEMENT_NODE) return
       const el = node as HTMLElement
       if (SKIP.has(el.tagName) || el.hasAttribute(FIND_SKIP_ATTR) || el.hidden) return
+      if (el.style.display === 'none' || el.style.visibility === 'hidden') return
       // Chrome a renderer adds around content — a code block's copy button — is not content.
       if (el.getAttribute('aria-hidden') === 'true' || el.classList.contains('copy-code-button'))
         return
