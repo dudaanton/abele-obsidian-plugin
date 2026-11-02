@@ -37,6 +37,23 @@ export function drawMark(host: HTMLElement, option: SelectOption | null): HTMLEl
 
 class SelectSuggest extends AbstractInputSuggest<Choice> {
   shown = false
+  private placementFrame = 0
+
+  /** Let the native list finish positioning, then shift it rather than clip its right edge. */
+  private insetPopover(el: HTMLElement): void {
+    const win = this.field.ownerDocument.defaultView
+    if (!win) return
+    win.cancelAnimationFrame(this.placementFrame)
+    this.placementFrame = win.requestAnimationFrame(() => {
+      this.placementFrame = 0
+      const popover = el.closest<HTMLElement>('.suggestion-container')
+      if (!popover?.isConnected) return
+      popover.setCssProps({ translate: '0px 0' })
+      const box = popover.getBoundingClientRect()
+      const shift = Math.max(8 - box.left, Math.min(0, win.innerWidth - 8 - box.right))
+      if (shift) popover.setCssProps({ translate: `${shift}px 0` })
+    })
+  }
 
   constructor(
     app: App,
@@ -67,6 +84,7 @@ class SelectSuggest extends AbstractInputSuggest<Choice> {
 
   renderSuggestion(choice: Choice, el: HTMLElement): void {
     el.addClass('mod-complex', 'abele-property-select__choice')
+    this.insetPopover(el)
     const icon = el.createDiv({ cls: 'suggestion-icon' })
     const content = el.createDiv({ cls: 'suggestion-content' })
     if ('clear' in choice) {
@@ -111,6 +129,8 @@ class SelectSuggest extends AbstractInputSuggest<Choice> {
   }
 
   close(): void {
+    this.field.ownerDocument.defaultView?.cancelAnimationFrame(this.placementFrame)
+    this.placementFrame = 0
     this.shown = false
     super.close()
   }

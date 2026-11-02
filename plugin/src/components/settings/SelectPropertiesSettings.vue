@@ -21,8 +21,9 @@
           ><SelectMark
             v-for="option in property.options.slice(0, 8)"
             :key="option.value"
-            :option="option" /></span
-        >{{ summary(property) }}
+            :option="option"
+        /></span>
+        <span class="abele-select-settings__summary">{{ summary(property) }}</span>
       </template>
       <Icon
         icon="pencil"
@@ -105,6 +106,11 @@ const remove = (idx: number) =>
 </script>
 
 <style>
+.abele-select-settings__summary {
+  display: inline-block;
+  white-space: nowrap;
+}
+
 .abele-select-settings__marks {
   display: inline-flex;
   gap: var(--size-2-1);

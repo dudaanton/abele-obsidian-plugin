@@ -60,7 +60,7 @@ const probe = async (phone: boolean): Promise<ProbeResult> =>
     cfg.propertyWidgets = true
     cfg.selectProperties = [
       {key:'sample-stage',multiple:false,options:[{value:'Ready',icon:'check',color:'green',description:'Prepared for the next step'},{value:'Waiting',color:'orange',description:'Waiting for a sample review'}]},
-      {key:'sample-labels',multiple:true,options:[{value:'Design',color:'blue'},{value:'Review',icon:'eye',color:'purple'}]}
+      {key:'sample-labels',multiple:true,options:[{value:'Design',color:'blue'},{value:'Review',icon:'eye',color:'purple'},{value:'Publish',color:'green'}]}
     ]
     app.vault.setConfig('propertiesInDocument','visible')
     await cfg.saveSettings()
@@ -78,6 +78,12 @@ const probe = async (phone: boolean): Promise<ProbeResult> =>
     await shoot('chosen')
     stage().querySelector('.abele-property-select__pill').click()
     await until(() => document.querySelector('.abele-property-select__choice'))
+    if (${phone}) {
+      const popover = document.querySelector('.abele-property-select__choice').closest('.suggestion-container')
+      await wait(100)
+      const box = popover.getBoundingClientRect()
+      if (box.left < 7.5 || box.right > innerWidth - 7.5) throw new Error('Phone suggest must keep 8px margins: ' + JSON.stringify({left:box.left,right:box.right,width:innerWidth}))
+    }
     await shoot('list')
     const waiting = [...document.querySelectorAll('.abele-property-select__choice')].find(el => el.querySelector('.suggestion-title')?.textContent === 'Waiting')
     if (!waiting) throw new Error('Waiting option missing')
@@ -89,7 +95,13 @@ const probe = async (phone: boolean): Promise<ProbeResult> =>
     await shoot('unknown')
     cell('sample-labels').scrollIntoView({block:'center'})
     await until(() => cell('sample-labels')?.querySelectorAll('.abele-property-select__pill').length === 2)
+    const labelsInput = cell('sample-labels').querySelector('input')
+    labelsInput.focus()
+    const remaining = await until(() => [...document.querySelectorAll('.abele-property-select__choice')].find(el => el.querySelector('.suggestion-title')?.textContent === 'Publish'))
+    if (document.activeElement !== labelsInput || !labelsInput.placeholder.includes('Add')) throw new Error('Multiple field not focused with Add placeholder')
+    if ([...document.querySelectorAll('.abele-property-select__choice .suggestion-title')].some(el => ['Design','Review'].includes(el.textContent))) throw new Error('Selected options must not be offered')
     await shoot('multiple')
+    labelsInput.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
     // Keep a used option for the remove confirmation.
     await app.fileManager.processFrontMatter(file, fm => {fm['sample-stage']='Ready'})
     await until(() => app.metadataCache.getFileCache(file)?.frontmatter?.['sample-stage']==='Ready')
@@ -99,12 +111,21 @@ const probe = async (phone: boolean): Promise<ProbeResult> =>
     const tab = await until(() => root.querySelector('.abele-tabs__tab[data-tab-id="other"]'))
     tab.click()
     const section = await until(() => root.querySelector('.abele-select-settings'))
-    section.scrollIntoView({block:'start'}); await shoot('settings', section)
+    section.scrollIntoView({block:'start'});
+    for (const row of section.querySelectorAll('.abele-select-settings__property')) {
+      const summary = row.querySelector('.abele-select-settings__summary')
+      if (!summary || summary.ownerDocument.defaultView.getComputedStyle(summary).whiteSpace !== 'nowrap' || summary.getClientRects().length !== 1) throw new Error('Summary must wrap only as a whole')
+    }
+    await shoot('settings', section)
     section.querySelector('.abele-select-settings__property .clickable-icon').click()
     const d = root.ownerDocument
     const modal = await until(() => d.querySelector('.abele-select-property'))
     modal.querySelector('.abele-select-property__main').click()
     const editor = await until(() => modal.querySelector('.abele-select-property__editor'))
+    const iconRow = editor.querySelector('.abele-select-property__icon-controls')
+    if (!iconRow) throw new Error('Icon controls row missing')
+    const xBox = iconRow.querySelector('.clickable-icon').getBoundingClientRect(), buttonBox = iconRow.querySelector('button').getBoundingClientRect()
+    if (Math.abs((xBox.top+xBox.bottom)/2-(buttonBox.top+buttonBox.bottom)/2)>2) throw new Error('Icon controls must share a line')
     await shoot('option', editor)
     modal.querySelector('.abele-select-property__row > .clickable-icon').click()
     const confirm = await until(() => d.querySelector('.abele-confirm__message'))

@@ -94,20 +94,22 @@
             />
           </Setting>
           <Setting :name="t('area.selectOptionIcon')">
-            <Icon
-              v-if="option.icon"
-              icon="x"
-              :tooltip="t('area.selectOptionNoIcon')"
-              @click="setOption(idx, { icon: undefined })"
-            />
-            <Button
-              :text="
-                option.icon ? t('area.selectOptionChangeIcon') : t('area.selectOptionPickIcon')
-              "
-              :icon="option.icon"
-              :tooltip="t('area.selectOptionPickIconTip')"
-              @click="pickingIcon = idx"
-            />
+            <div class="abele-select-property__icon-controls">
+              <Icon
+                v-if="option.icon"
+                icon="x"
+                :tooltip="t('area.selectOptionNoIcon')"
+                @click="setOption(idx, { icon: undefined })"
+              />
+              <Button
+                :text="
+                  option.icon ? t('area.selectOptionChangeIcon') : t('area.selectOptionPickIcon')
+                "
+                :icon="option.icon"
+                :tooltip="t('area.selectOptionPickIconTip')"
+                @click="pickingIcon = idx"
+              />
+            </div>
           </Setting>
         </div>
       </div>
@@ -278,6 +280,18 @@ const done = () => {
 </script>
 
 <style>
+.abele-select-property__icon-controls {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
+.abele-select-property .abele-select-property__icon-controls > button {
+  width: auto;
+  flex: 0 0 auto;
+}
+
 .abele-select-property__options {
   display: flex;
   flex-direction: column;
