@@ -223,9 +223,21 @@ export class NodePathMutations {
   }
   create(project_id: string, branch: string, base_ref: string) {
     const params = { project_id, branch, base_ref }
-    return this.intent('workspace.create', params, (id) =>
-      this.client.nodePath.createWorkspace(params, id)
+    return this.intent(
+      'workspace.create',
+      params,
+      (id) => this.client.nodePath.createWorkspace(params, id),
+      params,
+      true
     )
+  }
+  /** Release only after the accepted job has been reconciled with its exact catalogue row. */
+  async finishCreate(project_id: string, branch: string, base_ref: string): Promise<void> {
+    const key = JSON.stringify(['workspace.create', { project_id, branch, base_ref }])
+    await this.client.store.transaction((raw) => {
+      const intents = (raw as IntentState).nodePathIntents
+      if (intents?.[key]?.result !== undefined) delete intents[key]
+    })
   }
   trust(project_id: string) {
     const params = { project_id, trust: 'trusted' as const }

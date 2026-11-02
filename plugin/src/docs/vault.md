@@ -13,6 +13,16 @@ PDF exports omit Abele's note header and footer by default. The `pdfIncludeHeade
 boolean in plugin settings includes them when enabled and travels in the Other settings
 section. Note-body blocks are exported regardless of this setting.
 
+## Device-local worktree creation receipts
+
+The node client's local store retains `nodePathIntents` for accepted `workspace.create`
+requests, including their operation ID, original parameters and typed workspace/job result.
+Reopening the dialog resumes that receipt instead of allocating a new creation operation.
+The intent is released only after the successful job is reconciled to its exact catalogue
+worktree and that target is selected. Failed or uncertain reconciliation keeps the receipt;
+it does not infer identity from a branch name. This state is device-local, not note frontmatter
+or a synced chat grant.
+
 ## Select properties
 
 Plugin settings retain `selectProperties` (default `[]`) in the Other settings transfer

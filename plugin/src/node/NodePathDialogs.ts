@@ -345,14 +345,13 @@ export async function openNodeWorktreeDialog(
                     : t('streamB.worktreeCreationIsInProgressRefreshThe.b895d6')
                 )
               else {
-                const selected =
-                  model.targets.value.find((item) => item.id === createdId) ??
-                  model.targets.value.find(
-                    (translationItem) =>
-                      model.copy(translationItem)?.branch?.replace(/^refs\/heads\//, '') ===
-                        branch && translationItem.projectId === target.projectId
-                  )
-                if (selected) await model.select(selected.id)
+                const selected = model.targets.value.find(
+                  (item) => item.id === createdId && item.projectId === target.projectId
+                )
+                if (selected) {
+                  await model.select(selected.id)
+                  await mutations.finishCreate(target.projectId, branch, from)
+                }
               }
               close()
             })

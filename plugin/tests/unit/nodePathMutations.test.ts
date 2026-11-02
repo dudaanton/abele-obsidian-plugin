@@ -7,6 +7,47 @@ import { IDBFactory } from 'fake-indexeddb'
 import { WorktreePageSchema } from '@abele/node-protocol'
 
 describe('owner folder intents', () => {
+  it('reuses an accepted creation when Create is pressed again from a reopened dialog', async () => {
+    const createWorkspace = vi.fn(async () => ({
+      workspace_id: 'sample-created-workspace',
+      job_id: 'sample-creation-job',
+    }))
+    const client = {
+      store: new MemoryClientStore(),
+      nodePath: { createWorkspace } as never,
+    }
+    const first = await new NodePathMutations(client).create(
+      'sample-project',
+      'sample-topic',
+      'HEAD'
+    )
+    const second = await new NodePathMutations(client).create(
+      'sample-project',
+      'sample-topic',
+      'HEAD'
+    )
+    expect(second).toEqual(first)
+    expect(createWorkspace).toHaveBeenCalledOnce()
+  })
+  it('releases only a reconciled creation and preserves an uncertain operation identity', async () => {
+    const ids: string[] = []
+    let uncertain = true
+    const createWorkspace = vi.fn(async (_params: unknown, id: string) => {
+      ids.push(id)
+      if (uncertain) throw new ChannelError('outcome_unknown')
+      return { workspace_id: 'sample-created-workspace', job_id: 'sample-job' }
+    })
+    const client = { store: new MemoryClientStore(), nodePath: { createWorkspace } as never }
+    const mutations = new NodePathMutations(client)
+    await expect(mutations.create('sample-project', 'sample-topic', 'HEAD')).rejects.toThrow()
+    await mutations.finishCreate('sample-project', 'sample-topic', 'HEAD')
+    uncertain = false
+    await mutations.create('sample-project', 'sample-topic', 'HEAD')
+    expect(ids[1]).toBe(ids[0])
+    await mutations.finishCreate('sample-project', 'sample-topic', 'HEAD')
+    await mutations.create('sample-project', 'sample-topic', 'HEAD')
+    expect(ids[2]).not.toBe(ids[0])
+  })
   it('starts a fresh removal when flushing a pending request confirms a dirty refusal', async () => {
     const store = new MemoryClientStore()
     const request = { method: 'workspace.remove', params: { workspace_id: 'sample-workspace' } }

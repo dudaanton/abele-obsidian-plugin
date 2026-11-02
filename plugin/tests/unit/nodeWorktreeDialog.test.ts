@@ -6,6 +6,7 @@ import { openNodeWorktreeDialog } from '@/node/NodePathDialogs'
 const f = vi.hoisted(() => ({
   render: undefined as undefined | (() => VNode),
   unmount: vi.fn(),
+  finishCreate: vi.fn(async () => {}),
 }))
 vi.mock('@/components/obsidian/mount', () => ({
   mountKit: (_host: unknown, component: { render: () => VNode }) => {
@@ -19,6 +20,7 @@ vi.mock('@/stores/GlobalStore', () => ({
 vi.mock('@/node/NodePathMutations', () => ({
   NodePathMutations: class {
     create = async () => ({ job_id: 'sample-job', workspace_id: 'sample-created-workspace' })
+    finishCreate = f.finishCreate
   },
 }))
 
@@ -104,4 +106,39 @@ it('refreshes and selects the exact created workspace instead of a branch lookal
   dialog.props!.onCreate('sample-branch', 'HEAD')
   await vi.waitFor(() => expect(select).toHaveBeenCalledWith('sample-created-tree'))
   expect(order).toEqual(['refresh', 'select'])
+  await vi.waitFor(() =>
+    expect(f.finishCreate).toHaveBeenCalledWith('sample-project', 'sample-branch', 'HEAD')
+  )
+})
+
+it('never substitutes a branch lookalike when the accepted workspace is not listed yet', async () => {
+  const select = vi.fn()
+  const model = {
+    capabilities: ref(['node_path_worktrees']),
+    targets: ref([{ id: 'sample-lookalike', projectId: 'sample-project' }]),
+    copy: () => ({ branch: 'sample-branch' }),
+    refresh: vi.fn(async () => {}),
+    select,
+  }
+  const connection = {
+    client: {
+      repository: {
+        worktrees: async () => ({ entries: [], cursor: null }),
+        refs: async () => ({ entries: [], cursor: null }),
+      },
+      getJob: async () => ({ state: 'succeeded' }),
+    },
+  }
+  await openNodeWorktreeDialog(
+    model as never,
+    connection as never,
+    { id: 'sample-root', projectId: 'sample-project' } as never
+  )
+  const modal = f.render!()
+  const content = (modal.children as { default: () => VNode }).default()
+  const dialog = (content.children as VNode[])[1]
+  dialog.props!.onCreate('sample-branch', 'HEAD')
+  await vi.waitFor(() => expect(model.refresh).toHaveBeenCalledOnce())
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(select).not.toHaveBeenCalled()
 })

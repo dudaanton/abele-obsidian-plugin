@@ -50,7 +50,16 @@ export async function nodeFolderChoices(host: NodeAgentHost): Promise<NodeFolder
         }
         return result
       })())
-    const projects = await client.listProjects()
+    const projects = [...(await client.listProjects())]
+    let after = projects.at(-1)?.project_id
+    for (let page = 0; after && page < 64; page++) {
+      const batch = await client.listProjects(after)
+      if (!batch.length) break
+      const next = batch.at(-1)?.project_id
+      if (next === after) break
+      projects.push(...batch)
+      after = next
+    }
     const labels = folderLabels(projects.map((p: { root_path: string }) => p.root_path))
     for (const [i, project] of projects.entries()) {
       const at = {

@@ -40,6 +40,57 @@ it('lists every branch across pages, including a project with just one branch, a
   expect(worktrees).toHaveBeenCalledWith({ project_id: 'sample-many', cursor: 'sample-next' })
 })
 
+it('offers a just-created worktree in a project beyond the first project page without reload', async () => {
+  let created = false
+  const host = {
+    nodes: () => [{ id: 'sample-registration', label: 'Sample node' }],
+    connection: () => ({
+      client: {
+        connected: true,
+        listProjects: async (after?: string) =>
+          after
+            ? [
+                {
+                  project_id: 'sample-later',
+                  root_path: '/samples/later',
+                  repository_path: '/samples/later',
+                },
+              ]
+            : Array.from({ length: 100 }, (_, i) => ({
+                project_id: `sample-${i}`,
+                root_path: `/samples/${i}`,
+                repository_path: null,
+              })),
+        repository: {
+          worktrees: async () => ({
+            entries: created
+              ? [
+                  {
+                    worktree_id: 'sample-created',
+                    branch: 'work/sample',
+                    path_label: '/samples/new',
+                  },
+                ]
+              : [],
+            cursor: null,
+          }),
+        },
+      },
+    }),
+  }
+  await nodeFolderChoices(host as never)
+  created = true
+  const choices = await nodeFolderChoices(host as never)
+  expect(
+    choices.some(
+      (choice) =>
+        choice.entry.kind === 'target' &&
+        choice.entry.target.kind === 'worktree' &&
+        choice.entry.target.worktree_id === 'sample-created'
+    )
+  ).toBe(true)
+})
+
 it.each(['stale_resource', 'repository_unavailable'])(
   'keeps healthy projects selectable when one project reports %s',
   async (code) => {
