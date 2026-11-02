@@ -10,6 +10,56 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.useRealTimers()
 })
+it('keeps a fresh chat worktree grant usable for status after its branch changes', async () => {
+  let branch = 'refs/heads/main'
+  const status = vi.fn(async () => ({ state: 'exited', stdout: branch, exit_code: 0 }))
+  vi.spyOn(NodeService, 'getInstance').mockReturnValue({
+    nodes: { value: [{ id: 'sample-node' }] },
+    connection: () => ({
+      connect: async () => {},
+      client: { describe: async () => ({}) },
+      manager: {
+        targetFor: async () => ({ project_id: 'sample-project', worktree_id: 'sample-tree' }),
+        status,
+      },
+      refreshDelegations: async () => {},
+    }),
+  } as never)
+  const owner = {
+    overrides: ref({
+      nodeScope: [
+        {
+          kind: 'target',
+          node_id: 'sample-node',
+          project_id: 'sample-project',
+          target: { kind: 'worktree', worktree_id: 'sample-tree' },
+          access: 'run',
+        },
+      ],
+    }),
+    getToolMode: () => 'auto',
+    ensureDelegationParentId: async () => 'sample-fresh-chat',
+  } as unknown as ChatSession
+  const tool = createNodeManagerTools(owner).find((tool) => tool.name === 'node_command_status')!
+  const args = {
+    node: 'sample-node',
+    project_id: 'sample-project',
+    worktree_id: 'sample-tree',
+    session_id: 'sample-context',
+    run_id: 'sample-run',
+  }
+  await tool.execute('sample-before', args)
+  branch = 'refs/heads/work/sample-topic'
+  const result = await tool.execute('sample-after', args)
+  expect(JSON.parse(result.content[0].text).stdout).toBe(branch)
+  expect(status).toHaveBeenCalledTimes(2)
+  owner.overrides.value.nodeScope = []
+  await expect(tool.execute('sample-revoked', args)).rejects.toThrow(
+    'Node tool is off: folder needs edit and run access'
+  )
+  expect(status).toHaveBeenCalledTimes(2)
+})
+
 it('runs a command in the sole granted plain folder without widening workspace scope', async () => {
   vi.useFakeTimers()
   vi.setSystemTime(0)

@@ -202,7 +202,7 @@ export function createNodeManagerTools(owner?: ChatSession): AgentTool[] {
             )
           )
         }
-        if (typeof params.project_id === 'string') {
+        if (typeof params.project_id === 'string' && typeof params.worktree_id !== 'string') {
           const rootWorkspace = await scopedPlainCommandRoot(
             connection.client,
             parent,
