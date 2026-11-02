@@ -9,6 +9,7 @@ import {
   type EditorView,
 } from '@codemirror/view'
 import type { PrismEngine, PrismToken } from '@/editor/EditorSyntax'
+import type { Range, Text } from '@codemirror/state'
 export const prism = shallowRef<PrismEngine>()
 let loading: Promise<PrismEngine> | undefined
 export function loadedPrism(): Promise<PrismEngine> {
@@ -124,11 +125,92 @@ export function lineTokens(
     return null
   }
 }
+// Whole-file tokenization keeps Prism's multiline context. Larger files use lexical chunks.
+export const WHOLE_FILE_CHARACTERS = 1024 * 1024
+const CHUNK_CHARACTERS = 65536
+
+/** Line starts outside comments, strings and templates, including nested interpolations. */
+function syntaxChunks(doc: Text): number[] {
+  const starts = [1]
+  const stack: string[] = []
+  let regexClass = false
+  let expression = true
+  let safe = 1
+  let chunk = 1
+  for (let n = 1; n <= doc.lines; n++) {
+    const line = doc.line(n)
+    if (!stack.length) {
+      if (line.from - doc.line(chunk).from >= CHUNK_CHARACTERS) {
+        // Keep an oversized lexical construct together rather than restarting Prism inside it.
+        const next = safe > chunk ? safe : n
+        starts.push(next)
+        chunk = next
+      }
+      safe = n
+    }
+    const text = line.text + '\n'
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i],
+        next = text[i + 1],
+        mode = stack[stack.length - 1]
+      if (mode === '/*') {
+        if (c === '*' && next === '/') {
+          stack.pop()
+          i++
+        }
+      } else if (mode === "'" || mode === '"' || mode === '`' || mode === '/') {
+        if (c === '\\') {
+          i++
+          continue
+        }
+        if (mode === '/' && c === '[') regexClass = true
+        else if (mode === '/' && c === ']') regexClass = false
+        else if (c === mode && !regexClass) {
+          stack.pop()
+          expression = false
+        } else if (mode === '`' && c === '$' && next === '{') {
+          stack.push('}')
+          expression = true
+          i++
+        }
+      } else if (c === '/' && next === '/') {
+        break
+      } else if (c === '/' && next === '*') {
+        stack.push('/*')
+        i++
+      } else if (c === "'" || c === '"' || c === '`') {
+        stack.push(c)
+      } else if (c === '/' && expression) {
+        stack.push('/')
+        regexClass = false
+      } else if (mode === '}' && c === '{') {
+        stack.push('}')
+        expression = true
+      } else if (mode === '}' && c === '}') {
+        stack.pop()
+        expression = false
+      } else if (/[\w$]/.test(c)) {
+        const word = /^[\w$]+/.exec(text.slice(i))[0]
+        expression = /^(?:return|throw|case|delete|typeof|void|new|yield|await)$/.test(word)
+        i += word.length - 1
+      } else if (!/\s/.test(c)) {
+        expression = /[=(:,;!&|?{}[+*%~<>-]/.test(c)
+      }
+    }
+  }
+  starts.push(doc.lines + 1)
+  return starts
+}
+
 export function codeSyntax(path: string) {
   return ViewPlugin.fromClass(
     class {
       decorations: DecorationSet = Decoration.none
       destroyed = false
+      private document?: Text
+      private engine?: PrismEngine
+      private chunks: number[] = []
+      private tokens = new Map<number, LineToken[][] | null>()
       constructor(readonly view: EditorView) {
         this.draw()
         void loadedPrism()
@@ -144,39 +226,53 @@ export function codeSyntax(path: string) {
         if (update.docChanged || update.viewportChanged) this.draw()
       }
       draw() {
-        if (!prism.value) return
+        const engine = prism.value
+        if (!engine) return
         const doc = this.view.state.doc
-        // Small files retain complete multiline grammar context. Large files parse only the
-        // viewport and nearby lines; a single huge line is bounded as well.
-        const start =
-          doc.length <= 32768 ? 1 : Math.max(1, doc.lineAt(this.view.viewport.from).number - 40)
-        const end =
-          doc.length <= 32768
-            ? doc.lines
-            : Math.min(doc.lines, doc.lineAt(this.view.viewport.to).number + 40)
-        const tokens = lineTokens(
-          prism.value,
-          doc.sliceString(
-            doc.line(start).from,
-            Math.min(doc.line(end).to, doc.line(start).from + 65536)
-          ),
-          path,
-          doc.line(1).text
-        )
-        this.decorations = Decoration.set(
-          tokens?.flatMap((line, i) =>
-            line.map((token) =>
-              Decoration.mark({ class: token.cls }).range(
-                doc.line(start + i).from + token.from,
-                doc.line(start + i).from + token.to
+        if (doc !== this.document || engine !== this.engine) {
+          this.document = doc
+          this.engine = engine
+          this.tokens.clear()
+          this.chunks = doc.length <= WHOLE_FILE_CHARACTERS ? [1, doc.lines + 1] : syntaxChunks(doc)
+        }
+        const first = doc.lineAt(this.view.viewport.from).number
+        const last = doc.lineAt(this.view.viewport.to).number
+        const marks: Range<Decoration>[] = []
+        for (let i = 0; i < this.chunks.length - 1; i++) {
+          const start = this.chunks[i],
+            end = this.chunks[i + 1] - 1
+          if (end < first) continue
+          if (start > last) break
+          if (!this.tokens.has(start)) {
+            this.tokens.set(
+              start,
+              lineTokens(
+                engine,
+                doc.sliceString(doc.line(start).from, doc.line(end).to),
+                path,
+                doc.line(1).text
               )
             )
-          ) ?? [],
-          true
-        )
+            // Retain nearby chunks without keeping tokens for an arbitrarily large file.
+            if (this.tokens.size > 4) this.tokens.delete(this.tokens.keys().next().value)
+          }
+          const tokens = this.tokens.get(start)
+          for (let n = Math.max(start, first); n <= Math.min(end, last); n++) {
+            for (const token of tokens?.[n - start] ?? []) {
+              marks.push(
+                Decoration.mark({ class: token.cls }).range(
+                  doc.line(n).from + token.from,
+                  doc.line(n).from + token.to
+                )
+              )
+            }
+          }
+        }
+        this.decorations = Decoration.set(marks, true)
       }
       destroy() {
         this.destroyed = true
+        this.tokens.clear()
       }
     },
     { decorations: (plugin) => plugin.decorations }
