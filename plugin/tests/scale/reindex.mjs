@@ -102,26 +102,102 @@ export function classifyReindexHashes(operation, entries, settledAt, knownShas, 
     /\b(?:Object\.seal|nativeInstallBatch|Puller\.sha256\S* \[as hash\]|VaultWriter\.publishAbsent)/.test(
       row.stack ?? ''
     )
+  const queuedUploadProofs = []
   const queued = (row) => {
-    if (!/^[a-f0-9]{64}$/.test(row.sha) || !/V2EngineClient\.multipart/.test(row.stack ?? '') ||
-        !/V2EngineClient\.putBlobSource/.test(row.stack ?? '')) return false
-    const parts = wire.filter(x => x.device === operation.device && x.event === 'start' &&
-      x.method === 'PUT' && x.sent > 0 && x.at <= row.at &&
-      new RegExp(`^/v2/uploads/${row.sha}/[^/]+/\\d+$`).test(x.route ?? ''))
+    if (
+      !/^[a-f0-9]{64}$/.test(row.sha) ||
+      !/V2EngineClient\.multipart/.test(row.stack ?? '') ||
+      !/V2EngineClient\.putBlobSource/.test(row.stack ?? '')
+    )
+      return false
+    const parts = wire.filter(
+      (x) =>
+        x.device === operation.device &&
+        x.event === 'start' &&
+        x.method === 'PUT' &&
+        x.sent > 0 &&
+        x.at <= row.at &&
+        new RegExp(`^/v2/uploads/${row.sha}/[^/]+/\\d+$`).test(x.route ?? '')
+    )
     const part = parts.at(-1)
     if (!part) return false
     const uploadId = part.route.split('/')[4]
-    const sameSession = parts.some(x => x.at < operation.at && x.route.split('/')[4] === uploadId)
-    const intent = entries.some(x => x.device === operation.device &&
-      x.event === 'interruption-receipts' && x.id === operation.id && x.complete === true &&
-      x.completedAt < operation.at && x.uploads?.some(u => u.sha === row.sha))
-    return sameSession || intent
+    const sameSession = parts.some((x) => x.at < operation.at && x.route.split('/')[4] === uploadId)
+    const intent = entries.find(
+      (x) =>
+        x.device === operation.device &&
+        x.event === 'interruption-receipts' &&
+        x.id === operation.id &&
+        x.complete === true &&
+        Number.isFinite(x.completedAt) &&
+        x.completedAt <= operation.at &&
+        x.uploads?.some(
+          (u) =>
+            u.sha === row.sha &&
+            u.size === row.bytes &&
+            Number.isFinite(u.size) &&
+            typeof u.path === 'string' &&
+            entries.some(
+              (source) =>
+                source.device === operation.device &&
+                source.event === 'fingerprint-result' &&
+                source.at < operation.at &&
+                source.sha === u.sha &&
+                source.path === u.path &&
+                source.bytes === u.size
+            )
+        )
+    )
+    if (intent) {
+      const source = intent.uploads.find(
+        (u) =>
+          u.sha === row.sha &&
+          u.size === row.bytes &&
+          entries.some(
+            (s) =>
+              s.device === operation.device &&
+              s.event === 'fingerprint-result' &&
+              s.at < operation.at &&
+              s.sha === u.sha &&
+              s.path === u.path &&
+              s.bytes === u.size
+          )
+      )
+      const failedBegin = wire.find(
+        (x) =>
+          x.device === operation.device &&
+          x.event === 'start' &&
+          x.method === 'POST' &&
+          x.route === `/v2/uploads/${row.sha}/begin` &&
+          x.at < operation.at &&
+          wire.some(
+            (close) =>
+              close.device === x.device &&
+              close.id === x.id &&
+              close.event === 'close' &&
+              close.completed === false &&
+              close.at <= operation.at
+          )
+      )
+      queuedUploadProofs.push({
+        sha: row.sha,
+        path: source.path,
+        size: source.size,
+        snapshotId: intent.id,
+        ...(failedBegin ? { failedBeginRequestId: failedBegin.id } : {}),
+      })
+    }
+    return sameSession || Boolean(intent)
   }
   const during = relevant.filter((row) => row.at <= (completedAt ?? Infinity))
   const after = relevant.filter((row) => row.at > (completedAt ?? Infinity))
+  const queuedUploadDigests = during.filter(queued)
   return {
-    reindexHashes: during.filter((row) => !isPayloadDigest(row) && !queued(row)),
-    queuedUploadDigests: during.filter(queued),
+    reindexHashes: during.filter(
+      (row) => !isPayloadDigest(row) && !queuedUploadDigests.includes(row)
+    ),
+    queuedUploadDigests,
+    queuedUploadProofs,
     inReindexPayloadDigests: during.filter(isPayloadDigest),
     payloadDigests: after.filter(isPayloadDigest),
     otherPostReindexHashes: after.filter((row) => !isPayloadDigest(row)),

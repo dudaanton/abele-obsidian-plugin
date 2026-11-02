@@ -1562,6 +1562,7 @@ export async function run(config) {
         result.postReindexPayloadDigests = classifiedHashes.payloadDigests.length
         result.inReindexPayloadDigests = classifiedHashes.inReindexPayloadDigests.length
         result.queuedUploadDigests = classifiedHashes.queuedUploadDigests
+        result.queuedUploadProofs = classifiedHashes.queuedUploadProofs
         result.otherPostReindexHashes = classifiedHashes.otherPostReindexHashes.length
         result.settledAt = saved.settledAt ?? null
         result.afterIndexUntilSettle = {

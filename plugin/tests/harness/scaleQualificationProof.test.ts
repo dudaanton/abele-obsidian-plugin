@@ -51,14 +51,22 @@ it('keeps attribution failures recorded while allowing a completed smoke to reac
 })
 
 it('separates a proven queued payload digest, including a transfer starting after rebuild', () => {
-  const scanned = { ...digest, at: 50, stack: 'at BoundedVaultIo.fingerprint' }
+  const scanned = {
+    ...digest,
+    at: 50,
+    event: 'fingerprint-result',
+    path: 'Sample/file.bin',
+    bytes: 8,
+    stack: 'at BoundedVaultIo.fingerprint',
+  }
+  const payload = { ...digest, bytes: 8 }
   const queued = {
     id: operation.id,
     event: 'interruption-receipts',
     device: '0',
     complete: true,
     completedAt: 90,
-    uploads: [{ sha, path: 'Sample/file.bin' }],
+    uploads: [{ sha, path: 'Sample/file.bin', size: 8 }],
   }
   const wire = [
     {
@@ -73,22 +81,22 @@ it('separates a proven queued payload digest, including a transfer starting afte
   ]
   const result = classifyReindexHashes(
     operation,
-    [scanned, queued, digest, end],
+    [scanned, queued, payload, end],
     200,
     new Set([sha]),
     wire
   )
   expect(result.reindexHashes).toEqual([])
-  expect(result.queuedUploadDigests).toEqual([digest])
+  expect(result.queuedUploadDigests).toEqual([payload])
   expect(
     classifyReindexHashes(
       operation,
-      [scanned, { ...queued, id: 'older-cut' }, digest, end],
+      [scanned, { ...queued, id: 'older-cut' }, payload, end],
       200,
       new Set([sha]),
       wire
     ).reindexHashes
-  ).toEqual([digest])
+  ).toEqual([payload])
 })
 
 it('still fails new reindex-created scans, unproven payloads and a different device', () => {
@@ -106,6 +114,69 @@ it('still fails new reindex-created scans, unproven payloads and a different dev
   expect(
     classifyReindexHashes(operation, [scan, end], 200, new Set([sha]), []).reindexHashes
   ).toEqual([scan])
+})
+
+it('proves a renegotiated payload from an exact complete boundary queue snapshot', () => {
+  const source = {
+    device: '0',
+    event: 'fingerprint-result',
+    at: 40,
+    path: 'Sample/queued.bin',
+    sha,
+    bytes: 512,
+  }
+  const snapshot = {
+    device: '0',
+    event: 'interruption-receipts',
+    id: operation.id,
+    at: 90,
+    completedAt: 100,
+    complete: true,
+    uploads: [{ path: source.path, sha, size: 512 }],
+  }
+  const payload = { ...digest, bytes: 512 }
+  const wire = [
+    {
+      device: '0',
+      event: 'start',
+      id: 7,
+      at: 50,
+      method: 'POST',
+      route: `/v2/uploads/${sha}/begin`,
+    },
+    { device: '0', event: 'close', id: 7, at: 60, completed: false },
+    {
+      device: '0',
+      event: 'start',
+      id: 8,
+      at: 120,
+      method: 'PUT',
+      sent: 512,
+      route: `/v2/uploads/${sha}/new-session/0`,
+    },
+  ]
+  const classify = (receipt: any) =>
+    classifyReindexHashes(
+      operation,
+      [source, ...(receipt ? [receipt] : []), payload, end],
+      200,
+      new Set([sha]),
+      wire
+    )
+  expect(classify(snapshot).reindexHashes).toEqual([])
+  expect(classify(snapshot).queuedUploadProofs).toEqual([
+    { sha, path: source.path, size: 512, snapshotId: operation.id, failedBeginRequestId: 7 },
+  ])
+  for (const receipt of [
+    null,
+    { ...snapshot, complete: false },
+    { ...snapshot, completedAt: 101 },
+    { ...snapshot, device: '1' },
+    { ...snapshot, uploads: [{ ...snapshot.uploads[0], path: 'Sample/other.bin' }] },
+    { ...snapshot, uploads: [{ ...snapshot.uploads[0], size: 513 }] },
+    { ...snapshot, uploads: [{ ...snapshot.uploads[0], sha: 'b'.repeat(64) }] },
+  ])
+    expect(classify(receipt).reindexHashes).toEqual([payload])
 })
 
 it('binds an in-flight upload exemption to its actual session', () => {
