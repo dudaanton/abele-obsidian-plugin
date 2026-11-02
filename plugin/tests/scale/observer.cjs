@@ -245,7 +245,11 @@ module.exports = class extends Plugin {
     globalThis.__scaleEmitEvidence = emit
     // The qualified bundle supplies closures over its actual hash classes.
     // Schedule them normally, never through debugger call-frame evaluation.
-    if (config.receiptCapture) {
+    if (config.strictRestartMeasurement) {
+      // Strict restart windows contain no harness hash setup, including a
+      // callback retained from an earlier observer load in this realm.
+      delete globalThis.__scaleWarmHashConstructors
+    } else if (config.receiptCapture) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Installed qualification-only scheduling helper.
       const { scheduleHashWarmup } = require(config.receiptCapture)
       globalThis.__scaleWarmHashConstructors = work => scheduleHashWarmup(work, emit)

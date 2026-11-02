@@ -248,6 +248,15 @@ it('fails a measured strict window with a hold, a reload or missing generation e
   expect(restart.strictWindowEvidence(100, 200, '0', [], []).complete).toBe(false)
 })
 
+it.each([0, 1])('rejects an in-window warm-up receipt even with %s ms recorded duration', durationMs => {
+  const setup = { event: 'javascript-hash-tracepoint-setup', device: '0', at: 150,
+    phase: 'warm-up', startedAt: 150, endedAt: 150 + durationMs }
+  const entries = [{ event: 'renderer-start', device: '0', at: 101 }, setup]
+  const window = restart.strictWindowEvidence(100, 200, '0', entries, [])
+  expect(window.complete).toBe(false)
+  expect(window.interruptions).toEqual([setup])
+})
+
 it('never treats a receipt-less or identity-proven read-back as exempt recovery', async () => {
   const { classifyRecoveryRead } = await import('../scale/recovery-receipts.mjs')
   const read = {
