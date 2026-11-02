@@ -50,6 +50,32 @@ it('caches a whole-file Prism pass across scrolling and invalidates it after edi
   }
 })
 
+it.each([
+  ['sample.ts', '/*\n' + 'unfinished comment\n'.repeat(70000), 4 * 65536],
+  ['sample.ts', 'const text = `\n' + 'unfinished template\n'.repeat(70000), 4 * 65536],
+  ['sample.py', '# `\n' + "value = 'sample' / 2 # comment\n".repeat(40000), 65536],
+  ['sample.ts', 'x'.repeat(WHOLE_FILE_CHARACTERS + 1), 4 * 65536],
+])('bounds every large-file Prism input for %s', async (path, source, cap) => {
+  await loadedPrism()
+  const tokenize = vi.spyOn(fakePrism, 'tokenize').mockImplementation((text) => [text])
+  const state = EditorState.create({ doc: source })
+  expect(state.doc.length).toBeGreaterThan(WHOLE_FILE_CHARACTERS)
+  const view = {
+    state,
+    viewport: { from: 0, to: state.doc.length },
+    dispatch() {},
+  } as unknown as EditorView
+  const plugin = codeSyntax(path).create(view)
+  try {
+    await flushPromises()
+    expect(tokenize).toHaveBeenCalled()
+    for (const [text] of tokenize.mock.calls) expect(text.length).toBeLessThanOrEqual(cap)
+  } finally {
+    plugin.destroy()
+    tokenize.mockRestore()
+  }
+})
+
 it('measures a 1 MiB whole-file TypeScript Prism pass', () => {
   const line =
     'export const sample = (items: string[]) => items.map((item) => ({ item, value: item ?? 42 }));\n'

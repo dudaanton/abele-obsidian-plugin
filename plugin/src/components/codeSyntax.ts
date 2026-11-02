@@ -81,7 +81,8 @@ export function lineTokens(
   engine: PrismEngine,
   text: string,
   path?: string,
-  header = text
+  header = text,
+  maxCharacters = Infinity
 ): LineToken[][] | null {
   const language = prismLanguage(engine, path, header)
   if (!language) return null
@@ -118,7 +119,10 @@ export function lineTokens(
       )
   }
   try {
-    walk(engine.tokenize(text, engine.languages[language]))
+    // A single oversized line also needs bounded inputs; walk retains its column offset.
+    for (let from = 0; from < text.length || from === 0; from += maxCharacters) {
+      walk(engine.tokenize(text.slice(from, from + maxCharacters), engine.languages[language]))
+    }
     return out
   } catch (error) {
     console.debug('[code-syntax] Grammar failed', language, error)
@@ -128,9 +132,10 @@ export function lineTokens(
 // Whole-file tokenization keeps Prism's multiline context. Larger files use lexical chunks.
 export const WHOLE_FILE_CHARACTERS = 1024 * 1024
 const CHUNK_CHARACTERS = 65536
+const MAX_CHUNK_CHARACTERS = 4 * CHUNK_CHARACTERS
 
 /** Line starts outside comments, strings and templates, including nested interpolations. */
-function syntaxChunks(doc: Text): number[] {
+function syntaxChunks(doc: Text, lexical: boolean): number[] {
   const starts = [1]
   const stack: string[] = []
   let regexClass = false
@@ -139,9 +144,16 @@ function syntaxChunks(doc: Text): number[] {
   let chunk = 1
   for (let n = 1; n <= doc.lines; n++) {
     const line = doc.line(n)
+    const limit = lexical ? MAX_CHUNK_CHARACTERS : CHUNK_CHARACTERS
+    if (n > chunk && line.to - doc.line(chunk).from > limit) {
+      // A colouring seam is preferable to an unbounded grammar pass.
+      starts.push(n)
+      chunk = safe = n
+    }
+    if (!lexical) continue
     if (!stack.length) {
       if (line.from - doc.line(chunk).from >= CHUNK_CHARACTERS) {
-        // Keep an oversized lexical construct together rather than restarting Prism inside it.
+        // Prefer lexical boundaries while they fit within the hard limit.
         const next = safe > chunk ? safe : n
         starts.push(next)
         chunk = next
@@ -233,7 +245,14 @@ export function codeSyntax(path: string) {
           this.document = doc
           this.engine = engine
           this.tokens.clear()
-          this.chunks = doc.length <= WHOLE_FILE_CHARACTERS ? [1, doc.lines + 1] : syntaxChunks(doc)
+          const language = prismLanguage(engine, path, doc.line(1).text)
+          this.chunks =
+            doc.length <= WHOLE_FILE_CHARACTERS
+              ? [1, doc.lines + 1]
+              : syntaxChunks(
+                  doc,
+                  ['javascript', 'typescript', 'jsx', 'tsx'].includes(language ?? '')
+                )
         }
         const first = doc.lineAt(this.view.viewport.from).number
         const last = doc.lineAt(this.view.viewport.to).number
@@ -250,7 +269,12 @@ export function codeSyntax(path: string) {
                 engine,
                 doc.sliceString(doc.line(start).from, doc.line(end).to),
                 path,
-                doc.line(1).text
+                doc.line(1).text,
+                doc.length <= WHOLE_FILE_CHARACTERS
+                  ? Infinity
+                  : start === end
+                    ? CHUNK_CHARACTERS
+                    : MAX_CHUNK_CHARACTERS
               )
             )
             // Retain nearby chunks without keeping tokens for an arbitrarily large file.
