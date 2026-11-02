@@ -22,8 +22,6 @@ module.exports = class extends Plugin {
         EditorSuggest, PluginSettingTab } = require('obsidian')
       const codeMirror = { ...require('@codemirror/state'), ...require('@codemirror/view') }
       /* eslint-enable @typescript-eslint/no-require-imports -- Host imports end here. */
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Native async/await continuation hooks.
-      const asyncHooks = require('node:async_hooks')
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Native watcher/event completion callbacks.
       const { EventEmitter } = require('node:events')
       fs.mkdirSync(config.profileDirectory, { recursive: true })
@@ -39,9 +37,13 @@ module.exports = class extends Plugin {
         device: config.device, pluginAbsent: !this.app.plugins?.plugins?.abele,
         requireProductBridge: true,
       })
+      // Native async hooks can abort the renderer when inspector breakpoints
+      // run during host index startup. CPU profiles cover these continuations;
+      // the remaining callback ledger must not claim complete coverage.
+      entryLedger.markPartial('Native async callbacks require CPU attribution')
       const restore = installEntryLedger({ ledger: entryLedger, target: globalThis, Events,
         Component, Workspace, Plugin: ProductPlugin, ItemView, FileView, View, MarkdownRenderChild,
-        EditorSuggest, PluginSettingTab, codeMirror, EventEmitter, asyncHooks })
+        EditorSuggest, PluginSettingTab, codeMirror, EventEmitter })
       globalThis.__scaleWrapProductExport = value => wrapProductExport(value, entryLedger)
       globalThis.__scaleEntryLedgerRequired = true
       const mark = performance.mark.bind(performance)

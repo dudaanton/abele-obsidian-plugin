@@ -156,7 +156,7 @@ it('review 8: renderer unload flushes entries without stopping the host continuo
       if (name === 'obsidian') return { Plugin }
       if (name === 'fs') return { readFileSync: () => JSON.stringify(config), mkdirSync() {} }
       if (name === 'path') return { join: (...parts: string[]) => parts.join('/') }
-      if (name === 'ledger') return { createEntryLedger: () => ({ teardown() { tornDown++ }, flush() {} }),
+      if (name === 'ledger') return { createEntryLedger: () => ({ teardown() { tornDown++ }, flush() {}, markPartial() {} }),
         installEntryLedger: () => () => {}, wrapProductExport() {} }
       if (name === '@electron/remote') return { require: () => ({ openEvidencePort: () => 'sample' }),
         getCurrentWebContents: () => ({ id: 1 }) }

@@ -304,6 +304,12 @@ exports.beginReindexCoverage = (channel, id) => coverageWatches.get(channel)?.be
 exports.endReindexCoverage = (channel) => coverageWatches.get(channel)?.end()
 exports.unwatch = (channel) => watches.get(channel)?.()
 exports.profileReady = (channel) => watches.has(channel)
+exports.rendererExitReceipt = details => ({
+  event: 'renderer-exit',
+  reason: ['clean-exit', 'abnormal-exit', 'killed', 'crashed', 'oom', 'launch-failed', 'integrity-failure', 'memory-eviction']
+    .includes(details?.reason) ? details.reason : 'unknown',
+  exitCode: Number.isInteger(details?.exitCode) ? details.exitCode : null,
+})
 exports.watch = async function (id, serializedConfig) {
   const config = JSON.parse(serializedConfig)
   const watchStartedAt = Date.now()
@@ -335,6 +341,7 @@ exports.watch = async function (id, serializedConfig) {
     return channel
   }
   const transport = wc.debugger
+  wc.once('render-process-gone', (_event, details) => emit(exports.rendererExitReceipt(details)))
   transport.attach('1.3')
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- Host process state, independent of renderer IPC.
   const { app } = require('electron')
