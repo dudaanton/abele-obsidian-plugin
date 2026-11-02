@@ -1,4 +1,10 @@
 {
+  "chatTree.nodeFolderMissingTip": {
+    "englishHash": "a135c1920f05f3f9b522d52b02e2b16030b0c0820510a123ef7e7109b5237c09"
+  },
+  "chatTree.unknownNodeFolder": {
+    "englishHash": "9b4463f3d4a451035ed30a96b9562adb10bc86b296ec383734861e4896552ca0"
+  },
   "chat.find": {
     "englishHash": "d0884964f2818684ffd3eeda0a1aae41433eaf677b3110b113291ce3e0a27e5f"
   },

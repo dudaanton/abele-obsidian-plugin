@@ -31,7 +31,11 @@ vi.mock('@/node/NodeService', () => {
       },
     ],
   }
-  const client = { connected: true }
+  const client = {
+    connected: true,
+    listProjects: async () => [],
+    repository: { worktrees: async () => ({ entries: [] }) },
+  }
   const service = {
     registry,
     nodes: { value: registry.list() },
@@ -58,6 +62,62 @@ beforeEach(() => {
 })
 
 describe('owner node scope actions', () => {
+  it('persists catalogue words and restores a missing place without changing its grant key', async () => {
+    const host = await nodeAgentHost()
+    const client = host.connection('sample-node').client
+    const projects = vi
+      .spyOn(client, 'listProjects')
+      .mockResolvedValue([
+        {
+          project_id: 'saved-name-project',
+          root_path: '/work/sample-app',
+          repository_path: '/work/sample-app',
+        },
+      ] as never)
+    const worktrees = vi.spyOn(client.repository, 'worktrees').mockResolvedValue({
+      entries: [
+        {
+          worktree_id: 'saved-name-tree',
+          branch: 'refs/heads/main',
+          path_label: '/work/sample-app',
+        },
+      ],
+    } as never)
+    const session = new ChatSession(ChatService.getInstance())
+    const entry = {
+      kind: 'target' as const,
+      node_id: 'sample-node',
+      project_id: 'saved-name-project',
+      target: { kind: 'worktree' as const, worktree_id: 'saved-name-tree' },
+      access: 'read' as const,
+    }
+    try {
+      await giveObsidianChatAccess(session, entry)
+      const file = session.currentChatFile.value!
+      const reopened = new ChatSession(ChatService.getInstance())
+      await reopened.load(file)
+      const saved = reopened.overrides.value.nodeScope![0]
+      expect(saved).toEqual({ ...entry, display: { folder: 'sample-app', branch: 'main' } })
+      const { nodeScopeKey } = await import('@/ai/nodeScope')
+      expect(nodeScopeKey(saved)).toBe(nodeScopeKey(entry))
+      const { nodeScopeDisplayNames, forgetNodeScopeNames } = await import(
+        '@/ai/tools/node/scopeNames'
+      )
+      projects.mockResolvedValue([])
+      forgetNodeScopeNames()
+      expect(await nodeScopeDisplayNames(saved, host)).toMatchObject({
+        folder: 'sample-app',
+        branch: 'main',
+        missing: true,
+      })
+      expect(reopened.overrides.value.nodeScope).toEqual([saved])
+      reopened.destroy()
+    } finally {
+      projects.mockRestore()
+      worktrees.mockRestore()
+      session.destroy()
+    }
+  })
   it('keeps shared Run access and Delegate permission after saving, reopening and copying a chat', async () => {
     const session = new ChatSession(ChatService.getInstance())
     session.toolModes.value = { ...session.toolModes.value, delegate: 'ask' }

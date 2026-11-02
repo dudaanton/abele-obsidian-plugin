@@ -9,7 +9,12 @@ export const NodeChatTargetSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('workspace'), workspace_id: id }).strict(),
   z.object({ kind: z.literal('worktree'), worktree_id: id }).strict(),
 ])
-const common = { node_id: id, access: z.enum(['read', 'edit', 'run']) }
+// Presentation only; never included in scope keys or used to authorize a resource.
+const common = {
+  node_id: id,
+  access: z.enum(['read', 'edit', 'run']),
+  display: z.object({ folder: z.string(), branch: z.string().optional() }).strict().optional(),
+}
 export const NodeScopeEntrySchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('node'), ...common }).strict(),
   z.object({ kind: z.literal('project'), ...common, project_id: id }).strict(),

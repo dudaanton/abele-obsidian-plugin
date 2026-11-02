@@ -115,12 +115,19 @@ describe('node scope beside vault scope and in the header', () => {
         project_id: 'sample-missing-project',
         target: { kind: 'worktree', worktree_id: 'sample-missing-tree' },
         access: 'read',
+        display: { folder: 'sample-app', branch: 'main' },
       },
     ]
     const view = mount(AiNodeScopeEditor, { props: { session } })
     await flushPromises()
     const row = view.get('.abele-scope-mgr__entry-path')
-    expect(row.text()).toContain('Folder no longer exists')
+    expect(row.get('.abele-node-scope-editor__name').text()).toBe('sample-app')
+    expect(row.get('.abele-node-scope-editor__branch').text()).toBe('main')
+    expect(row.text()).not.toContain('Sample node')
+    expect(row.text()).not.toContain('Folder no longer exists')
+    expect(view.get('.abele-scope-mgr__entry').classes()).toContain('abele-node-scope-editor__missing')
+    expect(view.findAllComponents(Icon).some((icon) => icon.props('icon') === 'folder-x')).toBe(true)
+    expect(row.attributes('title')).toBe('This folder is no longer on Sample node. Remove it, or add the folder again.')
     expect(row.text()).not.toContain('sample-missing-project')
     expect(row.text()).not.toContain('sample-missing-tree')
     view.unmount()

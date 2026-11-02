@@ -177,15 +177,27 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
           const saved=window.__scopeCatalogueRestore;
           client.listProjects=${variant === 'missing' ? 'async()=>[]' : 'saved.projects'};
           client.repository.worktrees=async()=>({entries:${variant === 'missing' ? '[]' : `[{worktree_id:${JSON.stringify(setup.worktree)},branch:${JSON.stringify(variant === 'short' ? 'refs/heads/main' : 'refs/heads/feature/a-very-long-branch-name-for-the-access-label-without-opaque-identities')},path_label:'sample-app'}]`}});
-          const wanted=${JSON.stringify(variant === 'missing' ? 'Folder no longer exists' : variant === 'short' ? 'worktree main' : 'worktree feature/a-very-long-branch-name')};
+          const wanted=${JSON.stringify(variant === 'short' ? 'worktree main' : 'worktree feature/a-very-long-branch-name')};
           await until(()=>visible('.abele-ai-chat .abele-chat-input__scope')?.getAttribute('aria-label')?.includes(wanted),'fresh access words');
           const scope=visible('.abele-ai-chat .abele-chat-input__scope'),box=scope.getBoundingClientRect();
           if(box.left<0||box.right>innerWidth+1)throw Error('Access label leaves viewport');
           // A phone has no hover. Open the real access window on both layouts instead.
           scope.click();
           const editor=await until(()=>visible('.abele-node-scope-editor'),'access window open');
-          const expected=${JSON.stringify(variant === 'missing' ? 'Folder no longer exists' : variant === 'short' ? 'main' : 'feature/a-very-long-branch-name-for-the-access-label-without-opaque-identities')};
+          const expected=${JSON.stringify(variant === 'short' ? 'main' : 'feature/a-very-long-branch-name-for-the-access-label-without-opaque-identities')};
           const place=await until(()=>[...editor.querySelectorAll('.abele-scope-mgr__entry-path')].find(el=>el.textContent.includes(expected)),'visible access place '+expected);
+          const row=place.closest('.abele-scope-mgr__entry');
+          if(${variant === 'missing'})await until(()=>row.classList.contains('abele-node-scope-editor__missing'),'missing style');
+          if(place.querySelector('.abele-node-scope-editor__name')?.textContent.trim()!=='sample-app')throw Error('Folder is not primary');
+          if(place.textContent.includes('Sample workstation'))throw Error('Single node consumes row width');
+          const folder=place.querySelector('.abele-node-scope-editor__name'),branch=place.querySelector('.abele-node-scope-editor__branch');
+          if(folder.clientWidth<folder.scrollWidth)throw Error('Short folder name is clipped');
+          if(branch.clientWidth<24)throw Error('Branch has no readable width');
+          if(${variant === 'missing'}){
+            if(!row.querySelector('[data-icon="folder-x"]'))throw Error('Missing warning absent');
+            if(getComputedStyle(row.querySelector('.abele-scope-mgr__entry-remove')).opacity!=='1')throw Error('Missing remove hidden');
+            if(!place.title.includes('This folder is no longer on Sample workstation.'))throw Error('Missing explanation absent');
+          }else if(!place.title.includes('Sample workstation / sample-app / '+expected))throw Error('Full tooltip absent');
           place.scrollIntoView({block:'center'});
           await wait(100);
           const r=place.getBoundingClientRect();

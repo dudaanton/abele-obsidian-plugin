@@ -36,19 +36,42 @@
     </EmptyState>
     <div class="abele-scope-mgr__entries" role="list" :aria-label="t('streamB.nodeAccess.bc448d')">
       <template v-for="entry in entries" :key="nodeScopeKey(entry)">
-        <div class="abele-scope-mgr__entry" role="listitem">
+        <div
+          class="abele-scope-mgr__entry"
+          :class="{ 'abele-node-scope-editor__missing': names[nodeScopeKey(entry)]?.missing }"
+          role="listitem"
+        >
           <Icon
-            :icon="entry.kind === 'node' ? 'server' : 'folder-git-2'"
+            :icon="
+              names[nodeScopeKey(entry)]?.missing
+                ? 'folder-x'
+                : entry.kind === 'node'
+                  ? 'server'
+                  : 'folder-git-2'
+            "
             :interactive="!inheritedFrom(entry)"
             :tooltip="
               entry.kind === 'node'
                 ? t('streamB.wholeNodeIncludesEveryRegisteredFolderNow.3773fc')
-                : label(entry)
+                : rowTooltip(entry)
             "
             @click="(event) => locationMenu(entry, event)"
           />
-          <span class="abele-scope-mgr__entry-path"
-            >{{ label(entry) }}
+          <span class="abele-scope-mgr__entry-path" :title="rowTooltip(entry)">
+            <span class="abele-node-scope-editor__words">
+              <span class="abele-node-scope-editor__name">{{
+                names[nodeScopeKey(entry)]?.folder ?? nodeName(entry)
+              }}</span
+              ><span v-if="entry.kind !== 'node'" class="abele-node-scope-editor__branch">{{
+                names[nodeScopeKey(entry)]?.branch ?? t('chatTree.allBranches')
+              }}</span>
+              <span
+                v-if="multipleNodes && entry.kind !== 'node'"
+                class="abele-node-scope-editor__node"
+              >
+                · {{ nodeName(entry) }}</span
+              >
+            </span>
             <span
               v-if="inheritedFrom(entry)"
               class="abele-scope-mgr__entry-type abele-node-scope-editor__source"
@@ -230,6 +253,19 @@ function label(entry: NodeScopeEntry) {
     return known?.label ?? entry.node_id
   }
   return n.folder ? `${n.node} / ${nodeScopeTitle(n)}` : n.node
+}
+const multipleNodes = computed(() => new Set(entries.value.map((entry) => entry.node_id)).size > 1)
+function rowTooltip(entry: NodeScopeEntry) {
+  const n = names.value[nodeScopeKey(entry)]
+  return n?.missing
+    ? t('chatTree.nodeFolderMissingTip', { node: n.node })
+    : [
+        n?.node,
+        n?.folder,
+        entry.kind !== 'node' ? (n?.branch ?? t('chatTree.allBranches')) : undefined,
+      ]
+        .filter(Boolean)
+        .join(' / ')
 }
 async function loadNodes() {
   try {
@@ -628,5 +664,43 @@ body.is-phone .abele-node-scope-editor__under > .abele-node-scope-editor__room:l
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.abele-node-scope-editor__words {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: 0.3em;
+}
+.abele-node-scope-editor__name {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.abele-node-scope-editor__branch {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+.abele-node-scope-editor__node {
+  flex: 0 100000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+}
+.abele-node-scope-editor__missing {
+  .abele-node-scope-editor__name,
+  .abele-node-scope-editor__branch {
+    color: var(--text-faint);
+  }
+  .abele-scope-mgr__entry-remove {
+    opacity: 1;
+  }
 }
 </style>

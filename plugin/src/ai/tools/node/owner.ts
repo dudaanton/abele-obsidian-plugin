@@ -239,14 +239,33 @@ async function saveNodeScope(
       return []
     }
   })
+  const { nodeScopeDisplayNames } = await import('./scopeNames')
+  const named = await Promise.all(
+    normalized.map(async (entry) => {
+      const names = await nodeScopeDisplayNames(entry, host)
+      return {
+        ...entry,
+        ...(!names.missing && names.folder
+          ? { display: { folder: names.folder, branch: names.branch } }
+          : {}),
+      }
+    })
+  )
   if (session.conversationVersion.value !== version)
     throw new Error('Chat changed while saving node scope')
+  for (const authority of authorities) {
+    const current = host.connection(authority.id, session)
+    if (
+      current.client !== authority.client ||
+      current.principal() !== authority.principal ||
+      current.authorizationGeneration !== authority.generation
+    )
+      throw new Error('Node identity or authority changed while saving scope')
+  }
   session.overrides.value = {
     ...session.overrides.value,
     nodeAccessVersion: 1,
-    nodeScope: [
-      ...new Map(normalized.map((entry) => [nodeScopeResourceKey(entry), entry])).values(),
-    ],
+    nodeScope: [...new Map(named.map((entry) => [nodeScopeResourceKey(entry), entry])).values()],
   }
   await session.saveForRelease()
   if (session.conversationVersion.value !== version)

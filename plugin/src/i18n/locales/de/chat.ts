@@ -1,4 +1,7 @@
 export const chat = {
+  'chatTree.nodeFolderMissingTip':
+    'Dieser Ordner ist auf {node} nicht mehr vorhanden. Entfernen Sie ihn oder fügen Sie den Ordner erneut hinzu.',
+  'chatTree.unknownNodeFolder': 'Unbekannter Ordner',
   'chat.scriptChanged': 'Skript geändert: {name}',
   'chat.scriptsChanged': 'Skripte geändert: {count}',
   'chat.reviewScripts': 'Prüfen',

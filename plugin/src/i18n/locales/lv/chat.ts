@@ -1,4 +1,7 @@
 export const chat = {
+  'chatTree.nodeFolderMissingTip':
+    'Šīs mapes mezglā {node} vairs nav. Noņemiet to vai pievienojiet mapi vēlreiz.',
+  'chatTree.unknownNodeFolder': 'Nezināma mape',
   'chat.scriptChanged': 'Skripts mainīts: {name}',
   'chat.scriptsChanged': 'Mainīti skripti: {count}',
   'chat.reviewScripts': 'Pārskatīt',

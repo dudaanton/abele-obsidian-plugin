@@ -15,6 +15,11 @@ changes or reconnects without rewriting the grant. Out-of-scope folder refusals 
 folder and branch from the current catalogue; an unresolved folder is described in words,
 not by an opaque project/worktree ID. The coded refusal retains those exact IDs so giving
 access still selects the requested place. Name lookup never grants access or reads files.
+The access window puts the folder first, then a muted branch (or all branches). The node
+appears only as a faint suffix for multi-node scopes; the full place remains in the tooltip.
+Unavailable folders retain their last known presentation, faint with a folder-x icon and
+an always-visible removal button. Their tooltip explains removal or adding the folder again;
+the grant and its level remain stored. Legacy entries without a known name say Unknown folder.
 
 Node chats use AbeleNode's authenticated client API. Nodes advertising `obsidian.tools.v1`
 can also use the ordinary vault catalogue through an explicitly configured executor. Local-token

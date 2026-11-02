@@ -1484,7 +1484,11 @@ Do not edit these records by hand.
 
 Chat metadata `overrides.nodeScope` stores remote scope separately from vault paths:
 entries identify a whole node, registered project, or exact plain workspace/Git worktree,
-with read/edit/run access. `overrides.nodeTarget` is selection, not permission. Both travel
+with read/edit/run access. Optional `display: { folder, branch? }` records resolved words when
+access is saved, so a missing folder still has a recognizable name after reopening the chat.
+It is presentation only, excluded from resource keys and authorization decisions; names learned
+from later catalogue refreshes are retained in memory. `overrides.nodeTarget` is selection,
+not permission. Both travel
 with the chat. Agent `nodeScope` holds defaults for new chats; an explicit chat scope wins,
 including an empty scope. `nodeAccessVersion: 1` records migration to folder execution levels.
 Legacy enabled command/delegation permissions promote only existing edit folders to run;

@@ -214,7 +214,7 @@ describe('conversation presentation', () => {
     expect(input.props('scopeLabel')).toBe(
       // No node catalogue is available in this fixture. The missing place is said in
       // words; opaque project/workspace identities remain in the grant, not its label.
-      'Access: Sample/reference.md, Sample/Pages · sample-node node · Folder no longer exists · can read files'
+      'Access: Sample/reference.md, Sample/Pages · sample-node node · Unknown folder · can read files'
     )
     expect(input.props('scopeLabel')).not.toContain('sample-project')
     expect(input.props('scopeLabel')).not.toContain('sample-workspace')

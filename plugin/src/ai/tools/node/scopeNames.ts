@@ -30,7 +30,11 @@ export interface NodeScopeNames {
   node: string
   folder?: string
   branch?: string
+  missing?: boolean
 }
+
+// Last successful presentation survives catalogue refreshes, never grants access.
+const lastNames = new Map<string, NodeScopeNames>()
 
 type Place = { node_id: string; project_id?: string; target?: NodeChatTarget }
 
@@ -188,10 +192,20 @@ export async function nodeScopeDisplayNames(
   const names = await nodeScopeNames(place, host)
   const project = 'project_id' in place ? place.project_id : undefined
   const target = 'target' in place ? place.target : undefined
-  if (project && names.folder === project)
-    return { node: names.node, folder: t('chatTree.folderMissing') }
-  if (target && names.branch === nodeTargetId(target))
-    return { node: names.node, folder: names.folder, branch: t('chatTree.folderMissing') }
+  const key = JSON.stringify([place.node_id, project, target])
+  if ((project && names.folder === project) || (target && names.branch === nodeTargetId(target))) {
+    const previous = lastNames.get(key) ?? ('display' in place ? place.display : undefined)
+    return {
+      node: names.node,
+      folder:
+        previous?.folder ??
+        (names.folder !== project ? names.folder : undefined) ??
+        t('chatTree.unknownNodeFolder'),
+      branch: previous?.branch,
+      missing: true,
+    }
+  }
+  if (project) lastNames.set(key, names)
   return names
 }
 

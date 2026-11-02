@@ -1,4 +1,7 @@
 export const chat = {
+  'chatTree.nodeFolderMissingTip':
+    'Этой папки больше нет на узле {node}. Удалите её из доступа или добавьте папку заново.',
+  'chatTree.unknownNodeFolder': 'Неизвестная папка',
   'chat.scriptChanged': 'Скрипт изменён: {name}',
   'chat.scriptsChanged': 'Скриптов изменено: {count}',
   'chat.reviewScripts': 'Проверить',

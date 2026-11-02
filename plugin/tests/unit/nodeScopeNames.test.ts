@@ -63,10 +63,50 @@ beforeEach(() => {
 })
 
 describe('the names of a place on a node', () => {
+  it('uses persisted words when no catalogue has ever named this place', async () => {
+    const saved = {
+      kind: 'target' as const,
+      ...place,
+      project_id: 'persisted-only-project',
+      display: { folder: 'remembered-app', branch: 'remembered-branch' },
+      access: 'read' as const,
+    }
+    expect(await nodeScopeDisplayNames(saved)).toMatchObject({
+      folder: 'remembered-app',
+      branch: 'remembered-branch',
+      missing: true,
+    })
+    expect(saved.display).toEqual({ folder: 'remembered-app', branch: 'remembered-branch' })
+  })
+  it('prefers fresh words and retains the latest branch when the place disappears', async () => {
+    const saved = {
+      kind: 'target' as const,
+      ...place,
+      target: { kind: 'worktree' as const, worktree_id: 'retained-tree' },
+      display: { folder: 'old-app', branch: 'old-branch' },
+      access: 'read' as const,
+    }
+    node.connected = true
+    node.worktrees = [
+      { worktree_id: 'retained-tree', branch: 'refs/heads/current', path_label: '/x' },
+    ]
+    expect(await nodeScopeDisplayNames(saved)).toMatchObject({
+      folder: 'sample-app',
+      branch: 'current',
+    })
+    node.connected = false
+    forgetNodeScopeNames()
+    expect(await nodeScopeDisplayNames(saved)).toMatchObject({
+      folder: 'sample-app',
+      branch: 'current',
+      missing: true,
+    })
+  })
   it('says an unavailable folder in words while keeping the original grant', async () => {
     const display = await nodeScopeDisplayNames(place)
     const sentence = nodeScopeSentence(display, 'read')
-    expect(sentence).toContain('Folder no longer exists')
+    expect(sentence).toContain('Unknown folder')
+    expect(display.missing).toBe(true)
     expect(sentence).not.toContain('sample-project')
     expect(sentence).not.toContain('sample-tree')
     expect(place.target.worktree_id).toBe('sample-tree')
