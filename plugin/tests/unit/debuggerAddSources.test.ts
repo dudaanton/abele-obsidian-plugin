@@ -272,6 +272,39 @@ function fixture(supported = true, refused: { path: string; code: string }[] = [
   service.trackFolder(owner, 'sample-session', target)
   return { service, binding, request }
 }
+it('requests attachment evidence and retains it even on source refusal', async () => {
+  const { service, binding, request } = fixture()
+  const attachment = {
+    name: 'sample.js',
+    pid: 123,
+    folder: '/sample/project',
+    loaded_scripts: 12,
+    source_maps: false,
+    files: [{ path: 'lib/helper.ts', loaded: false, mapped: false }],
+  }
+  request.mockResolvedValueOnce({
+    incarnation: 'sample-incarnation',
+    sources: [],
+    refused: [{ path: 'lib/helper.ts', code: 'debugger_source_no_map' }],
+    attachment,
+  } as never)
+  expect(await service.admitSessionFile(binding, 'lib/helper.ts')).toMatchObject({ attachment })
+  expect(request).toHaveBeenCalledWith(
+    'debugger.v1.addSources',
+    expect.objectContaining({ include_diagnostics: true })
+  )
+})
+it('retries legacy nodes without diagnostics when their request schema rejects the option', async () => {
+  const { service, binding, request } = fixture()
+  request.mockRejectedValueOnce({ code: 'invalid_params' })
+  expect(await service.admitSessionFile(binding, 'lib/helper.ts')).toMatchObject({ message: '' })
+  expect(request.mock.calls).toHaveLength(2)
+  expect(request).toHaveBeenLastCalledWith('debugger.v1.addSources', {
+    operation_id: expect.any(String),
+    debug_session_id: 'sample-session',
+    sources: ['lib/helper.ts'],
+  })
+})
 it('attaches a source to a chat debug session without a file tab or folder panel', async () => {
   const { service, binding: folder, request } = fixture()
   const binding = service.binding({
@@ -307,6 +340,7 @@ it('admits a later-opened file once and retains it for restart', async () => {
     operation_id: expect.any(String),
     debug_session_id: 'sample-session',
     sources: ['lib/helper.ts'],
+    include_diagnostics: true,
   })
   expect(service.takenFiles(binding)).toContain('lib/helper.ts')
 })

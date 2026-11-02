@@ -1,6 +1,7 @@
 // Resolve the recording by source or explicit process without changing the viewed session.
 import type { TraceToolContext } from '@/ai/tools/TraceTools'
-import { DebuggerService, type DebuggerBinding } from '../DebuggerService'
+import { DebuggerService, type DebuggerBinding, type SourceAdmission } from '../DebuggerService'
+import { describeAttachment, type Attachment } from './attachment'
 import type { PathTarget } from '@/node/NodePathModel'
 import { writeRunNote } from './runNote'
 
@@ -39,20 +40,21 @@ function traceContextFor(
       selected = matched
       if (typeof params.file === 'string' && (params.session || params.process !== undefined)) {
         let owner: typeof matched | undefined
-        let ambiguous = false
         try {
           owner = service.fileBinding(folder, params.file)
         } catch {
-          ambiguous = true
+          /* An explicit selector resolves shared-source ambiguity. */
         }
         if (owner && owner !== matched)
           throw new Error(
-            `This file belongs to another process (${owner.sessionId}); use that session or omit the explicit selector.`
+            `This file belongs to another process (${attachmentOf(owner).name}); use that process or omit the explicit selector.`
           )
-        if (!owner && !ambiguous && matched.controller.snapshot?.lifecycle === 'active')
-          pendingFile = true
       }
-    } else pendingFile = true
+    } else {
+      const attached = service.attachedBindings(folder)
+      if (attached.length === 1) selected = attached[0]
+      else pendingFile = true
+    }
   }
   const binding = selected
   const trace = binding?.trace
@@ -60,6 +62,11 @@ function traceContextFor(
   if (!binding || !trace || !projectId) return undefined
   const sessionId = binding.sessionId
   const incarnation = binding.controller.snapshot?.incarnation
+  const attachedDescription = (file: string) => {
+    const attached = folder ? service.attachedBindings(folder) : [binding]
+    if (!attached.length) return 'Nothing is attached in this folder.'
+    return attached.map((entry) => describeAttachment(attachmentOf(entry), file)).join('\n')
+  }
   const current = () => {
     if (
       binding.trace !== trace ||
@@ -94,7 +101,7 @@ function traceContextFor(
           service
             .pendingBreakpoints(folder, file)
             .filter((line) => service.pendingPoint(folder, file, line)?.record)
-            .map((line) => `${file}:${line} · pending · process not attached`)
+            .map((line) => `${file}:${line} · pending · ${attachedDescription(file)}`)
             .join('\n') || 'No record points in this folder.'
         )
       return (
@@ -108,7 +115,7 @@ function traceContextFor(
               (typeof params.file === 'string' &&
                 service.sourceFor(binding, params.file) === b.sourceId)
           )
-          .map((b) => `${b.file}:${b.requestedLine} · ${b.state} · ${binding.sessionId}`)
+          .map((b) => `${b.file}:${b.requestedLine} · ${b.state} · ${attachmentOf(binding).name}`)
           .join('\n') || 'No record points in this session.'
       )
     },
@@ -122,8 +129,7 @@ function traceContextFor(
         })
         return {
           recording: false,
-          reason:
-            'No attached process runs this file. The point is pending in the folder and will apply when its process attaches.',
+          reason: `${attachedDescription(file)} The point is pending in the folder; select a process if several are attached.`,
         }
       }
       if (!binding.controller.current || binding.controller.session.unavailable)
@@ -131,12 +137,16 @@ function traceContextFor(
           'The debug session has ended or detached. Attach to the program before setting a record point.'
         )
       let source = service.sourceFor(binding, file)
+      let admission: SourceAdmission | undefined
       if (!source) {
-        const admission = await service.admitSessionFile(binding, file)
+        admission = await service.admitSessionFile(binding, file)
         guard()
         current()
         source = service.sourceFor(binding, file)
-        if (!source && admission.message) throw new Error(admission.message)
+        if (!source && admission.message)
+          throw new Error(
+            `${describeAttachment(admission.attachment ?? attachmentOf(binding), file)} ${admission.message}`
+          )
       }
       if (!source)
         throw new Error(
@@ -151,9 +161,7 @@ function traceContextFor(
       if (result?.pending || point?.state !== 'set')
         return {
           recording: false,
-          reason:
-            point?.reason ||
-            'The selected process has not bound this source. Check that it runs this file.',
+          reason: `${describeAttachment(admission?.attachment ?? attachmentOf(binding), file, true)} ${point?.reason || 'The point is pending in this process.'}`,
         }
       return { recording: true }
     },
@@ -198,5 +206,20 @@ function traceContextFor(
     },
     writeNote: (runId) =>
       writeRunNote({ registrationId: binding.registrationId, projectId, runId }, trace.rpc),
+  }
+}
+
+function attachmentOf(binding: DebuggerBinding): Attachment {
+  const target = binding.controller.snapshot?.target
+  const launch = target?.launch_configuration_id ?? ''
+  const pid = target?.process_evidence?.pid ?? Number(/ · pid (\d+)$/.exec(launch)?.[1])
+  return {
+    name:
+      binding.entryPath?.split('/').pop() ||
+      launch.split(' · pid ')[0].split('/').pop() ||
+      'program',
+    ...(Number.isFinite(pid) ? { pid } : {}),
+    folder: DebuggerService.instance.folder(binding)?.location?.path ?? 'folder path unknown',
+    files: [],
   }
 }

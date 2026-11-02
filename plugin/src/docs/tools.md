@@ -1146,7 +1146,12 @@ default; `trace_mark`, `trace_point_add`, `trace_point_remove` and `trace_note` 
 - `trace_point_add(file, line, take, when?, note?)` sets a record point on a line of a file
   inside this session's granted node folder. The agent attaches the source itself; an open
   file tab is unnecessary. Without an attached owner, the point stays pending for its folder
-  until that process attaches. An explicitly selected ended or detached session refuses the point. A point not bound
+  until that process attaches.
+  An unmapped source is first admitted to the sole attached process in the folder, including
+  a module that has not loaded yet. Pending and refused answers identify the attached program,
+  process and folder, with loaded-script and source-map evidence when the node supplies it;
+  older nodes leave that evidence unknown. Several possible owners require explicit selection.
+  An explicitly selected ended or detached session refuses the point. A point not bound
   to its process reports that it is not recording and why. Only what `take` names
   is taken; an empty list takes nothing.
 - `trace_point_list(file?, session?, process?)` lists record points for the matching process, independently of the viewed session.

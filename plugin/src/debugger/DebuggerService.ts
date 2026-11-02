@@ -21,10 +21,12 @@ import { nodeAdvertisesMethod } from '@/node/advertisedMethods'
 import { breakpointCapabilities } from './breakpointCapabilities'
 import { debuggerAcceptanceCapabilities } from '@/node/acceptanceCapabilities'
 import { waitForDebuggerMetadata } from './metadataWait'
+import { attachmentSchema, type Attachment } from './trace/attachment'
 
 export interface SourceAdmission {
   message: string
   code?: string
+  attachment?: Attachment
 }
 export interface PendingPoint {
   id: string
@@ -646,6 +648,17 @@ export class DebuggerService {
     return undefined
   }
   /** Package boundaries distinguish services; shared sources require an explicit process. */
+  attachedBindings(target: PathTarget) {
+    return [...this.folders]
+      .filter(
+        ([binding, folder]) =>
+          this.folderKey(folder.target) === this.folderKey(target) &&
+          binding.controller.current &&
+          !binding.controller.session.unavailable &&
+          binding.controller.snapshot?.lifecycle === 'active'
+      )
+      .map(([binding]) => binding)
+  }
   fileBinding(
     target: PathTarget,
     path: string,
@@ -687,7 +700,7 @@ export class DebuggerService {
     if (entries.length === 1) return entries[0]
     if (entries.length > 1)
       throw new Error(
-        `Ambiguous source ${path}; specify session or process: ${entries.map((binding) => binding.sessionId).join(', ')}`
+        `Ambiguous source ${path}; specify process: ${entries.map((binding) => this.sessionName(binding.controller.snapshot)).join(', ')}`
       )
     const packageOf = (file: string) =>
       /(?:^|\/)((?:packages|apps|services)\/[^/]+)\//.exec(file)?.[1]
@@ -696,7 +709,7 @@ export class DebuggerService {
     if (mapped.length === 1) return mapped[0]
     if (mapped.length > 1)
       throw new Error(
-        `Ambiguous source ${path}; specify session or process: ${mapped.map((b) => b.sessionId).join(', ')}`
+        `Ambiguous source ${path}; specify process: ${mapped.map((b) => this.sessionName(b.controller.snapshot)).join(', ')}`
       )
     const matches = candidates.filter((binding) => {
       const entryPackage = packageOf(this.entryOf(binding))
@@ -705,7 +718,7 @@ export class DebuggerService {
     })
     if (matches.length > 1)
       throw new Error(
-        `Ambiguous source ${path}; specify session or process: ${matches.map((b) => b.sessionId).join(', ')}`
+        `Ambiguous source ${path}; specify process: ${matches.map((b) => this.sessionName(b.controller.snapshot)).join(', ')}`
       )
     return matches[0]
   }
@@ -782,19 +795,37 @@ export class DebuggerService {
         if (!nodeAdvertisesMethod(client, 'debugger.v1.addSources')) {
           return { message: t('debug.sourceUpdate') }
         }
+        const params = {
+          operation_id: crypto.randomUUID(),
+          debug_session_id: sessionId,
+          sources: [path],
+        }
+        let response: unknown
+        try {
+          response = await client.request('debugger.v1.addSources', {
+            ...params,
+            include_diagnostics: true,
+          })
+        } catch (error) {
+          // Older nodes reject unknown request fields before executing the operation.
+          if (
+            !error ||
+            typeof error !== 'object' ||
+            !('code' in error) ||
+            error.code !== 'invalid_params'
+          )
+            throw error
+          if (!current()) return { message: '' }
+          response = await client.request('debugger.v1.addSources', params)
+        }
         const result = z
           .object({
             incarnation: z.string(),
             sources: z.array(z.object({ source_id: z.string(), path: z.string() })),
             refused: z.array(z.object({ path: z.string(), code: z.string() })),
+            attachment: attachmentSchema.optional(),
           })
-          .parse(
-            await client.request('debugger.v1.addSources', {
-              operation_id: crypto.randomUUID(),
-              debug_session_id: sessionId,
-              sources: [path],
-            })
-          )
+          .parse(response)
         if (!current() || result.incarnation !== incarnation) return { message: '' }
         console.debug('[debugger] Source admission', path, result)
         // One requested file may come back under its canonical, symlink-resolved path.
@@ -811,10 +842,11 @@ export class DebuggerService {
             accepted ? path : source.path
           )
         const refusal = result.refused.find((r) => r.path === path)
-        if (refusal) return sourceRefusal(refusal.code)
+        if (refusal) return { ...sourceRefusal(refusal.code), attachment: result.attachment }
         if (accepted) await this.applyPendingFile(target, path, binding, !!sessionBinding)
         return {
           message: accepted ? '' : t('debug.sourceUnavailable'),
+          attachment: result.attachment,
         }
       } catch (error) {
         console.debug('[debugger] Source admission failed', error)
