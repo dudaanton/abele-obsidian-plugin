@@ -810,21 +810,24 @@ export class AgentsService {
           const state = metadata.attention ?? {}
           return (
             content +
-            serializeMetadata({
-              ...metadata,
-              attention: {
-                ...state,
-                resolved: [...new Set([...(state.resolved ?? []), id])],
-                errors: restoreIndexedErrors(state, row.reasons).map((e) =>
-                  e.id === id ? { ...e, seen: true } : e
-                ),
-                run: state.run?.id === id ? { ...state.run, status: 'done' } : state.run,
-                question:
-                  state.question?.id === id
-                    ? { ...state.question, status: 'cancelled' }
-                    : state.question,
+            serializeMetadata(
+              {
+                ...metadata,
+                attention: {
+                  ...state,
+                  resolved: [...new Set([...(state.resolved ?? []), id])],
+                  errors: restoreIndexedErrors(state, row.reasons).map((e) =>
+                    e.id === id ? { ...e, seen: true } : e
+                  ),
+                  run: state.run?.id === id ? { ...state.run, status: 'done' } : state.run,
+                  question:
+                    state.question?.id === id
+                      ? { ...state.question, status: 'cancelled' }
+                      : state.question,
+                },
               },
-            })
+              metadata
+            )
           )
         },
         () => {

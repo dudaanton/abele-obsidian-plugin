@@ -9,6 +9,19 @@ export type RunStatus = 'running' | 'done' | 'error' | 'aborted'
 
 /** Runs share the chat extension, not the editable chat format. Also recognize torn runs. */
 export function isRunTranscript(content: string): boolean {
+  // Canonical chat logs declare their envelope on the first line. Parsing the entire
+  // JSONL as a single JSON object only to throw can allocate a second enormous string.
+  if (content.startsWith('{"v":2,"k":"meta"')) {
+    const end = content.indexOf('\n')
+    if (end >= 0) {
+      try {
+        const head = JSON.parse(content.slice(0, end)) as { type?: string }
+        if (head.type !== 'abele-run') return false
+      } catch {
+        // A pretty-printed single JSON object still needs the ordinary run check.
+      }
+    }
+  }
   try {
     return (JSON.parse(content) as { type?: string } | null)?.type === 'abele-run'
   } catch {

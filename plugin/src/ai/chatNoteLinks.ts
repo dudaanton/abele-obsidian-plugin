@@ -90,7 +90,10 @@ async function rewriteLinks(
       const next = change(current)
       if (sameLinks(next, current)) return content
       result = { notes: next, recap: metadata.recap, agentId: metadata.agentId }
-      return content + serializeMetadata({ ...metadata, touched: next.length ? next : undefined })
+      return (
+        content +
+        serializeMetadata({ ...metadata, touched: next.length ? next : undefined }, metadata)
+      )
     },
     () => {
       if (ChatService.getInstance().getSessionByFile(chatPath))

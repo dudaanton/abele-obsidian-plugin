@@ -1285,9 +1285,9 @@ export class ChatService {
     void (async () => {
       try {
         const prepared = await ChatStorage.getInstance().prepareDiscussion(file)
+        const identity = prepared.identity
         let session: ChatSession | null = null
-        if (prepared.identity)
-          session = await CommentService.getInstance().load(prepared.identity, file)
+        if (identity) session = await CommentService.getInstance().load(identity, file)
         else {
           session =
             this.mutatePresentation(() => {
@@ -1304,7 +1304,7 @@ export class ChatService {
           complete(null)
           return
         }
-        if (!prepared.identity) await session.load(file)
+        if (!identity) await session.load(file, prepared)
         if (generation !== this.restoreGeneration) {
           session.destroy()
           complete(null)

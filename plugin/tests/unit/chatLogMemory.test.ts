@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { transformSync } from 'esbuild'
+import { buildSync } from 'esbuild'
 
 // String equality cannot reveal a V8 SlicedString's parent. Inspect an isolated heap instead
 // of asserting RSS/GC thresholds or depending on undocumented native-syntax intrinsics.
-const source = transformSync(readFileSync(resolve(__dirname, '../../src/ai/ChatLog.ts'), 'utf8'), {
-  loader: 'ts',
+const source = buildSync({
+  entryPoints: [resolve(__dirname, '../../src/ai/ChatLog.ts')],
+  bundle: true,
+  write: false,
+  platform: 'node',
   format: 'cjs',
-}).code
+}).outputFiles[0].text
 
 function retainedLineTypes(kind: 'rewrite' | 'append'): { metadata: string; messages: string[] } {
   const script = `

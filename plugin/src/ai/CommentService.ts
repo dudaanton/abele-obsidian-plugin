@@ -1193,7 +1193,10 @@ export class CommentService implements CommentInfoSource {
       const comments = metadata.comments.filter((comment) => comment.id !== id)
       return (
         content +
-        serializeMetadata({ ...metadata, comments: comments.length ? comments : undefined })
+        serializeMetadata(
+          { ...metadata, comments: comments.length ? comments : undefined },
+          metadata
+        )
       )
     })
   }

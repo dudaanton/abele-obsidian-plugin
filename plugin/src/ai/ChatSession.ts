@@ -4737,11 +4737,14 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     await this.restoreLoadedChat(file, result, { readOnly: true })
   }
 
-  async load(file: TFile): Promise<void> {
+  async load(
+    file: TFile,
+    prepared?: Awaited<ReturnType<ChatStorage['prepareDiscussion']>>
+  ): Promise<void> {
     this.restoringAttention = true
     try {
       await this.reset()
-      const result = await ChatStorage.getInstance().loadChat(file)
+      const result = await ChatStorage.getInstance().loadChat(file, prepared)
       // Storage preparation is mandatory, including direct loads and migration saves.
       await this.restoreLoadedChat(file, result)
       await CommentService.getInstance().inheritNodeScope(this)

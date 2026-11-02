@@ -397,7 +397,7 @@ export class ChatFolders {
       const metadata = { ...parsed.metadata, treeFolderId: id }
       return parsed.version === 1
         ? serializeChat({ ...parsed, metadata })
-        : content + serializeMetadata(metadata)
+        : content + serializeMetadata(metadata, parsed.metadata)
     })
     this.membership.set(file.path, id)
     ChatStorage.getInstance().noteTreeFolder(file.path, id)

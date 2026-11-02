@@ -19,7 +19,14 @@ import {
   isDiscussion,
 } from './commentIdentity'
 import { RunStorage, isRunTranscript } from './RunStorage'
-import { chatCopyPath, inspectChat, readChat, rewriteChat, transformChat } from './chatCopy'
+import {
+  chatCopyPath,
+  inspectChat,
+  readChat,
+  readChatSnapshot,
+  rewriteChat,
+  transformChat,
+} from './chatCopy'
 import { ChatService } from './ChatService'
 import {
   parseChat,
@@ -379,22 +386,30 @@ export class ChatStorage {
     file = toRaw(file)
     const { app } = GlobalStore.getInstance()
     if (oldLogicalPath) this.invalidateDiscussion(oldLogicalPath)
-    if (recover) await readChat(app, file)
+    const projectSnapshot = async (text: string): Promise<ParsedChat> =>
+      project ? { ...(await project(text)), messages: [], internalMessages: [] } : parseChat(text)
+    let initial: { content: string; parsed: ParsedChat } | undefined
+    if (recover && !project) initial = await readChatSnapshot(app, file)
     else {
-      const text = await app.vault.read(file)
-      const current = project ? await project(text) : parseChat(text)
+      if (recover) await readChat(app, file)
+      const content = await app.vault.read(file)
+      const parsed = await projectSnapshot(content)
       if (
-        (current.torn || current.damaged || !current.metadata) &&
+        !recover &&
+        (parsed.torn || parsed.damaged || !parsed.metadata) &&
         (await app.vault.adapter.exists(chatCopyPath(app, file.path)))
       )
         throw new UiError(uiMessage('streamBError.3fe6722d6b'))
+      initial = { content, parsed }
     }
+    // Discussion publication relies on a fresh candidate read after recovery, including
+    // trusted renames while inventory/publication is suspended. Reuse only ordinary chats.
+    if (initial?.parsed.metadata && isDiscussion(initial.parsed.metadata)) initial = undefined
     for (let attempt = 0; attempt < 8; attempt++) {
       const path = canonicalDiscussionPath(file.path)
-      const previous = await app.vault.read(file)
-      const snapshot: ParsedChat = project
-        ? { ...(await project(previous)), messages: [], internalMessages: [] }
-        : parseChat(previous)
+      const previous = initial?.content ?? (await app.vault.read(file))
+      const snapshot = initial?.parsed ?? (await projectSnapshot(previous))
+      initial = undefined
       const metadata = snapshot.metadata
       if (!metadata) {
         this.recordDiscussionObservation(path, {
@@ -407,7 +422,28 @@ export class ChatStorage {
         })
         return { snapshot, revision: String(++this.discussionRevision), content: previous }
       }
-      if (isDiscussion(metadata)) await this.refreshDiscussionIndex()
+      // Ordinary chats have no discussion binding to normalize or publish. Validate the
+      // same bytes once, but do not retain/reparse another complete transcript on return.
+      if (!isDiscussion(metadata)) {
+        if (file.path !== path) continue
+        const confirmed = await app.vault.read(file)
+        // A trusted title rename can finish during the read. Retry at its new path before
+        // interpreting a missing old-path entry as deletion.
+        if (file.path !== path || confirmed !== previous) continue
+        if (toRaw(app.vault.getAbstractFileByPath(path)) !== file)
+          throw new UiError(uiMessage('streamBError.653067e964'))
+        const revision = String(++this.discussionRevision)
+        this.recordDiscussionObservation(path, {
+          file,
+          revision,
+          mtime: file.stat.mtime,
+          size: file.stat.size,
+          discussion: false,
+          normalized: false,
+        })
+        return { snapshot, revision, content: previous }
+      }
+      await this.refreshDiscussionIndex()
       if (file.path !== path) continue
       // A forced candidate read can supersede an older observation before its modify event
       // arrives. Record its self-declaration for conflict detection, not as an adopted owner.
@@ -470,7 +506,7 @@ export class ChatStorage {
         const content =
           snapshot.version === 1
             ? serializeChat({ ...(project ? parseChat(previous) : snapshot), metadata: next })
-            : previous + (previous.endsWith('\n') ? '' : '\n') + serializeMetadata(next)
+            : previous + (previous.endsWith('\n') ? '' : '\n') + serializeMetadata(next, metadata)
         let changed = false
         try {
           await rewriteChat(app, file, content, (current) => {
@@ -693,7 +729,14 @@ export class ChatStorage {
           throw new UiError(uiMessage('streamBError.33d4df464a'))
         if (prepared.identity && matchesRevision && !matchesRevision(prepared.snapshot))
           throw new UiError(uiMessage('streamBError.0550ea75bd'))
-        return this.savePreparedChat(snapshot, plan, existingFile, prepared.content)
+        return this.savePreparedChat(
+          snapshot,
+          plan,
+          existingFile,
+          prepared.content,
+          undefined,
+          prepared.snapshot
+        )
       })
     return this.savePreparedChat(snapshot, plan, undefined, undefined, newDirectory)
   }
@@ -703,7 +746,8 @@ export class ChatStorage {
     plan: ChatWritePlan,
     existingFile?: TFile,
     verifiedContent?: string,
-    newDirectory?: string
+    newDirectory?: string,
+    verifiedSnapshot?: ParsedChat
   ): Promise<TFile | null> {
     const { app } = GlobalStore.getInstance()
     let { metadata } = snapshot
@@ -718,7 +762,7 @@ export class ChatStorage {
       // write compares these exact bytes, including for a compaction or metadata-only append.
       const previous = verifiedContent ?? (await app.vault.read(existingFile))
       assertChatTarget(previous)
-      const disk = parseChat(previous)
+      const disk = verifiedSnapshot ?? parseChat(previous)
       if (
         isDiscussion(metadata) &&
         (!disk.metadata ||
@@ -757,10 +801,15 @@ export class ChatStorage {
       if (JSON.stringify(next) !== JSON.stringify(metadata)) {
         if (plan.kind === 'append') {
           const before = serializeMetadata(metadata)
-          const after = serializeMetadata(next)
-          if (plan.data.includes(before)) plan.data = plan.data.replace(before, after)
+          if (plan.data.includes(before))
+            plan.data = plan.data.replace(
+              before,
+              serializeMetadata(next, disk.metadata ?? metadata)
+            )
           else {
-            plan.data += after
+            // Apply after the session delta (if any), not after an unrelated full snapshot.
+            // In particular, do not append the growing resolved ledger on every message.
+            plan.data += serializeMetadata(next, metadata)
             plan.records++
           }
         } else plan.content = serializeChat({ ...snapshot, metadata: next })
@@ -793,10 +842,17 @@ export class ChatStorage {
         metadata.summary
       )
       this.noteMessageTimes(existingFile.path, snapshot)
-      const confirmed = await this.prepareDiscussionLocked(existingFile)
-      if (isDiscussion(metadata) && confirmed.identity !== metadata.commentId)
-        throw new UiError(uiMessage('streamBError.8f516a3c74'))
-      AgentsService.getInstance().saved(existingFile.path, confirmed.snapshot.metadata ?? metadata)
+      // Ordinary appends already read back their metadata above. Discussion publication
+      // additionally needs identity arbitration, but ordinary chats must not load the full
+      // history a second time just to notify the agent index of the same metadata.
+      let confirmedMetadata = recorded ?? metadata
+      if (isDiscussion(metadata)) {
+        const confirmed = await this.prepareDiscussionLocked(existingFile)
+        if (confirmed.identity !== metadata.commentId)
+          throw new UiError(uiMessage('streamBError.8f516a3c74'))
+        confirmedMetadata = confirmed.snapshot.metadata ?? metadata
+      }
+      AgentsService.getInstance().saved(existingFile.path, confirmedMetadata)
       return existingFile
     }
 
@@ -833,10 +889,20 @@ export class ChatStorage {
     return file
   }
 
-  async loadChat(file: TFile): Promise<ParsedChat> {
+  async loadChat(file: TFile, prepared?: PreparedDiscussion): Promise<ParsedChat> {
     const { app } = GlobalStore.getInstance()
-    assertChatTarget(await app.vault.read(file))
-    const { snapshot: parsed } = await this.prepareDiscussion(file)
+    // Reuse only an ordinary chat's prepared snapshot, after reset has finished and an
+    // exact-byte read proves no sync edit or replacement occurred in the meantime.
+    const content = await app.vault.read(file)
+    assertChatTarget(content)
+    const reusable =
+      prepared &&
+      !prepared.identity &&
+      prepared.snapshot.metadata &&
+      !isDiscussion(prepared.snapshot.metadata) &&
+      content === prepared.content &&
+      toRaw(app.vault.getAbstractFileByPath(file.path)) === toRaw(file)
+    const parsed = reusable ? prepared.snapshot : (await this.prepareDiscussion(file)).snapshot
 
     if (parsed.damaged) {
       console.warn(`[Abele] ${file.path}: skipped ${parsed.damaged} unreadable record(s)`)
@@ -1274,10 +1340,13 @@ export class ChatStorage {
         if (!current) throw new UiError(uiMessage('streamBError.1af2ceac85'))
         return (
           content +
-          serializeMetadata({
-            ...current,
-            touched: ChatStorage.renamedNotes(current.touched ?? [], oldPath, newPath),
-          })
+          serializeMetadata(
+            {
+              ...current,
+              touched: ChatStorage.renamedNotes(current.touched ?? [], oldPath, newPath),
+            },
+            current
+          )
         )
       })
     }

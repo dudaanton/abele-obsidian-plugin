@@ -1,4 +1,5 @@
 import type { ChatMessage, ChatMetadata } from './types'
+import { MetadataRecordReader, applyMetadataRecord, metadataDelta } from './chatMetadataRecord'
 import type { Message, AgentToolResult } from './client'
 /** Keep placement independent of the model-facing paged output. */
 export function nodeCommandIdentity(name: string, result: AgentToolResult) {
@@ -41,17 +42,15 @@ export function nodeCommandIdentity(name: string, result: AgentToolResult) {
 
 /** Kept self-contained with the log codec: only positive records retire an identity. */
 function settledAttention(state: NonNullable<ChatMetadata['attention']> = {}): Set<string> {
-  return new Set([
-    ...(state.resolved ?? []),
-    ...(state.errors ?? []).filter((e) => e.seen).map((e) => e.id),
-    ...(state.run?.status === 'done' ? [state.run.id] : []),
-    ...(state.question && ['answered', 'cancelled'].includes(state.question.status)
-      ? [state.question.id]
-      : []),
-    ...Object.entries(state.tools ?? {})
-      .filter(([, status]) => status === 'done')
-      .map(([id]) => id),
-  ])
+  const settled = new Set(state.resolved ?? [])
+  for (const error of state.errors ?? []) if (error.seen) settled.add(error.id)
+  if (state.run?.status === 'done') settled.add(state.run.id)
+  if (state.question && ['answered', 'cancelled'].includes(state.question.status))
+    settled.add(state.question.id)
+  // Metadata is appended on every checkpoint. Avoid allocating entry tuples and several
+  // intermediate arrays for every historical copy of the (potentially large) tool ledger.
+  for (const id of Object.keys(state.tools ?? {})) if (state.tools![id] === 'done') settled.add(id)
+  return settled
 }
 
 /**
@@ -103,6 +102,9 @@ export type ChatWritePlan =
 
 /** How a metadata record starts, which is what makes it findable without parsing every line. */
 const META_PREFIX = `{"v":${CHAT_FORMAT_VERSION},"k":"meta"`
+const DELTA_PREFIX = `{"v":${CHAT_FORMAT_VERSION},"k":"meta-delta"`
+const isMetadataLine = (line: string): boolean =>
+  line.startsWith(META_PREFIX) || line.startsWith(DELTA_PREFIX)
 
 const metaLine = (metadata: ChatMetadata): string =>
   JSON.stringify({ v: CHAT_FORMAT_VERSION, k: 'meta', ...metadata })
@@ -113,8 +115,8 @@ const metaLine = (metadata: ChatMetadata): string =>
  * For a writer with no session in hand — `CommentService` following a note rename. Appending
  * it updates the file's metadata, because `parseChatMetadata` reads the last such record.
  */
-export function serializeMetadata(metadata: ChatMetadata): string {
-  return metaLine(metadata) + '\n'
+export function serializeMetadata(metadata: ChatMetadata, previous?: ChatMetadata): string {
+  return previous ? metadataDelta(metadata, previous) : metaLine(metadata) + '\n'
 }
 
 /** Optional selections, retained versions and decoration evidence stay on the winning msg.
@@ -201,18 +203,26 @@ export function parseChat(content: string, conversationOnly = false): ParsedChat
  */
 export function parseChatMetadata(content: string): ChatMetadata | null {
   let metadata: ChatMetadata | null = null
-  for (const line of content.split('\n')) {
-    if (!line.startsWith(META_PREFIX)) continue
+  const reader = new MetadataRecordReader()
+  for (const line of logLines(content)) {
+    if (!isMetadataLine(line)) continue
     try {
-      const { k, v, ...rest } = JSON.parse(line)
-      void k
-      void v
-      metadata = mergeMetadataEvidence(rest as ChatMetadata, metadata)
+      metadata = mergeMetadataEvidence(applyMetadataRecord(reader.read(line), metadata), metadata)
     } catch {
       continue
     }
   }
   return metadata ?? parseLegacy(content).metadata
+}
+
+/** Keep only the current line, not an array of slices into a large source buffer. */
+function* logLines(content: string): Generator<string> {
+  let offset = 0
+  while (offset < content.length) {
+    const end = content.indexOf('\n', offset)
+    yield content.slice(offset, end < 0 ? undefined : end)
+    offset = end < 0 ? content.length : end + 1
+  }
 }
 
 /** Discovery retains metadata and terminal tool identities, never a transcript. */
@@ -244,6 +254,7 @@ export async function parseChatAttention(
     return withToolResolutions(parsed, parsed.messages)
   }
   let metadata: ChatMetadata | null = null
+  const metadataReader = new MetadataRecordReader()
   let records = 0,
     damaged = 0,
     offset = 0,
@@ -260,13 +271,10 @@ export async function parseChatAttention(
     }
     if (!line.trim()) continue
     try {
-      const record = JSON.parse(line)
+      const record = isMetadataLine(line) ? metadataReader.read(line) : JSON.parse(line)
       records++
-      if (record.k === 'meta') {
-        const { k, v, ...rest } = record
-        void k
-        void v
-        metadata = mergeMetadataEvidence(rest as ChatMetadata, metadata)
+      if (record.k === 'meta' || record.k === 'meta-delta') {
+        metadata = mergeMetadataEvidence(applyMetadataRecord(record, metadata), metadata)
       } else if (record.k === 'msg') {
         // An update without a result replaces an older result for the same message ID.
         if (record.toolCallId)
@@ -326,11 +334,16 @@ function mergeMetadataEvidence(current: ChatMetadata, previous: ChatMetadata | n
   const prior = previous?.attention ?? {}
   const settled = settledAttention(prior)
   const currentSettled = settledAttention(state)
-  const extra = [...settled].filter((id) => !currentSettled.has(id))
-  const accepted = Object.entries(prior.tools ?? {}).filter(
-    ([id, phase]) => phase !== 'done' && !state.tools?.[id] && !currentSettled.has(id)
-  )
-  const allSettled = new Set([...settled, ...currentSettled])
+  const extra: string[] = []
+  for (const id of settled) if (!currentSettled.has(id)) extra.push(id)
+  const accepted: [string, NonNullable<typeof prior.tools>[string]][] = []
+  for (const id of Object.keys(prior.tools ?? {})) {
+    const phase = prior.tools![id]
+    if (phase !== 'done' && !state.tools?.[id] && !currentSettled.has(id))
+      accepted.push([id, phase])
+  }
+  const allSettled = settled
+  for (const id of currentSettled) allSettled.add(id)
   const staleError = state.errors?.some((error) => !error.seen && allSettled.has(error.id))
   const staleQuestion =
     state.question &&
@@ -445,8 +458,9 @@ function parseLog(content: string, conversationOnly = false): ParsedChat {
   const internalMessages: Message[] = []
   let records = 0
   let damaged = 0
+  const metadataReader = new MetadataRecordReader()
 
-  for (const line of content.split('\n')) {
+  for (const line of logLines(content)) {
     if (!line.trim()) continue
 
     // Skip canonical private records before JSON allocation. A glued public record must
@@ -460,7 +474,7 @@ function parseLog(content: string, conversationOnly = false): ParsedChat {
 
     let record: Record<string, unknown>
     try {
-      record = JSON.parse(line)
+      record = isMetadataLine(line) ? metadataReader.read(line) : JSON.parse(line)
     } catch {
       // A write torn by a crash loses its last line and nothing else, which is the point of
       // the format. Anything else here is a hand-edit that went wrong — or a torn line that
@@ -472,11 +486,12 @@ function parseLog(content: string, conversationOnly = false): ParsedChat {
     }
     records++
 
-    if (record.k === 'meta') {
-      const { k, v, ...rest } = record
-      void k
-      void v
-      metadata = mergeMetadataEvidence(rest as unknown as ChatMetadata, metadata)
+    if (record.k === 'meta' || record.k === 'meta-delta') {
+      try {
+        metadata = mergeMetadataEvidence(applyMetadataRecord(record, metadata), metadata)
+      } catch {
+        damaged++
+      }
     } else if (record.k === 'msg') {
       const { k, ...rest } = record
       void k
@@ -509,7 +524,7 @@ function parseLog(content: string, conversationOnly = false): ParsedChat {
 const isTorn = (content: string): boolean => content.length > 0 && !content.endsWith('\n')
 
 /** Where a record can begin: every line the writer produces starts with one of these. */
-const RECORD_START = /\{"(?:k":"(?:msg|int)"|v":\d+,"k":"meta")/g
+const RECORD_START = /\{"(?:k":"(?:msg|int)"|v":\d+,"k":"meta(?:-delta)?")/g
 
 /**
  * The whole record at the end of a line that starts with a torn one.
@@ -701,7 +716,12 @@ export class ChatLogWriter {
     const lines: string[] = []
 
     const meta = metaLine(snapshot.metadata)
-    if (meta !== this.metaLine) lines.push(meta)
+    if (meta !== this.metaLine) {
+      const previous = parseChatMetadata(this.metaLine)
+      lines.push(
+        (previous ? serializeMetadata(snapshot.metadata, previous) : meta + '\n').trimEnd()
+      )
+    }
 
     for (const message of snapshot.messages) {
       if (!sameRecord(this.committedMessages.get(message.id), message, true))
@@ -738,12 +758,11 @@ export class ChatLogWriter {
       // V8 can keep split results as slices of the entire plan, including large tool results.
       // Re-serialize only retained records to independent strings; parse ids from those copies
       // too, so neither map keys nor values keep the plan buffer alive.
-      if (line.startsWith(META_PREFIX)) {
-        const { k, v, ...metadata } = JSON.parse(line)
-        void k
-        void v
-        const previous = this.metaLine ? (JSON.parse(this.metaLine) as ChatMetadata) : null
-        this.metaLine = metaLine(mergeMetadataEvidence(metadata as ChatMetadata, previous))
+      if (isMetadataLine(line)) {
+        const previous = parseChatMetadata(this.metaLine)
+        this.metaLine = metaLine(
+          mergeMetadataEvidence(applyMetadataRecord(JSON.parse(line), previous), previous)
+        )
       } else if (line.startsWith(MSG_START)) {
         const message = JSON.parse(line) as { id: string }
         this.messageLines.set(message.id, JSON.stringify(message))

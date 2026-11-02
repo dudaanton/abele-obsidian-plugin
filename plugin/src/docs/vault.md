@@ -461,6 +461,28 @@ partly scrolled-past row also records its positive `height`, so restoration hold
 trailing edge while lazy content replaces a shorter placeholder. Older anchors without height
 continue to align their top. These positions are device-local, not note contents or synced files.
 
+## Incremental chat metadata
+
+Version-2 `.abchat` logs start with a complete `{"v":2,"k":"meta",...}` snapshot.
+Later metadata changes may use `{"v":2,"k":"meta-delta","delta":{"set":{},"remove":[]}}`.
+Apply these records in file order to the preceding snapshot: `set` replaces named fields,
+while `remove` explicitly clears optional fields. An attention update uses the same
+`set`/`remove` structure within `delta.set.attention`; its `resolved` array contains only
+additional identities and is unioned with the previous ledger. Existing monotonic attention
+merging still retains terminal decisions across stale full snapshots. Malformed deltas are
+skipped as damaged records without changing the preceding metadata.
+
+New files and normal compaction still write complete metadata snapshots. Opening an existing
+log does not compact or migrate it. Metadata-only edits append deltas rather than repeating
+unchanged summaries, overrides and attention ledgers. Readers also support old logs containing
+only full snapshots, sharing identical field values within each read rather than parsing every
+repeated value again. Message records and history are unchanged.
+
+**Downgrade limitation:** older builds do not understand `meta-delta` and see stale metadata
+until a later full snapshot. Do not edit delta-bearing chats with an older build: its writes
+could replace newer metadata or attention decisions. Use a compatible build on every synced
+device; retain a backup before downgrading.
+
 ## Local agent attention
 
 Chat metadata may contain `attention`: an explicit run identity, timestamp, target message and

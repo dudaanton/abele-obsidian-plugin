@@ -101,7 +101,7 @@ export async function backfillSummary(path: string, signal: AbortSignal): Promis
         return content
       }
       recorded = summary
-      return content + serializeMetadata({ ...latest, summary })
+      return content + serializeMetadata({ ...latest, summary }, latest)
     },
     () => {
       if (service.getSessionByFile(path)) throw new UiError(uiMessage('streamBError.573c6d85e4'))

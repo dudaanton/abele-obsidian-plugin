@@ -569,7 +569,7 @@ export class ChatTreeModel implements ChatTreeSource {
             const metadata = { ...parsed.metadata, title, manualTitle: true }
             return parsed.version === 1
               ? serializeChat({ ...parsed, metadata })
-              : content + serializeMetadata(metadata)
+              : content + serializeMetadata(metadata, parsed.metadata)
           })
           await ChatStorage.getInstance().renameChat(file, title, true)
           const config = AbeleConfig.getInstance()
