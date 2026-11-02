@@ -107,10 +107,13 @@ export function attributePauseRequests(requests, traces) {
 
 export function longTaskVerdict(task) {
   const owner = task.owner ?? 'unattributed'
-  const durationMs = task.withoutTracepointSetupMs ?? task.durationMs
+  const durationMs = ['ours during sync', 'plugin load'].includes(owner) && task.entryLedgerComplete
+    ? Math.min(task.pluginEntryOverlapMs, task.withoutTracepointSetupMs ?? task.durationMs)
+    : task.withoutTracepointSetupMs ?? task.durationMs
   const limit = owner === 'plugin load' ? 800 : 50
-  const pass = task.profileWindowComplete === true &&
+  const pass = (task.profileWindowComplete === true || task.entryLedgerComplete === true) &&
     (owner === 'host-only' || owner === 'harness-triggered' ||
+      (owner === 'ours during sync' && durationMs <= limit) ||
       (owner === 'plugin load' && durationMs <= limit))
   return { owner, durationMs, limit, status: pass ? 'PASS' : 'FAIL' }
 }

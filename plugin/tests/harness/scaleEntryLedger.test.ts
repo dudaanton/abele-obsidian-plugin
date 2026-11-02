@@ -1,0 +1,200 @@
+// @vitest-environment node
+import { expect, it } from 'vitest'
+import { createRequire } from 'node:module'
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { profileSummary, readEntryLedger } from '../scale/diagnostics.mjs'
+import { longTaskVerdict } from '../scale/oracles.mjs'
+import asyncHooks from 'node:async_hooks'
+import { EventEmitter } from 'node:events'
+const require = createRequire(import.meta.url)
+const decode = (text: string) => text.trim().split("\n").map(JSON.parse)
+  .flatMap(row => require("../scale/entry-ledger.cjs").decodeEntryBatch(row))
+
+const coverage = [
+  { event: 'plugin-entry-ledger-ready', device: '0', generation: 'sample', at: 0,
+    coverageStartedAt: 0, pluginAbsent: true, complete: true },
+  { event: 'plugin-entry-ledger-checkpoint', device: '0', generation: 'sample', at: 200,
+    complete: true },
+]
+it('attributes a covered lifecycle task without plugin entries to the host', async () => {
+  const rows = await profileSummary([{ event: 'long-task', device: '0', startedAt: 10,
+    durationMs: 90 }], [...coverage, { event: 'renderer-lifecycle', device: '0',
+      generation: 'sample', kind: 'teardown', at: 0 }], async () => null)
+  expect(rows[0].owner).toBe('host-only')
+  expect(rows[0].attributionSource).toBe('entry ledger')
+  expect(longTaskVerdict(rows[0]).status).toBe('PASS')
+})
+it('charges overlapping plugin entry time and keeps a spanning entry ours', async () => {
+  const entries = [
+    { event: 'plugin-entry-start', device: '0', generation: 'sample', id: 1, at: 0 },
+    { event: 'plugin-entry-end', device: '0', generation: 'sample', id: 1, at: 160 },
+  ]
+  const [row] = await profileSummary([{ event: 'long-task', device: '0', startedAt: 10,
+    durationMs: 90 }], [...coverage, ...entries], async () => null)
+  expect(row.owner).toBe('ours during sync')
+  expect(row.pluginEntryOverlapMs).toBe(90)
+  expect(longTaskVerdict(row).status).toBe('FAIL')
+})
+it('does not treat absent ledger coverage as proof of host ownership', async () => {
+  const [row] = await profileSummary([{ event: 'long-task', device: '0', startedAt: 10,
+    durationMs: 90 }], [], async () => null)
+  expect(row.owner).toBe('unattributed')
+})
+it('keeps contradictory profile and ledger evidence unknown until investigated', async () => {
+  const captures = [...coverage, { event: 'cpu-profile', device: '0', startedAt: 0,
+    endedAt: 100, path: 'sample', clock: { beforeAt: 0, afterAt: 0, timestampMs: 0 } }]
+  const [row] = await profileSummary([{ event: 'long-task', device: '0', startedAt: 0,
+    durationMs: 100 }], captures, async () => ({ startTime: 0, endTime: 100000,
+      nodes: [{ id: 1, callFrame: { functionName: 'sample', url: 'plugin:abele' } }],
+      samples: [1], timeDeltas: [50000] }))
+  expect(row.owner).toBe('unattributed')
+  expect(row.entryLedgerConflict).toBe(true)
+})
+it('does not use a damaged ledger to prove absence of plugin entries', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'sample-entry-'))
+  try {
+    const file = join(directory, 'ledger.jsonl')
+    await writeFile(file, [JSON.stringify(coverage[0]), 'damaged record',
+      JSON.stringify(coverage[1])].join('\n'))
+    const rows = await readEntryLedger(file, [])
+    const [task] = await profileSummary([{ event: 'long-task', device: '0',
+      startedAt: 10, durationMs: 90 }], [...rows, { event: 'renderer-lifecycle',
+        device: '0', generation: 'sample', kind: 'teardown', at: 0 }], async () => null)
+    expect(task.owner).toBe('unattributed')
+  } finally { await rm(directory, { recursive: true }) }
+})
+it('charges the union of short entries without charging the host remainder', async () => {
+  const entries = [
+    { event: 'plugin-entry-start', device: '0', generation: 'sample', id: 1, at: 20 },
+    { event: 'plugin-entry-end', device: '0', generation: 'sample', id: 1, at: 40 },
+    { event: 'plugin-entry-start', device: '0', generation: 'sample', id: 2, at: 25 },
+    { event: 'plugin-entry-end', device: '0', generation: 'sample', id: 2, at: 35 },
+  ]
+  const [row] = await profileSummary([{ event: 'long-task', device: '0', startedAt: 10,
+    durationMs: 90 }], [...coverage, ...entries], async () => null)
+  expect(row.pluginEntryOverlapMs).toBe(20)
+  expect(longTaskVerdict(row)).toMatchObject({ status: 'PASS', durationMs: 20 })
+})
+it('applies the load budget to plugin entry time within a longer host task', () => {
+  expect(longTaskVerdict({ owner: 'plugin load', durationMs: 1600,
+    entryLedgerComplete: true, pluginEntryOverlapMs: 600 }).status).toBe('PASS')
+  expect(longTaskVerdict({ owner: 'plugin load', durationMs: 1600,
+    entryLedgerComplete: true, pluginEntryOverlapMs: 900 }).status).toBe('FAIL')
+})
+it('does not charge a synchronous ledger flush to the entered callback', () => {
+  const { createEntryLedger } = require('../scale/entry-ledger.cjs')
+  const rows: any[] = []
+  let now = 0
+  const ledger = createEntryLedger({ write: (text: string) => {
+    rows.push(...decode(text)); now += 200
+  }, device: '0', now: () => now, performance: { now: () => now, timeOrigin: 0 } })
+  now = 1000
+  ledger.wrap(() => { now += 10 }, 'sample')()
+  ledger.close()
+  const start = rows.find(row => row.event === 'plugin-entry-start')
+  const end = rows.find(row => row.event === 'plugin-entry-end')
+  expect(end.at - start.at).toBe(10)
+})
+it('subtracts nested ledger I/O from plugin spans and reports a pure flush as harness work', async () => {
+  const entries = [
+    { event: 'plugin-entry-start', device: '0', generation: 'sample', id: 1, at: 0 },
+    { event: 'plugin-entry-end', device: '0', generation: 'sample', id: 1, at: 150 },
+    { event: 'plugin-entry-ledger-overhead', device: '0', generation: 'sample', startedAt: 10, endedAt: 140 },
+  ]
+  const [row] = await profileSummary([{ event: 'long-task', device: '0', startedAt: 10,
+    durationMs: 100 }], [...coverage, ...entries], async () => null)
+  expect(row.pluginEntryOverlapMs).toBe(0)
+  expect(row.owner).toBe('harness-triggered')
+  expect(longTaskVerdict(row).status).toBe('PASS')
+})
+it('flushes entry start and completion synchronously and survives quit', async () => {
+  const { createEntryLedger } = require('../scale/entry-ledger.cjs')
+  const directory = await mkdtemp(join(tmpdir(), 'sample-entry-'))
+  const file = join(directory, 'ledger.jsonl')
+  let now = 0
+  try {
+    const ledger = createEntryLedger({ file, device: '0', now: () => now,
+      performance: { now: () => now, timeOrigin: 0 }, generation: 'sample' })
+    const callback = ledger.wrap(() => { now = 80 }, 'vault event')
+    callback()
+    ledger.teardown()
+    ledger.close()
+    const rows = decode(await readFile(file, 'utf8'))
+    expect(rows.find(row => row.event === 'plugin-entry-start')?.at).toBe(0)
+    expect(rows.find(row => row.event === 'plugin-entry-end')?.at).toBe(80)
+    expect(rows.at(-1)?.event).toBe('plugin-entry-ledger-checkpoint')
+    expect(rows.at(-1)?.complete).toBe(true)
+  } finally { await rm(directory, { recursive: true }) }
+})
+it('wraps host registration callbacks, promise callbacks and lifecycle', () => {
+  const { createEntryLedger, installEntryLedger } = require('../scale/entry-ledger.cjs')
+  const rows: any[] = []
+  let now = 0
+  const ledger = createEntryLedger({ write: (text: string) => rows.push(...decode(text)),
+    device: '0', now: () => now, performance: { now: () => now, timeOrigin: 0 } })
+  const callbacks: any[] = []
+  class Events { on(_name: string, fn: any) { callbacks.push(fn); return fn } }
+  class Component { manifest = { id: 'abele' }; onload() { now += 10 }; load() { this.onload() } }
+  const target: any = { setTimeout(fn: any) { callbacks.push(fn) }, Promise: class { then(fn: any) { callbacks.push(fn) } } }
+  const close = installEntryLedger({ ledger, target, Events, Component, isPluginCaller: () => true })
+  new Events().on('changed', () => { now += 10 })
+  target.setTimeout(() => { now += 10 })
+  new target.Promise().then(() => { now += 10 })
+  for (const callback of callbacks) callback()
+  new Component().load()
+  close()
+  expect(rows.filter(row => row.event === 'plugin-entry-start')).toHaveLength(4)
+  expect(rows.filter(row => row.event === 'plugin-entry-end')).toHaveLength(4)
+})
+it('records native async await continuations that bypass then wrappers', async () => {
+  const { createEntryLedger, installEntryLedger } = require('../scale/entry-ledger.cjs')
+  const rows: any[] = []
+  const ledger = createEntryLedger({ write: (text: string) => rows.push(...decode(text)),
+    device: '0' })
+  const close = installEntryLedger({ ledger, target: {}, asyncHooks, isPluginCaller: () => false })
+  try {
+    await ledger.wrap(async () => { await Promise.resolve(); await Promise.resolve() }, 'entry')()
+  } finally { close() }
+  expect(rows.filter(row => row.kind === 'async continuation').length).toBeGreaterThan(0)
+})
+it('wraps native event subscriptions while preserving once and removal', () => {
+  const { createEntryLedger, installEntryLedger } = require('../scale/entry-ledger.cjs')
+  const rows: any[] = []
+  class SampleEmitter extends EventEmitter {}
+  const ledger = createEntryLedger({ write: (text: string) => rows.push(...decode(text)), device: '0' })
+  const close = installEntryLedger({ ledger, target: {}, EventEmitter: SampleEmitter, isPluginCaller: () => true })
+  const emitter = new SampleEmitter()
+  let called = 0
+  const callback = () => { called++ }
+  emitter.once('sample', callback)
+  emitter.emit('sample'); emitter.emit('sample')
+  emitter.on('sample', callback)
+  emitter.off('sample', callback)
+  emitter.emit('sample')
+  close()
+  expect(called).toBe(1)
+  expect(rows.some(row => row.event === 'plugin-entry-start')).toBe(true)
+})
+it('preserves DOM listener removal and wraps request property callbacks', () => {
+  const { createEntryLedger, installEntryLedger } = require('../scale/entry-ledger.cjs')
+  const rows: any[] = []
+  const ledger = createEntryLedger({ write: (text: string) => rows.push(...decode(text)), device: '0' })
+  let listener: any, removed: any, requestCallback: any
+  class EventTarget {
+    addEventListener(_name: string, fn: any) { listener = fn }
+    removeEventListener(_name: string, fn: any) { removed = fn }
+  }
+  class IDBRequest { set onsuccess(fn: any) { requestCallback = fn } }
+  const close = installEntryLedger({ ledger, target: { EventTarget, IDBRequest }, isPluginCaller: () => true })
+  const callback = () => {}
+  const target = new EventTarget()
+  target.addEventListener('changed', callback)
+  target.removeEventListener('changed', callback)
+  new IDBRequest().onsuccess = callback
+  listener(); requestCallback()
+  close()
+  expect(listener).toBe(removed)
+  expect(rows.filter(row => row.event === 'plugin-entry-start')).toHaveLength(2)
+})

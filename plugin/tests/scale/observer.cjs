@@ -13,6 +13,44 @@ module.exports = class extends Plugin {
         'utf8'
       )
     )
+    let entryLedger
+    if (config.entryLedger && config.continuousCpu && config.entryLedgerEnabled !== false) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Qualification-only entry hooks.
+      const { createEntryLedger, installEntryLedger } = require(config.entryLedger)
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Host callback registration prototypes.
+      const { Events, Component, Workspace, Plugin: ProductPlugin } = require('obsidian')
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Native async/await continuation hooks.
+      const asyncHooks = require('node:async_hooks')
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Native watcher/event completion callbacks.
+      const { EventEmitter } = require('node:events')
+      fs.mkdirSync(config.profileDirectory, { recursive: true })
+      entryLedger = createEntryLedger({
+        file: path.join(config.profileDirectory, `entry-${config.device}-${Date.now()}.jsonl`),
+        device: config.device, pluginAbsent: !this.app.plugins?.plugins?.abele,
+      })
+      const restore = installEntryLedger({ ledger: entryLedger, target: globalThis, Events,
+        Component, Workspace, Plugin: ProductPlugin, EventEmitter, asyncHooks })
+      const mark = performance.mark.bind(performance)
+      let evaluation
+      Object.defineProperty(performance, 'mark', { configurable: true, value(name, ...args) {
+        if (name === 'abele:eval-start') evaluation = entryLedger.begin('plugin evaluation')
+        try { return mark(name, ...args) } finally {
+          if (name === 'abele:eval-end' && evaluation !== undefined) {
+            entryLedger.end(evaluation); evaluation = undefined
+          }
+        }
+      } })
+      globalThis.__scaleFlushEntryLedger = () => entryLedger.flush()
+      globalThis.__scalePrepareTeardown = () => entryLedger.teardown()
+      // Keep the ledger through the observer's own unload: the product may be
+      // unloaded later in the host's component order.
+      window.addEventListener('unload', () => {
+        entryLedger.teardown()
+        void globalThis.__scaleStopProfiles?.()
+        restore()
+      }, { once: true })
+      this.register(() => entryLedger.flush())
+    }
     if (config.failureDiagnostic) {
       Error.stackTraceLimit = 100
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable diagnostic helper.
@@ -185,6 +223,38 @@ module.exports = class extends Plugin {
       )
     globalThis.__scaleFlushEvidence = () => evidenceIpc.invoke(evidenceChannel)
     globalThis.__scaleEmitEvidence = emit
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Desktop-only bridge; sampling lives outside the renderer.
+      const remote = require('@electron/remote')
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Heartbeats carry no file content.
+      const { ipcRenderer } = require('electron')
+      const diagnostic = remote.require(config.diagnostics)
+      const channel = await diagnostic.watch(
+        remote.getCurrentWebContents().id,
+        JSON.stringify(config)
+      )
+      if (config.continuousCpu && !diagnostic.profileReady(channel))
+        throw new Error('Continuous profiler did not acknowledge startup')
+      globalThis.__scaleStopProfiles = () => diagnostic.unwatch(channel)
+      globalThis.__scaleReindexCoverage = {
+        begin: (id) => diagnostic.beginReindexCoverage(channel, id),
+        end: () => diagnostic.endReindexCoverage(channel),
+      }
+      const pendingFile = config.evidence + '.' + config.device + '.reindex.json'
+      if (fs.existsSync(pendingFile)) {
+        const pending = JSON.parse(fs.readFileSync(pendingFile, 'utf8'))
+        await diagnostic.beginReindexCoverage(channel, pending.id)
+      }
+      ipcRenderer.send(channel)
+      const heartbeat = setInterval(() => ipcRenderer.send(channel), 25)
+      this.register(() => {
+        clearInterval(heartbeat)
+        if (!config.continuousCpu) void diagnostic.unwatch(channel)
+      })
+    } catch {
+      emit({ event: 'cpu-profile-unavailable' })
+      if (config.continuousCpu) throw new Error('Continuous profiling required before product load')
+    }
     if (config.receiptCapture && config.fingerprintObserver) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Read-only disposable diagnostics.
       const receiptCapture = require(config.receiptCapture)
@@ -389,8 +459,8 @@ module.exports = class extends Plugin {
     observe()
     this.register(() => observer.disconnect())
     try {
-      const performanceObserver = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries())
+      const recordTasks = entries => {
+        for (const entry of entries)
           emit({
             event: 'long-task',
             startedAt: Math.round(performance.timeOrigin + entry.startTime),
@@ -401,43 +471,17 @@ module.exports = class extends Plugin {
               containerSrc: a.containerSrc,
             })),
           })
-      })
+        entryLedger?.flush()
+      }
+      const performanceObserver = new PerformanceObserver(list => recordTasks(list.getEntries()))
       performanceObserver.observe({ type: 'longtask', buffered: true })
-      this.register(() => performanceObserver.disconnect())
+      if (config.continuousCpu) window.addEventListener('unload', () => {
+        recordTasks(performanceObserver.takeRecords())
+        performanceObserver.disconnect()
+      }, { once: true })
+      else this.register(() => performanceObserver.disconnect())
     } catch {
       emit({ event: 'long-task-unavailable' })
-    }
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Desktop-only bridge; sampling lives outside the renderer.
-      const remote = require('@electron/remote')
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Heartbeats carry no file content.
-      const { ipcRenderer } = require('electron')
-      const diagnostic = remote.require(config.diagnostics)
-      const channel = await diagnostic.watch(
-        remote.getCurrentWebContents().id,
-        JSON.stringify(config)
-      )
-      if (config.continuousCpu && !diagnostic.profileReady(channel))
-        throw new Error('Continuous profiler did not acknowledge startup')
-      globalThis.__scaleStopProfiles = () => diagnostic.unwatch(channel)
-      globalThis.__scaleReindexCoverage = {
-        begin: (id) => diagnostic.beginReindexCoverage(channel, id),
-        end: () => diagnostic.endReindexCoverage(channel),
-      }
-      const pendingFile = config.evidence + '.' + config.device + '.reindex.json'
-      if (fs.existsSync(pendingFile)) {
-        const pending = JSON.parse(fs.readFileSync(pendingFile, 'utf8'))
-        await diagnostic.beginReindexCoverage(channel, pending.id)
-      }
-      ipcRenderer.send(channel)
-      const heartbeat = setInterval(() => ipcRenderer.send(channel), 25)
-      this.register(() => {
-        clearInterval(heartbeat)
-        if (!config.continuousCpu) void diagnostic.unwatch(channel)
-      })
-    } catch {
-      emit({ event: 'cpu-profile-unavailable' })
-      if (config.continuousCpu) throw new Error('Continuous profiling required before product load')
     }
     reindexObserver.observeRebuild(this.app, config, emit, (dispose) => this.register(dispose))
     if (config.continuousCpu) {

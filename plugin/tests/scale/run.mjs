@@ -36,6 +36,7 @@ import {
   deadlinePlan,
   tracepointAdjustedTasks,
   symbolizerFromMap,
+  readEntryLedger,
 } from './diagnostics.mjs'
 import { appendFile } from 'node:fs/promises'
 import {
@@ -356,6 +357,7 @@ export async function setupVault(config, root, device) {
   await copyFile(join(here, 'writes.cjs'), join(observer, 'writes.cjs'))
   await copyFile(join(here, 'reindex.cjs'), join(observer, 'reindex.cjs'))
   await copyFile(join(here, 'diagnostics.cjs'), join(observer, 'diagnostics.cjs'))
+  await copyFile(join(here, 'entry-ledger.cjs'), join(observer, 'entry-ledger.cjs'))
   await copyFile(join(here, 'heap.cjs'), join(observer, 'heap.cjs'))
   await copyFile(join(here, 'evidence-writer.cjs'), join(observer, 'evidence-writer.cjs'))
   await copyFile(join(here, 'profile-only.cjs'), join(observer, 'profile-only.cjs'))
@@ -406,6 +408,7 @@ export async function setupVault(config, root, device) {
       writeObserver: join(observer, 'writes.cjs'),
       reindexObserver: join(observer, 'reindex.cjs'),
       diagnostics: join(observer, 'diagnostics.cjs'),
+      entryLedger: join(observer, 'entry-ledger.cjs'),
       receiptCapture: join(observer, 'receipt-capture.cjs'),
       fingerprintObserver: join(observer, 'failure-diagnostic.cjs'),
       profileGate: join(observer, 'profile-gate.cjs'),
@@ -633,7 +636,7 @@ export async function run(config) {
       const at = Date.now()
       const flushed = await device
         .evaluate(
-          'if(globalThis.__scaleStopProfiles)await globalThis.__scaleStopProfiles();return globalThis.__scaleFlushEvidence ? await globalThis.__scaleFlushEvidence() : false'
+          'globalThis.__scalePrepareTeardown?.();globalThis.__scaleFlushEntryLedger?.();return globalThis.__scaleFlushEvidence ? await globalThis.__scaleFlushEvidence() : false'
         )
         .catch(() => false)
       ;(report.observerFlushes ??= []).push({
@@ -1351,6 +1354,12 @@ export async function run(config) {
       report.productionLoad = { artifactSha256: sha(production), bundleBytes: production.length }
       for (const device of devices)
         await writeFile(join(device.root, '.obsidian/plugins/abele/main.js'), production)
+      for (const device of devices) {
+        const file = join(device.root, '.scale-observer.json')
+        const observer = await readEvidenceJson(file)
+        observer.entryLedgerEnabled = false
+        await writeEvidenceJson(file, observer)
+      }
       report.productionLoad.startedAt = await start({ strict: true })
       report.productionLoad.primaryIdle = await settle(devices[0], 'production bundle primary')
       report.productionLoad.peerIdle = await settle(devices[1], 'production bundle peer')
@@ -1624,7 +1633,28 @@ export async function run(config) {
         (!report.productionLoad || row.startedAt < report.productionLoad.startedAt))
       const productionTasks = entries.filter(row => row.event === 'long-task' &&
         report.productionLoad && row.startedAt >= report.productionLoad.startedAt)
-      const qualificationProfiles = await profileSummary(qualificationTasks, entries, loadEvidence,
+      const ledgerFiles = (await readdir(join(config.output, 'profiles')))
+        .filter(name => /^entry-.*\.jsonl$/.test(name))
+      const ledgerEntries = []
+      for (const file of ledgerFiles)
+        for (const row of await readEntryLedger(join(config.output, 'profiles', file), qualificationTasks))
+          ledgerEntries.push(row)
+      report.entryLedgerFiles = ledgerFiles
+      const ledgerStarts = new Map()
+      for (const row of ledgerEntries) {
+        const key = `${row.generation}:${row.id}`
+        if (row.event === 'plugin-entry-start') ledgerStarts.set(key, row)
+        else if (row.event === 'plugin-entry-end') {
+          const start = ledgerStarts.get(key)
+          ledgerStarts.delete(key)
+          if (start && row.at - start.at > 50 && !qualificationTasks.some(task =>
+            task.device === row.device && task.startedAt <= start.at &&
+            task.startedAt + task.durationMs >= row.at))
+            qualificationTasks.push({ event: 'long-task', device: row.device,
+              startedAt: start.at, durationMs: row.at - start.at, source: 'entry ledger' })
+        }
+      }
+      const qualificationProfiles = await profileSummary(qualificationTasks, [...entries, ...ledgerEntries], loadEvidence,
         sourceMap ? symbolizerFromMap(sourceMap) : undefined)
       const productionProfiles = await profileSummary(productionTasks, entries, loadEvidence)
       report.longTaskAttribution = tracepointAdjustedTasks(

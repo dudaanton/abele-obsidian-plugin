@@ -1,6 +1,9 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { SourceMapConsumer } from 'source-map-js'
+import { createReadStream } from 'node:fs'
+import { createInterface } from 'node:readline'
+import entryLedger from './entry-ledger.cjs'
 const exec = promisify(execFile)
 export function symbolizerFromMap(map) {
   const consumer = new SourceMapConsumer(map)
@@ -130,7 +133,7 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
           node = nodes.get(parents.get(node.id))
         }
         const observerFrame = stack.findIndex((f) =>
-          /scale-observer|reindex\.cjs|diagnostics\.cjs/.test(f.url ?? '')
+          /scale-observer|reindex\.cjs|diagnostics\.cjs|entry-ledger\.cjs/.test(f.url ?? '')
         )
         const pluginFrame = stack.findIndex((f) => /plugin:abele(?:[/:]|$)/.test(f.url ?? ''))
         loaderSample ||= stack.some(f => /loadPlugin|loadManifest/.test(f.functionName ?? ''))
@@ -162,7 +165,7 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
         })
       : captures.some(e => e.event === 'plugin-load' && e.device === task.device &&
           e.at >= task.startedAt && e.at <= task.startedAt + task.durationMs)
-    const owner = !attributionPass ? 'unattributed' :
+    let owner = !attributionPass ? 'unattributed' :
       (counts.abele || loaderSample) && (loadMarker || (loaderSample &&
         (!evalStarts.length || task.startedAt < Math.min(...evalStarts.map(row => row.at)))))
         ? 'plugin load' :
@@ -170,6 +173,13 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
       !attributionPass ? 'unattributed' :
       counts.harness ? 'harness-triggered' :
       counts.host ? 'host-only' : 'unattributed'
+    const ledger = entryLedgerEvidence(task, captures)
+    const entryLedgerConflict = ledger.complete && ledger.overlapMs === 0 && Boolean(counts.abele)
+    if (ledger.complete && ledger.overlapMs > 0)
+      owner = loadMarker ? 'plugin load' : 'ours during sync'
+    else if (entryLedgerConflict) owner = 'unattributed'
+    else if (ledger.complete && ledger.harnessMs >= task.durationMs) owner = 'harness-triggered'
+    else if (ledger.complete && ledger.lifecycle && owner === 'unattributed') owner = 'host-only'
     results.push({
       ...task,
       profiles: matches.map((c) => c.path),
@@ -177,7 +187,15 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
       source: Object.keys(counts).length ? 'sampled' : 'unknown',
       frames,
       owner,
-      attributionPass,
+      attributionSource: ledger.complete && (ledger.overlapMs > 0 || ledger.lifecycle ||
+        ledger.harnessMs >= task.durationMs)
+        ? 'entry ledger' : 'CPU profile',
+      entryLedgerComplete: ledger.complete,
+      entryLedgerConflict,
+      pluginEntryOverlapMs: ledger.overlapMs,
+      entryLedgerOverheadMs: ledger.harnessMs,
+      cpuAttributionPass: attributionPass,
+      attributionPass: owner !== 'unattributed',
       profileWindowComplete,
       coverage: matches.some((capture) => capture.continuous)
         ? 'Continuous low-rate samples were armed before product load. Missing/censored segments and mixed stacks remain unknown.'
@@ -185,6 +203,70 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
     })
   }
   return results
+}
+
+export function entryLedgerEvidence(task, evidence) {
+  const end = task.startedAt + task.durationMs
+  const rows = evidence.filter(row => row.device === task.device)
+  const ready = rows.filter(row => row.event === 'plugin-entry-ledger-ready' &&
+    row.complete && row.coverageStartedAt <= task.startedAt).sort((a, b) => b.at - a.at)[0]
+  if (!ready) return { complete: false, overlapMs: 0, lifecycle: false }
+  const generation = rows.filter(row => row.generation === ready.generation)
+  const complete = generation.some(row => row.event === 'plugin-entry-ledger-checkpoint' &&
+    row.complete && row.at >= end)
+  if (!complete) return { complete: false, overlapMs: 0, lifecycle: false }
+  const ends = new Map(generation.filter(row => row.event === 'plugin-entry-end').map(row => [row.id, row.at]))
+  const spans = generation.filter(row => row.event === 'plugin-entry-start').map(row =>
+    [Math.max(row.at, task.startedAt), Math.min(ends.get(row.id) ?? end, end)])
+    .filter(([start, stop]) => stop > start).sort((a, b) => a[0] - b[0])
+  const union = intervals => {
+    let until = task.startedAt, total = 0
+    for (const [start, stop] of intervals.sort((a, b) => a[0] - b[0])) {
+      total += Math.max(0, stop - Math.max(until, start)); until = Math.max(until, stop)
+    }
+    return total
+  }
+  const overhead = generation.filter(row => row.event === 'plugin-entry-ledger-overhead')
+    .map(row => [Math.max(task.startedAt, row.startedAt), Math.min(end, row.endedAt)])
+    .filter(([start, stop]) => stop > start)
+  const excluded = []
+  for (const [start, stop] of spans) for (const [a, b] of overhead)
+    if (Math.min(stop, b) > Math.max(start, a)) excluded.push([Math.max(start, a), Math.min(stop, b)])
+  const overlapMs = Math.max(0, union(spans) - union(excluded))
+  const evalStart = rows.find(row => row.event === 'plugin-load-mark' &&
+    row.name === 'abele:eval-start' && row.at >= ready.at)
+  const startup = ready.pluginAbsent && task.startedAt < (evalStart?.at ?? ready.at)
+  const teardown = generation.some(row => row.event === 'renderer-lifecycle' &&
+    row.kind === 'teardown' && row.at <= end)
+  return { complete, overlapMs, harnessMs: union(overhead), lifecycle: startup || teardown }
+}
+
+// Keep the full ledger on disk, but retain only entries relevant to observed
+// long tasks in the report. Large promise-job ledgers are streamed, not loaded.
+export async function readEntryLedger(file, tasks) {
+  const rows = [], active = new Map()
+  let checkpoint, corrupted = false
+  const lines = createInterface({ input: createReadStream(file), crlfDelay: Infinity })
+  for await (const line of lines) {
+    let decoded
+    try { decoded = entryLedger.decodeEntryBatch(JSON.parse(line)) } catch { corrupted = true; continue }
+    for (const row of decoded) {
+    if (row.event === 'plugin-entry-start') active.set(row.id, row)
+    else if (row.event === 'plugin-entry-end') {
+      const start = active.get(row.id)
+      active.delete(row.id)
+      if (start && (row.at - start.at > 50 || tasks.some(task => task.device === row.device &&
+        start.at < task.startedAt + task.durationMs && row.at > task.startedAt))) rows.push(start, row)
+    } else if (row.event === 'plugin-entry-ledger-checkpoint') checkpoint = row
+    else rows.push(row)
+    }
+  }
+  if (checkpoint) rows.push(checkpoint)
+  for (const start of active.values()) if (tasks.some(task => task.device === start.device &&
+    start.at < task.startedAt + task.durationMs)) rows.push(start)
+  if (corrupted) for (const row of rows)
+    if (row.event === 'plugin-entry-ledger-ready') row.complete = false
+  return rows
 }
 
 // Accounting view only: paused debugger setup is still included in the raw task.
