@@ -6,15 +6,19 @@ const { randomUUID } = require('node:crypto')
 // Qualification observer only. Nothing is added to the product bundle.
 exports.createEntryLedger = function ({ file, write, device, generation = randomUUID(),
   now = Date.now, performance = globalThis.performance, pluginAbsent = true,
-  capacity = 65536, schedule = setInterval, cancel = clearInterval }) {
+  capacity = 65536, schedule = setInterval, cancel = clearInterval, requireProductBridge = false }) {
   const epoch = now(), ring = new Float64Array(capacity * 6)
   const kinds = [], kindIds = new Map()
   let used = 0, sequence = 0, depth = 0, closed = false, dropped = 0
   let pending = Promise.resolve(), failure
+  let bridgeReady = !requireProductBridge
   const append = text => {
     if (write) write(text)
     else pending = pending.then(() => fs.promises.appendFile(file, text)).catch(error => { failure = error })
   }
+  const ready = () => append(JSON.stringify({ device, generation, at: now(),
+    complete: bridgeReady, productRootsReady: bridgeReady, pluginAbsent,
+    event: 'plugin-entry-ledger-ready', coverageStartedAt: pluginAbsent ? performance.timeOrigin : epoch }) + '\n')
   const kindId = kind => {
     if (typeof kind === "number") return kind
     if (!kind) return -1
@@ -74,6 +78,8 @@ exports.createEntryLedger = function ({ file, write, device, generation = random
   const api = {
     begin, end, flush, selfTime, selfStart: now, kindCode: kindId,
     invalidate() { dropped++ },
+    productBridgeReady: () => bridgeReady,
+    confirmProductBridge() { if (!bridgeReady) { bridgeReady = true; ready() } },
     active: () => depth > 0,
     wrap(fn, kind) {
       const before = now()
@@ -97,9 +103,7 @@ exports.createEntryLedger = function ({ file, write, device, generation = random
       return pending.then(() => { if (failure) throw failure })
     },
   }
-  const ready = JSON.stringify({ device, generation, at: now(), complete: true, pluginAbsent,
-    event: "plugin-entry-ledger-ready", coverageStartedAt: pluginAbsent ? performance.timeOrigin : now() }) + "\n"
-  append(ready)
+  ready()
   return api
 }
 
@@ -109,6 +113,35 @@ exports.decodeEntryBatch = row => row.event === 'plugin-entry-batch' ? row.recor
   at: row.epoch + record[2], monotonicMs: record[3],
   ...(record[4] >= 0 ? { kind: row.kinds[record[4]] } : {}),
 })) : [row]
+
+// The host may call onload directly, bypassing Component.load entirely. Hook
+// the actual exported class before the host constructs it; constructor-created
+// callbacks and async onload continuations then inherit explicit ownership.
+exports.wrapProductExport = function (value, ledger) {
+  const Class = typeof value === 'function' ? value : value?.default
+  if (typeof Class !== 'function') throw new Error('Qualification plugin class unavailable')
+  const methods = ['onload', 'onunload']
+  for (const name of methods) {
+    if (typeof Class.prototype[name] === 'function')
+      Class.prototype[name] = ledger.wrap(Class.prototype[name], `plugin:${name}`)
+  }
+  const Wrapped = new Proxy(Class, { construct(Target, args, NewTarget) {
+    const id = ledger.begin('plugin construction')
+    try {
+      const instance = Reflect.construct(Target, args, NewTarget)
+      for (const name of methods) if (Object.hasOwn(instance, name) && typeof instance[name] === 'function')
+        instance[name] = ledger.wrap(instance[name], `plugin:${name}`)
+      return instance
+    } finally { ledger.end(id) }
+  } })
+  if (typeof value === 'function') { ledger.confirmProductBridge(); return Wrapped }
+  const descriptors = Object.getOwnPropertyDescriptors(value)
+  descriptors.default = { value: Wrapped, enumerable: descriptors.default?.enumerable ?? true,
+    configurable: true, writable: false }
+  const namespace = Object.create(Object.getPrototypeOf(value), descriptors)
+  ledger.confirmProductBridge()
+  return namespace
+}
 
 exports.installEntryLedger = function ({ ledger, target = globalThis, Events, Component, Workspace, Plugin,
   EventEmitter, asyncHooks, isPluginCaller = () => false }) {

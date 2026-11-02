@@ -8,6 +8,26 @@ import capture from '../scale/receipt-capture.cjs'
 import diagnostics from '../scale/diagnostics.cjs'
 import { canContinueQualificationFromSmoke } from '../scale/qualification-smoke.mjs'
 import { runInNewContext } from 'node:vm'
+import { qualificationEntryBridge } from '../scale/build.mjs'
+
+it('bridges the qualification export without shifting its mapped source or changing control builds', () => {
+  const source = Buffer.from('module.exports = { default: class Product {}, sample: 1 };')
+  expect(qualificationEntryBridge(source, false)).toBe(source)
+  const instrumented = qualificationEntryBridge(source, true)
+  expect(instrumented.subarray(0, source.length)).toEqual(source)
+  const module = { exports: {} }
+  const bridge = vi.fn(value => ({ ...value, bridged: true }))
+  runInNewContext(instrumented.toString(), { module, __scaleEntryLedgerRequired: true,
+    __scaleWrapProductExport: bridge })
+  expect(bridge).toHaveBeenCalledOnce()
+  expect(module.exports).toMatchObject({ sample: 1, bridged: true })
+  expect(() => runInNewContext(instrumented.toString(), { module: { exports: {} },
+    __scaleEntryLedgerRequired: true }))
+    .toThrow('Qualification entry bridge unavailable')
+  const control = { exports: {} }
+  runInNewContext(instrumented.toString(), { module: control })
+  expect(control.exports).toMatchObject({ sample: 1 })
+})
 
 const sha = 'a'.repeat(64)
 const operation = { id: 'sample-rebuild', device: '0', at: 100 }

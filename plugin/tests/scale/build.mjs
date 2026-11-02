@@ -15,6 +15,14 @@ export const buildArtifactPath = (config, name) => join(dirname(config.buildRece
 export function assertSameQualificationBundle(original, mapped) {
   if (digest(original) !== digest(mapped)) throw new Error('Mapped qualification bundle changed')
 }
+export function qualificationEntryBridge(bundle, enabled) {
+  if (!enabled) return bundle
+  return Buffer.concat([bundle, Buffer.from('\n;if (globalThis.__scaleEntryLedgerRequired === true) {\n' +
+    'if (typeof globalThis.__scaleWrapProductExport !== "function") ' +
+    'throw new Error("Qualification entry bridge unavailable");\n' +
+    'module.exports = globalThis.__scaleWrapProductExport(module.exports);\n' +
+    '}\n')])
+}
 async function removeGeneratedMaps(root) {
   const build = join(root, 'build')
   await unlink(join(build, 'main.js.map'))
@@ -262,9 +270,16 @@ export async function buildCandidate(config, execute = loggedExec) {
       .some((path) => path && !['plugin/package.json', 'plugin/package-lock.json'].includes(path))
   )
     throw new Error('Unexpected candidate source changes')
+  const entryBridge = config.scenarioConfig?.continuousCpu &&
+    config.scenarioConfig?.entryLedgerEnabled !== false
+  if (entryBridge) {
+    const main = join(root, 'build/main.js')
+    await writeFile(main, qualificationEntryBridge(await readFile(main), true))
+  }
   await run(process.execPath, ['scripts/build-artifact.mjs', 'build', 'sharing-test'])
   const artifact = await json(join(root, 'build/build-manifest.json'))
   const receipt = await recordBuildReceipt({ ...config, pluginRoot: root }, sdk, artifact)
+  if (entryBridge) receipt.qualificationEntryBridge = true
   if (qualificationSourceMap)
     receipt.qualificationMap = { sha256: digest(qualificationSourceMap),
       bundleSha256: artifact.files['main.js'] }

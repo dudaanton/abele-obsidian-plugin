@@ -251,6 +251,44 @@ it('propagates root ownership without caller stacks and fails closed on async-sl
   expect(rows.filter(row => row.event === 'plugin-entry-start')).toHaveLength(2)
   expect(rows.findLast(row => row.event === 'plugin-entry-ledger-checkpoint')?.complete).toBe(false)
 })
+it('covers direct host construction and onload calls without Component.load', async () => {
+  const { createEntryLedger, installEntryLedger, wrapProductExport } = require('../scale/entry-ledger.cjs')
+  const rows: any[] = [], callbacks: any[] = []
+  class Events { on(_name: string, fn: any) { callbacks.push(fn) } }
+  const ledger = createEntryLedger({ write: (text: string) => rows.push(...decode(text)), device: '0' })
+  const close = installEntryLedger({ ledger, target: {}, Events, asyncHooks })
+  class Product {
+    constructor() { new Events().on('constructed', () => {}) }
+    async onload() { await Promise.resolve(); new Events().on('changed', () => {}) }
+    onunload() {}
+  }
+  try {
+    const namespace = wrapProductExport({ default: Product }, ledger)
+    const plugin = new namespace.default()
+    expect(plugin).toBeInstanceOf(Product)
+    await plugin.onload()
+    for (const callback of callbacks) callback()
+    plugin.onunload()
+  } finally { await close() }
+  const kinds = rows.filter(row => row.event === 'plugin-entry-start').map(row => row.kind)
+  expect(kinds).toContain('plugin construction')
+  expect(kinds).toContain('plugin:onload')
+  expect(kinds).toContain('plugin:onunload')
+  expect(kinds).toContain('async continuation')
+  expect(kinds.filter(kind => kind === 'on')).toHaveLength(2)
+})
+it('does not declare complete product-root coverage before the export bridge acknowledges', async () => {
+  const { createEntryLedger, wrapProductExport } = require('../scale/entry-ledger.cjs')
+  const rows: any[] = []
+  const ledger = createEntryLedger({ requireProductBridge: true,
+    write: (text: string) => rows.push(...decode(text)), device: '0' })
+  expect(rows.find(row => row.event === 'plugin-entry-ledger-ready')?.complete).toBe(false)
+  expect(ledger.productBridgeReady()).toBe(false)
+  wrapProductExport({ default: class Product { onload() {} } }, ledger)
+  expect(ledger.productBridgeReady()).toBe(true)
+  await ledger.close()
+  expect(rows.findLast(row => row.event === 'plugin-entry-ledger-ready')?.complete).toBe(true)
+})
 it('wraps native event subscriptions while preserving once and removal', () => {
   const { createEntryLedger, installEntryLedger } = require('../scale/entry-ledger.cjs')
   const rows: any[] = []

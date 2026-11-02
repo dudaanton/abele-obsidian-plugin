@@ -16,7 +16,7 @@ module.exports = class extends Plugin {
     let entryLedger
     if (config.entryLedger && config.continuousCpu && config.entryLedgerEnabled !== false) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Qualification-only entry hooks.
-      const { createEntryLedger, installEntryLedger } = require(config.entryLedger)
+      const { createEntryLedger, installEntryLedger, wrapProductExport } = require(config.entryLedger)
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Host callback registration prototypes.
       const { Events, Component, Workspace, Plugin: ProductPlugin } = require('obsidian')
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Native async/await continuation hooks.
@@ -34,9 +34,12 @@ module.exports = class extends Plugin {
       entryLedger = createEntryLedger({
         write: text => ledgerIpc.send(ledgerChannel, text),
         device: config.device, pluginAbsent: !this.app.plugins?.plugins?.abele,
+        requireProductBridge: true,
       })
       const restore = installEntryLedger({ ledger: entryLedger, target: globalThis, Events,
         Component, Workspace, Plugin: ProductPlugin, EventEmitter, asyncHooks })
+      globalThis.__scaleWrapProductExport = value => wrapProductExport(value, entryLedger)
+      globalThis.__scaleEntryLedgerRequired = true
       const mark = performance.mark.bind(performance)
       let evaluation
       Object.defineProperty(performance, 'mark', { configurable: true, value(name) {
@@ -498,6 +501,8 @@ module.exports = class extends Plugin {
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable startup gate.
       const { enableAfterProfile } = require(config.profileGate)
       await enableAfterProfile(Promise.resolve(), () => this.app.plugins.enablePlugin('abele'))
+      if (entryLedger && !entryLedger.productBridgeReady())
+        throw new Error('Qualification product entry roots unavailable')
     }
   }
 }
