@@ -78,6 +78,8 @@ function maplibreAssetsPlugin(prod: boolean) {
 export default defineConfig(async ({ mode }) => {
   const { resolve } = path
   const prod = mode === 'production'
+  // Qualification preserves names/lines used by the external digest observer.
+  // Inline maps are unnecessary launch bytes in either distributable.
   const optimized = prod || mode === 'sharing-test'
 
   return {
@@ -173,7 +175,7 @@ export default defineConfig(async ({ mode }) => {
         fileName: () => 'main.js',
         formats: ['cjs'],
       },
-      sourcemap: prod ? false : 'inline',
+      sourcemap: optimized ? false : 'inline',
       cssCodeSplit: false,
       // JSZip probes Node streams inside try/catch. Hoisting that optional require makes
       // the modular entry crash on mobile before the probe can handle its absence.

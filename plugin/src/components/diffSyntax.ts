@@ -24,11 +24,13 @@ export interface PaintedPiece extends DiffPiece {
 
 /** Each line's coloured stretches; null when the file is not code we colour, or too large. */
 export function lineTokens(text: string, path: string | undefined): LineToken[][] | null {
-  return text.length <= MAX_HIGHLIGHTED && prism.value
-    ? prismLineTokens(prism.value, text, path)
-    : null
+  if (text.length > MAX_HIGHLIGHTED) return null
+  if (!prism.value) {
+    void loadedPrism().catch(console.debug)
+    return null
+  }
+  return prismLineTokens(prism.value, text, path)
 }
-void loadedPrism().catch(console.debug)
 
 /** A line's pieces with its colours laid inside them, so a changed word keeps its mark. */
 export function paint(pieces: DiffPiece[], tokens: LineToken[] = []): PaintedPiece[] {

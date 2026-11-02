@@ -10,3 +10,17 @@ export function assertNoTestingModules(bundle) {
     }
   }
 }
+
+/** Bound the file the host reads/evaluates, including qualification builds. */
+export function assertLaunchBundle(bundle, mode, budget) {
+  if (mode !== 'production' && mode !== 'sharing-test') return
+  const code = bundle['main.js']?.code
+  if (typeof code !== 'string') throw new Error('Missing launch JavaScript')
+  if (/sourceMappingURL=data:/.test(code)) throw new Error('Inline source map in launch JavaScript')
+  const limit = mode === 'production' ? budget.mainJsBytes : 26 * 1024 * 1024
+  const bytes = Buffer.byteLength(code)
+  if (bytes > limit)
+    throw new Error(
+      `Launch JavaScript is ${bytes} bytes, exceeding ${mode} size budget (${limit} bytes)`
+    )
+}

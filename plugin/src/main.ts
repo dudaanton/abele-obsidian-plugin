@@ -496,13 +496,18 @@ export default class AbelePlugin extends Plugin {
           }
           this.register(() => {
             if (tokenUi.value === ui) tokenUi.value = null
+            markLoad('syncCloseStart')
             const stopping = this.tokenEngines?.close() ?? Promise.resolve()
             const closed = stopping.finally(() => {
               try {
                 reviews.close()
               } finally {
-                hostStorage?.close()
-                desktopSecrets?.close()
+                try {
+                  hostStorage?.close()
+                  desktopSecrets?.close()
+                } finally {
+                  markLoad('syncCloseEnd')
+                }
               }
             })
             recordTeardown(this.app, closed)
@@ -809,42 +814,47 @@ export default class AbelePlugin extends Plugin {
   }
 
   onunload() {
-    this.unloaded = true
-    uninstallUntrustedGuard()
-    setRequestGuard(undefined)
-    setSecrets(null)
-    document.body.classList.remove('abele-full-width-sidebars', 'abele-half-width-sidebars')
-    setKeyboardDiagnostics(false)
-    setQuickButton(false)
-    this.headerCommands?.stop()
-    this.headerCommands = null
-    // Unmount Vue BEFORE store cleanup so Teleport components unmount cleanly
-    if (this.vueApp) {
-      this.vueApp.unmount()
-      document.getElementById('abele-vue-root')?.remove()
+    markLoad('unloadStart')
+    try {
+      this.unloaded = true
+      uninstallUntrustedGuard()
+      setRequestGuard(undefined)
+      setSecrets(null)
+      document.body.classList.remove('abele-full-width-sidebars', 'abele-half-width-sidebars')
+      setKeyboardDiagnostics(false)
+      setQuickButton(false)
+      this.headerCommands?.stop()
+      this.headerCommands = null
+      // Unmount Vue BEFORE store cleanup so Teleport components unmount cleanly
+      if (this.vueApp) {
+        this.vueApp.unmount()
+        document.getElementById('abele-vue-root')?.remove()
+      }
+      // The engine has a socket, a watcher and timers of its own, and a state database that must
+      // be closed; the sync in flight is waited for rather than cut off.
+      SnippetService.destroy()
+      AutomationService.destroy()
+      ScriptService.destroy()
+      ScriptViewService.destroy()
+      closeAgents()
+      CommentService.getInstance().destroy()
+      ChatService.getInstance().destroy()
+      AgentsService.destroyCurrent()
+      ChangeTracker.get()?.uninstall()
+      ScopeResolver.getInstance().destroy()
+      ChatStorage.destroy()
+      ChatSearchIndex.destroy()
+      GlobalStore.getInstance().destroy()
+      AbeleConfig.getInstance().destroy()
+      VaultWatcherWrapper.destroy()
+      if (testingBuild) {
+        delete (window as { __abeleTest?: unknown }).__abeleTest
+      }
+      releaseVueSetters()
+      console.debug('Obsidian Service Plugin unloaded.')
+    } finally {
+      markLoad('unloadEnd')
     }
-    // The engine has a socket, a watcher and timers of its own, and a state database that must
-    // be closed; the sync in flight is waited for rather than cut off.
-    SnippetService.destroy()
-    AutomationService.destroy()
-    ScriptService.destroy()
-    ScriptViewService.destroy()
-    closeAgents()
-    CommentService.getInstance().destroy()
-    ChatService.getInstance().destroy()
-    AgentsService.destroyCurrent()
-    ChangeTracker.get()?.uninstall()
-    ScopeResolver.getInstance().destroy()
-    ChatStorage.destroy()
-    ChatSearchIndex.destroy()
-    GlobalStore.getInstance().destroy()
-    AbeleConfig.getInstance().destroy()
-    VaultWatcherWrapper.destroy()
-    if (testingBuild) {
-      delete (window as { __abeleTest?: unknown }).__abeleTest
-    }
-    releaseVueSetters()
-    console.debug('Obsidian Service Plugin unloaded.')
   }
 
   // from dataview

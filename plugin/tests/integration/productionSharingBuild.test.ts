@@ -30,6 +30,17 @@ async function device() {
     ui = (host as unknown as { ui: TokenUi }).ui
   return { ...native, host, ui }
 }
+it('marks synchronous unload separately from asynchronous sync close', async () => {
+  performance.clearMarks()
+  const native = await device()
+  await native.close()
+  await native.close()
+  for (const name of ['unload-start', 'unload-end', 'sync-close-start', 'sync-close-end'])
+    expect(performance.getEntriesByName('abele:' + name, 'mark')).toHaveLength(1)
+  const time = (name: string) => performance.getEntriesByName('abele:' + name, 'mark')[0].startTime
+  expect(time('unload-end')).toBeGreaterThanOrEqual(time('unload-start'))
+  expect(time('sync-close-end')).toBeGreaterThanOrEqual(time('sync-close-start'))
+})
 async function fixture() {
   const server = await v2Server()
   servers.push(server)

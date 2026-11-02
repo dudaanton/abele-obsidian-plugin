@@ -11,6 +11,8 @@
  * - `evalEnd` — the first statement of `main.ts`'s own body, which runs after every module it
  *   imports has run its top-level code.
  * - `onloadStart` / `onloadEnd` — the plugin's `onload()`, settings read included.
+ * - `unloadStart` / `unloadEnd` — synchronous plugin cleanup, separate from registered disposals.
+ * - `syncCloseStart` / `syncCloseEnd` — draining sync and closing its persistent stores.
  * - `layoutStart` / `layoutEnd` — the plugin's first and last `onLayoutReady` callbacks, so the
  *   work it puts off until the workspace is there (task, finance and time indexes, snippets,
  *   chat tabs) is measured apart. On a reload the layout is already there and they run inside
@@ -24,6 +26,10 @@ export const LOAD_MARKS = {
   onloadEnd: 'abele:onload-end',
   layoutStart: 'abele:layout-start',
   layoutEnd: 'abele:layout-end',
+  unloadStart: 'abele:unload-start',
+  unloadEnd: 'abele:unload-end',
+  syncCloseStart: 'abele:sync-close-start',
+  syncCloseEnd: 'abele:sync-close-end',
 } as const
 
 export type LoadMark = keyof typeof LOAD_MARKS
