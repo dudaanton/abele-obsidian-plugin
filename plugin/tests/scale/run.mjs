@@ -1684,6 +1684,7 @@ export async function run(config) {
           report.cleanupFailure = true
         })
       report.profileCoverageRequired = config.continuousCpu === true
+      report.longTasksReportOnly = config.targeted === true && config.longTasksReportOnly === true
       const pullStartAt = report.phases.find(row => row.name === 'second device pull')?.at
       const observed = postSealEvidence(entries, '1', { untilAt: pullStartAt + report.peerInitialDownloadMs })
       const boundaries = report.interruptions.map(interruption => {

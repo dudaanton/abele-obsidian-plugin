@@ -10,6 +10,15 @@ import { WireProxy } from './proxy.mjs'
 import { createServer } from 'node:http'
 
 describe('targeted probe', () => {
+  it('reports unattributed tasks without failing an explicitly report-only probe', () => {
+    const report: any = { targeted: { E: { complete: true } }, installedFileReadbackBytes: 0,
+      mismatches: [], profileCoverageRequired: true, longTaskAttribution: [{ attributionPass: false }] }
+    expect(targetedBudgets(report).find(row => row.name === 'E')?.status).toBe('FAIL')
+    report.longTasksReportOnly = true
+    expect(targetedBudgets(report).find(row => row.name === 'E')?.status).toBe('PASS')
+    report.installedFileReadbackBytes = 1
+    expect(targetedBudgets(report).find(row => row.name === 'E')?.status).toBe('FAIL')
+  })
   it('keeps host post-seal digests separate and never forgives unknown callers', () => {
     const rows = [
       {
