@@ -4,7 +4,7 @@ import { promisify } from 'node:util'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFile, writeFile, mkdir, readdir, realpath, lstat, readlink, unlink, rmdir } from 'node:fs/promises'
 import { join, resolve, dirname, relative } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const exec = promisify(execFile)
 const digest = (bytes, algorithm = 'sha256', encoding = 'hex') =>
@@ -22,6 +22,37 @@ export function qualificationEntryBridge(bundle, enabled) {
     'throw new Error("Qualification entry bridge unavailable");\n' +
     'module.exports = globalThis.__scaleWrapProductExport(module.exports);\n' +
     '}\n')])
+}
+export async function deriveQualificationArtifact(root, artifactApi) {
+  const api = artifactApi ?? {
+    // eslint-disable-next-line no-unsanitized/method -- Fixed API in the explicitly selected clean build export.
+    ...await import(pathToFileURL(join(root, 'scripts/build-artifact.mjs')).href),
+    // eslint-disable-next-line no-unsanitized/method -- Fixed API in the same trusted build export.
+    ...await import(pathToFileURL(join(root, 'scripts/build-report.mjs')).href),
+  }
+  const repository = dirname(root), directory = join(root, 'build')
+  // Never regenerate evidence over unchecked bytes. Keep the original manifest
+  // as the first link in the explicit qualification-only derivation chain.
+  const report = api.verifyArtifact(repository, directory, 'sharing-test')
+  const originalArtifact = await json(join(directory, 'build-manifest.json'))
+  const main = join(directory, 'main.js'), original = await readFile(main)
+  const derived = qualificationEntryBridge(original, true)
+  const addedBytes = derived.length - original.length
+  const derivedReport = { ...report, mainJsBytes: derived.length,
+    runtimeElements: api.runtimeElements(derived.toString()),
+    byPackage: [...(report.byPackage ?? []).map(row => ({ ...row,
+      share: row.share * original.length / derived.length })),
+    { name: 'qualification instrumentation', bytes: addedBytes, share: addedBytes / derived.length }],
+  }
+  await writeFile(main, derived)
+  api.writeArtifact(repository, directory, 'sharing-test', derivedReport, originalArtifact.provenance)
+  const artifact = await json(join(directory, 'build-manifest.json'))
+  for (const [name, hash] of Object.entries(originalArtifact.files))
+    if (!['main.js', 'build-report.json'].includes(name) && artifact.files[name] !== hash)
+      throw new Error('Qualification derivation changed an unrelated asset')
+  api.verifyArtifact(repository, directory, 'sharing-test')
+  return { originalArtifact, originalMainSha256: digest(original),
+    derivedMainSha256: digest(derived), footerSha256: digest(derived.subarray(original.length)), addedBytes }
 }
 async function removeGeneratedMaps(root) {
   const build = join(root, 'build')
@@ -272,14 +303,14 @@ export async function buildCandidate(config, execute = loggedExec) {
     throw new Error('Unexpected candidate source changes')
   const entryBridge = config.scenarioConfig?.continuousCpu &&
     config.scenarioConfig?.entryLedgerEnabled !== false
-  if (entryBridge) {
-    const main = join(root, 'build/main.js')
-    await writeFile(main, qualificationEntryBridge(await readFile(main), true))
-  }
+  const qualificationDerivation = entryBridge ? await deriveQualificationArtifact(root) : undefined
   await run(process.execPath, ['scripts/build-artifact.mjs', 'build', 'sharing-test'])
   const artifact = await json(join(root, 'build/build-manifest.json'))
   const receipt = await recordBuildReceipt({ ...config, pluginRoot: root }, sdk, artifact)
-  if (entryBridge) receipt.qualificationEntryBridge = true
+  if (entryBridge) {
+    receipt.qualificationEntryBridge = true
+    receipt.qualificationDerivation = qualificationDerivation
+  }
   if (qualificationSourceMap)
     receipt.qualificationMap = { sha256: digest(qualificationSourceMap),
       bundleSha256: artifact.files['main.js'] }

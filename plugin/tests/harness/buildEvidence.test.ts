@@ -15,6 +15,8 @@ import { execFileSync } from 'node:child_process'
 import { inputIdentity, recordTypes, requireTypes } from '../../scripts/build-inputs.mjs'
 import { writeArtifact, verifyArtifact } from '../../scripts/build-artifact.mjs'
 import { catalogAssetNames } from '../../scripts/release-checks.mjs'
+import { runtimeElements } from '../../scripts/build-report.mjs'
+import { deriveQualificationArtifact } from '../scale/build.mjs'
 
 const roots: string[] = []
 afterEach(() => roots.splice(0).forEach((root) => rmSync(root, { recursive: true, force: true })))
@@ -141,6 +143,34 @@ describe('exact emitted artifact evidence', { timeout: 120_000 }, () => {
     writeArtifact(root, dir, mode, report)
     return dir
   }
+  it('derives a qualification footer with verified checksums and report measurements', async () => {
+    const root = fixture(), dir = artifact(root, 'sharing-test')
+    const original = readFileSync(join(dir, 'main.js'))
+    const before = JSON.parse(readFileSync(join(dir, 'build-manifest.json'), 'utf8'))
+    const proof = await deriveQualificationArtifact(join(root, 'plugin'), {
+      verifyArtifact, writeArtifact, runtimeElements,
+    })
+    const after = JSON.parse(readFileSync(join(dir, 'build-manifest.json'), 'utf8'))
+    const derived = readFileSync(join(dir, 'main.js'))
+    expect(derived.subarray(0, original.length)).toEqual(original)
+    expect(verifyArtifact(root, dir, 'sharing-test').mainJsBytes).toBe(derived.length)
+    expect(proof.originalArtifact).toEqual(before)
+    expect(proof.derivedMainSha256).toBe(after.files['main.js'])
+    for (const name of Object.keys(before.files)) if (!['main.js', 'build-report.json'].includes(name))
+      expect(after.files[name]).toBe(before.files[name])
+    writeFileSync(join(dir, 'main.css'), 'unexpected change')
+    expect(() => verifyArtifact(root, dir, 'sharing-test')).toThrow(/checksum/)
+  })
+  it.each(['main.js', 'main.css'])('refuses a qualification footer over already tampered %s', async name => {
+    const root = fixture(), dir = artifact(root, 'sharing-test')
+    writeFileSync(join(dir, name), 'unexpected change')
+    const before = readFileSync(join(dir, 'build-manifest.json'))
+    await expect(deriveQualificationArtifact(join(root, 'plugin'), {
+      verifyArtifact, writeArtifact, runtimeElements,
+    })).rejects.toThrow(/checksum/)
+    expect(readFileSync(join(dir, 'build-manifest.json'))).toEqual(before)
+    expect(readFileSync(join(dir, name), 'utf8')).toBe('unexpected change')
+  })
   it('verifies checksums, mode, source revision and report against the emitted bytes', () => {
     const root = fixture()
     const dir = artifact(root)
