@@ -78,7 +78,13 @@ not a folder or glob. Without `name`, the entry preserves the source's vault-rel
 Optional `name` chooses a virtual archive subfolder/rename, not a vault permission:
 
 ```json
-{"path":"Exports/sample.zip","files":[{"path":"Notes/sample.md"},{"path":"Media/sample-image.png","name":"images/picture.png"}]}
+{
+  "path": "Exports/sample.zip",
+  "files": [
+    { "path": "Notes/sample.md" },
+    { "path": "Media/sample-image.png", "name": "images/picture.png" }
+  ]
+}
 ```
 
 All selected files must remain visible and unchanged throughout packing. A single denied,
@@ -264,6 +270,7 @@ unchanged package part survive byte-identically. Text replacements preserve run 
 including runs split inside a word; replacement text takes the first affected run's formatting.
 
 Further `operation` values (always with `path`, `revision`, and a body `paragraph`):
+
 - `format`: `from`/`to` UTF-16 offsets (end exclusive), `format` (`bold`, `italic`, `underline`,
   `strike`) and `enabled`. Only selected run fragments change; no formatting editor for styles.
 - `style`: `style_id` from the document's existing paragraph styles, listed by `docx_read`.
@@ -291,7 +298,6 @@ styles, table row counts, link ranges/targets and image numbers/dimensions. The 
 includes formatting/structure metadata as well as text. Unsupported structures are refused,
 not rebuilt. No tracked-change or comment authoring, nested-table editing or page/section setup.
 
-
 ## Canvas diagrams
 
 `canvas_read`, `canvas_create`, `canvas_edit`, `canvas_layout`, `canvas_steps`, `canvas_export`,
@@ -302,7 +308,7 @@ must be in scope. New diagrams join scope after creation, like `create`.
 
 - `canvas_read(path, {detail?, region?, step?})`: `step` is a one-based playback number, filtering
   the outline to cumulatively revealed content and returning camera framing and narration.
-   `detail` is `outline` (default) or `full`. The outline
+  `detail` is `outline` (default) or `full`. The outline
   gives ids, one-line labels, group hierarchy, edges, free line/arrow primitives (`lines`,
   including geometry and style), strokes and lint. `ink` is sorted by stable id and includes
   each supported stroke's points, tool, colour, size, optional transform/authoring frame,
@@ -317,7 +323,7 @@ must be in scope. New diagrams join scope after creation, like `create`.
   stale revision, read again and reconsider the patch rather than reusing it blindly.
 - `canvas_create(path, {title?, from})`: choose exactly one of `from.graph` or `from.mermaid`.
   Graph input is `{nodes:[{id,kind,label?,file?,url?,shape?,parent?,near?,x?,y?,width?,height?}],
-  edges:[{id,fromNode,toNode,label?,...}]}`. Kinds are `text`, `note`, `link`, `group`, `shape`;
+edges:[{id,fromNode,toNode,label?,...}]}`. Kinds are `text`, `note`, `link`, `group`, `shape`;
   note requires `file`, link requires `url`. Mermaid input is parsed by pele and must be a flowchart string, not another
   diagram grammar. Undirected/bidirectional/directed links retain both endpoint kinds; unsupported
   marker kinds are refused rather than silently converted to arrows. Creation fits text and applies layered dagre layout; it never overwrites a file.
@@ -344,9 +350,9 @@ Free primitives may be revealed, highlighted and focused by id in walkthrough st
 - `canvas_edit(path, {revision, ops})`: provide the revision returned by `canvas_read` or the
   last successful canvas write. A stale revision refuses the entire write with a reread message,
   including unsaved native changes and changes arriving at the final storage boundary. sequential, all-or-nothing batch. Ops are `add_node {node}`, `update
-  {id,patch}`, `move {ids,dx,dy}`, `scale {ids,x,y,factor}`, `add_line {line}`, `add_ink {stroke,node?}`,
+{id,patch}`, `move {ids,dx,dy}`, `scale {ids,x,y,factor}`, `add_line {line}`, `add_ink {stroke,node?}`,
   `update_ink {id,patch}`, `attach_ink {id,node?}`, `remove {id}`, `connect {edge}`, `group {id,label?,ids}`, `ungroup {id}`, `collapse
-  {id,collapsed}`, `order {ids,place}` (`front` or `back`: stacking of cards and connections), and
+{id,collapsed}`, `order {ids,place}` (`front` or `back`: stacking of cards and connections), and
   `style {id,styleAttributes}`. Move translates selected nodes and group
   descendants once, even when a child is also selected, preserving group membership. Add group/node ids before connecting to them.
   New unpositioned nodes trigger automatic layout. Update/style merge `abele` and `styleAttributes`
@@ -517,6 +523,13 @@ step picture. A single click or tap opens the image viewer; a double click or ta
   comment is anchored to and nothing else in the note; there is no path to give it. A comment on
   a message in a chat does not have it.
 - `find` searches by name, property or content and takes structured criteria, not just a word.
+  Content criteria skip known binary attachments (including PDF, Office files, archives,
+  images, audio and video); use the book, Word or spreadsheet tools to search their contents.
+  Path/name searches still list attachments, and plain-text files remain searchable.
+  Property-only searches use the metadata cache without reading file bodies. Chat content
+  searches cache only the sanitized transcript, with bounded memory; a write, rename or
+  deletion invalidates it. Large JSONL chats are scanned cooperatively, skipping private
+  internal records before JSON parsing. Legacy single-object chats use the compatibility parser.
 - A chat file (`.abchat`) is never in a scope. With the whole vault open, `read` on one returns
   only what was said in it, and `find` matches content against that — never against the log.
   Renamed chat logs are also recognized by their contents. Reading or attaching one still
@@ -1223,6 +1236,7 @@ list.
 
 Each carries its own mode, so reading the settings and changing them are two permissions. What
 each setting decides is the `settings` section of this reference.
+
 # Node repositories
 
 Two groups of tools reach a node. **Node files** is what an agent needs to read and change
@@ -1265,22 +1279,22 @@ The chat settings' “Revoke repository access” button revokes every project g
 that conversation; part A may also call `revoke` for one project.
 Grants are held in memory and disappear when the plugin restarts; nothing new is stored in the vault.
 
-| Tool | Purpose |
-| --- | --- |
-| `node_views` | Authorized open repository tabs and their selections |
-| `list_node_worktrees` | Without node access: available project workspaces of an open tab, including external worktrees |
-| `node_read` | Without node access: project overview and workspace catalogue of an open tab |
-| `node_tree` | Directory entries at a revision |
-| `node_file` | File text at a revision and the exact full-file content identity, including for selected lines |
-| `node_changes` | Working status, or endpoint changes from an explicit base |
-| `node_commits` | Commit history, optionally for a path |
-| `node_commit` | Details of the selected commit |
-| `node_compare` | Endpoint comparison of base and revision |
-| `node_search` | Code or path search with optional regex, case sensitivity and glob |
-| `node_grep` | Code or path search at an explicit revision |
-| `node_blame` | Attribution at a path and revision |
-| `node_open` | Open/reuse the shared repository tab at a file, revision, comparison or lines |
-| `node_propose_edit` | Propose an exact current-file edit for per-edit owner approval, then retain a local draft; never save automatically |
+| Tool                  | Purpose                                                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `node_views`          | Authorized open repository tabs and their selections                                                                |
+| `list_node_worktrees` | Without node access: available project workspaces of an open tab, including external worktrees                      |
+| `node_read`           | Without node access: project overview and workspace catalogue of an open tab                                        |
+| `node_tree`           | Directory entries at a revision                                                                                     |
+| `node_file`           | File text at a revision and the exact full-file content identity, including for selected lines                      |
+| `node_changes`        | Working status, or endpoint changes from an explicit base                                                           |
+| `node_commits`        | Commit history, optionally for a path                                                                               |
+| `node_commit`         | Details of the selected commit                                                                                      |
+| `node_compare`        | Endpoint comparison of base and revision                                                                            |
+| `node_search`         | Code or path search with optional regex, case sensitivity and glob                                                  |
+| `node_grep`           | Code or path search at an explicit revision                                                                         |
+| `node_blame`          | Attribution at a path and revision                                                                                  |
+| `node_open`           | Open/reuse the shared repository tab at a file, revision, comparison or lines                                       |
+| `node_propose_edit`   | Propose an exact current-file edit for per-edit owner approval, then retain a local draft; never save automatically |
 
 `node_propose_edit` requires an existing repository read grant **and** a separate owner
 approval of each edit in the chat approval card. Automatic tool modes, general file write
@@ -1322,7 +1336,6 @@ larger read. Provider coverage/truncation notes remain in the source result.
 Confirmed node installations have node-wide owner authority: chat grants constrain
 these plugin tools, not a compromised owner device. Already delivered bytes can remain
 in chat history after access is revoked.
-
 
 # Node chat scope and files
 
@@ -1368,28 +1381,28 @@ ignored directories require a node update to become readable.
 No arbitrary filesystem
 picker, shell, stage or push is exposed by this toolset. Delegation tools use the same chat node chips.
 
-| Tool | Purpose |
-| --- | --- |
-| `node_nodes` | In-scope nodes, labels and connection state |
-| `node_folders` | Registered folders and scoped plain-folder workspaces on an allowed node |
-| `list_node_worktrees` | Git worktrees, filtered to the executing chat's scope |
-| `node_ls` | Directory entries in current files (or an explicit Git `ref`) |
-| `node_read` | Exact bounded UTF-8 file text and content identity; supply `path` |
-| `node_edit` | Replace one unique exact `old_text` with `new_text` |
-| `node_replace` | Replace all exact `old_text` matches with `new_text` |
-| `node_write` | Write complete `text`; null `expected_content_id` means exclusive creation |
-| `node_mv` | Atomic single-file move from `from` to absent `to` within the target |
-| `node_cp` | Single-file copy from `from` to absent `to` within the target |
-| `node_rm` | Remove one regular file (`path`), never a directory |
-| `node_search` | Bounded literal, regex or filename search with `query`, `glob`, case sensitivity |
-| `node_git_status` | Current Git index/worktree status |
-| `node_git_commit` | Commit already staged changes; Ask requires owner approval, without asking skips it; requires `message`, `expected_head` and stable `operation_id` |
-| `node_worktree_remove` | Remove a clean worktree; Ask requires owner approval, without asking skips it; requires `expected_head`, `expected_observation_id` and stable `operation_id` |
-| `node_git_diff` | Explicit staged/unstaged or endpoint comparison; `path` loads its patch |
-| `node_git_branches` | Paginated Git references |
-| `node_git_log` | Commit history in pages of up to 50, optionally restricted to `path`. Call again with only the returned `cursor` for the next page; oversized messages may be marked truncated. |
-| `node_git_blame` | Attribution for `path`, optionally `start` and `count` |
-| `node_worktree_switch` | Select an already scoped worktree inside this chat's current folder |
+| Tool                   | Purpose                                                                                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `node_nodes`           | In-scope nodes, labels and connection state                                                                                                                                     |
+| `node_folders`         | Registered folders and scoped plain-folder workspaces on an allowed node                                                                                                        |
+| `list_node_worktrees`  | Git worktrees, filtered to the executing chat's scope                                                                                                                           |
+| `node_ls`              | Directory entries in current files (or an explicit Git `ref`)                                                                                                                   |
+| `node_read`            | Exact bounded UTF-8 file text and content identity; supply `path`                                                                                                               |
+| `node_edit`            | Replace one unique exact `old_text` with `new_text`                                                                                                                             |
+| `node_replace`         | Replace all exact `old_text` matches with `new_text`                                                                                                                            |
+| `node_write`           | Write complete `text`; null `expected_content_id` means exclusive creation                                                                                                      |
+| `node_mv`              | Atomic single-file move from `from` to absent `to` within the target                                                                                                            |
+| `node_cp`              | Single-file copy from `from` to absent `to` within the target                                                                                                                   |
+| `node_rm`              | Remove one regular file (`path`), never a directory                                                                                                                             |
+| `node_search`          | Bounded literal, regex or filename search with `query`, `glob`, case sensitivity                                                                                                |
+| `node_git_status`      | Current Git index/worktree status                                                                                                                                               |
+| `node_git_commit`      | Commit already staged changes; Ask requires owner approval, without asking skips it; requires `message`, `expected_head` and stable `operation_id`                              |
+| `node_worktree_remove` | Remove a clean worktree; Ask requires owner approval, without asking skips it; requires `expected_head`, `expected_observation_id` and stable `operation_id`                    |
+| `node_git_diff`        | Explicit staged/unstaged or endpoint comparison; `path` loads its patch                                                                                                         |
+| `node_git_branches`    | Paginated Git references                                                                                                                                                        |
+| `node_git_log`         | Commit history in pages of up to 50, optionally restricted to `path`. Call again with only the returned `cursor` for the next page; oversized messages may be marked truncated. |
+| `node_git_blame`       | Attribution for `path`, optionally `start` and `count`                                                                                                                          |
+| `node_worktree_switch` | Select an already scoped worktree inside this chat's current folder                                                                                                             |
 
 For large-file changes, prefer `node_edit` with a unique exact snippet, or
 `node_replace` for every exact match. On nodes advertising `node_file_snippet_v1`,
@@ -1412,7 +1425,6 @@ Search excludes ignored trees by default. If an ignored scan exceeds the node li
 the tools retry ordinary visibility; an unreachable ignored file is reported with its
 path and an explanation that the ignored trees are too big to scan. Personal file
 opens also try ordinary visibility first.
-
 
 `node_write` requires an explicitly supplied `text` string; `text: ""` is an intentional
 empty-file edit, while omitting it is invalid.

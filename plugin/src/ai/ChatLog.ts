@@ -144,7 +144,8 @@ function liveRecords(snapshot: ChatSnapshot): number {
  * on its own line, which is not valid JSON, or is a whole object with no `v`. Either way the
  * first line settles it without reading the rest twice.
  */
-export function parseChat(content: string): ParsedChat {
+/** Conversation-only readers need branch topology, but never private internal records. */
+export function parseChat(content: string, conversationOnly = false): ParsedChat {
   const firstLine = content.slice(
     0,
     content.indexOf('\n') === -1 ? undefined : content.indexOf('\n')
@@ -163,7 +164,11 @@ export function parseChat(content: string): ParsedChat {
     (head as { k?: string }).k === 'meta' &&
     typeof (head as { v?: number }).v === 'number'
 
-  const parsed = isLog ? parseLog(content) : parseLegacy(content)
+  const parsed = isLog ? parseLog(content, conversationOnly) : parseLegacy(content)
+  if (conversationOnly) {
+    parsed.internalMessages = []
+    return parsed
+  }
   const storedRuns = new Map(
     parsed.internalMessages.flatMap((message) => {
       if (message.role !== 'toolResult' || !message.stored) return []
@@ -369,7 +374,71 @@ function mergeMetadataEvidence(current: ChatMetadata, previous: ChatMetadata | n
   }
 }
 
-function parseLog(content: string): ParsedChat {
+/** Reduce canonical JSONL without allocating its private records. Keep all other lines so
+ * the existing codec still owns last-wins messages, metadata and damaged-line recovery.
+ * Scan bounded pieces, including within an unusually long private line, to let the UI run.
+ * Legacy single-object chats retain the compatibility parser. */
+export async function conversationLog(
+  content: string,
+  yieldControl: () => Promise<void>
+): Promise<string> {
+  const source = content.trimStart()
+  if (!source.startsWith(META_PREFIX)) return content
+  const kept: string[] = []
+  let start = 0
+  let offset = 0
+  let budget = 0
+  let yieldedAt = performance.now()
+  const cooperate = async () => {
+    if (performance.now() - yieldedAt < 8) return
+    await yieldControl()
+    yieldedAt = performance.now()
+  }
+  while (offset < source.length) {
+    const stop = Math.min(offset + 256 * 1024, source.length)
+    const relativeEnd = source.slice(offset, stop).indexOf('\n')
+    const end = relativeEnd < 0 ? -1 : offset + relativeEnd
+    if (end < 0 || end >= stop) {
+      offset = stop
+      budget += 256 * 1024
+      if (offset < source.length) {
+        await cooperate()
+        budget = 0
+        continue
+      }
+    } else {
+      offset = end + 1
+      budget += offset - start
+    }
+    const line = source.slice(start, end < 0 ? undefined : end)
+    if (!line.startsWith('{"k":"int"')) kept.push(line)
+    else {
+      // Preserve a complete public record glued to a torn private line. Search in bounded
+      // windows: escaped JSON strings cannot contain an unescaped record opening.
+      for (let at = 1; at < line.length; at += 256 * 1024) {
+        const part = line.slice(at, at + 256 * 1024 + 32)
+        const record = [...part.matchAll(RECORD_START)].find(
+          (match) => !match[0].startsWith('{"k":"int"')
+        )
+        if (record) {
+          // A nested object inside a valid private record is not a public record.
+          // Keep the original line: parseLog validates it before attempting salvage.
+          kept.push(line)
+          break
+        }
+        if (at + 256 * 1024 < line.length) await cooperate()
+      }
+    }
+    start = offset
+    if (budget >= 256 * 1024) {
+      await cooperate()
+      budget = 0
+    }
+  }
+  return kept.join('\n') + '\n'
+}
+
+function parseLog(content: string, conversationOnly = false): ParsedChat {
   let metadata: ChatMetadata | null = null
   const messages: ChatMessage[] = []
   const positions = new Map<string, number>()
@@ -379,6 +448,15 @@ function parseLog(content: string): ParsedChat {
 
   for (const line of content.split('\n')) {
     if (!line.trim()) continue
+
+    // Skip canonical private records before JSON allocation. A glued public record must
+    // still reach the existing salvage path; escaped JSON inside tool text cannot match.
+    if (
+      conversationOnly &&
+      line.startsWith('{"k":"int"') &&
+      ![...line.matchAll(RECORD_START)].some((match) => match.index > 0)
+    )
+      continue
 
     let record: Record<string, unknown>
     try {

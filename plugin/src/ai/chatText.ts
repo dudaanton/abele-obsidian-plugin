@@ -123,7 +123,7 @@ export function renderLines(lines: ChatLine[], perLine?: number): string {
  * to, and says that the start was cut.
  */
 export function chatForAgent(content: string, name: string): string {
-  const parsed = parseChat(content.trimStart())
+  const parsed = parseChat(content.trimStart(), true)
   if (parsed.metadata?.type !== 'abele-chat') return `[Not a chat: ${name}]`
 
   const title = parsed.metadata.title || name

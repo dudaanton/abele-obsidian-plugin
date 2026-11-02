@@ -5,11 +5,17 @@ import { Criterion } from '@/entities/Criterion'
 import { getNoteBody } from '@/helpers/notesUtils'
 import { TFile } from 'obsidian'
 import { stringifyYaml } from 'obsidian'
-import { chatForAgent, isChatLog } from '../chatText'
+import { findChatText } from './findChatText'
 import { pathTree, groupByFolder, propertiesLine, sharedProperties } from './compactListing'
 
 const READ_BATCH_SIZE = 64
 const YIELD_EVERY = 1024
+
+// These formats have dedicated readers; decoding their bytes as note text is both expensive
+// and meaningless. Path/name-only searches must still list them. Unknown text formats stay
+// searchable, including a chat renamed to .md or .json (sanitised after the read).
+const BINARY_CONTENT =
+  /\.(?:pdf|png|jpe?g|gif|webp|avif|heic|ico|bmp|tiff?|psd|mp[34]|m4[av]|mov|avi|mkv|webm|wav|ogg|flac|aac|aiff?|zip|gz|bz2|xz|7z|rar|tar|woff2?|ttf|otf|eot|docx?|xlsx?|pptx?|epub|sqlite3?|db|wasm|exe|dll|dylib|so)$/i
 
 interface CriterionParam {
   type: 'path' | 'name' | 'property' | 'content'
@@ -154,6 +160,7 @@ export function createFindTool(opts?: { skipScope?: boolean; compact?: boolean }
       for (let at = 0; at < paths.length; at += YIELD_EVERY) {
         signal?.throwIfAborted()
         for (const p of paths.slice(at, at + YIELD_EVERY)) {
+          if (contentCriteria.length && BINARY_CONTENT.test(p)) continue
           if (!pathCriteria.every((c) => c.checkPathCriterion(p))) continue
           if (nameCriteria.length) {
             const name = p.split('/').pop()?.replace(/\.md$/, '') || ''
@@ -182,11 +189,14 @@ export function createFindTool(opts?: { skipScope?: boolean; compact?: boolean }
             Promise.all(
               batch.map(async (p) => {
                 const file = app.vault.getAbstractFileByPath(p)
-                if (!file) return false
-                const raw = await app.vault.cachedRead(file as any)
+                if (!(file instanceof TFile)) return false
+                const text = await findChatText(
+                  app.vault,
+                  file,
+                  () => yieldSearch(signal),
+                  () => app.vault.cachedRead(file)
+                )
                 signal?.throwIfAborted()
-                // Match what `read` shows, never a chat's private tool results.
-                const text = isChatLog(file.path, raw) ? chatForAgent(raw, p) : raw
                 const body = getNoteBody(text)
                 return contentCriteria.every((c) => c.checkContentCriterion(body))
               })
