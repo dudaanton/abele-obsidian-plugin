@@ -55,6 +55,11 @@ for (const fault of [
   'install-fingerprint-folder-notification',
   'install-fingerprint-repeat',
   'install-fingerprint-pull',
+  'install-fingerprint-interrupted-publication',
+  'install-fingerprint-watch-declined',
+  'install-fingerprint-watch-reload',
+  'install-fingerprint-adopt-reload',
+  'install-fingerprint-adopt-reload-edited',
   'install-fingerprint-pull-invalidated',
   'install-fingerprint-inflight',
   'install-fingerprint-publication',
@@ -243,7 +248,11 @@ for (const fault of [
             // The host can deliver its watcher while publication still awaits reconciliation.
             await new Promise((resolve) => setTimeout(resolve, 10))
           }
-          if (fault === 'pause-mid-batch' && ++linked === 2) {
+          if (
+            (fault === 'pause-mid-batch' ||
+              fault === 'install-fingerprint-interrupted-publication') &&
+            ++linked === 2
+          ) {
             pausedAt = performance.now()
             stopped.abort()
           }
@@ -256,7 +265,9 @@ for (const fault of [
               if (key === 'read' || key === 'write')
                 return (bytes: Uint8Array, ...args: [number, number, number]) => {
                   expect(bytes.buffer.byteLength).toBeLessThanOrEqual(1024 * 1024)
-                  if (key === 'read' && own(opened) && !opened.endsWith('.tmp')) contentReads++
+                  if (key === 'read' && own(opened) && !opened.endsWith('.tmp')) {
+                    contentReads++
+                  }
                   return handle[key](bytes, ...args)
                 }
               if (key === 'sync')
@@ -566,12 +577,17 @@ for (const fault of [
                 fault === 'directory-interruption' ||
                 fault === 'pause-notification' ||
                 fault === 'pause-admission' ||
-                fault === 'pause-mid-batch'
+                fault === 'pause-mid-batch' ||
+                fault === 'install-fingerprint-interrupted-publication'
                   ? AbortSignal.any([stopped.signal, ended])
                   : ended,
               dirty: new Set(),
               expected:
-                fault === 'install-fingerprint-backlog' || fault === 'install-fingerprint-inflight'
+                fault === 'install-fingerprint-interrupted-publication' ||
+                fault === 'install-fingerprint-watch-declined' ||
+                fault === 'install-fingerprint-watch-reload' ||
+                fault === 'install-fingerprint-backlog' ||
+                fault === 'install-fingerprint-inflight'
                   ? expected
                   : new ExpectedWrites(),
               filter: { excluded: () => false },
@@ -673,12 +689,57 @@ for (const fault of [
             expect(await disk.stat(join(root, item.path)).catch(() => null)).toBeNull()
           return
         }
+        if (fault === 'install-fingerprint-interrupted-publication') {
+          await expect(run()).rejects.toBeDefined()
+          const published = []
+          for (const item of items)
+            if (await disk.stat(join(root, item.path)).catch(() => null)) published.push(item)
+          expect(published.length).toBeGreaterThan(0)
+          contentReads = 0
+          // A delayed host event can retain its own-write expectation across an aborted cohort.
+          for (const item of published) expected.expect(item.path, item.sha)
+          const watcher = new WatchReports({
+            fs: files,
+            expected,
+            debounceMs: 60000,
+            onChange: () => {},
+          })
+          try {
+            watcher.notice(published.map((item) => item.path))
+            expect(await watcher.examine()).toBe(false)
+            expect(contentReads).toBe(0)
+          } finally {
+            watcher.cancel()
+          }
+          host.close()
+          host = await HostSyncStorage.open(factory, 'sample-peer', app)
+          files = makeFiles()
+          await files.recover()
+          for (const item of published)
+            expect((await files[Symbol.for('abele.sync.fingerprint-pull-v1')](item.path)).sha).toBe(
+              item.sha
+            )
+          expect(contentReads).toBe(0)
+          const edited = published[0],
+            prior = await disk.stat(join(root, edited.path))
+          await disk.writeFile(join(root, edited.path), payload(0).fill(91))
+          await disk.utimes(join(root, edited.path), prior.atime, prior.mtime)
+          expect((await files[Symbol.for('abele.sync.fingerprint-pull-v1')](edited.path)).sha).toBe(
+            await sha256(payload(0).fill(91))
+          )
+          expect(contentReads).toBeGreaterThan(0)
+          return
+        }
         if (
           fault === 'install-fingerprint' ||
           fault === 'install-fingerprint-backlog' ||
           fault === 'install-fingerprint-notification' ||
           fault === 'install-fingerprint-folder-notification' ||
           fault === 'install-fingerprint-repeat' ||
+          fault === 'install-fingerprint-watch-declined' ||
+          fault === 'install-fingerprint-watch-reload' ||
+          fault === 'install-fingerprint-adopt-reload' ||
+          fault === 'install-fingerprint-adopt-reload-edited' ||
           fault === 'install-fingerprint-pull' ||
           fault === 'install-fingerprint-pull-invalidated' ||
           fault === 'install-fingerprint-inflight' ||
@@ -728,7 +789,67 @@ for (const fault of [
             expect(inflight.length).toBeGreaterThan(0)
             expect(contentReads).toBe(0)
           }
+          if (fault === 'install-fingerprint-watch-declined')
+            expect(
+              await files[Symbol.for('abele.sync.install-batch-v1')]!(items, async () => {
+                throw new Error('existing files must not enter an install batch')
+              })
+            ).toBeUndefined()
+          if (fault.includes('-reload')) {
+            expect(
+              (await host.readScanFingerprint(files.pathKey(items[0].path)))?.installation
+            ).toBe(true)
+            host.close()
+            host = await HostSyncStorage.open(factory, 'sample-peer', app)
+            if (fault.startsWith('install-fingerprint-adopt-reload')) {
+              state.close()
+              state = await IndexedDbStateStore.open(factory, 'sample-peer-adoption')
+            }
+            files = makeFiles()
+            expect(
+              (await host.readScanFingerprint(files.pathKey(items[0].path)))?.installation
+            ).toBe(true)
+            state.observeCommittedEntries((entries) => files.acknowledgeWrites(entries))
+          }
           contentReads = 0
+          if (
+            fault === 'install-fingerprint-watch-reload' ||
+            fault === 'install-fingerprint-watch-declined'
+          ) {
+            const watcher = new WatchReports({
+              fs: files,
+              expected,
+              debounceMs: 60000,
+              onChange: () => {},
+            })
+            try {
+              watcher.notice(items.map((item) => item.path))
+              expect(await watcher.examine()).toBe(false)
+              expect(contentReads).toBe(0)
+            } finally {
+              watcher.cancel()
+            }
+            return
+          }
+          if (fault.startsWith('install-fingerprint-adopt-reload')) {
+            if (fault.endsWith('-edited')) {
+              const path = join(root, items[0].path),
+                prior = await disk.stat(path)
+              await disk.writeFile(path, payload(0).fill(91))
+              await disk.utimes(path, prior.atime, prior.mtime)
+              expect(
+                (await files[Symbol.for('abele.sync.fingerprint-pull-v1')](items[0].path)).sha
+              ).toBe(await sha256(payload(0).fill(91)))
+              expect(contentReads).toBeGreaterThan(0)
+            } else {
+              const before = downloads
+              await run()
+              expect(downloads).toBe(before)
+              expect(contentReads).toBe(0)
+              for (const item of items) expect((await state.get(item.path))?.sha).toBe(item.sha)
+            }
+            return
+          }
           const receiptTimers = [
             'setTimeout',
             'clearTimeout',

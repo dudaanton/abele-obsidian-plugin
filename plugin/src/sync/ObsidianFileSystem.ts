@@ -458,6 +458,10 @@ export class ObsidianFileSystem implements FileSystem {
   ): Promise<T | undefined> {
     const native = this.native
     if (!native) return Promise.resolve(undefined)
+    // A declined fresh-install optimization is read-only. In particular, existing
+    // destinations must keep their verified receipts for watcher checks/adoption.
+    // The installer rechecks under its mutation fence before any actual effect.
+    for (const item of items) if ((await this.stat(item.path)) !== null) return undefined
     // Publishing a sibling does not mutate an existing file. Actual parent creation is
     // fenced by makeParents; fencing every ancestor here invalidated all earlier siblings.
     const paths = items.map((item) => item.path)
@@ -468,6 +472,8 @@ export class ObsidianFileSystem implements FileSystem {
     )
     for (const parent of parents) if ((await this.rawStat(parent)) === null) paths.push(parent)
     const installed: InstallItem[] = []
+    let retire: (() => void) | undefined
+    const publishedClocks = new Map<string, string>()
     let release!: () => void
     const receiptsReady = new Promise<void>((resolve) => {
       release = resolve
@@ -507,11 +513,19 @@ export class ObsidianFileSystem implements FileSystem {
               release()
             }
           },
-          installed: (item) => {
+          retire: host
+            ? (work) => {
+                retire = work
+              }
+            : undefined,
+          installed: async (item) => {
             this.writtenStat = { path: item.path, size: item.size, mtime: item.mtime }
             this.awaitingIndex.add(item.path)
             this.wrote([item.path], 'file')
             installed.push(item)
+            // A later cohort failure must not lose proof for names already published.
+            const clock = await native.fileContentRevision?.(item.path)
+            if (clock) publishedClocks.set(item.path, clock)
           },
         },
         items,
@@ -520,8 +534,19 @@ export class ObsidianFileSystem implements FileSystem {
     )
     return batch
       .then(async (result) => {
-        if (result !== undefined) await this.rememberInstalled(installed)
+        if (retire || result !== undefined)
+          await this.rememberInstalled(installed, undefined, retire)
         return result
+      })
+      .catch(async (error) => {
+        try {
+          // Failed cohorts retain their private aliases, so their publication clock
+          // must still match. No proof is invented for unplaced or subsequently edited bytes.
+          await this.rememberInstalled(installed, publishedClocks)
+        } catch (receiptError) {
+          console.debug('[abele-sync] cannot retain interrupted installation receipt', receiptError)
+        }
+        throw error
       })
       .finally(() => {
         for (const clear of pending) clear()
@@ -533,16 +558,33 @@ export class ObsidianFileSystem implements FileSystem {
    * this it read each one back. Receipts live until examined, not until an arbitrary file
    * count; a watcher may collect a whole pull before its debounce expires. Mutations retire
    * affected receipts before and after the write; identity and timestamps are checked too. */
-  private async rememberInstalled(items: readonly InstallItem[]): Promise<void> {
+  private async rememberInstalled(
+    items: readonly InstallItem[],
+    publishedClocks?: ReadonlyMap<string, string>,
+    retire?: () => void
+  ): Promise<void> {
     const local = storageOf(this.app)
     const host = local ? durableHostOf(local) : undefined
-    if (!host || !this.fileIdentity) return
+    if (!host || !this.fileIdentity) {
+      if (retire) await this.journal.persist(retire)
+      return
+    }
+    const receipts: {
+      path: string
+      value: import('./hostScanCache').ScanFingerprint
+      revision: number
+    }[] = []
     for (const item of items) {
       if (!this.cacheableScanPath(item.path)) continue
       const key = this.pathKey(item.path)
       const revision = host.scanFingerprintRevision(key)
       const watched = this.watchPathRevision(key)
       const contentRevision = await nativeOf(this.disk)?.fileContentRevision?.(item.path)
+      if (
+        publishedClocks &&
+        (!contentRevision || publishedClocks.get(item.path) !== contentRevision)
+      )
+        continue
       const identity = await this.fileIdentity(item.path)
       const stat = await this.rawStat(item.path)
       if (
@@ -555,19 +597,60 @@ export class ObsidianFileSystem implements FileSystem {
           : watched !== this.watchPathRevision(key))
       )
         continue
-      host.rememberScanInstallation(
-        key,
-        {
-          identity,
-          size: stat.size,
-          mtime: stat.mtime,
-          ctime: stat.ctime,
-          sha: item.sha,
-          ...(contentRevision ? { contentRevision } : {}),
-        },
-        revision
-      )
+      const value = {
+        identity,
+        size: stat.size,
+        mtime: stat.mtime,
+        ctime: stat.ctime,
+        sha: item.sha,
+        installation: true as const,
+        ...(contentRevision ? { contentRevision } : {}),
+      }
+      host.rememberScanInstallation(key, value, revision)
+      receipts.push({ path: key, value, revision })
     }
+    // Join successful cohort receipts with the existing journal retirement transaction.
+    await host.writeScanFingerprints(receipts, retire)
+    for (const row of receipts)
+      if (
+        host.scanFingerprintRevision(row.path) === row.revision &&
+        host.scanInstallation(row.path) === row.value
+      )
+        this.promotedInstallations.add(row.value)
+  }
+  /** Removing our private hard link changes the inode clock, not its public bytes. */
+  private async retireInstalledAlias(
+    entry: JournalEntry,
+    remove: () => Promise<void>
+  ): Promise<void> {
+    const local = storageOf(this.app),
+      host = local ? durableHostOf(local) : undefined
+    const key = this.pathKey(entry.target)
+    const revision = host?.scanFingerprintRevision(key),
+      watched = this.watchPathRevision(key)
+    const saved = host?.scanInstallation(key) ?? (await host?.readScanFingerprint(key))
+    const before = saved?.installation === true ? await this.rawStat(entry.target) : null
+    const verified =
+      saved?.installation === true &&
+      saved.sha === entry.replacementSha &&
+      saved.contentRevision &&
+      before?.type === 'file' &&
+      before.size === saved.size &&
+      before.mtime === saved.mtime &&
+      before.ctime === saved.ctime &&
+      (await this.fileIdentity?.(entry.target)) === saved.identity &&
+      (await nativeOf(this.disk)?.fileContentRevision?.(entry.target)) === saved.contentRevision
+    await remove()
+    if (
+      saved &&
+      verified &&
+      host?.scanFingerprintRevision(key) === revision &&
+      this.watchPathRevision(key) === watched &&
+      (await this.fileIdentity?.(entry.target)) === saved.identity
+    )
+      await this.rememberInstalled([
+        { path: entry.target, size: saved.size, mtime: stamp(saved.mtime), sha: saved.sha },
+      ])
   }
   readonly fileIdentity?: (path: string) => Promise<string | null>
   private readonly diagnostic?: ObsidianFileSystemOptions['diagnostic']
@@ -1500,6 +1583,7 @@ export class ObsidianFileSystem implements FileSystem {
         }
       },
       retainInstalled: !!options.ledger,
+      retireAlias: (entry, remove) => this.retireInstalledAlias(entry, remove),
       published: (entry) => {
         if (entry.temp)
           this.publications.set(
@@ -3238,6 +3322,10 @@ export class ObsidianFileSystem implements FileSystem {
     }
     const revision = host.scanFingerprintRevision(key)
     let saved = await host.readScanFingerprint(key)
+    if (!host.scanInstallation(key) && saved?.installation === true && saved.contentRevision) {
+      host.rememberScanInstallation(key, saved, revision)
+      this.promotedInstallations.add(saved)
+    }
     const installed = host.scanInstallation(key)
     // A fresh watcher check bypasses durable scan hints, but not bytes just verified by
     // installation. Bind that receipt to the current identity below before using it.
@@ -3413,7 +3501,7 @@ export class ObsidianFileSystem implements FileSystem {
     // The fresh path still rejects ordinary scan hints and checks live identity.
     // Adoption can run inside the installation cohort itself, so it cannot wait
     // on that cohort's watcher barrier. Without a bound receipt it reads afresh.
-    const read = (target: string) => {
+    const read = async (target: string) => {
       const local = storageOf(this.app)
       const host = local ? durableHostOf(local) : undefined
       // Portable installations have their own bounded-reader receipts. Preserve
@@ -3422,7 +3510,9 @@ export class ObsidianFileSystem implements FileSystem {
         nativeChunkPort(this.disk).open &&
         this.fileIdentity &&
         this.cacheableScanPath(target) &&
-        host?.scanInstallation(this.pathKey(target))
+        host &&
+        (host.scanInstallation(this.pathKey(target)) ||
+          (await host.readScanFingerprint(this.pathKey(target)))?.installation === true)
       )
         return this.fingerprint(target, undefined, true, false)
       return this.io.fingerprint(target, undefined, true)

@@ -2285,6 +2285,7 @@ it('reports local conflict and refused publication paths without changing wire m
   })
   try {
     const report = {
+      collisions: [],
       push: {
         committed: { results: [{ status: 'conflict', conflict_path: 'Shared/conflict.md' }] },
         rejected: [
@@ -2303,6 +2304,10 @@ it('reports local conflict and refused publication paths without changing wire m
     expect(report.push.rejected[0].op.path).toBe('Shared/refused.md')
     expect(one.runtime.pushRefusalRows()[0].path).toBe('Moved/refused.md')
     expect(report.push.rejected[0].path).toBe('Shared/refused.md')
+    // Await projection persistence so a malformed report cannot leak a late rejection.
+    expect(await one.runtime.notSynced()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ path: 'Moved/refused.md' })])
+    )
   } finally {
     await one.runtime.close()
   }
@@ -2449,6 +2454,36 @@ it('names unsent local files after an offline attempt so the phone can show file
     })
   } finally {
     await one.runtime.disconnect()
+  }
+})
+
+it('handles refusal projection persistence failures in the asynchronous report callback', async () => {
+  const wire = await server('Shared/sample.md', 'sample')
+  const one = runtime(wire, new MemoryFileSystem())
+  const failure = new Error('Sample metadata write failure')
+  const write = one.state.setMeta.bind(one.state)
+  vi.spyOn(one.state, 'setMeta').mockImplementation(async (key, value) => {
+    if (key.startsWith('not-synced-outgoing:')) throw failure
+    return write(key, value)
+  })
+  const debug = vi.spyOn(console, 'debug').mockImplementation(() => {})
+  try {
+    Reflect.get(one.runtime.engine, 'opts').onSync({
+      collisions: [],
+      push: {
+        committed: { results: [] },
+        rejected: [
+          { path: 'Shared/sample.md', op: { path: 'Shared/sample.md' }, code: 'quota_exceeded' },
+        ],
+      },
+      pull: { applied: 0 },
+    })
+    await vi.waitFor(() =>
+      expect(debug).toHaveBeenCalledWith('[abele-sync] cannot publish refusal diagnostics', failure)
+    )
+  } finally {
+    await one.runtime.close()
+    debug.mockRestore()
   }
 })
 

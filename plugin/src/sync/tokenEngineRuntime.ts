@@ -1,3 +1,4 @@
+import { SizeRefusals } from './sizeRefusals'
 import { PreparedUploads, PREPARED_UPLOAD_LIFETIME } from './preparedUploads'
 import { localOnlyJournalState } from './localOnlyJournal'
 import { SyncTaskBudget, yieldSyncTask } from './syncTaskBudget'
@@ -179,11 +180,13 @@ export class TokenEngineRuntime
     const rows = [...this.pushRefusals.values()]
     return this.placement?.localMetadata(rows) ?? rows
   }
-  private recordNotSyncedRefusal(
+  private readonly sizeRefusals: SizeRefusals
+  private async recordNotSyncedRefusal(
     row: SyncReport['push']['rejected'][number],
     state?: StateStore
-  ): Promise<void> | undefined {
+  ): Promise<void> {
     if (row.path === undefined) return
+    await this.sizeRefusals.record(row, state ?? this.options.engineState ?? this.options.state)
     const size = row.size ?? ('size' in row.op ? row.op.size : undefined)
     const limit = row.limit ?? this.authority?.limits.max_file_bytes
     const bounds =
@@ -954,6 +957,12 @@ export class TokenEngineRuntime
       ...(options.WebSocket ? { WebSocket: options.WebSocket } : {}),
     })
     this.preparedUploads = new PreparedUploads(options.state, () => this.uploadContext())
+    this.sizeRefusals = new SizeRefusals(
+      options.engineState ?? options.state,
+      options.fs,
+      () => this.uploadContext(),
+      () => this.authority?.limits.max_file_bytes
+    )
     const hasBlob = this.client.hasBlob.bind(this.client)
     this.client.hasBlob = async (sha, signal) => {
       if (!this.activeUploads && this.uploadProgress.stage)
@@ -1222,7 +1231,12 @@ export class TokenEngineRuntime
       }
     }
     const putBlob = this.client.putBlob.bind(this.client)
-    this.client.putBlob = async (sha, bytes) => {
+    this.client.putBlob = async (sha, bytes, signal) => {
+      await this.sizeRefusals.assertAllowed(
+        this.uploadNames.get(sha),
+        { sha, size: bytes.length },
+        signal
+      )
       this.uploadPayloadStarted.delete(sha)
       this.activeUploads++
       try {
@@ -1231,7 +1245,7 @@ export class TokenEngineRuntime
         this.uploadProgress.add(sha, bytes.length)
         const path = this.uploadNames.get(sha)
         if (path) this.uploadProgress.current(path)
-        await putBlob(sha, bytes)
+        await putBlob(sha, bytes, signal)
         const sentAt = this.uploadPayloadStarted.get(sha)
         if (sentAt !== undefined) await this.preparedUploads.acknowledge(sha, sentAt)
         if (this.sentUploadHashes.has(sha)) this.uploadProgress.done(sha)
@@ -1242,6 +1256,7 @@ export class TokenEngineRuntime
     }
     const putBlobSource = this.client.putBlobSource.bind(this.client)
     this.client.putBlobSource = async (...args) => {
+      await this.sizeRefusals.assertAllowed(this.uploadNames.get(args[0].sha), args[0], args[2])
       this.uploadPayloadStarted.delete(args[0].sha)
       this.activeUploads++
       try {
@@ -1823,7 +1838,9 @@ export class TokenEngineRuntime
         for (const row of report.push.rejected)
           if (row.path !== undefined) {
             this.pushRefusals.set(row.path, row)
-            void this.recordNotSyncedRefusal(row)
+            void this.recordNotSyncedRefusal(row).catch((error) =>
+              console.debug('[abele-sync] cannot publish refusal diagnostics', error)
+            )
           }
         // An empty scan has no push journal, but still completed its metadata checks.
         activityLog.finishComparison(this.inventoryTotal)

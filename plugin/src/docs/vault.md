@@ -136,6 +136,19 @@ refusals and held-delete reviews still apply. Automatic actions appear in the co
 Stopped local chat turns retain a visible system message in their transcript. Approved tool
 rows retain the arguments actually executed, including content edited during approval.
 
+Device-local sync scan fingerprints distinguish verified installations from ordinary scan
+hints. Installation receipts retain the native identity, size, modification/creation times,
+content-change revision and verified hash in the host IndexedDB store. Fresh watcher checks
+and pull adoption may reuse only receipts still matching the live file; mutations invalidate
+them before effects. Receipts are not permission to overwrite or delete files.
+
+The connection ledger keeps server size refusals under `plugin:size-refusal:` plus the
+encoded path. Each records the server/generation context, current limit, source size,
+modification/creation times and hash. An unchanged over-limit file remains visibly refused
+without repeating upload negotiation, including after a restart. A changed source or server
+policy invalidates that reuse; transient refusals and quota/access errors keep their normal
+retry rules. Neither cache travels through settings transfer.
+
 ## Device-local external-file state foundation
 
 Folder connections retain a device-local `rootIssue` in their connection registry when the

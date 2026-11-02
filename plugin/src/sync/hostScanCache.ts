@@ -12,6 +12,8 @@ export interface ScanFingerprint {
   sha: string
   /** Native content-change clock, distinct from stable object identity. */
   contentRevision?: string
+  /** Verified transfer publication, never an ordinary scan hint. */
+  installation?: true
 }
 
 /** Per-path scan fingerprints and the projection classification cache, kept in the host
@@ -165,15 +167,37 @@ export class HostScanCache {
     value: ScanFingerprint,
     revision = this.scanFingerprintRevision(path)
   ): Promise<void> {
-    if (this.scanMutationActive(path) || revision !== this.scanFingerprintRevision(path)) return
+    await this.writeScanFingerprints([{ path, value, revision }])
+  }
+  async writeScanFingerprints(
+    rows: readonly { path: string; value: ScanFingerprint; revision: number }[]
+  ): Promise<void> {
+    if (
+      !rows.some(
+        (row) =>
+          !this.scanMutationActive(row.path) &&
+          row.revision === this.scanFingerprintRevision(row.path)
+      )
+    )
+      return
     const tx = this.db.transaction(STORE, 'readwrite')
-    const done = completion(tx, 'write scan fingerprint')
-    tx.objectStore(STORE).put({
-      namespace: this.namespace,
-      key: '!scan-fingerprint-v1:' + path,
-      value,
-    })
+    const done = completion(tx, 'write scan fingerprints')
+    this.putScanFingerprints(tx, rows)
     await done
+  }
+  /** Enqueue coherent receipts into an existing host journal transaction. */
+  putScanFingerprints(
+    tx: IDBTransaction,
+    rows: readonly { path: string; value: ScanFingerprint; revision: number }[]
+  ): void {
+    for (const { path, value, revision } of rows) {
+      if (this.scanMutationActive(path) || revision !== this.scanFingerprintRevision(path)) continue
+      tx.objectStore(STORE).put({
+        namespace: this.namespace,
+        key: '!scan-fingerprint-v1:' + path,
+        value,
+      })
+    }
   }
   /** The projection classification cache, one row per physical path. It grows with the vault,
    * so it lives here rather than in the host's small local-storage quota. */

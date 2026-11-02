@@ -69,6 +69,7 @@ export interface WriterDeps {
   conditionalFile(operation: ConditionalFileOperation): Promise<boolean>
   retainInstalled?: boolean
   published?(entry: JournalEntry): void
+  retireAlias?(entry: JournalEntry, remove: () => Promise<void>): Promise<void>
   stagingDirectory: string
   filesystem: DataAdapter
   native: NativeFs | null
@@ -195,8 +196,12 @@ export class VaultWriter {
     // A legacy buffered pull is acknowledged by the ledger, without an SDK receipt.
     // Drop only the private hard-link alias; the exclusive public name owns the bytes.
     if (this.deps.native && (await this.there(entry.temp))) {
-      await this.disk.remove(entry.temp)
-      await this.deps.native.syncPath(entry.temp, true)
+      const remove = async () => {
+        await this.disk.remove(entry.temp)
+        await this.deps.native!.syncPath(entry.temp, true)
+      }
+      if (this.deps.retireAlias) await this.deps.retireAlias(entry, remove)
+      else await remove()
     }
     this.consumed.delete(entry.temp)
     await this.finishInstallation(entry)

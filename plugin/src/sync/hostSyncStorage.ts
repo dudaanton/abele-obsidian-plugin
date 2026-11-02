@@ -16,6 +16,7 @@ import { HostScanCache, type ScanFingerprint } from './hostScanCache'
 import {
   DATABASE,
   RECORDS,
+  STORE,
   journalKey,
   migrateHostStorage,
   openHostDatabase,
@@ -76,6 +77,14 @@ export class HostSyncStorage implements LocalStorage {
     revision = this.scan.scanFingerprintRevision(path)
   ): Promise<void> {
     return this.scan.writeScanFingerprint(path, value, revision)
+  }
+  writeScanFingerprints(
+    rows: readonly { path: string; value: ScanFingerprint; revision: number }[],
+    retire?: () => void
+  ): Promise<void> {
+    if (!retire) return this.scan.writeScanFingerprints(rows)
+    retire()
+    return this.flush(rows)
   }
   scanInstallation(path: string): ScanFingerprint | undefined {
     return this.scan.scanInstallation(path)
@@ -278,12 +287,14 @@ export class HostSyncStorage implements LocalStorage {
     }
     this.pending.push(...structuredClone(changes))
   }
-  flush(): Promise<void> {
+  flush(
+    receipts: readonly { path: string; value: ScanFingerprint; revision: number }[] = []
+  ): Promise<void> {
     if (this.closed) return Promise.reject(new Error('Sync host storage is closed'))
-    if (!this.pending.length) return this.running ?? Promise.resolve()
+    if (!this.pending.length && !receipts.length) return this.running ?? Promise.resolve()
     const changes = this.pending
     this.pending = []
-    const running = this.tail.then(() => this.commit(changes))
+    const running = this.tail.then(() => this.commit(changes, receipts))
     this.running = running
     this.tail = running.catch(() => {})
     const settled = () => {
@@ -293,13 +304,17 @@ export class HostSyncStorage implements LocalStorage {
     return running
   }
 
-  private async commit(changes: HostChange[]): Promise<void> {
-    const tx = this.db.transaction(RECORDS, 'readwrite')
+  private async commit(
+    changes: HostChange[],
+    receipts: readonly { path: string; value: ScanFingerprint; revision: number }[] = []
+  ): Promise<void> {
+    const tx = this.db.transaction(receipts.length ? [RECORDS, STORE] : RECORDS, 'readwrite')
     const done = completion(tx, 'cannot commit sync host records')
     void done.catch(() => {})
     const groups = new Map<string, Map<string, HostRecord>>()
     const advancedHeaders = new Set<string>()
     try {
+      this.scan.putScanFingerprints(tx, receipts)
       const store = tx.objectStore(RECORDS)
       // Header.order is the append counter (migration places it after the existing rows).
       // Never enumerate a journal to allocate an order or retire a single record.

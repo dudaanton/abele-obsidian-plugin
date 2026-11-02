@@ -29,7 +29,9 @@ export interface InstallBatchHost {
   validate(path: string): void
   parents(path: string): Promise<void>
   publish(from: string, to: string, signal?: AbortSignal): Promise<void>
-  installed(item: InstallItem): void
+  installed(item: InstallItem): void | Promise<void>
+  /** Caller may join final journal retirement with durable installation receipts. */
+  retire?(work: () => void): void
 }
 
 /** Fresh destinations only. The callback must flush namespaces BEFORE its outer ledger
@@ -237,7 +239,7 @@ export async function nativeInstallBatch<T>(
                   throw error
                 }
                 plan.published = true
-                host.installed(plan.item)
+                await host.installed(plan.item)
               },
               discard: async () => {
                 byId(id).discarded = true
@@ -270,9 +272,12 @@ export async function nativeInstallBatch<T>(
       await disk.remove(plan.entry.temp)
     }
     await native.syncPath(plans.values().next().value!.entry.temp, true)
-    await journal.persist(() => {
-      for (const plan of plans.values()) if (plan.discarded) journal.drop(plan.entry)
-    })
+    const retired = [...plans.values()].filter((plan) => plan.discarded).map((plan) => plan.entry)
+    const retire = () => {
+      for (const entry of retired) journal.drop(entry)
+    }
+    if (host.retire) host.retire(retire)
+    else await journal.persist(retire)
     return result
   } catch (error) {
     // A refused cohort can fall back to ordinary adoption. Make any already
