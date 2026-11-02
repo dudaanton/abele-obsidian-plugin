@@ -179,23 +179,47 @@ it.each([
           expect(range).not.toBeNull()
           const offset = Number(range![1]),
             length = Number(range![2]) - offset + 1
-          expect(length).toBeLessThanOrEqual(1024 * 1024)
-          reads.push({ offset, length })
-          const chunk = bytes.slice(offset, offset + length)
-          if (outcome === 'corrupt' && offset === 0) chunk[0] ^= 1
-          return new Response(chunk, {
+          expect(offset + length).toBe(size)
+          let at = offset
+          // One suffix response, still produced in bounded network buffers.
+          const body = new ReadableStream<Uint8Array>(
+            {
+              pull(controller) {
+                if (at === size) {
+                  controller.close()
+                  return
+                }
+                const end = Math.min(at + 1024 * 1024, size)
+                const chunk = bytes.slice(at, end)
+                if (outcome === 'corrupt' && at === 0) chunk[0] ^= 1
+                at = end
+                controller.enqueue(chunk)
+              },
+            },
+            { highWaterMark: 0 }
+          )
+          return new Response(body, {
             status: 206,
-            headers: { 'content-range': `bytes ${offset}-${offset + length - 1}/${size}` },
+            headers: { 'content-range': `bytes ${offset}-${size - 1}/${size}` },
           })
         },
       }
     )
-    const openVersion = vi.fn(async () => ({
-      ...(await client.openVersion('sample-file', 'sample-version', { size, sha })),
-      assertUnchanged: async () => {
-        if (interrupted) throw new EngineError('offline', 'Sample interrupted transfer')
-      },
-    }))
+    const openVersion = vi.fn(async () => {
+      const source = await client.openVersion('sample-file', 'sample-version', { size, sha })
+      return {
+        ...source,
+        read: async (offset: number, length: number, signal?: AbortSignal) => {
+          // Count bounded SDK reads separately from the single streaming HTTP request.
+          expect(length).toBeLessThanOrEqual(1024 * 1024)
+          reads.push({ offset, length })
+          return source.read(offset, length, signal)
+        },
+        assertUnchanged: async () => {
+          if (interrupted) throw new EngineError('offline', 'Sample interrupted transfer')
+        },
+      }
+    })
     const wholeRead = vi.fn(async (_path: string): Promise<ArrayBuffer> => {
       throw new Error('Whole local read forbidden')
     })

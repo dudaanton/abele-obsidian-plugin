@@ -138,7 +138,7 @@ it('scans and publishes a large whole-read source once before the normal path co
     const receivedSha = 'c'.repeat(64)
     const http = Reflect.get(one.client, 'http')
     const close = vi.fn(async () => {})
-    vi.spyOn(http, 'openRange').mockResolvedValue({
+    vi.spyOn(http, 'openDownload').mockResolvedValue({
       size: 4,
       read: async (_offset: number, length: number) => new Uint8Array(length),
       assertUnchanged: async () => {},

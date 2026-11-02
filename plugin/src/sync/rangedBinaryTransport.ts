@@ -115,9 +115,25 @@ export function rangedBinaryTransport(send: typeof fetch, chunkBytes = CHUNK): t
     const headers = new Headers(
       init?.headers ?? (input instanceof Request ? input.headers : undefined)
     )
-    if (method.toUpperCase() !== 'GET' || !binaryPath.test(url.pathname) || headers.has('range'))
-      return send(input, init)
+    if (method.toUpperCase() !== 'GET' || !binaryPath.test(url.pathname)) return send(input, init)
     const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
+    if (headers.has('range')) {
+      const range = /^bytes=(\d+)-(\d+)$/.exec(headers.get('range') ?? '')
+      if (!range) return send(input, init)
+      const start = Number(range[1]),
+        end = Number(range[2])
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start)
+        throw new Error('Invalid binary content range')
+      if (end - start + 1 <= chunkBytes) return send(input, init)
+      return boundedSuffixResponse(
+        send,
+        input,
+        { ...init, headers, signal },
+        start,
+        end,
+        chunkBytes
+      )
+    }
     headers.set('range', `bytes=0-${chunkBytes - 1}`)
     const first = await retryTransientOperation(
       () => send(input, { ...init, headers }),
@@ -147,4 +163,76 @@ export function rangedBinaryTransport(send: typeof fetch, chunkBytes = CHUNK): t
     responseHeaders.set('content-length', String(output.length))
     return binaryResponse(output, { status: 200, headers: responseHeaders })
   }
+}
+
+/** A buffering native bridge cannot receive a whole suffix at once. Present a
+ * continuous response to the SDK while issuing only consumer-demanded ranges. */
+async function boundedSuffixResponse(
+  send: typeof fetch,
+  input: RequestInfo | URL,
+  init: RequestInit,
+  start: number,
+  end: number,
+  chunkBytes: number
+): Promise<Response> {
+  const signal = init.signal
+  let offset = start,
+    cancelled = false
+  const request = async () => {
+    signal?.throwIfAborted()
+    const headers = new Headers(init.headers)
+    headers.set('range', `bytes=${offset}-${Math.min(end, offset + chunkBytes - 1)}`)
+    return send(input, { ...init, headers })
+  }
+  let pending: Response | undefined = await request()
+  if (pending.status !== 206) return pending
+  const firstRange = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(pending.headers.get('content-range') ?? '')
+  const total = firstRange ? Number(firstRange[3]) : NaN
+  const validate = async (response: Response) => {
+    if (
+      !Number.isSafeInteger(total) ||
+      total <= end ||
+      response.status !== 206 ||
+      response.headers.get('content-range') !==
+        `bytes ${offset}-${Math.min(end, offset + chunkBytes - 1)}/${total}`
+    ) {
+      await response.body?.cancel().catch(() => {})
+      throw new Error('Invalid binary content range')
+    }
+  }
+  await validate(pending)
+  const responseHeaders = new Headers(pending.headers)
+  responseHeaders.set('content-range', `bytes ${start}-${end}/${total}`)
+  responseHeaders.set('content-length', String(end - start + 1))
+  const body = new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        try {
+          signal?.throwIfAborted()
+          const response = pending ?? (await request())
+          pending = response
+          await validate(response)
+          // send is the bounded bridge port; never request an attachment-sized body.
+          const bytes = new Uint8Array(await response.arrayBuffer())
+          pending = undefined
+          signal?.throwIfAborted()
+          if (bytes.length !== Math.min(chunkBytes, end - offset + 1))
+            throw new Error('Invalid binary range body length')
+          if (cancelled) return
+          offset += bytes.length
+          controller.enqueue(bytes)
+          if (offset > end) controller.close()
+        } catch (error) {
+          if (!cancelled) controller.error(error)
+        }
+      },
+      async cancel() {
+        cancelled = true
+        await pending?.body?.cancel().catch(() => {})
+        pending = undefined
+      },
+    },
+    { highWaterMark: 0 }
+  )
+  return new Response(body, { status: 206, headers: responseHeaders })
 }

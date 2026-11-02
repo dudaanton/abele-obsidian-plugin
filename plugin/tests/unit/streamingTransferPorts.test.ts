@@ -32,24 +32,36 @@ it('downloads a virtual multi-GiB version through bounded transport and staging 
     expect(pendingAppend).toBe(false)
     const match = /^bytes=(\d+)-(\d+)$/.exec(new Headers(init?.headers).get('range')!)!
     const start = Number(match[1]),
-      end = Number(match[2]),
-      length = end - start + 1
-    expect(length).toBeLessThanOrEqual(MiB)
+      end = Number(match[2])
+    expect(end).toBe(size - 1)
     expect(start).toBe(offset)
     requests++
-    acquire(length)
-    let sent = false
-    const body = new ReadableStream<Uint8Array>({
-      pull(controller) {
-        if (!sent) {
-          sent = true
+    let sent = start,
+      retained = 0
+    // The HTTP response is one suffix; its buffers remain bounded and demand-driven.
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          expect(pendingAppend).toBe(false)
+          liveBytes -= retained
+          retained = 0
+          if (sent > end) {
+            controller.close()
+            return
+          }
+          const length = Math.min(MiB, end - sent + 1)
+          acquire(length)
+          retained = length
+          sent += length
           controller.enqueue(new Uint8Array(length))
-        } else {
-          liveBytes -= length
-          controller.close()
-        }
+        },
+        cancel() {
+          liveBytes -= retained
+          retained = 0
+        },
       },
-    })
+      { highWaterMark: 0 }
+    )
     return new Response(body, {
       status: 206,
       headers: { 'content-range': `bytes ${start}-${end}/${size}` },
@@ -94,7 +106,8 @@ it('downloads a virtual multi-GiB version through bounded transport and staging 
   }
   await downloadToStage(source, stage, identity, new TransferBudget())
   expect(committed).toBe(true)
-  expect(requests).toBe(Math.ceil(size / MiB))
+  // Streaming removes per-MiB HTTP requests without relaxing the buffer/no-read-ahead checks.
+  expect(requests).toBe(1)
   expect(liveBytes).toBe(0)
   expect(peakBytes).toBeLessThanOrEqual(2 * MiB)
 }, 60000)

@@ -217,7 +217,15 @@ it('yields while indexing scan sources and refreshing unchanged entries', async 
     sourceCode.replace(/^import .*;$/gm, '').replaceAll('export ', '') +
       '; return typeof sourcesFromScanCooperative === "function" ? sourcesFromScanCooperative : sourcesFromScan'
   )(ScanWork, scanScheduling)
-  await fromScan({}, scan, {})
+  // Source indexing now waits for first use, then runs once cooperatively.
+  const indexed = await fromScan(
+    { stat: async () => ({ size: 0, mtime: 0 }), read: async () => new Uint8Array() },
+    scan,
+    {}
+  )
+  expect(steps).toBe(0)
+  await indexed.bytes('sha-0')
+  await indexed.bytes('sha-1')
   expect(steps).toBe(hashes.size)
   steps = 0
   const pusher = sample(version, 'pusher.js')
@@ -233,6 +241,7 @@ it('yields while indexing scan sources and refreshing unchanged entries', async 
   let reads = 0
   await refresh.call(
     {
+      opts: {},
       state: {
         get: async () => {
           reads++

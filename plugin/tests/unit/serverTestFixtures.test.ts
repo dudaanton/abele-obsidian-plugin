@@ -43,7 +43,9 @@ describe('server-backed fast-tier fixture gate', () => {
   })
   it('skips only the files that require an absent fixture', () => {
     const skipped = missingServerTests({})
-    expect(skipped).toHaveLength(16)
+    // The native suffix-stream benchmark is also backed by the pinned server.
+    expect(skipped).toHaveLength(17)
+    expect(skipped).toContain('tests/integration/nativeLargePull.test.ts')
     expect(skipped).toContain('tests/integration/nativeStoppedScopedRestart.test.ts')
     expect(skipped).toContain('tests/integration/serverDeleteServer.test.ts')
     expect(skipped).toContain('tests/integration/interruptedMoveExchange.test.ts')
