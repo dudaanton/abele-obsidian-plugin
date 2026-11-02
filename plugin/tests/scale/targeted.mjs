@@ -1,4 +1,6 @@
 /** A content-request pacer outside the renderer; metadata and commits are never delayed. */
+import { longTaskBudget } from './oracles.mjs'
+
 export function contentRequestDelay(method, path, now, next, spacing) {
   if (method !== 'GET' || !/^\/v2\/files\/[^/]+\/content$/.test(path)) return { delay: 0, next }
   const begin = Math.max(now, next)
@@ -38,7 +40,7 @@ export function targetedBudgets(report) {
     B: /restart device|synced restart/,
     C: /offline|stopped-app changes/,
     D: /crash/,
-    E: /verification/,
+    E: /verification|production bundle/,
   }
   const conditions = {
     A: t.A?.complete,
@@ -50,18 +52,27 @@ export function targetedBudgets(report) {
     D: t.D?.complete && t.D.tokenPresent && t.D.commitCut,
     E:
       t.E?.complete &&
+      (!report.productionLoad || (report.productionLoad.primaryIdle && report.productionLoad.peerIdle)) &&
       report.installedFileReadbackBytes === 0 &&
       (report.unknownInstalledReadbackCount ?? 0) === 0 &&
       (!report.postSealProofRequired || report.postSealObservationComplete === true) &&
-      (report.longTasksReportOnly === true || !(report.profileCoverageRequired || report.longTaskAttribution?.length) || report.longTaskAttribution?.every(row => row.attributionPass)) &&
+      (!(report.profileCoverageRequired || report.longTaskAttribution?.length) ||
+        (Array.isArray(report.longTaskAttribution) && longTaskBudget(report.longTaskAttribution).failed === 0)) &&
       (!report.strictRestartWindows || report.strictRestartWindows.every(row => row.complete)) &&
       report.mismatches?.length === 0,
   }
-  return Object.entries(conditions).map(([name, passed]) => ({
+  const phases = Object.entries(conditions).map(([name, passed]) => ({
     name,
     status: passed && !errors.some((row) => phaseErrors[name].test(row.step)) ? 'PASS' : 'FAIL',
     reason: 'Completion and strict phase invariants; any observed error is a failure',
   }))
+  if (report.profileCoverageRequired || report.longTaskAttribution?.length) {
+    const taskBudget = longTaskBudget(report.longTaskAttribution)
+    phases.push({ name: 'long task ownership and budgets',
+      status: Array.isArray(report.longTaskAttribution) && taskBudget.failed === 0 ? 'PASS' : 'FAIL',
+      failed: taskBudget.failed, reason: 'Ours <= 50 ms during sync; plugin load <= 800 ms; every task attributed' })
+  }
+  return phases
 }
 
 /** Installation receipts establish a digest boundary; host indexing stays separately visible. */

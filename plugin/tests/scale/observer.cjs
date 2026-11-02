@@ -322,6 +322,9 @@ module.exports = class extends Plugin {
     try {
       const marks = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
+          if (/^abele:(?:eval|onload|layout)-(?:start|end)$/.test(entry.name))
+            emit({ event: 'plugin-load-mark', name: entry.name,
+              at: Math.round(performance.timeOrigin + entry.startTime) })
           if (entry.name === 'abele:onload-start')
             emit({
               event: 'plugin-load',

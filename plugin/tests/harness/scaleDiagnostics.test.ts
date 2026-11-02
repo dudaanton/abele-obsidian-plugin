@@ -7,8 +7,150 @@ import {
   rssSample,
   deadlinePlan,
   tracepointAdjustedTasks,
+  symbolizerFromMap,
 } from '../scale/diagnostics.mjs'
-import { budgets } from '../scale/oracles.mjs'
+import { budgets, longTaskVerdict } from '../scale/oracles.mjs'
+import { targetedBudgets } from '../scale/targeted.mjs'
+
+it.each([
+  ['ours during sync', 90, 'FAIL'],
+  ['plugin load', 799, 'PASS'],
+  ['plugin load', 801, 'FAIL'],
+  ['host-only', 900, 'PASS'],
+  ['harness-triggered', 900, 'PASS'],
+  ['unattributed', 90, 'FAIL'],
+])('applies the task owner budget to %s at %i ms', (owner, durationMs, status) => {
+  const row = { owner, durationMs, profileWindowComplete: owner !== 'unattributed' }
+  expect(longTaskVerdict(row).status).toBe(status)
+})
+
+it('fails a claimed host task when its profile window is incomplete', () => {
+  expect(longTaskVerdict({ owner: 'host-only', durationMs: 100,
+    profileWindowComplete: false }).status).toBe('FAIL')
+})
+
+it('enforces the same owner verdict in full and targeted runs', () => {
+  const longTaskAttribution = [{ owner: 'ours during sync', durationMs: 80,
+    profileWindowComplete: true }]
+  expect(budgets({ profileCoverageRequired: true, longTaskAttribution })
+    .find(row => row.name === 'long task ownership and budgets')?.status).toBe('FAIL')
+  expect(targetedBudgets({ profileCoverageRequired: true, longTaskAttribution,
+    targeted: { E: { complete: true } }, installedFileReadbackBytes: 0,
+    unknownInstalledReadbackCount: 0, mismatches: [] })
+    .find(row => row.name === 'long task ownership and budgets')?.status).toBe('FAIL')
+})
+
+it('charges evaluation to plugin load and later startup sync work to the sync budget', async () => {
+  const tasks = [
+    { event: 'long-task', device: '0', startedAt: 100, durationMs: 100 },
+    { event: 'long-task', device: '0', startedAt: 300, durationMs: 100 },
+  ]
+  const captures = [
+    { event: 'plugin-load-mark', name: 'abele:eval-start', device: '0', at: 120 },
+    { event: 'plugin-load-mark', name: 'abele:eval-end', device: '0', at: 190 },
+    { event: 'plugin-load', device: '0', at: 320 },
+    ...tasks.map((task, index) => ({ event: 'cpu-profile', device: '0',
+      startedAt: task.startedAt, endedAt: task.startedAt + task.durationMs,
+      path: String(index), clock: { beforeAt: 0, afterAt: 0, timestampMs: 0 } })),
+  ]
+  const rows = await profileSummary(tasks, captures, async path => ({
+    startTime: tasks[Number(path)].startedAt * 1000,
+    endTime: (tasks[Number(path)].startedAt + 100) * 1000,
+    nodes: [{ id: 1, callFrame: { functionName: 'sync', url: 'plugin:abele' } }],
+    samples: [1], timeDeltas: [50000] }))
+  expect(rows.map(row => row.owner)).toEqual(['plugin load', 'ours during sync'])
+})
+
+it('classifies GC through its parent and leaves a parentless native sample unknown', async () => {
+  const tasks = [
+    { event: 'long-task', device: '0', startedAt: 0, durationMs: 100 },
+    { event: 'long-task', device: '1', startedAt: 0, durationMs: 100 },
+  ]
+  const captures = tasks.map((task) => ({ event: 'cpu-profile', device: task.device,
+    startedAt: 0, endedAt: 100, path: task.device, continuous: true }))
+  const rows = await profileSummary(tasks, captures, async (path) => path === '0' ? ({
+    nodes: [
+      { id: 1, children: [2], callFrame: { functionName: 'allocate', url: 'plugin:abele' } },
+      { id: 2, callFrame: { functionName: '(garbage collector)', url: '' } },
+    ], samples: [2], timeDeltas: [50000],
+  }) : ({ nodes: [{ id: 1, callFrame: { functionName: 'native', url: '' } }],
+    samples: [1], timeDeltas: [50000] }))
+  expect(rows[0].samplesBySource.abele).toBe(1)
+  expect(rows[1].owner).toBe('unattributed')
+})
+
+it('does not assign a plugin owner when the same task has unresolved samples', async () => {
+  const tasks = [{ event: 'long-task', device: '0', startedAt: 0, durationMs: 100 }]
+  const captures = [{ event: 'cpu-profile', device: '0', startedAt: 0, endedAt: 100,
+    path: 'sample', continuous: true,
+    clock: { beforeAt: 0, afterAt: 0, timestampMs: 0 } }]
+  const rows = await profileSummary(tasks, captures, async () => ({
+    startTime: 0, endTime: 100000,
+    nodes: [
+      { id: 1, callFrame: { functionName: 'sync', url: 'plugin:abele' } },
+      { id: 2, callFrame: { functionName: '(program)', url: '' } },
+    ], samples: [1, 2], timeDeltas: [50000, 50000],
+  }))
+  expect(rows[0].samplesBySource).toEqual({ abele: 1, unknown: 1 })
+  expect(rows[0].owner).toBe('unattributed')
+})
+
+it('resolves a generated plugin frame through the exact external map', () => {
+  const symbolize = symbolizerFromMap({ version: 3, file: 'main.js', sources: ['src/sync/example.ts'],
+    names: ['prepareInventory'], mappings: 'AAAAA' })
+  expect(symbolize({ url: 'plugin:abele', lineNumber: 0, columnNumber: 0,
+    functionName: 'a' })).toMatchObject({ originalSource: 'src/sync/example.ts',
+    originalName: 'prepareInventory' })
+})
+
+it('records rotation gaps and starts the next capture before saving the previous one', async () => {
+  const calls: string[] = [], events = []
+  const profiler = diagnostics.createStallProfiler({ continuous: true, maxCaptureMs: 100,
+    command: async (name: string) => { calls.push(name); return { profile: { nodes: [] } } },
+    save: async () => { calls.push('save'); return 'sample' },
+    emit: (row) => events.push(row) })
+  profiler.heartbeat(0)
+  await profiler.poll(0)
+  await profiler.poll(101)
+  expect(calls).toEqual(['Profiler.start', 'Profiler.stop', 'Profiler.start', 'save'])
+  expect(events).toContainEqual(expect.objectContaining({ event: 'cpu-profile-gap',
+    reason: 'rotation' }))
+  await profiler.close(102)
+})
+
+it('keeps a running profiler across a reload in the same renderer', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const { runInNewContext } = await import('node:vm')
+  const { EventEmitter } = await import('node:events')
+  const source = await readFile(new URL('../scale/diagnostics.cjs', import.meta.url), 'utf8')
+  const wc = new EventEmitter() as any
+  let attached = false
+  const calls: string[] = []
+  wc.debugger = { isAttached: () => attached, attach: () => { attached = true },
+    detach: () => { attached = false }, sendCommand: async (name: string) => {
+      calls.push(name)
+      return name === 'Performance.getMetrics' ?
+        { metrics: [{ name: 'Timestamp', value: 1 }] } : { profile: { nodes: [] } }
+    } }
+  const module = { exports: {} }
+  runInNewContext(source, { module, exports: module.exports, Date, setInterval: () => 1,
+    clearInterval() {}, require: (name: string) => {
+      if (name === 'electron') return { webContents: { fromId: () => wc }, ipcMain: new EventEmitter() }
+      if (name === 'node:crypto') return { randomUUID: () => 'sample' }
+      if (name === './evidence-writer.cjs') return { writerFor: () => ({ enqueue() {} }) }
+      if (name === 'node:fs') return { mkdirSync() {}, writeFileSync() {} }
+      throw Error(name)
+    } })
+  const api = module.exports as any
+  const config = JSON.stringify({ evidence: 'sample', device: '0', continuousCpu: true,
+    javascriptHashTracepoints: [], profileDirectory: '/sample' })
+  const first = await api.watch(7, config)
+  const second = await api.watch(7, config)
+  expect(second).toBe(first)
+  expect(calls.filter(name => name === 'Profiler.start')).toHaveLength(1)
+  expect(calls.filter(name => name === 'Profiler.stop')).toHaveLength(0)
+  await api.unwatch(first)
+})
 
 it('keeps a large activity snapshot in bounded receipts without dropping refusals or events', () => {
   const refused = Array.from({ length: 33000 }, (_, i) => ({

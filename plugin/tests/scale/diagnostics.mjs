@@ -1,7 +1,25 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import diagnostics from './diagnostics.cjs'
+import { SourceMapConsumer } from 'source-map-js'
 const exec = promisify(execFile)
+export function symbolizerFromMap(map) {
+  const consumer = new SourceMapConsumer(map)
+  const cache = new Map()
+  return (frame) => {
+    if (!/plugin:abele(?:[/:]|$)/.test(frame.url ?? '')) return frame
+    const key = `${frame.lineNumber}:${frame.columnNumber}`
+    let original = cache.get(key)
+    if (!original) {
+      original = consumer.originalPositionFor({ line: frame.lineNumber + 1,
+        column: frame.columnNumber })
+      cache.set(key, original)
+    }
+    return original?.source ? { ...frame, generatedName: frame.functionName,
+      functionName: original.name ?? frame.functionName,
+      originalSource: original.source, originalLine: original.line,
+      originalName: original.name ?? frame.functionName } : frame
+  }
+}
 export function noticeSummary(entries) {
   const counts = { host: 0, abele: 0, otherPlugin: 0, unknown: 0, total: 0 }
   for (const e of entries.filter((e) => e.event === 'notice')) {
@@ -54,7 +72,7 @@ export function sampleMemory(rootPid) {
     rssSample(r.stdout, rootPid)
   )
 }
-export async function profileSummary(tasks, captures, load) {
+export async function profileSummary(tasks, captures, load, symbolize = (frame) => frame) {
   const cache = new Map()
   const results = []
   for (const task of tasks.filter((e) => e.event === 'long-task')) {
@@ -67,6 +85,7 @@ export async function profileSummary(tasks, captures, load) {
     )
     const counts = {},
       frames = []
+    let loaderSample = false
     const intervals = []
     for (const capture of matches) {
       if (!cache.has(capture.path))
@@ -107,38 +126,59 @@ export async function profileSummary(tasks, captures, load) {
         const visited = new Set()
         while (node && !visited.has(node.id)) {
           visited.add(node.id)
-          if (node.callFrame?.url) stack.push(node.callFrame)
+          if (node.callFrame) stack.push(symbolize(node.callFrame))
           node = nodes.get(parents.get(node.id))
         }
         const observerFrame = stack.findIndex((f) =>
-          /scale-observer|reindex\.cjs|diagnostics\.cjs/.test(f.url)
+          /scale-observer|reindex\.cjs|diagnostics\.cjs/.test(f.url ?? '')
         )
-        const pluginFrame = stack.findIndex((f) => /plugin:abele(?:[/:]|$)/.test(f.url))
+        const pluginFrame = stack.findIndex((f) => /plugin:abele(?:[/:]|$)/.test(f.url ?? ''))
+        loaderSample ||= stack.some(f => /loadPlugin|loadManifest/.test(f.functionName ?? ''))
         const source =
           observerFrame >= 0 && (pluginFrame < 0 || observerFrame < pluginFrame)
             ? 'harness'
-            : stack.length
-              ? diagnostics.classifyOrigin(
-                  stack.map((f) => `    at ${f.functionName} (${f.url}:1:1)`).join('\n')
-                )
-              : 'unknown'
+            : pluginFrame >= 0 ? 'abele'
+              : stack.some(f => /plugin:/.test(f.url ?? '')) ? 'other-plugin'
+                : stack.some(f => /app:\/\/obsidian\.md\//.test(f.url ?? '')) ? 'host' : 'unknown'
         counts[source] = (counts[source] ?? 0) + 1
-        if (frames.length < 20 && stack.length) frames.push({ source, stack })
+        if (stack.length && (frames.length < 20 || !frames.some(row => row.source === source)))
+          frames.push({ source, stack })
       }
     }
     let coveredUntil = task.startedAt
     for (const [start, end] of intervals.sort((a, b) => a[0] - b[0]))
       if (start <= coveredUntil) coveredUntil = Math.max(coveredUntil, end)
-    const attributionPass = coveredUntil >= task.startedAt + task.durationMs &&
-      frames.length > 0 && !counts.unknown
+    const profileWindowComplete = coveredUntil >= task.startedAt + task.durationMs
+    const attributionPass = profileWindowComplete && frames.length > 0 && !counts.unknown &&
+      !counts['other-plugin']
+    const evalStarts = captures.filter(e => e.event === 'plugin-load-mark' &&
+      e.name === 'abele:eval-start' && e.device === task.device)
+    const loadMarker = evalStarts.length
+      ? evalStarts.some(start => {
+          const end = captures.find(e => e.event === 'plugin-load-mark' &&
+            e.name === 'abele:eval-end' && e.device === task.device && e.at >= start.at)
+          return task.startedAt < (end?.at ?? start.at + 60000) &&
+            task.startedAt + task.durationMs > start.at
+        })
+      : captures.some(e => e.event === 'plugin-load' && e.device === task.device &&
+          e.at >= task.startedAt && e.at <= task.startedAt + task.durationMs)
+    const owner = !attributionPass ? 'unattributed' :
+      (counts.abele || loaderSample) && (loadMarker || (loaderSample &&
+        (!evalStarts.length || task.startedAt < Math.min(...evalStarts.map(row => row.at)))))
+        ? 'plugin load' :
+      counts.abele ? 'ours during sync' :
+      !attributionPass ? 'unattributed' :
+      counts.harness ? 'harness-triggered' :
+      counts.host ? 'host-only' : 'unattributed'
     results.push({
       ...task,
       profiles: matches.map((c) => c.path),
       samplesBySource: counts,
       source: Object.keys(counts).length ? 'sampled' : 'unknown',
       frames,
+      owner,
       attributionPass,
-      profileWindowComplete: coveredUntil >= task.startedAt + task.durationMs,
+      profileWindowComplete,
       coverage: matches.some((capture) => capture.continuous)
         ? 'Continuous low-rate samples were armed before product load. Missing/censored segments and mixed stacks remain unknown.'
         : 'Tail samples only; the watchdog threshold and debugger command latency precede capture. Mixed stacks remain mixed, missing samples remain unknown.',

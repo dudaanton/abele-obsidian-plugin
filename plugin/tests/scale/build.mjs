@@ -2,7 +2,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createHash, randomUUID } from 'node:crypto'
-import { readFile, writeFile, mkdir, readdir, realpath, lstat, readlink } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, readdir, realpath, lstat, readlink, unlink, rmdir } from 'node:fs/promises'
 import { join, resolve, dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -11,6 +11,24 @@ const digest = (bytes, algorithm = 'sha256', encoding = 'hex') =>
   createHash(algorithm).update(bytes).digest(encoding)
 const json = async (path) => JSON.parse(await readFile(path, 'utf8'))
 const options = (cwd) => ({ cwd, maxBuffer: 32 * 1024 ** 2 })
+export const buildArtifactPath = (config, name) => join(dirname(config.buildReceipt), name)
+export function assertSameQualificationBundle(original, mapped) {
+  if (digest(original) !== digest(mapped)) throw new Error('Mapped qualification bundle changed')
+}
+async function removeGeneratedMaps(root) {
+  const build = join(root, 'build')
+  await unlink(join(build, 'main.js.map'))
+  const assets = join(build, 'assets')
+  const names = await readdir(assets).catch(error => {
+    if (error.code === 'ENOENT') return []
+    throw error
+  })
+  for (const name of names) {
+    if (!name.endsWith('.map')) throw new Error('Unexpected qualification asset')
+    await unlink(join(assets, name))
+  }
+  if (names.length) await rmdir(assets)
+}
 
 async function loggedExec(command, args, opts) {
   try {
@@ -185,6 +203,23 @@ export async function buildCandidate(config, execute = loggedExec) {
   if (branch) throw new Error('Candidate export must be detached')
   const cache = config.npmCache ?? join(repository, '.scratch/npm-cache')
   let sdk
+  let qualificationSourceMap
+  const mappedQualification = async () => {
+    const build = join(root, 'build')
+    const ordinary = {
+      main: await readFile(join(build, 'main.js')),
+      report: await readFile(join(build, 'build-report.json')),
+      manifest: await readFile(join(build, 'build-manifest.json')),
+    }
+    await run(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--mode',
+      'sharing-test', '--sourcemap', 'hidden'])
+    assertSameQualificationBundle(ordinary.main, await readFile(join(build, 'main.js')))
+    const map = await readFile(join(build, 'main.js.map'))
+    await removeGeneratedMaps(root)
+    await writeFile(join(build, 'build-report.json'), ordinary.report)
+    await writeFile(join(build, 'build-manifest.json'), ordinary.manifest)
+    return map
+  }
   if (config.sdkTarball) {
     sdk = await installSdkTarball(root, config.sdkTarball, execute, {
       cache,
@@ -197,12 +232,8 @@ export async function buildCandidate(config, execute = loggedExec) {
       "import {resolve} from 'node:path'; import {requireTypes} from './scripts/build-inputs.mjs'; requireTypes(resolve('..'))"
     await run(process.execPath, ['--input-type=module', '-e', types])
     await verifyPreparedSdk(root, sdk)
-    await run(process.execPath, [
-      'node_modules/vite/bin/vite.js',
-      'build',
-      '--mode',
-      'sharing-test',
-    ])
+    await run(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--mode', 'sharing-test'])
+    qualificationSourceMap = await mappedQualification()
     await run(process.execPath, ['--input-type=module', '-e', types])
   } else {
     await run('npm', [
@@ -215,6 +246,7 @@ export async function buildCandidate(config, execute = loggedExec) {
       ...(config.offline ? ['--offline'] : []),
     ])
     await run('npm', ['run', 'build:test'])
+    qualificationSourceMap = await mappedQualification()
     const pin = await json(join(root, 'scripts/sync-sdk-inputs.json'))
     sdk = {
       kind: pin.source ? 'pinned-archive' : 'registry',
@@ -233,6 +265,21 @@ export async function buildCandidate(config, execute = loggedExec) {
   await run(process.execPath, ['scripts/build-artifact.mjs', 'build', 'sharing-test'])
   const artifact = await json(join(root, 'build/build-manifest.json'))
   const receipt = await recordBuildReceipt({ ...config, pluginRoot: root }, sdk, artifact)
+  if (qualificationSourceMap)
+    receipt.qualificationMap = { sha256: digest(qualificationSourceMap),
+      bundleSha256: artifact.files['main.js'] }
+  if (config.scenarioConfig?.productionLoadProbe) {
+    const productionDirectory = join(config.output, 'production-build')
+    await run(process.execPath, ['node_modules/vite/bin/vite.js', 'build', '--mode',
+      'production', '--outDir', productionDirectory])
+    const bytes = await readFile(join(productionDirectory, 'main.js'))
+    receipt.productionArtifact = { sha256: digest(bytes), bytes: bytes.length,
+      sourceRevision: config.build, sdkVersion: sdk.version }
+  }
+  if (qualificationSourceMap) {
+    await mkdir(config.output, { recursive: true })
+    await writeFile(join(config.output, 'qualification-main.js.map'), qualificationSourceMap)
+  }
   receipt.sourceChanges = changes ? changes.split('\n') : []
   await writeFile(join(config.output, 'build-receipt.json'), JSON.stringify(receipt, null, 2))
   return receipt

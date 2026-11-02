@@ -35,6 +35,7 @@ import {
   sampleMemory,
   deadlinePlan,
   tracepointAdjustedTasks,
+  symbolizerFromMap,
 } from './diagnostics.mjs'
 import { appendFile } from 'node:fs/promises'
 import {
@@ -52,7 +53,7 @@ import { visibilityPayloadProgress, largeFileThroughput } from './payload-progre
 import { settleRestartDevices, controlTiming, strictWindowEvidence } from './restart.mjs'
 import { triggerComparisonAtRestart } from './restart-trigger.mjs'
 import { enablePluginWhenReady } from './startup-enable.mjs'
-import { validateBuildReceipt } from './build.mjs'
+import { validateBuildReceipt, buildArtifactPath } from './build.mjs'
 import { applyCombinedChanges } from './combined.mjs'
 import { planOfflineChanges, updateExpectedOfflineChanges } from './qualification-offline.mjs'
 import { verifyDirectoryChanges } from './directory-oracle.mjs'
@@ -1344,6 +1345,19 @@ export async function run(config) {
       Object.values(report.offlineCheck.deletedAbsent).every(Boolean)}
     if (report.failures.length)
       report.failure = 'Device settle checks failed; byte evidence was still collected'
+    if (config.targeted && config.productionLoadProbe) {
+      phase('production bundle load')
+      const production = await readFile(buildArtifactPath(config, 'production-build/main.js'))
+      report.productionLoad = { artifactSha256: sha(production), bundleBytes: production.length }
+      for (const device of devices)
+        await writeFile(join(device.root, '.obsidian/plugins/abele/main.js'), production)
+      report.productionLoad.startedAt = await start({ strict: true })
+      report.productionLoad.primaryIdle = await settle(devices[0], 'production bundle primary')
+      report.productionLoad.peerIdle = await settle(devices[1], 'production bundle peer')
+      report.productionLoad.activity = await Promise.all(devices.map(device => device.activityEvidence()))
+      await stop(false)
+      report.productionLoad.endedAt = Date.now()
+    }
     if (!config.targeted) {
     phase('control restart')
     for (const [index, device] of devices.entries()) {
@@ -1601,11 +1615,30 @@ export async function run(config) {
       report.hashTracepointSetup = entries.filter(
         (row) => row.event === 'javascript-hash-tracepoint-setup'
       )
-      report.longTaskAttribution = await profileSummary(entries, entries, loadEvidence)
-      report.tracepointAdjustedLongTasks = tracepointAdjustedTasks(
-        report.longTaskAttribution,
+      const sourceMap = config.continuousCpu
+        ? JSON.parse(await readFile(buildArtifactPath(config, 'qualification-main.js.map'), 'utf8')) : null
+      if (sourceMap) report.qualificationSourceMapSha256 = sha(Buffer.from(JSON.stringify(sourceMap)))
+      report.profileGaps = entries.filter(row =>
+        ['cpu-profile-gap', 'cpu-profile-unavailable'].includes(row.event))
+      const qualificationTasks = entries.filter(row => row.event === 'long-task' &&
+        (!report.productionLoad || row.startedAt < report.productionLoad.startedAt))
+      const productionTasks = entries.filter(row => row.event === 'long-task' &&
+        report.productionLoad && row.startedAt >= report.productionLoad.startedAt)
+      const qualificationProfiles = await profileSummary(qualificationTasks, entries, loadEvidence,
+        sourceMap ? symbolizerFromMap(sourceMap) : undefined)
+      const productionProfiles = await profileSummary(productionTasks, entries, loadEvidence)
+      report.longTaskAttribution = tracepointAdjustedTasks(
+        [...qualificationProfiles, ...productionProfiles].sort((a, b) => a.startedAt - b.startedAt),
         report.hashTracepointSetup
       )
+      report.tracepointAdjustedLongTasks = report.longTaskAttribution
+      if (report.productionLoad) {
+        report.productionLoad.tasks = report.longTaskAttribution.filter(row =>
+          row.startedAt >= report.productionLoad.startedAt &&
+          row.startedAt <= report.productionLoad.endedAt)
+        report.productionLoad.largestTaskMs = Math.max(0,
+          ...report.productionLoad.tasks.map(row => row.durationMs))
+      }
       for (const rebuild of report.reindexes) {
         rebuild.longTasks = report.longTaskAttribution.filter(
           (row) =>
@@ -1685,7 +1718,7 @@ export async function run(config) {
           report.cleanupFailure = true
         })
       report.profileCoverageRequired = config.continuousCpu === true
-      report.longTasksReportOnly = config.targeted === true && config.longTasksReportOnly === true
+      report.longTasksReportOnly = false
       const pullStartAt = report.phases.find(row => row.name === 'second device pull')?.at
       const observed = postSealEvidence(entries, '1', { untilAt: pullStartAt + report.peerInitialDownloadMs })
       const boundaries = report.interruptions.map(interruption => {

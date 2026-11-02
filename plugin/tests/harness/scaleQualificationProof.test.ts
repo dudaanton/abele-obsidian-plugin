@@ -411,9 +411,27 @@ it('exports the previous capture and acknowledges a fresh profile before each re
   profiler.heartbeat(0)
   await profiler.poll(1)
   await profiler.restart(2)
-  expect(calls).toEqual(['Profiler.start', 'Profiler.stop', 'save', 'Profiler.start'])
+  expect(calls).toEqual(['Profiler.start', 'Profiler.stop', 'Profiler.start', 'save'])
   expect(profiler.running()).toBe(true)
   await profiler.close(3)
+})
+
+it('locates build artifacts beside the build receipt when run evidence has a separate root', async () => {
+  const { buildArtifactPath } = await import('../scale/build.mjs')
+  expect(buildArtifactPath({ buildReceipt: '/sample/build/build-receipt.json',
+    output: '/sample/run/results' }, 'production-build/main.js'))
+    .toBe('/sample/build/production-build/main.js')
+  expect(buildArtifactPath({ buildReceipt: '/sample/build/build-receipt.json',
+    output: '/sample/run/results' }, 'qualification-main.js.map'))
+    .toBe('/sample/build/qualification-main.js.map')
+})
+
+it('refuses a source map built from different qualification bytes', async () => {
+  const { assertSameQualificationBundle } = await import('../scale/build.mjs')
+  expect(() => assertSameQualificationBundle(Buffer.from('sample bundle'),
+    Buffer.from('sample bundle'))).not.toThrow()
+  expect(() => assertSameQualificationBundle(Buffer.from('sample bundle'),
+    Buffer.from('different bundle'))).toThrow('Mapped qualification bundle changed')
 })
 
 it('exports pending and acknowledged intent outcomes without unrelated metadata', async () => {

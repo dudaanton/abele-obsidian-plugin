@@ -129,18 +129,25 @@ exports.createStallProfiler = function ({
     startAcknowledgedAt,
     busy = false,
     disabled = false
-  const finish = async (at) => {
+  const finish = async (at, resume = false, reason = 'rotation') => {
     const start = startedAt
+    const startAck = startAcknowledgedAt
     startedAt = undefined
+    const stopRequestedAt = Date.now()
     const result = await command('Profiler.stop')
     const stopAcknowledgedAt = Date.now()
+    if (resume) {
+      await begin(Date.now())
+      emit({ event: 'cpu-profile-gap', reason, startedAt: stopRequestedAt,
+        endedAt: startAcknowledgedAt })
+    }
     const path = await save(result.profile)
     emit({
       event: 'cpu-profile',
       continuous,
       clock,
       startedAt: start,
-      startAcknowledgedAt,
+      startAcknowledgedAt: startAck,
       endedAt: at,
       stopAcknowledgedAt,
       path,
@@ -159,8 +166,8 @@ exports.createStallProfiler = function ({
       if (disabled) throw new Error('Continuous profiler unavailable')
       busy = true
       try {
-        if (startedAt !== undefined) await finish(at)
-        await begin(at)
+        if (startedAt !== undefined) await finish(at, true, 'restart')
+        else await begin(at)
       } catch (error) {
         disabled = true
         emit({ event: 'cpu-profile-unavailable' })
@@ -178,7 +185,7 @@ exports.createStallProfiler = function ({
           startedAt !== undefined &&
           ((!continuous && heartbeatAt >= startedAt) || at - startedAt >= maxCaptureMs)
         )
-          await finish(at)
+          await finish(at, continuous)
         if (startedAt === undefined && (continuous || at - heartbeatAt >= stallMs)) {
           await begin(at)
         }
@@ -199,7 +206,7 @@ exports.createStallProfiler = function ({
       disabled = true
       if (startedAt !== undefined)
         try {
-          await finish(at)
+          await finish(at, false, 'close')
         } catch {
           emit({ event: 'cpu-profile-unavailable' })
         }
@@ -250,7 +257,8 @@ exports.watch = async function (id, serializedConfig) {
     channel = `scale-heartbeat-${id}-${randomUUID()}`
   const existing = continuousChannels.get(id)
   if (config.continuousCpu && existing?.evidence === config.evidence) {
-    await existing.restart()
+    // The same webContents survives a reload. Keep its active CPU capture across
+    // generations; stopping it here would leave the new bundle's load unprofiled.
     return existing.channel
   }
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- The renderer and profiler share one host-owned append queue.
@@ -478,8 +486,7 @@ exports.watch = async function (id, serializedConfig) {
     watches.set(channel, close)
     coverageWatches.set(channel, { begin: beginCoverage, end: endCoverage })
     ownedContents.set(id, close)
-    if (config.continuousCpu) continuousChannels.set(id, { channel, evidence: config.evidence,
-      restart: () => profiler.restart(Date.now()) })
+    if (config.continuousCpu) continuousChannels.set(id, { channel, evidence: config.evidence })
     return channel
   } catch {
     await close()

@@ -105,6 +105,23 @@ export function attributePauseRequests(requests, traces) {
   }
 }
 
+export function longTaskVerdict(task) {
+  const owner = task.owner ?? 'unattributed'
+  const durationMs = task.withoutTracepointSetupMs ?? task.durationMs
+  const limit = owner === 'plugin load' ? 800 : 50
+  const pass = task.profileWindowComplete === true &&
+    (owner === 'host-only' || owner === 'harness-triggered' ||
+      (owner === 'plugin load' && durationMs <= limit))
+  return { owner, durationMs, limit, status: pass ? 'PASS' : 'FAIL' }
+}
+
+export function longTaskBudget(tasks) {
+  const verdicts = (tasks ?? [])
+    .filter(row => (row.withoutTracepointSetupMs ?? row.durationMs) > 50)
+    .map(longTaskVerdict)
+  return { verdicts, failed: verdicts.filter(row => row.status === 'FAIL').length }
+}
+
 export function budgets(m) {
   const check = (name, value, limit, pass) => ({
     name,
@@ -118,10 +135,10 @@ export function budgets(m) {
     ...(m.strictRestartWindows ? [check('clean strict restart windows',
       m.strictRestartWindows.filter(row => !row.complete).length, 0,
       m.strictRestartWindows.length === 2 && m.strictRestartWindows.every(row => row.complete))] : []),
-    ...(m.profileCoverageRequired || m.longTaskAttribution?.length ? [check('long task attribution',
-      m.longTaskAttribution?.filter(row => !row.attributionPass).length,
-      'every task has covering samples and stacks',
-      Array.isArray(m.longTaskAttribution) && m.longTaskAttribution.every(row => row.attributionPass))] : []),
+    ...(m.profileCoverageRequired || m.longTaskAttribution?.length ? [check('long task ownership and budgets',
+      longTaskBudget(m.longTaskAttribution).failed,
+      'ours <= 50 ms during sync; plugin load <= 800 ms; all tasks attributed',
+      Array.isArray(m.longTaskAttribution) && longTaskBudget(m.longTaskAttribution).failed === 0)] : []),
     ...(m.postSealProofRequired ? [check('installed file read-back', m.installedFileReadbackBytes,
       '0 unexplained bytes; explicit boundary-proven recovery only',
       m.postSealObservationComplete === true && m.installedFileReadbackBytes === 0 &&
