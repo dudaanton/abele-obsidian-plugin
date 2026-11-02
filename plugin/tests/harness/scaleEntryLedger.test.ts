@@ -167,7 +167,7 @@ it('does not use a damaged ledger to prove absence of plugin entries', async () 
     expect(task.owner).toBe('unattributed')
   } finally { await rm(directory, { recursive: true }) }
 })
-it('charges the union of short entries without charging the host remainder', async () => {
+it('reports entry overlap but budgets the whole task containing plugin execution', async () => {
   const entries = [
     { event: 'plugin-entry-start', device: '0', generation: 'sample', id: 1, at: 20 },
     { event: 'plugin-entry-end', device: '0', generation: 'sample', id: 1, at: 40 },
@@ -177,11 +177,11 @@ it('charges the union of short entries without charging the host remainder', asy
   const [row] = await profileSummary([{ event: 'long-task', device: '0', startedAt: 10,
     durationMs: 90 }], [...coverage, ...entries], async () => null)
   expect(row.pluginEntryOverlapMs).toBe(20)
-  expect(longTaskVerdict(row)).toMatchObject({ status: 'PASS', durationMs: 20 })
+  expect(longTaskVerdict(row)).toMatchObject({ status: 'FAIL', durationMs: 90 })
 })
-it('applies the load budget to plugin entry time within a longer host task', () => {
+it('applies the load budget to the whole task including host loading work', () => {
   expect(longTaskVerdict({ owner: 'plugin load', durationMs: 1600,
-    entryLedgerComplete: true, pluginEntryOverlapMs: 600 }).status).toBe('PASS')
+    entryLedgerComplete: true, pluginEntryOverlapMs: 600 }).status).toBe('FAIL')
   expect(longTaskVerdict({ owner: 'plugin load', durationMs: 1600,
     entryLedgerComplete: true, pluginEntryOverlapMs: 900 }).status).toBe('FAIL')
 })
@@ -234,7 +234,7 @@ it('attributes a task dominated by a synchronous ledger flush without hiding a r
   expect(pluginRemainder.pluginEntryOverlapMs).toBe(75)
   expect(longTaskVerdict(pluginRemainder).status).toBe('FAIL')
 })
-it('uses measured ledger export time when profile samples conflict inside that export', async () => {
+it('keeps conflicting plugin CPU and ledger export evidence unattributed', async () => {
   const captures = [...coverage,
     { event: 'plugin-entry-ledger-overhead', device: '0', generation: 'sample',
       startedAt: 0, endedAt: 143 },
@@ -246,8 +246,8 @@ it('uses measured ledger export time when profile samples conflict inside that e
       nodes: [{ id: 1, callFrame: { functionName: 'sample', url: 'plugin:abele' } }],
       samples: [1], timeDeltas: [50000] }))
   expect(row.entryLedgerConflict).toBe(true)
-  expect(row.owner).toBe('harness-triggered')
-  expect(longTaskVerdict(row).status).toBe('PASS')
+  expect(row.owner).toBe('unattributed')
+  expect(longTaskVerdict(row).status).toBe('FAIL')
 })
 it('drains entry start and completion through the asynchronous sink at quit', async () => {
   const { createEntryLedger } = require('../scale/entry-ledger.cjs')

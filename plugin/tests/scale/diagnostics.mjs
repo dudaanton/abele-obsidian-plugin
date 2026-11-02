@@ -109,9 +109,11 @@ export async function allocationAttribution(task, captures, load, symbolize = fr
       if (node.callFrame) stack.push(symbolize(node.callFrame))
       node = nodes.get(parents.get(node.id))
     }
-    const frame = stack.find(row => /scale-observer|entry-ledger\.cjs|diagnostics\.cjs|reindex\.cjs|plugin:abele(?:[/:]|$)|^app:\/\/obsidian\.md\//.test(row.url ?? ''))
-    const owner = !frame ? 'unknown' : /scale-observer|entry-ledger\.cjs|diagnostics\.cjs|reindex\.cjs/.test(frame.url)
-      ? 'harness' : /plugin:abele(?:[/:]|$)/.test(frame.url) ? 'plugin' : 'host'
+    const harness = stack.findIndex(row => /scale-observer|entry-ledger\.cjs|diagnostics\.cjs|reindex\.cjs/.test(row.url ?? ''))
+    const plugin = stack.findIndex(row => /plugin:abele(?:[/:]|$)/.test(row.url ?? ''))
+    const owner = harness >= 0 && (plugin < 0 || harness < plugin) ? 'harness' :
+      plugin >= 0 ? 'plugin' : stack.some(row => /^app:\/\/obsidian\.md\//.test(row.url ?? ''))
+        ? 'host' : 'unknown'
     splitBytes[owner] += sample.size
     stacks.push({ owner, sampledBytes: sample.size, stack })
   }
@@ -139,8 +141,8 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
     )
     const counts = {},
       frames = []
-    let loaderSample = false, gcSampleMs = 0, totalSampleMs = 0, nonGcPluginMs = 0, nonGcUnknownMs = 0
-    const intervals = []
+    let loaderSample = false, gcSampleMs = 0, totalSampleMs = 0, nonGcPluginMs = 0
+    const intervals = [], pluginSamples = []
     for (const capture of matches) {
       if (!cache.has(capture.path))
         cache.set(
@@ -195,13 +197,13 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
               : stack.some(f => /plugin:/.test(f.url ?? '')) ? 'other-plugin'
                 : stack.some(f => /app:\/\/obsidian\.md\//.test(f.url ?? '')) ? 'host' : 'unknown'
         counts[source] = (counts[source] ?? 0) + 1
+        if (source === 'abele') pluginSamples.push([at, latestAt])
         const weight = Math.max(0, Math.min(at, task.startedAt + task.durationMs) -
           Math.max(task.startedAt, at - (profile.timeDeltas?.[i] ?? 0) / 1000))
         totalSampleMs += weight
         const gc = stack[0]?.functionName === '(garbage collector)'
         if (gc) gcSampleMs += weight
         else if (source === 'abele') nonGcPluginMs += weight
-        else if (source === 'unknown' || source === 'other-plugin') nonGcUnknownMs += weight
         if (stack.length && (frames.length < 20 || !frames.some(row => row.source === source)))
           frames.push({ source, stack })
       }
@@ -231,37 +233,36 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
       !attributionPass ? 'unattributed' :
       counts.harness ? 'harness-triggered' :
       counts.host ? 'host-only' : 'unattributed'
+    const gcDominated = totalSampleMs > 0 && gcSampleMs > totalSampleMs / 2
     const ledger = entryLedgerEvidence(task, captures)
-    const entryLedgerConflict = ledger.complete && ledger.overlapMs === 0 && Boolean(counts.abele)
+    // A positive entry elsewhere in the same task cannot cover an omitted
+    // root. Compare each definite plugin sample with the recorded net spans.
+    const entryLedgerConflict = ledger.complete && pluginSamples.some(([at, latestAt]) =>
+      !ledger.pluginIntervals.some(([start, end]) => at >= start - 1 && latestAt <= end + 1))
     // Ledger instrumentation can occupy nearly an entire reported task.
     // Only excuse them when no plugin entry remains and the remainder fits
     // the one-millisecond rounding of the ledger's epoch timestamps.
     const ledgerHarnessTask = ledger.complete && ledger.overlapMs === 0 &&
       ledger.harnessMs > 0 && task.durationMs - ledger.harnessMs <= 1
-    if (ledger.complete && ledger.overlapMs > 0)
+    if (entryLedgerConflict) owner = 'unattributed'
+    else if (ledger.overlapMs > 0)
       owner = loadMarker ? 'plugin load' : 'ours during sync'
-    else if (ledgerHarnessTask) owner = 'harness-triggered'
-    else if (entryLedgerConflict) owner = 'unattributed'
+    else if (counts.abele && ((!counts.unknown && !counts['other-plugin']) ||
+      gcDominated && nonGcPluginMs > 50))
+      owner = loadMarker || loaderSample ? 'plugin load' : 'ours during sync'
+    else if (loadMarker) owner = 'plugin load'
+    else if (ledgerHarnessTask && !counts.abele) owner = 'harness-triggered'
     else if (ledger.complete && ledger.lifecycle && owner === 'unattributed') owner = 'host-only'
-    const gcDominated = totalSampleMs > 0 && gcSampleMs > totalSampleMs / 2
+    if (ledger.partial && !ledger.overlapMs && !counts.abele && !loadMarker)
+      owner = 'unattributed'
     const allocations = gcDominated ? await allocationAttribution(task, captures, load, symbolize) : undefined
-    const pluginLoadTask = owner === 'plugin load' || loadMarker
-    let attributionSource = ledger.complete && (ledger.overlapMs > 0 || ledger.lifecycle || ledgerHarnessTask)
-      ? 'entry ledger' : 'CPU profile'
-    if (gcDominated && !ledgerHarnessTask) {
-      if (nonGcPluginMs > 50) {
-        owner = pluginLoadTask ? 'plugin load' : 'ours during sync'
-        attributionSource = 'CPU non-GC samples'
-      }
-      else if (nonGcUnknownMs > 50) owner = 'unattributed'
-      else {
-        owner = pluginLoadTask && allocations.owner ? 'plugin load' :
-          allocations.owner === 'plugin' ? 'ours during sync' :
-          allocations.owner === 'harness' ? 'harness-triggered' :
-            allocations.owner === 'host' ? 'host-only' : 'unattributed'
-        attributionSource = 'V8 allocation samples'
-      }
-    }
+    const attributionSource = entryLedgerConflict ? 'Conflicting CPU and entry evidence' :
+      ledger.partial && owner === 'unattributed' ? 'Partial host-method coverage' :
+        ledger.overlapMs > 0 || ledger.complete && (ledger.lifecycle || ledgerHarnessTask)
+          ? 'entry ledger' : 'CPU profile'
+    // Preceding allocation samples describe a window, not the cause of a later
+    // collection. Keep the split for diagnosis; it never promotes/exempts an
+    // owner or resolves a CPU/entry contradiction.
     results.push({
       ...task,
       profiles: matches.map((c) => c.path),
@@ -292,12 +293,13 @@ export function entryLedgerEvidence(task, evidence) {
   const end = task.startedAt + task.durationMs
   const rows = evidence.filter(row => row.device === task.device)
   const ready = rows.filter(row => row.event === 'plugin-entry-ledger-ready' &&
-    row.complete && row.coverageStartedAt <= task.startedAt).sort((a, b) => b.at - a.at)[0]
-  if (!ready) return { complete: false, overlapMs: 0, lifecycle: false }
+    row.at <= end && row.coverageStartedAt <= task.startedAt).sort((a, b) => b.at - a.at)[0]
+  if (!ready) return { complete: false, overlapMs: 0, lifecycle: false, pluginIntervals: [] }
   const generation = rows.filter(row => row.generation === ready.generation)
-  const complete = generation.some(row => row.event === 'plugin-entry-ledger-checkpoint' &&
-    row.complete && row.at >= end)
-  if (!complete) return { complete: false, overlapMs: 0, lifecycle: false }
+  const partial = generation.some(row =>
+      row.event === 'plugin-entry-ledger-partial' && row.at <= end)
+  const complete = ready.complete && !partial && generation.some(row =>
+    row.event === 'plugin-entry-ledger-checkpoint' && row.complete && row.at >= end)
   const ends = new Map(generation.filter(row => row.event === 'plugin-entry-end').map(row => [row.id, row.at]))
   const spans = generation.filter(row => row.event === 'plugin-entry-start').map(row =>
     [Math.max(row.at, task.startedAt), Math.min(ends.get(row.id) ?? end, end)])
@@ -316,12 +318,25 @@ export function entryLedgerEvidence(task, evidence) {
   for (const [start, stop] of spans) for (const [a, b] of overhead)
     if (Math.min(stop, b) > Math.max(start, a)) excluded.push([Math.max(start, a), Math.min(stop, b)])
   const overlapMs = Math.max(0, union(spans) - union(excluded))
+  const netSpans = spans.flatMap(([start, stop]) => {
+    let parts = [[start, stop]]
+    for (const [a, b] of overhead) parts = parts.flatMap(([left, right]) =>
+      b <= left || a >= right ? [[left, right]] :
+        [[left, Math.min(a, right)], [Math.max(b, left), right]].filter(([x, y]) => y > x))
+    return parts
+  })
+  const pluginIntervals = []
+  for (const [start, stop] of netSpans.sort((a, b) => a[0] - b[0])) {
+    const previous = pluginIntervals.at(-1)
+    if (previous && start <= previous[1]) previous[1] = Math.max(previous[1], stop)
+    else pluginIntervals.push([start, stop])
+  }
   const evalStart = rows.find(row => row.event === 'plugin-load-mark' &&
     row.name === 'abele:eval-start' && row.at >= ready.at)
   const startup = ready.pluginAbsent && task.startedAt < (evalStart?.at ?? ready.at)
   const teardown = generation.some(row => row.event === 'renderer-lifecycle' &&
     row.kind === 'teardown' && row.at <= end)
-  return { complete, overlapMs, harnessMs: union(overhead),
+  return { complete, partial, overlapMs, pluginIntervals, harnessMs: union(overhead),
     wrapperMs: union(overhead.filter(row => row[2] === 'wrapper self-time')),
     exportMs: union(overhead.filter(row => row[2] === 'batch export')),
     lifecycle: startup || teardown }

@@ -59,7 +59,8 @@ module.exports = class extends Plugin {
       // unloaded later in the host's component order.
       window.addEventListener('unload', () => {
         entryLedger.teardown()
-        void globalThis.__scaleStopProfiles?.()
+        // Navigation also emits unload. The host watch owns profiling until
+        // webContents destruction, and must cover the next renderer generation.
         restore()
       }, { once: true })
       this.register(() => entryLedger.flush())

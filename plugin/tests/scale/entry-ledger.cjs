@@ -12,12 +12,13 @@ exports.createEntryLedger = function ({ file, write, device, generation = random
   let used = 0, sequence = 0, depth = 0, closed = false, dropped = 0
   let pending = Promise.resolve(), failure
   let bridgeReady = !requireProductBridge
+  const partialReasons = new Set()
   const append = text => {
     if (write) write(text)
     else pending = pending.then(() => fs.promises.appendFile(file, text)).catch(error => { failure = error })
   }
   const ready = () => append(JSON.stringify({ device, generation, at: now(),
-    complete: bridgeReady, productRootsReady: bridgeReady, pluginAbsent,
+    complete: bridgeReady && partialReasons.size === 0, productRootsReady: bridgeReady, pluginAbsent,
     event: 'plugin-entry-ledger-ready', coverageStartedAt: pluginAbsent ? performance.timeOrigin : epoch }) + '\n')
   const kindId = kind => {
     if (typeof kind === "number") return kind
@@ -48,7 +49,8 @@ exports.createEntryLedger = function ({ file, write, device, generation = random
     }
     used = 0
     const checkpoint = { device, generation, at: now(),
-      event: "plugin-entry-ledger-checkpoint", complete: bridgeReady && dropped === 0, dropped, sequence }
+      event: "plugin-entry-ledger-checkpoint", complete: bridgeReady && dropped === 0 && partialReasons.size === 0,
+      dropped, sequence, partialReasons: [...partialReasons] }
     const text = JSON.stringify({ device, generation, event: "plugin-entry-batch", epoch,
       kinds, records }) + "\n" + overhead.map(row => JSON.stringify(row) + "\n").join("") +
       JSON.stringify(checkpoint) + "\n"
@@ -78,6 +80,12 @@ exports.createEntryLedger = function ({ file, write, device, generation = random
   const api = {
     begin, end, flush, selfTime, selfStart: now, kindCode: kindId,
     invalidate() { dropped++ },
+    markPartial(reason) {
+      if (partialReasons.has(reason)) return
+      partialReasons.add(reason)
+      append(JSON.stringify({ device, generation, at: now(),
+        event: 'plugin-entry-ledger-partial', reason }) + '\n')
+    },
     productBridgeReady: () => bridgeReady,
     confirmProductBridge() { if (!bridgeReady) { bridgeReady = true; ready() } },
     active: () => depth > 0,
@@ -184,15 +192,20 @@ exports.installEntryLedger = function ({ ledger, target = globalThis, Events, Co
       }
       return original.call(this, event, fn)
     })
-  for (const name of ['off', 'removeListener'])
-    patch(EventEmitter?.prototype, name, original => function (event, fn) {
-      return original.call(this, event, wrappers.get(fn) ?? fn)
-    })
+  // Node removal already matches wrapper.listener. Substituting a cached
+  // callback here breaks once wrappers with a different registration identity.
   patch(Events?.prototype, 'off', original => function (name, fn) {
     arguments[1] = wrappers.get(fn) ?? fn
     return Reflect.apply(original, this, arguments)
   })
   registration(Workspace?.prototype, 'onLayoutReady', [0])
+  for (const name of ['registerView', 'registerEditorExtension', 'registerCodeMirror',
+    'registerEditorSuggest', 'addSettingTab'])
+    patch(Plugin?.prototype, name, original => function () {
+      if (this.manifest?.id === 'abele' || owned())
+        ledger.markPartial(`Host-invoked methods from ${name} are not fully instrumented`)
+      return Reflect.apply(original, this, arguments)
+    })
   for (const name of ['register', 'registerDomEvent', 'registerView', 'registerMarkdownPostProcessor',
     'registerMarkdownCodeBlockProcessor', 'registerCodeMirror', 'addRibbonIcon'])
     registration(Plugin?.prototype, name, [0, 1, 2])
@@ -254,7 +267,7 @@ exports.installEntryLedger = function ({ ledger, target = globalThis, Events, Co
   // Native async/await bypasses Promise.prototype.then. V8 promise hooks exposed
   // by Node cover those continuations, and native completion callbacks as well.
   if (asyncHooks) {
-    const capacity = asyncCapacity, ids = new Float64Array(capacity), entries = new Float64Array(capacity)
+    const capacity = asyncCapacity, ids = new Float64Array(capacity)
     // Async IDs can wrap onto a slot while an older resource is still live.
     // Preserve both: overwriting an active entry would lose its matching end
     // and leave every subsequent host job inside product ownership.
@@ -268,36 +281,49 @@ exports.installEntryLedger = function ({ ledger, target = globalThis, Events, Co
       return -1
     }
     const remove = slot => {
-      ids[slot] = 0; entries[slot] = 0
+      ids[slot] = 0
       // Reinsert the following cluster so a lookup never stops at a hole.
       let next = (slot + 1) % capacity
       for (let visited = 0; visited < capacity - 1 && ids[next]; visited++) {
-        const id = ids[next], entry = entries[next]
-        ids[next] = 0; entries[next] = 0
+        const id = ids[next]
+        ids[next] = 0
         const destination = slotFor(id)
-        ids[destination] = id; entries[destination] = entry
+        ids[destination] = id
         next = (next + 1) % capacity
       }
     }
     const kind = ledger.kindCode('async continuation')
+    // before/after pairs are nested invocations, not one mutable entry per
+    // resource: AsyncResource can reenter the same ID synchronously.
+    const activeIds = new Float64Array(4096), activeEntries = new Float64Array(4096)
+    let activeDepth = 0, overflowDepth = 0
     const hook = asyncHooks.createHook({
       init(id, type) {
         const before = ledger.selfStart()
         if (ledger.active() || (type === 'PROMISE' && isPluginCaller())) {
           const slot = slotFor(id)
           if (slot < 0) ledger.invalidate()
-          else { ids[slot] = id; entries[slot] = 0 }
+          else ids[slot] = id
         }
         ledger.selfTime(before)
       },
       before(id) {
         const before = ledger.selfStart(), slot = slotFor(id)
-        if (slot >= 0 && ids[slot] === id) entries[slot] = ledger.begin(kind)
+        if (overflowDepth || activeDepth === activeIds.length) {
+          overflowDepth++; ledger.invalidate()
+        } else {
+          activeIds[activeDepth] = id
+          activeEntries[activeDepth++] = slot >= 0 && ids[slot] === id ? ledger.begin(kind) : 0
+        }
         ledger.selfTime(before)
       },
       after(id) {
-        const before = ledger.selfStart(), slot = slotFor(id)
-        if (slot >= 0 && ids[slot] === id && entries[slot]) { ledger.end(entries[slot]); entries[slot] = 0 }
+        const before = ledger.selfStart()
+        if (overflowDepth) overflowDepth--
+        else if (activeDepth && activeIds[activeDepth - 1] === id) {
+          const entry = activeEntries[--activeDepth]
+          if (entry) ledger.end(entry)
+        } else if (activeDepth) ledger.invalidate()
         ledger.selfTime(before)
       },
       destroy(id) {

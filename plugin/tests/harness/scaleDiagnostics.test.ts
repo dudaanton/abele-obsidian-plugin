@@ -49,8 +49,8 @@ it('exports ordinal-bounded heap allocation windows including collected objects'
   await profiler.close()
 })
 
-it.each([['plugin:abele', 'ours during sync'], ['plugin:scale-observer', 'harness-triggered'],
-  ['app://obsidian.md/app.js', 'host-only']])('attributes root GC with allocation stacks from %s', async (url, owner) => {
+it.each(['plugin:abele', 'plugin:scale-observer', 'app://obsidian.md/app.js'])(
+  'keeps measured plugin ownership despite preceding allocations from %s', async url => {
   const task = { event: 'long-task', device: '0', startedAt: 1000, durationMs: 100 }
   const captures = [
     { event: 'plugin-entry-ledger-ready', device: '0', generation: 'sample', at: 0,
@@ -70,9 +70,9 @@ it.each([['plugin:abele', 'ours during sync'], ['plugin:scale-observer', 'harnes
     samples: [1], timeDeltas: [1050000],
   } : { head: { id: 1, callFrame: { functionName: 'allocate', url }, children: [] },
     samples: [{ ordinal: 1, nodeId: 1, size: 100 }] })
-  expect(row.owner).toBe(owner)
+  expect(row.owner).toBe('ours during sync')
   expect(row.allocationAttribution).toMatchObject({ complete: true, totalBytes: 100 })
-  expect(longTaskVerdict(row).status).toBe(owner === 'ours during sync' ? 'FAIL' : 'PASS')
+  expect(longTaskVerdict(row).status).toBe('FAIL')
 })
 
 it('rotates heap sampling with an explicit gap before saving the old window', async () => {

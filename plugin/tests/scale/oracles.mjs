@@ -107,10 +107,9 @@ export function attributePauseRequests(requests, traces) {
 
 export function longTaskVerdict(task) {
   const owner = task.owner ?? 'unattributed'
-  const durationMs = ['ours during sync', 'plugin load'].includes(owner) && task.entryLedgerComplete &&
-    !['V8 allocation samples', 'CPU non-GC samples'].includes(task.attributionSource)
-    ? Math.min(task.pluginEntryOverlapMs, task.withoutTracepointSetupMs ?? task.durationMs)
-    : task.withoutTracepointSetupMs ?? task.durationMs
+  // Ownership identifies whether our code participates; the budget is for the
+  // whole task, including bundle reads/compilation before evaluation marks.
+  const durationMs = task.durationMs
   const limit = owner === 'plugin load' ? 800 : 50
   const pass = (task.profileWindowComplete === true || task.entryLedgerComplete === true) &&
     (owner === 'host-only' || owner === 'harness-triggered' ||
@@ -121,7 +120,7 @@ export function longTaskVerdict(task) {
 
 export function longTaskBudget(tasks) {
   const verdicts = (tasks ?? [])
-    .filter(row => (row.withoutTracepointSetupMs ?? row.durationMs) > 50)
+    .filter(row => row.durationMs > 50)
     .map(longTaskVerdict)
   return { verdicts, failed: verdicts.filter(row => row.status === 'FAIL').length }
 }
