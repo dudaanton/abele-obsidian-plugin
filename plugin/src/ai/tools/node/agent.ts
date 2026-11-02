@@ -1,4 +1,5 @@
 import { readWithIgnoredFallback } from '@/node/ignoredRead'
+import { nodeScopeDisplayNames, nodeScopeTitle } from './scopeNames'
 import type { NodeClient, RepositoryRevision } from '@abele/node-client'
 import { t } from '@/i18n'
 import * as protocol from '@abele/node-protocol'
@@ -625,7 +626,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           )
         )
           throw new NodeAccessRefusalError(
-            `Folder ${JSON.stringify(project)} is not in this chat's node access. ${GIVE_ACCESS}`,
+            `Folder ${nodeScopeTitle(await nodeScopeDisplayNames({ node_id: node, project_id: project }, host))} is not in this chat's node access. ${GIVE_ACCESS}`,
             { kind: 'no-access', node_id: node, project_id: project }
           )
         const entries = [],
@@ -893,7 +894,7 @@ export function createNodeAgentTools(factory: NodeAgentHostFactory): AgentTool[]
           .some((entry) => entry.kind === 'node' || entry.project_id === target.project_id)
       )
         throw new NodeAccessRefusalError(
-          `Folder ${JSON.stringify(target.project_id)} is not in this chat's node access. ${CHOOSE_TARGET} ${GIVE_ACCESS}`,
+          `Folder ${nodeScopeTitle(await nodeScopeDisplayNames(target, host))} is not in this chat's node access. ${CHOOSE_TARGET} ${GIVE_ACCESS}`,
           { kind: 'no-access', node_id: target.node_id, ...wanted }
         )
       await safe(() => resolveNodeTarget(client, target, scopes, guard))

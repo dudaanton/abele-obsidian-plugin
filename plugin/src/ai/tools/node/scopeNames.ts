@@ -18,6 +18,8 @@ import { t } from '@/i18n'
 import type { NodeChatTarget, NodeScopeEntry } from '@/ai/nodeScope'
 import { nodeTargetId } from '@/ai/nodeScope'
 import { nodeAgentHost } from './owner'
+import type { NodeAgentHost } from './agent'
+type NamesHost = Pick<NodeAgentHost, 'nodes' | 'connection'>
 
 /**
  * What a place on a node is called, for a person: the node's name, the folder's and the
@@ -65,8 +67,8 @@ export function folderLabels(paths: readonly string[]): string[] {
  * once (paired again, or by token and by pairing); asking by the node's own id then has no single
  * answer, so the registrations are tried one by one until one is connected.
  */
-async function clientOf(nodeId: string) {
-  const host = await nodeAgentHost()
+async function clientOf(nodeId: string, providedHost?: NamesHost) {
+  const host = providedHost ?? (await nodeAgentHost())
   const ids = host
     .nodes()
     .filter((n) => n.id === nodeId || n.node_id === nodeId)
@@ -82,12 +84,12 @@ async function clientOf(nodeId: string) {
   throw new Error('Node not connected yet')
 }
 
-function folderNames(nodeId: string) {
+function folderNames(nodeId: string, host?: NamesHost) {
   let found = folders.get(nodeId)
   if (!found) {
     found = (async () => {
       const names = new Map<string, { name: string; git: boolean }>()
-      const client = await clientOf(nodeId)
+      const client = await clientOf(nodeId, host)
       let after: string | undefined
       for (let page = 0; page < 64; page++) {
         const batch = await client.listProjects(after)
@@ -108,13 +110,13 @@ function folderNames(nodeId: string) {
   return found
 }
 
-function branchNames(nodeId: string, projectId: string, git: boolean) {
+function branchNames(nodeId: string, projectId: string, git: boolean, host?: NamesHost) {
   const key = `${nodeId}\u0000${projectId}`
   let found = branches.get(key)
   if (!found) {
     found = (async () => {
       const names = new Map<string, string>()
-      const client = await clientOf(nodeId)
+      const client = await clientOf(nodeId, host)
       if (git) {
         let cursor: string | undefined
         const seen = new Set<string>()
@@ -143,10 +145,15 @@ function branchNames(nodeId: string, projectId: string, git: boolean) {
 }
 
 /** The names of a place: its node always, its folder and branch when it is that narrow. */
-export async function nodeScopeNames(place: Place | NodeScopeEntry): Promise<NodeScopeNames> {
+export async function nodeScopeNames(
+  place: Place | NodeScopeEntry,
+  host?: NamesHost
+): Promise<NodeScopeNames> {
   let node = place.node_id
   try {
-    const nodes: { id: string; node_id?: string; label: string }[] = (await nodeAgentHost()).nodes()
+    const nodes: { id: string; node_id?: string; label: string }[] = (
+      host ?? (await nodeAgentHost())
+    ).nodes()
     node = nodes.find((n) => n.id === place.node_id || n.node_id === place.node_id)?.label ?? node
   } catch {
     /* No node host here: the id is all there is. */
@@ -156,28 +163,29 @@ export async function nodeScopeNames(place: Place | NodeScopeEntry): Promise<Nod
   // Names are presentation, not authority. A stable worktree may now have a different
   // branch, and a project may have moved since the preceding lookup.
   forgetNodeScopeNames(place.node_id)
-  let folder = (await folderNames(place.node_id)).get(projectId)
+  let folder = (await folderNames(place.node_id, host)).get(projectId)
   if (!folder) {
     folders.delete(place.node_id)
-    folder = (await folderNames(place.node_id)).get(projectId)
+    folder = (await folderNames(place.node_id, host)).get(projectId)
   }
   const target = 'target' in place ? place.target : undefined
   if (!target) return { node, folder: folder?.name ?? projectId }
   const git = folder?.git ?? true,
     key = `${place.node_id}\u0000${projectId}`
-  let branch = (await branchNames(place.node_id, projectId, git)).get(nodeTargetId(target))
+  let branch = (await branchNames(place.node_id, projectId, git, host)).get(nodeTargetId(target))
   if (branch === undefined) {
     branches.delete(key)
-    branch = (await branchNames(place.node_id, projectId, git)).get(nodeTargetId(target))
+    branch = (await branchNames(place.node_id, projectId, git, host)).get(nodeTargetId(target))
   }
   return { node, folder: folder?.name ?? projectId, branch: branch ?? nodeTargetId(target) }
 }
 
 /** UI fallback only: keep opaque identities in grants, not in the access label. */
 export async function nodeScopeDisplayNames(
-  place: Place | NodeScopeEntry
+  place: Place | NodeScopeEntry,
+  host?: NamesHost
 ): Promise<NodeScopeNames> {
-  const names = await nodeScopeNames(place)
+  const names = await nodeScopeNames(place, host)
   const project = 'project_id' in place ? place.project_id : undefined
   const target = 'target' in place ? place.target : undefined
   if (project && names.folder === project)

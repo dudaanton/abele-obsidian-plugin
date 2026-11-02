@@ -106,6 +106,25 @@ async function choose(title: string) {
   await flushPromises()
 }
 describe('node scope beside vault scope and in the header', () => {
+  it('names a missing folder in the open access window without opaque identities', async () => {
+    const session = setup()
+    session.overrides.value.nodeScope = [
+      {
+        kind: 'target',
+        node_id: 'sample-node',
+        project_id: 'sample-missing-project',
+        target: { kind: 'worktree', worktree_id: 'sample-missing-tree' },
+        access: 'read',
+      },
+    ]
+    const view = mount(AiNodeScopeEditor, { props: { session } })
+    await flushPromises()
+    const row = view.get('.abele-scope-mgr__entry-path')
+    expect(row.text()).toContain('Folder no longer exists')
+    expect(row.text()).not.toContain('sample-missing-project')
+    expect(row.text()).not.toContain('sample-missing-tree')
+    view.unmount()
+  })
   it('keeps the quiet folder inheritance description above Nodes', () => {
     const view = mount(FolderAccessModal, {
       props: { name: 'Collection', floor: {}, access: {}, nodeScopeOwner: setup() },

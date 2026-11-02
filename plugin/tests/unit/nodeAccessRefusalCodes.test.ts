@@ -43,6 +43,13 @@ describe('a node call refused for want of access', () => {
 
   it('names the folder it wanted when the folder is outside the chat’s access', async () => {
     const { call } = setupGit()
+    for (const tool of ['node_read', 'list_node_worktrees']) {
+      const error = await call(tool, { project: 'other-project', path: 'sample.txt' }).catch(
+        (error: unknown) => error as NodeAccessRefusalError
+      )
+      expect(error).toBeInstanceOf(NodeAccessRefusalError)
+      expect((error as NodeAccessRefusalError).message).not.toContain('other-project')
+    }
     expect(
       await refusal(call('node_read', { project: 'other-project', path: 'sample.txt' }))
     ).toMatchObject({ kind: 'no-access', node_id: 'sample-node', project_id: 'other-project' })
@@ -50,6 +57,29 @@ describe('a node call refused for want of access', () => {
       kind: 'no-access',
       node_id: 'sample-node',
       project_id: 'other-project',
+    })
+  })
+
+  it('says folder and branch names in the raw refusal while retaining exact access identities', async () => {
+    const { call, client, session } = setupGit()
+    session.overrides.value.nodeScope = [
+      { kind: 'project', node_id: 'sample-node', project_id: 'another-project', access: 'read' },
+    ]
+    client.listProjects.mockResolvedValue([{ ...project, repository_path: '/sample' }])
+    const failure = await call('node_read', {
+      project: project.project_id,
+      workspace: 'sample-tree',
+      target_kind: 'worktree',
+      path: 'sample.txt',
+    }).catch((error: unknown) => error as NodeAccessRefusalError)
+    expect(failure).toBeInstanceOf(NodeAccessRefusalError)
+    const error = failure as NodeAccessRefusalError
+    expect(error.message).toContain('sample / sample-branch')
+    expect(error.message).not.toContain(project.project_id)
+    expect(error.message).not.toContain('sample-tree')
+    expect(error.refusal).toMatchObject({
+      project_id: project.project_id,
+      target: { kind: 'worktree', worktree_id: 'sample-tree' },
     })
   })
 

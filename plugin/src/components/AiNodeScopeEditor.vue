@@ -127,7 +127,7 @@
 import { t } from '@/i18n'
 import { computed, ref, shallowRef, onMounted, onUnmounted, watch } from 'vue'
 import {
-  nodeScopeNames,
+  nodeScopeDisplayNames as nodeScopeNames,
   nodeScopeTitle,
   folderLabels,
   shortBranch,
