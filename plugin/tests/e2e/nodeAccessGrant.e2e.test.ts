@@ -155,8 +155,9 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
         const modal=document.querySelector('.abele-chat-setup').closest('.modal');const close=[...modal.querySelectorAll('.modal-close-button,.modal-header-button')].find(b=>b.getBoundingClientRect().width>0);if(close)close.click();else modal.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
         await until(()=>!visible('.abele-node-scope-editor'),'dialog closed');
         await until(()=>[...document.querySelectorAll('.abele-ai-chat .abele-node-refusal')].some(el=>el.getBoundingClientRect().width>0&&el.textContent.includes('Access given. Ask the agent to try again')),'line says given');
-        const access=visible('.abele-ai-chat .abele-chat-input__scope')?.getAttribute('aria-label')||'';
-        if(!access.includes('sample-app')||!access.includes('worktree main')||access.includes(${JSON.stringify(setup.project)}))throw Error('Access button does not name the place: '+access);
+        // Giving access updates the refusal synchronously; catalogue names settle later.
+        const access=await until(()=>{const label=visible('.abele-ai-chat .abele-chat-input__scope')?.getAttribute('aria-label')||'';return label.includes('sample-app')&&label.includes('worktree main')?label:undefined},'access button names sample-app and main');
+        if(access.includes(${JSON.stringify(setup.project)}))throw Error('Access button exposes an opaque identity: '+access);
         return JSON.stringify(access)
       })()`
       )
@@ -167,6 +168,43 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
       expect(retried.error, JSON.stringify(retried)).toBeUndefined()
       expect(retried.calls[0].result, JSON.stringify(retried)).toContain('first line')
       expect(retried.calls[0].refusal).toBeUndefined()
+
+      // Presentation fixtures change catalogue words, never the saved grant or real Git state.
+      for (const variant of ['short', 'long', 'missing'] as const) {
+        evalAsync(`(async()=>{${prelude}
+          const client=nodes.connection(${JSON.stringify(registration)}).client;
+          if(!window.__scopeCatalogueRestore)window.__scopeCatalogueRestore={client,projects:client.listProjects,worktrees:client.repository.worktrees};
+          const saved=window.__scopeCatalogueRestore;
+          client.listProjects=${variant === 'missing' ? 'async()=>[]' : 'saved.projects'};
+          client.repository.worktrees=async()=>({entries:${variant === 'missing' ? '[]' : `[{worktree_id:${JSON.stringify(setup.worktree)},branch:${JSON.stringify(variant === 'short' ? 'refs/heads/main' : 'refs/heads/feature/a-very-long-branch-name-for-the-access-label-without-opaque-identities')},path_label:'sample-app'}]`}});
+          const wanted=${JSON.stringify(variant === 'missing' ? 'Folder no longer exists' : variant === 'short' ? 'worktree main' : 'worktree feature/a-very-long-branch-name')};
+          await until(()=>visible('.abele-ai-chat .abele-chat-input__scope')?.getAttribute('aria-label')?.includes(wanted),'fresh access words');
+          const scope=visible('.abele-ai-chat .abele-chat-input__scope'),box=scope.getBoundingClientRect();
+          if(box.left<0||box.right>innerWidth+1)throw Error('Access label leaves viewport');
+          // A phone has no hover. Open the real access window on both layouts instead.
+          scope.click();
+          const editor=await until(()=>visible('.abele-node-scope-editor'),'access window open');
+          const expected=${JSON.stringify(variant === 'missing' ? 'Folder no longer exists' : variant === 'short' ? 'main' : 'feature/a-very-long-branch-name-for-the-access-label-without-opaque-identities')};
+          const place=await until(()=>[...editor.querySelectorAll('.abele-scope-mgr__entry-path')].find(el=>el.textContent.includes(expected)),'visible access place '+expected);
+          place.scrollIntoView({block:'center'});
+          await wait(100);
+          const r=place.getBoundingClientRect();
+          if(r.width<=0||r.top<0||r.bottom>innerHeight||r.left<0||r.right>innerWidth+1)throw Error('Named access place is not visible: '+place.textContent);
+          if(place.textContent.includes(${JSON.stringify(setup.worktree)})||place.textContent.includes(${JSON.stringify(setup.project)}))throw Error('Access window exposes opaque identities');
+          return JSON.stringify(true)
+        })()`)
+        await capture(`label-${variant}-${form}`)
+        evalAsync(`(async()=>{${prelude}
+          const modal=visible('.abele-node-scope-editor').closest('.modal');
+          const close=modal.querySelector('.modal-close-button,.modal-header-button');
+          if(close)close.click();else modal.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+          await until(()=>!visible('.abele-node-scope-editor'),'access window closed');
+          return JSON.stringify(true)
+        })()`)
+      }
+      evalAsync(
+        `(async()=>{const saved=window.__scopeCatalogueRestore;saved.client.listProjects=saved.projects;saved.client.repository.worktrees=saved.worktrees;delete window.__scopeCatalogueRestore;return JSON.stringify(true)})()`
+      )
 
       // The node panel's way in, for another chat: the open one first and marked, each told
       // apart by its agent and last question; the folder and branch by name; a notice after.
@@ -243,6 +281,7 @@ async function refusalToGrant(form: 'desktop' | 'phone') {
     } finally {
       evalRaw(`(async()=>{
         const T=window.__abeleTest,chats=T.ChatService.getInstance(),s=chats.getSessionByFile(${JSON.stringify(chat)});
+        const saved=window.__scopeCatalogueRestore;if(saved){saved.client.listProjects=saved.projects;saved.client.repository.worktrees=saved.worktrees;delete window.__scopeCatalogueRestore}
         for(const b of [...document.querySelectorAll('.modal .modal-close-button, .modal .modal-header-button')].reverse())b.click();
         if(s){s.abort();await chats.closeTab(s.id)}
         for(const t of chats.getAllSessions())if(t.chatTitle.value==='Sample second chat')await chats.closeTab(t.id);
