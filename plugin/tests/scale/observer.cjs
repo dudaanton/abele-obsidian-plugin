@@ -17,8 +17,11 @@ module.exports = class extends Plugin {
     if (config.entryLedger && config.continuousCpu && config.entryLedgerEnabled !== false) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Qualification-only entry hooks.
       const { createEntryLedger, installEntryLedger, wrapProductExport } = require(config.entryLedger)
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Host callback registration prototypes.
-      const { Events, Component, Workspace, Plugin: ProductPlugin } = require('obsidian')
+      /* eslint-disable @typescript-eslint/no-require-imports -- Host callback registration prototypes and shared editor APIs. */
+      const { Events, Component, Workspace, Plugin: ProductPlugin, ItemView, FileView, View, MarkdownRenderChild,
+        EditorSuggest, PluginSettingTab } = require('obsidian')
+      const codeMirror = { ...require('@codemirror/state'), ...require('@codemirror/view') }
+      /* eslint-enable @typescript-eslint/no-require-imports -- Host imports end here. */
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Native async/await continuation hooks.
       const asyncHooks = require('node:async_hooks')
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Native watcher/event completion callbacks.
@@ -37,7 +40,8 @@ module.exports = class extends Plugin {
         requireProductBridge: true,
       })
       const restore = installEntryLedger({ ledger: entryLedger, target: globalThis, Events,
-        Component, Workspace, Plugin: ProductPlugin, EventEmitter, asyncHooks })
+        Component, Workspace, Plugin: ProductPlugin, ItemView, FileView, View, MarkdownRenderChild,
+        EditorSuggest, PluginSettingTab, codeMirror, EventEmitter, asyncHooks })
       globalThis.__scaleWrapProductExport = value => wrapProductExport(value, entryLedger)
       globalThis.__scaleEntryLedgerRequired = true
       const mark = performance.mark.bind(performance)

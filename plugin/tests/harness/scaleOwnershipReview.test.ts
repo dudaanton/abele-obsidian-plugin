@@ -88,7 +88,7 @@ it.each([['ours during sync', 90, 20, 50], ['plugin load', 900, 10, 800]])(
       durationMs, limit, status: 'FAIL' })
   })
 it.each(['registerView', 'registerEditorExtension', 'addSettingTab'])(
-  'review 4: unsupported host methods registered through %s make coverage partial', async method => {
+  'review 4: non-replaceable host methods registered through %s make coverage partial', async method => {
     const rows: any[] = []
     class Plugin {
       manifest = { id: 'abele' }
@@ -101,8 +101,8 @@ it.each(['registerView', 'registerEditorExtension', 'addSettingTab'])(
     const close = api.installEntryLedger({ ledger, target: {}, Plugin })
     const plugin = new Plugin()
     ledger.wrap(() => {
-      if (method === 'registerView') plugin.registerView('sample', () => ({ setState() {} }))
-      else plugin[method]({ update() {}, display() {} })
+      if (method === 'registerView') plugin.registerView('sample', () => Object.freeze({ setState() {} }))
+      else plugin[method](Object.freeze({ update() {}, display() {} }))
     }, 'plugin:onload')()
     await close()
     expect(rows.findLast(row => row.event === 'plugin-entry-ledger-checkpoint'))
@@ -162,6 +162,7 @@ it('review 8: renderer unload flushes entries without stopping the host continuo
         getCurrentWebContents: () => ({ id: 1 }) }
       if (name === 'electron') return { ipcRenderer: { send() {} } }
       if (name === 'node:async_hooks' || name === 'node:events') return {}
+      if (name === '@codemirror/state' || name === '@codemirror/view') return {}
       throw new Error('end setup')
     } }
   runInNewContext(source, context)

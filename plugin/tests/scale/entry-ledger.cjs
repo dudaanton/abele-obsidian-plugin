@@ -152,6 +152,7 @@ exports.wrapProductExport = function (value, ledger) {
 }
 
 exports.installEntryLedger = function ({ ledger, target = globalThis, Events, Component, Workspace, Plugin,
+  ItemView, FileView, View, MarkdownRenderChild, EditorSuggest, PluginSettingTab, codeMirror,
   EventEmitter, asyncHooks, asyncCapacity = 262144, isPluginCaller = () => false }) {
   // Evaluation/load are explicit roots; ownership propagates from those roots
   // through registered callbacks and native async jobs, without per-call stacks.
@@ -165,7 +166,7 @@ exports.installEntryLedger = function ({ ledger, target = globalThis, Events, Co
     try {
       if (typeof fn !== 'function') return fn
       let wrapped = wrappers.get(fn)
-      if (!wrapped) { wrapped = ledger.wrap(fn, kind); wrappers.set(fn, wrapped) }
+      if (!wrapped) { wrapped = ledger.wrap(fn, kind); wrappers.set(fn, wrapped); wrappers.set(wrapped, wrapped) }
       return wrapped
     } finally { ledger.selfTime(before) }
   }
@@ -199,13 +200,6 @@ exports.installEntryLedger = function ({ ledger, target = globalThis, Events, Co
     return Reflect.apply(original, this, arguments)
   })
   registration(Workspace?.prototype, 'onLayoutReady', [0])
-  for (const name of ['registerView', 'registerEditorExtension', 'registerCodeMirror',
-    'registerEditorSuggest', 'addSettingTab'])
-    patch(Plugin?.prototype, name, original => function () {
-      if (this.manifest?.id === 'abele' || owned())
-        ledger.markPartial(`Host-invoked methods from ${name} are not fully instrumented`)
-      return Reflect.apply(original, this, arguments)
-    })
   for (const name of ['register', 'registerDomEvent', 'registerView', 'registerMarkdownPostProcessor',
     'registerMarkdownCodeBlockProcessor', 'registerCodeMirror', 'addRibbonIcon'])
     registration(Plugin?.prototype, name, [0, 1, 2])
@@ -264,6 +258,9 @@ exports.installEntryLedger = function ({ ledger, target = globalThis, Events, Co
       return callback.apply(this, arguments)
     }
   })
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Qualification-only registration adapters.
+  require('./host-entries.cjs').installHostEntries({ ledger, wrap, owned, patch, Plugin, Component,
+    ItemView, FileView, View, MarkdownRenderChild, EditorSuggest, PluginSettingTab, codeMirror })
   // Native async/await bypasses Promise.prototype.then. V8 promise hooks exposed
   // by Node cover those continuations, and native completion callbacks as well.
   if (asyncHooks) {
