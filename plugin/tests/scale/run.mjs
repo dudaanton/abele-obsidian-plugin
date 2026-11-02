@@ -5,6 +5,7 @@ import { readFile, writeFile, mkdir, copyFile, readdir, unlink, stat } from 'nod
 import { resolve, join, basename, dirname, sep } from 'node:path'
 import { createRequire } from 'node:module'
 import asyncHooks from 'node:async_hooks'
+import liveStartup from './live-startup.cjs'
 import { fileURLToPath } from 'node:url'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
@@ -396,6 +397,7 @@ export async function setupVault(config, root, device) {
   await copyFile(join(here, 'diagnostics.cjs'), join(observer, 'diagnostics.cjs'))
   await copyFile(join(here, 'entry-ledger.cjs'), join(observer, 'entry-ledger.cjs'))
   await copyFile(join(here, 'host-entries.cjs'), join(observer, 'host-entries.cjs'))
+  await copyFile(join(here, 'live-startup.cjs'), join(observer, 'live-startup.cjs'))
   await copyFile(join(here, 'heap.cjs'), join(observer, 'heap.cjs'))
   await copyFile(join(here, 'evidence-writer.cjs'), join(observer, 'evidence-writer.cjs'))
   await copyFile(join(here, 'profile-only.cjs'), join(observer, 'profile-only.cjs'))
@@ -447,6 +449,8 @@ export async function setupVault(config, root, device) {
       reindexObserver: join(observer, 'reindex.cjs'),
       diagnostics: join(observer, 'diagnostics.cjs'),
       entryLedger: join(observer, 'entry-ledger.cjs'),
+      liveStartup: join(observer, 'live-startup.cjs'),
+      startupReceipt: join(config.output, `live-startup-${device}.json`),
       receiptCapture: join(observer, 'receipt-capture.cjs'),
       fingerprintObserver: join(observer, 'failure-diagnostic.cjs'),
       profileGate: join(observer, 'profile-gate.cjs'),
@@ -702,12 +706,17 @@ export async function run(config) {
     appProcess = null
   }
   const start = async ({ passive = false, strict = false } = {}) => {
+    const startupGates = []
     for (const device of devices) {
       const file = join(device.root, '.scale-observer.json')
       const observer = await readEvidenceJson(file)
       observer.strictRestartMeasurement = strict
       await writeEvidenceJson(file, observer)
       const managed = observer.continuousCpu && !['control', 'profile-only', 'diagnostic'].includes(observer.mode)
+      if (managed && observer.entryLedgerEnabled !== false) {
+        await unlink(observer.startupReceipt).catch(error => { if (error.code !== 'ENOENT') throw error })
+        startupGates.push({ device, file: observer.startupReceipt })
+      }
       await writeEvidenceJson(join(device.root, '.obsidian/community-plugins.json'),
         managed ? ['scale-observer'] : ['scale-observer', 'abele'])
     }
@@ -741,10 +750,16 @@ export async function run(config) {
       sample()
       memoryTimer = setInterval(sample, 1000)
       for (const device of devices) {
-        await wait('disposable vault window', () =>
-          device.evaluate('return true').catch(() => false)
-        )
-        await enablePluginWhenReady(device, wait)
+        await wait('disposable vault window',
+          () => device.evaluate('return true', {
+            timeoutMs: Math.max(1, Math.min(3000, at + 60000 - Date.now())),
+          }).catch(() => false),
+          Math.max(1, at + 60000 - Date.now()))
+        await enablePluginWhenReady(device, wait, { timeoutMs: Math.max(1, at + 60000 - Date.now()), evaluateTimeoutMs: 3000 })
+      }
+      for (const { device, file } of startupGates) {
+        const proof = await liveStartup.waitForLiveStartup({ read: () => readEvidenceJson(file), startedAt: at })
+        ;(report.liveStartupReceipts ??= []).push({ device: String(devices.indexOf(device)), startedAt: at, ...proof })
       }
       await devices[0].ready()
     }
@@ -980,9 +995,10 @@ export async function run(config) {
       saved.settledAt = Date.now()
       checkpoint(true)
     }
-    const firstUploadAt = Date.now()
-    phase('first upload')
+    phase('real app startup preflight')
     await start()
+    phase('first upload')
+    const firstUploadAt = Date.now()
     if (config.targeted) {
       await a.connect(tokenFiles[0])
       report.firstUploadSettled = await settle(a, 'first upload')
@@ -1475,6 +1491,7 @@ export async function run(config) {
       ? observationError(error, [...config.vaults, config.output])
       : undefined
     report.failure =
+      error.message === 'Real app startup proof unavailable' ||
       /^(Fatal sync state|Advertised server limit|Expected server limits|Local fixture|Unknown server mode|Server file limit|Run deadline reached|Timed out:|Disposable |Two separate|Isolated |Token endpoint|Case-sensitive|Selected build)/.test(
         error.message
       )

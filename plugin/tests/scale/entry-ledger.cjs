@@ -79,6 +79,8 @@ exports.createEntryLedger = function ({ file, write, device, generation = random
   timer?.unref?.()
   const api = {
     begin, end, flush, selfTime, selfStart: now, kindCode: kindId,
+    startupSnapshot: () => ({ complete: bridgeReady && dropped === 0 && partialReasons.size === 0,
+      productRootsReady: bridgeReady, sequence, dropped, partialReasons: [...partialReasons] }),
     invalidate() { dropped++ },
     markPartial(reason) {
       if (partialReasons.has(reason)) return

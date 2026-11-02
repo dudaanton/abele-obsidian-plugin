@@ -1,13 +1,23 @@
 // Read-only, allowlisted diagnostic export. Never export credentials or unrelated metadata.
+exports.scheduleHashWarmup = (work, emit, schedule = queueMicrotask) => schedule(() => {
+  const startedAt = Date.now()
+  try { work() } finally {
+    emit({ event: 'javascript-hash-tracepoint-setup', phase: 'warm-up', startedAt, endedAt: Date.now() })
+  }
+})
+
 exports.instrumentReceiptAccess = function (source) {
   for (const name of ['durableHostOf', 'storageOf', 'BoundedVaultIo'])
     if (!new RegExp(`\\b(?:function|const|let|var|class) ${name}\\b`).test(source))
       throw new Error('Receipt diagnostic binding unavailable')
+  const fingerprints = [...new Set([...source.matchAll(/\b(?:var|let|const|class) (ObsidianFileSystem(?:\$\d+)?)\b/g)].map(match => match[1]))]
+  const constructors = [...new Set([...source.matchAll(/\bclass (SHA256(?:\$\d+)?) extends /g)].map(match => match[1]))]
   return (
     source +
     `\nglobalThis.__scaleReceiptHost = application => durableHostOf(storageOf(application));
 globalThis.__scaleWrapFingerprints?.(BoundedVaultIo);
-${/\b(?:var|class) ObsidianFileSystem\b/.test(source) ? 'globalThis.__scaleWrapFingerprints?.(ObsidianFileSystem);' : ''}\n`
+${fingerprints.map(name => `globalThis.__scaleWrapFingerprints?.(${name});`).join('\n')}
+${constructors.length ? `globalThis.__scaleWarmHashConstructors?.(()=>{${constructors.map(name => `new ${name}();`).join('')}});` : ''}\n`
   )
 }
 

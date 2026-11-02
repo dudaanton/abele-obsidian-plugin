@@ -817,33 +817,19 @@ it('arms constructor tracepoints only at the synchronous post-evaluation boundar
       .slice(-2)
       .map((c) => c.params.location.scriptId)
   ).toEqual(['reload', 'reload'])
-  expect(
-    calls.filter((c) => c.name === 'Debugger.evaluateOnCallFrame').map((c) => c.params)
-  ).toEqual([
-    {
-      callFrameId: 'frame-first',
-      expression:
-        "queueMicrotask(()=>{const startedAt=Date.now();try{new SHA256()}finally{globalThis.__scaleEmitEvidence?.({event:'javascript-hash-tracepoint-setup',phase:'warm-up',startedAt,endedAt:Date.now()})}})",
-      returnByValue: true,
-    },
-    {
-      callFrameId: 'frame-reload',
-      expression:
-        "queueMicrotask(()=>{const startedAt=Date.now();try{new SHA256()}finally{globalThis.__scaleEmitEvidence?.({event:'javascript-hash-tracepoint-setup',phase:'warm-up',startedAt,endedAt:Date.now()})}})",
-      returnByValue: true,
-    },
-  ])
-  const { runInNewContext } = await import('node:vm')
+  expect(calls.filter((c) => c.name === "Debugger.evaluateOnCallFrame")).toEqual([])
+  const { runInNewContext } = await import("node:vm")
+  const { default: capture } = await import("../scale/receipt-capture.cjs")
   const deferred = []
   let constructed = 0
-  runInNewContext(calls.find((c) => c.name === 'Debugger.evaluateOnCallFrame').params.expression, {
-    SHA256: class {
-      constructor() {
-        constructed++
-      }
-    },
-    queueMicrotask: (work) => deferred.push(work),
-    __scaleEmitEvidence: (event) => events.push(event),
+  const source = capture.instrumentReceiptAccess(`
+    function durableHostOf() {} function storageOf() {} class BoundedVaultIo {}
+    class SHA256 extends HashMD { constructor() { super(); constructed() } }
+  `)
+  runInNewContext(source, {
+    HashMD: class {}, constructed: () => { constructed++ },
+    __scaleWarmHashConstructors: work => capture.scheduleHashWarmup(work,
+      event => events.push(event), callback => deferred.push(callback)),
   })
   expect(constructed).toBe(0)
   expect(deferred).toHaveLength(1)

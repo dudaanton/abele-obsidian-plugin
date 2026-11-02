@@ -241,6 +241,13 @@ module.exports = class extends Plugin {
       )
     globalThis.__scaleFlushEvidence = () => evidenceIpc.invoke(evidenceChannel)
     globalThis.__scaleEmitEvidence = emit
+    // The qualified bundle supplies closures over its actual hash classes.
+    // Schedule them normally, never through debugger call-frame evaluation.
+    if (config.receiptCapture) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Installed qualification-only scheduling helper.
+      const { scheduleHashWarmup } = require(config.receiptCapture)
+      globalThis.__scaleWarmHashConstructors = work => scheduleHashWarmup(work, emit)
+    }
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Desktop-only bridge; sampling lives outside the renderer.
       const remote = require('@electron/remote')
@@ -506,6 +513,15 @@ module.exports = class extends Plugin {
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable startup gate.
       const { enableAfterProfile } = require(config.profileGate)
       await enableAfterProfile(Promise.resolve(), () => this.app.plugins.enablePlugin('abele'))
+      // Published by the actual renderer only after the host's product load.
+      // The driver reads this file directly, so a stuck CLI cannot fake success.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Installed qualification-only startup proof.
+      const { startupReceipt } = require(config.liveStartup)
+      const proof = startupReceipt({ at: Date.now(),
+        marks: performance.getEntriesByName('abele:onload-start').map(mark => ({
+          name: mark.name, epoch: Math.round(performance.timeOrigin + mark.startTime) })),
+        ledger: entryLedger?.startupSnapshot() })
+      fs.writeFileSync(config.startupReceipt, JSON.stringify(proof))
       if (entryLedger && !entryLedger.productBridgeReady())
         throw new Error('Qualification product entry roots unavailable')
     }

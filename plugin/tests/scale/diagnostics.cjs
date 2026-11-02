@@ -623,30 +623,9 @@ exports.armHashTracepoints = async function (transport, lines, boundary, emit, f
         for (const location of binding.actualLocation ? [binding.actualLocation] : [])
           emit({ event: 'javascript-hash-observer-ready', location })
       }
-      // Pay the debugger's cold constructor cost inside the measured setup interval.
-      // Construction alone emits no digest receipt; every actual digest remains observed.
-      const { scriptSource } = await transport.sendCommand('Debugger.getScriptSource', { scriptId })
-      const fingerprintNames = [...scriptSource.matchAll(/\b(?:var|let|const|class) (ObsidianFileSystem(?:\$\d+)?)\b/g)].map(match => match[1])
-      for (const name of new Set(fingerprintNames)) {
-        const result = await transport.sendCommand('Debugger.evaluateOnCallFrame', {
-          callFrameId: params.callFrames[0].callFrameId,
-          expression: `globalThis.__scaleWrapFingerprints?.(${name})`,
-          returnByValue: true,
-        })
-        if (result.exceptionDetails) emit({ event: 'fingerprint-observer-unavailable', details: result.exceptionDetails })
-      }
-      const names = [...scriptSource.matchAll(/\bclass (SHA256(?:\$\d+)?) extends /g)].map(
-        (match) => match[1]
-      )
-      if (!names.length) throw new Error('Hash warm-up constructor unavailable')
-      for (const name of new Set(names)) {
-        const result = await transport.sendCommand('Debugger.evaluateOnCallFrame', {
-          callFrameId: params.callFrames[0].callFrameId,
-          expression: `queueMicrotask(()=>{const startedAt=Date.now();try{new ${name}()}finally{globalThis.__scaleEmitEvidence?.({event:'javascript-hash-tracepoint-setup',phase:'warm-up',startedAt,endedAt:Date.now()})}})`,
-          returnByValue: true,
-        })
-        if (result.exceptionDetails) throw new Error('Hash warm-up construction failed')
-      }
+      // Never evaluate debuggee JavaScript while paused: native async hooks
+      // require balanced callback scopes. The installed bundle schedules its
+      // hash constructor warm-up after normal evaluation instead.
     } catch (error) {
       emit({ event: 'javascript-hash-observer-unavailable', reason: String(error) })
     } finally {
