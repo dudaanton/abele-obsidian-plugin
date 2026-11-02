@@ -408,16 +408,22 @@ function navigate(locations: LspLocation[], origin?: { line: number; character: 
   }
   const target = props.target
   const open = (hit: LspLocation) => {
+    const start = hit.range.start
+    const length = hit.range.end.line === start.line ? hit.range.end.character - start.character : 0
+    const destination = {
+      kind: 'file' as const,
+      target,
+      path: hit.path,
+      line: start.line + 1,
+      ...(length > 0 ? { match: { column: start.character, length } } : {}),
+    }
     if (fileDestination) {
-      fileDestination(
-        { kind: 'file', target, path: hit.path, line: hit.range.start.line + 1 },
-        origin ? origin.line + 1 : undefined
-      )
+      fileDestination(destination, origin ? origin.line + 1 : undefined)
       return
     }
     void openNodePathTab(
       GlobalStore.getInstance().app.workspace,
-      { kind: 'file', target, path: hit.path, line: hit.range.start.line + 1 },
+      destination,
       Platform.isMobile
     ).catch((error) => console.debug('[node] Language location unavailable', error))
   }

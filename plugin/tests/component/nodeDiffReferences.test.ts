@@ -7,15 +7,18 @@ import { useVault } from '../helpers/testEnv'
 import { NodeService } from '@/node/NodeService'
 import { FILE_DESTINATION } from '@/node/fileNavigation'
 
-it.each(['unified', 'split'] as const)('navigates a rendered %s node diff', async (layout) => {
+it.each([
+  ['unified', 'sample.ts'],
+  ['split', 'target.ts'],
+] as const)('navigates a rendered %s node diff to %s', async (layout, path) => {
   useVault([])
   const text = 'const sample = 1\nconsole.log(sample)'
   const definition = vi.fn(async () => [
     {
-      path: 'sample.ts',
+      path,
       range: {
-        start: { line: 0, character: 0 },
-        end: { line: 0, character: 6 },
+        start: { line: 199, character: 6 },
+        end: { line: 199, character: 12 },
       },
     },
   ])
@@ -95,7 +98,10 @@ it.each(['unified', 'split'] as const)('navigates a rendered %s node diff', asyn
           { line: line - 1, character: line === 1 ? 6 : 12 },
           expect.any(AbortSignal)
         )
-        expect(navigate).toHaveBeenCalled()
+        expect(navigate).toHaveBeenLastCalledWith(
+          expect.objectContaining({ path, line: 200, match: { column: 6, length: 6 } }),
+          line
+        )
       }
       span.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
       show.mock.contexts.at(-1)!.items[1].handler?.()

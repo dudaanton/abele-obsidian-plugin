@@ -172,7 +172,7 @@ describe('node language diagnostics in the shared file viewer', () => {
       vi.spyOn(client.lsp, kind).mockResolvedValue([
         {
           path: 'destination.ts',
-          range: { start: { line: 6, character: 0 }, end: { line: 6, character: 4 } },
+          range: { start: { line: 199, character: 6 }, end: { line: 199, character: 12 } },
         },
       ])
       const root = document.createElement('div')
@@ -204,7 +204,8 @@ describe('node language diagnostics in the shared file viewer', () => {
           kind: 'file',
           target: tools.props('target'),
           path: 'destination.ts',
-          line: 7,
+          line: 200,
+          match: { column: 6, length: 6 },
         },
         2
       )

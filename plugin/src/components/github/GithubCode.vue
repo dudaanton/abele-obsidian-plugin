@@ -14,7 +14,7 @@ import { FILE_LENS } from '@/requests/fileLens'
 import type { LineSpan } from '@/github/permalinks'
 import type { LineRange } from '@/github/urls'
 import { mountCode, type CodeViewer, type CodeComparison } from '@/github/codeViewer'
-import { LINE_CONTEXT, pinIntoView } from '@/github/scrollTo'
+import { LINE_CONTEXT, pinIntoView, scrollParent } from '@/github/scrollTo'
 import type { BlameRange } from '@/repository/model'
 import type { BlameHost } from '@/github/blameGutter'
 import GithubBlameRange from './GithubBlameRange.vue'
@@ -89,6 +89,10 @@ watch([lens, () => props.text], applyLens)
 /** Where CodeMirror draws the selection's bar just now, and whether there is one. */
 const barHost = shallowRef<HTMLElement | null>(null)
 const hasBar = ref(false)
+const rangeContext = () =>
+  props.range?.match && editorEl.value
+    ? { context: (scrollParent(editorEl.value)?.clientHeight ?? 192) / 2 }
+    : LINE_CONTEXT
 
 const selectionHooks = {
   floating: true,
@@ -133,7 +137,7 @@ const draw = async (focus: { line: number; context: number } | null) => {
     })
   } else if (props.range) {
     unpin = pinIntoView(editorEl.value, () => drawn.targetTop(), {
-      ...LINE_CONTEXT,
+      ...rangeContext(),
       keepVisibleInShortPane: props.keepVisibleInShortPane,
     })
   }
@@ -164,7 +168,7 @@ watch(
     viewer.mark(range)
     const drawn = viewer
     unpin = pinIntoView(editorEl.value, () => drawn.targetTop(), {
-      ...LINE_CONTEXT,
+      ...rangeContext(),
       keepVisibleInShortPane: props.keepVisibleInShortPane,
     })
   }

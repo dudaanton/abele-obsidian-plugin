@@ -39,6 +39,7 @@ import {
 import { Compartment, Prec, StateEffect } from '@codemirror/state'
 import { setTooltip } from 'obsidian'
 import { mountCode, type CodeViewer } from '@/github/codeViewer'
+import { pinIntoView, scrollParent } from '@/github/scrollTo'
 import type { LineRange } from '@/github/urls'
 import SelectionBar, { type Selected } from '../obsidian/SelectionBar.vue'
 import { ADD, ASK, NOTE } from '../obsidian/selectionActions'
@@ -77,6 +78,7 @@ const emit = defineEmits<{
 
 const host = ref<HTMLElement>()
 let viewer: CodeViewer | undefined
+let unpin = () => {}
 let editor: EditorView | null = null
 const marks = new Compartment()
 const refreshMarks = StateEffect.define<null>()
@@ -268,6 +270,7 @@ const here = () =>
 
 async function draw() {
   await nextTick()
+  unpin()
   viewer?.destroy()
   if (!host.value) return
   viewer = mountCode(host.value, props.text, props.path, props.range, {}, props.line)
@@ -294,6 +297,12 @@ async function draw() {
       extras.of(extra()),
     ]),
   })
+  if (props.range && editor) {
+    const drawn = viewer
+    unpin = pinIntoView(host.value, () => drawn.targetTop(), {
+      context: (scrollParent(host.value)?.clientHeight ?? 192) / 2,
+    })
+  }
   console.debug('[debugger] Source mounted', props.path, props.line)
 }
 onMounted(draw)
@@ -323,7 +332,10 @@ watch(
   },
   { deep: true }
 )
-onBeforeUnmount(() => viewer?.destroy())
+onBeforeUnmount(() => {
+  unpin()
+  viewer?.destroy()
+})
 </script>
 
 <style lang="scss">

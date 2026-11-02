@@ -399,6 +399,13 @@ export function mountCode(
         ])
     }
     viewer.view.dispatch({ effects: match.reconfigure(EditorView.decorations.of(marks)) })
+    if (range?.match && range.start >= 1 && range.start <= doc.lines) {
+      const line = doc.line(range.start)
+      const anchor = line.from + Math.min(range.match.column, line.length)
+      viewer.view.dispatch({
+        selection: { anchor, head: Math.min(line.to, anchor + range.match.length) },
+      })
+    }
   }
   markMatch(range)
   return {
@@ -417,9 +424,9 @@ export function mountCode(
       viewer.view.dispatch({ effects: lens.reconfigure(options ? fileLens(options) : []) })
     },
     mark(next) {
-      markMatch(next)
       viewer.retarget(next.start)
       selection.mark(viewer.view, lines(next))
+      markMatch(next)
     },
   }
 }
