@@ -214,13 +214,74 @@ exports.createStallProfiler = function ({
   }
 }
 
+// Sampling includes collected objects; retained-heap snapshots alone cannot
+// explain which code allocated the garbage collected during a long task.
+exports.createAllocationProfiler = function ({ command, save, emit, now = Date.now,
+  intervalMs = 1000, samplingInterval = 16384, rotationMs = 10000 }) {
+  let startedAt, sessionAt, lastOrdinal = 0, busy, stopped = false, broken = false
+  const startSampling = async () => {
+    await command('HeapProfiler.startSampling', { samplingInterval,
+      includeObjectsCollectedByMajorGC: true, includeObjectsCollectedByMinorGC: true })
+    sessionAt = now()
+    lastOrdinal = 0
+  }
+  const capture = async (stop = false) => {
+    const before = now()
+    try {
+      const rotate = !stop && before - sessionAt >= rotationMs
+      const { profile } = await command(stop || rotate ? 'HeapProfiler.stopSampling' : 'HeapProfiler.getSamplingProfile')
+      if (!profile?.head || !Array.isArray(profile.samples)) throw new Error('Missing allocation samples')
+      if (profile.samples.some(sample => !Number.isFinite(sample.ordinal) ||
+        !Number.isFinite(sample.size) || sample.size < 0)) throw new Error('Invalid allocation samples')
+      const samples = profile.samples.filter(sample => sample.ordinal > lastOrdinal)
+      const previousOrdinal = lastOrdinal
+      for (const sample of profile.samples) lastOrdinal = Math.max(lastOrdinal, sample.ordinal)
+      const endedAt = now()
+      const finalOrdinal = lastOrdinal
+      if (rotate) {
+        await startSampling()
+        emit({ event: 'allocation-profile-gap', startedAt: endedAt, endedAt: sessionAt,
+          reason: 'Bounded sampling session rotation' })
+      }
+      const path = await save({ head: profile.head, samples })
+      emit({ event: 'allocation-profile', startedAt, endedAt, requestAt: before,
+        firstOrdinal: previousOrdinal + 1, lastOrdinal: finalOrdinal, complete: !broken,
+        samplingInterval, includeCollected: true, path })
+      startedAt = rotate ? sessionAt : endedAt
+    } catch {
+      broken = true
+      emit({ event: 'allocation-profile-unavailable', startedAt, endedAt: now() })
+    }
+  }
+  return {
+    async start() {
+      await command('HeapProfiler.enable')
+      await startSampling()
+      startedAt = now()
+      emit({ event: 'allocation-profile-ready', at: startedAt, samplingInterval })
+    },
+    async poll(at) {
+      if (stopped || busy || startedAt === undefined || at - startedAt < intervalMs) return
+      busy = capture()
+      try { await busy } finally { busy = undefined }
+    },
+    async close() {
+      stopped = true
+      await busy
+      if (startedAt !== undefined) await capture(true)
+    },
+  }
+}
+
 const watches = new Map()
 const evidencePorts = new Map()
 exports.openEvidencePort = function (id, serializedConfig) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- Evidence queues survive renderer navigation in the host.
-  const { ipcMain } = require('electron')
+  const { ipcMain, app } = require('electron')
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- Shared serialized evidence appends.
-  const writer = require('./evidence-writer.cjs').writerFor(JSON.parse(serializedConfig).evidence)
+  const writerModule = require('./evidence-writer.cjs')
+  const writer = writerModule.writerFor(JSON.parse(serializedConfig).evidence)
+  writerModule.drainOnQuit(app, writer)
   const key = `${id}:${JSON.parse(serializedConfig).evidence}`
   if (evidencePorts.has(key)) return evidencePorts.get(key)
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- Disposable IPC identifier.
@@ -388,6 +449,15 @@ exports.watch = async function (id, serializedConfig) {
       return file
     },
   })
+  const allocations = config.continuousCpu ? exports.createAllocationProfiler({
+    command: (name, params) => transport.sendCommand(name, params), emit,
+    save: async profile => {
+      const file = `${config.profileDirectory}/${config.device}-${randomUUID()}.heapprofile`
+      await fs.promises.mkdir(config.profileDirectory, { recursive: true })
+      await fs.promises.writeFile(file, JSON.stringify(profile))
+      return file
+    },
+  }) : undefined
   let coverageId
   const endCoverage = async () => {
     if (!coverageId) return
@@ -447,6 +517,7 @@ exports.watch = async function (id, serializedConfig) {
       try {
         await endCoverage()
         await profiler.close(Date.now())
+        await allocations?.close()
       } finally {
         if (transport.isAttached()) transport.detach()
         if (ownedContents.get(id) === close) ownedContents.delete(id)
@@ -471,8 +542,10 @@ exports.watch = async function (id, serializedConfig) {
     profiler.heartbeat(Date.now())
     if (config.continuousCpu) await profiler.poll(Date.now())
     if (config.continuousCpu && !profiler.running()) throw new Error('Profiler start failed')
+    await allocations?.start()
     timer = setInterval(() => {
       void profiler.poll(Date.now())
+      void allocations?.poll(Date.now())
     }, 25)
     wc.once('destroyed', destroyed)
     wc.on('did-start-navigation', navigating)

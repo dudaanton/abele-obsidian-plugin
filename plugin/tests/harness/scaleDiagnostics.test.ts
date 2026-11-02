@@ -8,6 +8,7 @@ import {
   deadlinePlan,
   tracepointAdjustedTasks,
   symbolizerFromMap,
+  allocationAttribution,
 } from '../scale/diagnostics.mjs'
 import { budgets, longTaskVerdict } from '../scale/oracles.mjs'
 import { targetedBudgets } from '../scale/targeted.mjs'
@@ -22,6 +23,130 @@ it.each([
 ])('applies the task owner budget to %s at %i ms', (owner, durationMs, status) => {
   const row = { owner, durationMs, profileWindowComplete: owner !== 'unattributed' }
   expect(longTaskVerdict(row).status).toBe(status)
+})
+
+it('exports ordinal-bounded heap allocation windows including collected objects', async () => {
+  const events: any[] = [], saved: any[] = [], calls: any[] = []
+  let ordinal = 1, now = 100
+  const profiler = diagnostics.createAllocationProfiler({ now: () => now,
+    command: async (name: string, params: any) => {
+      calls.push([name, params])
+      return { profile: { head: { id: 1, children: [] },
+        samples: Array.from({ length: ordinal }, (_, i) => ({ ordinal: i + 1, nodeId: 1, size: 64 })) } }
+    }, save: async (p: any) => { saved.push(p); return 'sample.heapprofile' },
+    emit: (event: any) => events.push(event) })
+  await profiler.start()
+  now = 1100
+  await profiler.poll(1100)
+  ordinal = 2
+  now = 2100
+  await profiler.poll(2100)
+  expect(saved.map(p => p.samples.map(s => s.ordinal))).toEqual([[1], [2]])
+  expect(calls).toContainEqual(['HeapProfiler.startSampling', expect.objectContaining({
+    samplingInterval: 16384, includeObjectsCollectedByMajorGC: true,
+    includeObjectsCollectedByMinorGC: true })])
+  expect(events.filter(e => e.event === 'allocation-profile')).toHaveLength(2)
+  await profiler.close()
+})
+
+it.each([['plugin:abele', 'ours during sync'], ['plugin:scale-observer', 'harness-triggered'],
+  ['app://obsidian.md/app.js', 'host-only']])('attributes root GC with allocation stacks from %s', async (url, owner) => {
+  const task = { event: 'long-task', device: '0', startedAt: 1000, durationMs: 100 }
+  const captures = [
+    { event: 'plugin-entry-ledger-ready', device: '0', generation: 'sample', at: 0,
+      coverageStartedAt: 0, complete: true },
+    { event: 'plugin-entry-start', device: '0', generation: 'sample', id: 1, at: 1000 },
+    { event: 'plugin-entry-end', device: '0', generation: 'sample', id: 1, at: 1100 },
+    { event: 'plugin-entry-ledger-checkpoint', device: '0', generation: 'sample', at: 1200,
+      complete: true },
+    { event: 'cpu-profile', device: '0', startedAt: 0, endedAt: 1200, path: 'cpu',
+      clock: { beforeAt: 0, afterAt: 0, timestampMs: 0 } },
+    { event: 'allocation-profile', device: '0', startedAt: 0, endedAt: 1000,
+      complete: true, includeCollected: true, path: 'heap' },
+  ]
+  const [row] = await profileSummary([task], captures, async path => path === 'cpu' ? {
+    startTime: 0, endTime: 1200000, nodes: [
+      { id: 1, callFrame: { functionName: '(garbage collector)', url: '' } }],
+    samples: [1], timeDeltas: [1050000],
+  } : { head: { id: 1, callFrame: { functionName: 'allocate', url }, children: [] },
+    samples: [{ ordinal: 1, nodeId: 1, size: 100 }] })
+  expect(row.owner).toBe(owner)
+  expect(row.allocationAttribution).toMatchObject({ complete: true, totalBytes: 100 })
+  expect(longTaskVerdict(row).status).toBe(owner === 'ours during sync' ? 'FAIL' : 'PASS')
+})
+
+it('rotates heap sampling with an explicit gap before saving the old window', async () => {
+  let now = 0
+  const calls: string[] = [], events: any[] = []
+  const profiler = diagnostics.createAllocationProfiler({ now: () => now, rotationMs: 1000,
+    command: async (name: string) => { calls.push(name); return {
+      profile: { head: { id: 1 }, samples: [{ ordinal: 1, nodeId: 1, size: 32 }] } } },
+    save: async () => { calls.push('save'); return 'sample.heapprofile' },
+    emit: (row: any) => events.push(row) })
+  await profiler.start()
+  now = 1100
+  await profiler.poll(now)
+  expect(calls.slice(-3)).toEqual(['HeapProfiler.stopSampling', 'HeapProfiler.startSampling', 'save'])
+  expect(events).toContainEqual(expect.objectContaining({ event: 'allocation-profile-gap' }))
+  await profiler.close()
+})
+it('keeps the separate load budget when allocation samples explain load-time GC', async () => {
+  const [row] = await profileSummary([{ event: 'long-task', device: '0', startedAt: 1000,
+    durationMs: 900 }], [
+    { event: 'plugin-load-mark', device: '0', name: 'abele:eval-start', at: 1000 },
+    { event: 'plugin-load-mark', device: '0', name: 'abele:eval-end', at: 1900 },
+    { event: 'cpu-profile', device: '0', startedAt: 0, endedAt: 2000, path: 'cpu',
+      clock: { beforeAt: 0, afterAt: 0, timestampMs: 0 } },
+    { event: 'allocation-profile', device: '0', startedAt: 0, endedAt: 1000,
+      complete: true, includeCollected: true, path: 'heap' },
+  ], async path => path === 'cpu' ? {
+    startTime: 0, endTime: 2000000, nodes: [
+      { id: 1, callFrame: { functionName: '(garbage collector)', url: '' } }],
+    samples: [1], timeDeltas: [1800000],
+  } : { head: { id: 1, callFrame: { functionName: 'allocate', url: 'plugin:scale-observer' } },
+    samples: [{ ordinal: 1, nodeId: 1, size: 100 }] })
+  expect(row.allocationAttribution.owner).toBe('harness')
+  expect(row.owner).toBe('plugin load')
+  expect(longTaskVerdict(row).status).toBe('FAIL')
+})
+
+it('reports allocation split and refuses missing, tied, stale or interrupted windows', async () => {
+  const task = { device: '0', startedAt: 1000 }
+  const capture = { event: 'allocation-profile', device: '0', startedAt: 0,
+    endedAt: 1000, complete: true, includeCollected: true, path: 'heap' }
+  let sizes = [60, 30, 10]
+  const load = async () => ({ head: { id: 0, children: [
+    { id: 1, callFrame: { url: 'plugin:abele' }, children: [] },
+    { id: 2, callFrame: { url: 'plugin:scale-observer' }, children: [] },
+    { id: 3, callFrame: { url: 'app://obsidian.md/app.js' }, children: [] },
+  ] }, samples: sizes.map((size, i) => ({ ordinal: i + 1, nodeId: i + 1, size })) })
+  expect(await allocationAttribution(task, [capture], load)).toMatchObject({ owner: 'plugin',
+    splitBytes: { plugin: 60, harness: 30, host: 10, unknown: 0 }, totalBytes: 100 })
+  sizes = [50, 50, 0]
+  expect((await allocationAttribution(task, [capture], load)).owner).toBeNull()
+  expect((await allocationAttribution(task, [], load)).complete).toBe(false)
+  expect((await allocationAttribution({ ...task, startedAt: 5000 }, [capture], load)).complete).toBe(false)
+  expect((await allocationAttribution(task, [capture, { event: 'allocation-profile-gap',
+    device: '0', startedAt: 900, endedAt: 950 }], load)).complete).toBe(false)
+})
+
+it.each(['plugin:abele', ''])('does not excuse a separate long non-GC span from %s', async url => {
+  const task = { event: 'long-task', device: '0', startedAt: 1000, durationMs: 200 }
+  const captures = [
+    { event: 'cpu-profile', device: '0', startedAt: 0, endedAt: 1300, path: 'cpu',
+      clock: { beforeAt: 0, afterAt: 0, timestampMs: 0 } },
+    { event: 'allocation-profile', device: '0', startedAt: 0, endedAt: 1000,
+      complete: true, includeCollected: true, path: 'heap' },
+  ]
+  const [row] = await profileSummary([task], captures, async path => path === 'cpu' ? {
+    startTime: 0, endTime: 1300000, nodes: [
+      { id: 1, callFrame: { functionName: '(garbage collector)', url: '' } },
+      { id: 2, callFrame: { functionName: 'work', url } }],
+    samples: [1, 2], timeDeltas: [1120000, 80000],
+  } : { head: { id: 1, callFrame: { functionName: 'allocate', url: 'plugin:scale-observer' } },
+    samples: [{ ordinal: 1, nodeId: 1, size: 100 }] })
+  expect(row.owner).toBe(url ? 'ours during sync' : 'unattributed')
+  expect(longTaskVerdict(row).status).toBe('FAIL')
 })
 
 it('fails a claimed host task when its profile window is incomplete', () => {

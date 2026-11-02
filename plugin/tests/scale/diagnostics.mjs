@@ -75,6 +75,57 @@ export function sampleMemory(rootPid) {
     rssSample(r.stdout, rootPid)
   )
 }
+export async function allocationAttribution(task, captures, load, symbolize = frame => frame) {
+  // Use the latest fully exported window preceding the task, never allocations
+  // observed after its GC. Ordinals delimit samples within each CDP window.
+  const capture = captures.filter(row => row.event === 'allocation-profile' &&
+    row.device === task.device && row.complete && row.includeCollected &&
+    row.endedAt <= task.startedAt && task.startedAt - row.endedAt <= 1500 &&
+    row.endedAt > row.startedAt && row.endedAt - row.startedAt <= 2500)
+    .sort((a, b) => b.endedAt - a.endedAt)[0]
+  if (!capture) return { complete: false, reason: 'No recent complete preceding allocation window' }
+  if (captures.some(row => row.device === task.device &&
+    ['allocation-profile-gap', 'allocation-profile-unavailable'].includes(row.event) &&
+    row.startedAt < task.startedAt && row.endedAt > capture.startedAt))
+    return { complete: false, reason: 'Allocation coverage gap before GC task' }
+  let profile
+  try { profile = await load(capture.path) } catch { /* unavailable evidence stays unresolved */ }
+  if (!profile?.head || !Array.isArray(profile.samples))
+    return { complete: false, reason: 'Allocation profile unavailable' }
+  const nodes = new Map(), parents = new Map(), pending = [profile.head]
+  while (pending.length) {
+    const node = pending.pop()
+    nodes.set(node.id, node)
+    for (const child of node.children ?? []) { parents.set(child.id, node.id); pending.push(child) }
+  }
+  const splitBytes = { plugin: 0, harness: 0, host: 0, unknown: 0 }, stacks = []
+  for (const sample of profile.samples) {
+    if (!Number.isFinite(sample.size) || sample.size < 0 || !nodes.has(sample.nodeId))
+      return { complete: false, reason: 'Invalid allocation sample' }
+    const stack = [], seen = new Set()
+    let node = nodes.get(sample.nodeId)
+    while (node && !seen.has(node.id)) {
+      seen.add(node.id)
+      if (node.callFrame) stack.push(symbolize(node.callFrame))
+      node = nodes.get(parents.get(node.id))
+    }
+    const frame = stack.find(row => /scale-observer|entry-ledger\.cjs|diagnostics\.cjs|reindex\.cjs|plugin:abele(?:[/:]|$)|^app:\/\/obsidian\.md\//.test(row.url ?? ''))
+    const owner = !frame ? 'unknown' : /scale-observer|entry-ledger\.cjs|diagnostics\.cjs|reindex\.cjs/.test(frame.url)
+      ? 'harness' : /plugin:abele(?:[/:]|$)/.test(frame.url) ? 'plugin' : 'host'
+    splitBytes[owner] += sample.size
+    stacks.push({ owner, sampledBytes: sample.size, stack })
+  }
+  const ranked = Object.entries(splitBytes).sort((a, b) => b[1] - a[1])
+  const totalBytes = ranked.reduce((sum, row) => sum + row[1], 0)
+  const winner = totalBytes && ranked[0][1] > ranked[1][1] && ranked[0][0] !== 'unknown'
+    ? ranked[0][0] : null
+  return { complete: true, owner: winner, totalBytes, splitBytes,
+    splitPercent: Object.fromEntries(Object.entries(splitBytes).map(([owner, bytes]) =>
+      [owner, totalBytes ? bytes * 100 / totalBytes : 0])),
+    window: { startedAt: capture.startedAt, endedAt: capture.endedAt,
+      ageMs: task.startedAt - capture.endedAt, path: capture.path },
+    stacks: stacks.sort((a, b) => b.sampledBytes - a.sampledBytes).slice(0, 20) }
+}
 export async function profileSummary(tasks, captures, load, symbolize = (frame) => frame) {
   const cache = new Map()
   const results = []
@@ -88,7 +139,7 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
     )
     const counts = {},
       frames = []
-    let loaderSample = false
+    let loaderSample = false, gcSampleMs = 0, totalSampleMs = 0, nonGcPluginMs = 0, nonGcUnknownMs = 0
     const intervals = []
     for (const capture of matches) {
       if (!cache.has(capture.path))
@@ -144,6 +195,13 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
               : stack.some(f => /plugin:/.test(f.url ?? '')) ? 'other-plugin'
                 : stack.some(f => /app:\/\/obsidian\.md\//.test(f.url ?? '')) ? 'host' : 'unknown'
         counts[source] = (counts[source] ?? 0) + 1
+        const weight = Math.max(0, Math.min(at, task.startedAt + task.durationMs) -
+          Math.max(task.startedAt, at - (profile.timeDeltas?.[i] ?? 0) / 1000))
+        totalSampleMs += weight
+        const gc = stack[0]?.functionName === '(garbage collector)'
+        if (gc) gcSampleMs += weight
+        else if (source === 'abele') nonGcPluginMs += weight
+        else if (source === 'unknown' || source === 'other-plugin') nonGcUnknownMs += weight
         if (stack.length && (frames.length < 20 || !frames.some(row => row.source === source)))
           frames.push({ source, stack })
       }
@@ -175,16 +233,35 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
       counts.host ? 'host-only' : 'unattributed'
     const ledger = entryLedgerEvidence(task, captures)
     const entryLedgerConflict = ledger.complete && ledger.overlapMs === 0 && Boolean(counts.abele)
-    // Ledger writes can occupy all but a few milliseconds of a reported task.
+    // Ledger instrumentation can occupy nearly an entire reported task.
     // Only excuse them when no plugin entry remains and the remainder fits
     // the one-millisecond rounding of the ledger's epoch timestamps.
-    const ledgerFlushTask = ledger.complete && ledger.overlapMs === 0 &&
+    const ledgerHarnessTask = ledger.complete && ledger.overlapMs === 0 &&
       ledger.harnessMs > 0 && task.durationMs - ledger.harnessMs <= 1
     if (ledger.complete && ledger.overlapMs > 0)
       owner = loadMarker ? 'plugin load' : 'ours during sync'
-    else if (ledgerFlushTask) owner = 'harness-triggered'
+    else if (ledgerHarnessTask) owner = 'harness-triggered'
     else if (entryLedgerConflict) owner = 'unattributed'
     else if (ledger.complete && ledger.lifecycle && owner === 'unattributed') owner = 'host-only'
+    const gcDominated = totalSampleMs > 0 && gcSampleMs > totalSampleMs / 2
+    const allocations = gcDominated ? await allocationAttribution(task, captures, load, symbolize) : undefined
+    const pluginLoadTask = owner === 'plugin load' || loadMarker
+    let attributionSource = ledger.complete && (ledger.overlapMs > 0 || ledger.lifecycle || ledgerHarnessTask)
+      ? 'entry ledger' : 'CPU profile'
+    if (gcDominated && !ledgerHarnessTask) {
+      if (nonGcPluginMs > 50) {
+        owner = pluginLoadTask ? 'plugin load' : 'ours during sync'
+        attributionSource = 'CPU non-GC samples'
+      }
+      else if (nonGcUnknownMs > 50) owner = 'unattributed'
+      else {
+        owner = pluginLoadTask && allocations.owner ? 'plugin load' :
+          allocations.owner === 'plugin' ? 'ours during sync' :
+          allocations.owner === 'harness' ? 'harness-triggered' :
+            allocations.owner === 'host' ? 'host-only' : 'unattributed'
+        attributionSource = 'V8 allocation samples'
+      }
+    }
     results.push({
       ...task,
       profiles: matches.map((c) => c.path),
@@ -192,13 +269,14 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
       source: Object.keys(counts).length ? 'sampled' : 'unknown',
       frames,
       owner,
-      attributionSource: ledger.complete && (ledger.overlapMs > 0 || ledger.lifecycle ||
-        ledgerFlushTask)
-        ? 'entry ledger' : 'CPU profile',
+      attributionSource,
+      gcSampleMs, gcDominated, nonGcPluginMs, allocationAttribution: allocations,
       entryLedgerComplete: ledger.complete,
       entryLedgerConflict,
       pluginEntryOverlapMs: ledger.overlapMs,
       entryLedgerOverheadMs: ledger.harnessMs,
+      entryLedgerWrapperMs: ledger.wrapperMs,
+      entryLedgerExportMs: ledger.exportMs,
       cpuAttributionPass: attributionPass,
       attributionPass: owner !== 'unattributed',
       profileWindowComplete,
@@ -232,7 +310,7 @@ export function entryLedgerEvidence(task, evidence) {
     return total
   }
   const overhead = generation.filter(row => row.event === 'plugin-entry-ledger-overhead')
-    .map(row => [Math.max(task.startedAt, row.startedAt), Math.min(end, row.endedAt)])
+    .map(row => [Math.max(task.startedAt, row.startedAt), Math.min(end, row.endedAt), row.kind])
     .filter(([start, stop]) => stop > start)
   const excluded = []
   for (const [start, stop] of spans) for (const [a, b] of overhead)
@@ -243,7 +321,10 @@ export function entryLedgerEvidence(task, evidence) {
   const startup = ready.pluginAbsent && task.startedAt < (evalStart?.at ?? ready.at)
   const teardown = generation.some(row => row.event === 'renderer-lifecycle' &&
     row.kind === 'teardown' && row.at <= end)
-  return { complete, overlapMs, harnessMs: union(overhead), lifecycle: startup || teardown }
+  return { complete, overlapMs, harnessMs: union(overhead),
+    wrapperMs: union(overhead.filter(row => row[2] === 'wrapper self-time')),
+    exportMs: union(overhead.filter(row => row[2] === 'batch export')),
+    lifecycle: startup || teardown }
 }
 
 // Keep the full ledger on disk, but retain only entries relevant to observed

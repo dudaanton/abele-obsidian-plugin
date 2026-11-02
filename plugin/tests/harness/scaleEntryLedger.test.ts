@@ -18,6 +18,45 @@ const coverage = [
   { event: 'plugin-entry-ledger-checkpoint', device: '0', generation: 'sample', at: 200,
     complete: true },
 ]
+it('keeps callback recording in a fixed ring without exporting on the call path', async () => {
+  const { createEntryLedger } = require('../scale/entry-ledger.cjs')
+  const rows: any[] = []
+  let now = 0
+  const ledger = createEntryLedger({ write: (text: string) => rows.push(...decode(text)),
+    device: '0', now: () => now, performance: { now: () => now, timeOrigin: 0 } })
+  const callback = ledger.wrap(function (value: number) { now += 3; return value }, 'sample')
+  const before = rows.length
+  now = 1000
+  for (let i = 0; i < 300; i++) expect(callback(i)).toBe(i)
+  expect(rows).toHaveLength(before)
+  await ledger.close()
+  expect(rows.filter(row => row.event === 'plugin-entry-start')).toHaveLength(300)
+})
+it('records wrapper self-time separately and marks ring overflow incomplete', async () => {
+  const { createEntryLedger } = require('../scale/entry-ledger.cjs')
+  const rows: any[] = []
+  let now = 0
+  const ledger = createEntryLedger({ capacity: 16, write: (text: string) => rows.push(...decode(text)),
+    device: '0', now: () => ++now, performance: { now: () => now, timeOrigin: 0 } })
+  const callback = ledger.wrap(() => {}, 'sample')
+  for (let i = 0; i < 20; i++) callback()
+  await ledger.close()
+  expect(rows.some(row => row.event === 'plugin-entry-ledger-overhead' && row.endedAt > row.startedAt)).toBe(true)
+  expect(rows.findLast(row => row.event === 'plugin-entry-ledger-checkpoint')).toMatchObject({ complete: false })
+  expect(rows.findLast(row => row.event === 'plugin-entry-ledger-checkpoint').dropped).toBeGreaterThan(0)
+})
+it('charges measured wrapper self-time to the harness instead of its enclosing plugin entry', async () => {
+  const [task] = await profileSummary([{ event: 'long-task', device: '0', startedAt: 0,
+    durationMs: 53 }], [...coverage,
+    { event: 'plugin-entry-start', device: '0', generation: 'sample', id: 1, at: 0 },
+    { event: 'plugin-entry-end', device: '0', generation: 'sample', id: 1, at: 53 },
+    { event: 'plugin-entry-ledger-overhead', device: '0', generation: 'sample',
+      kind: 'wrapper self-time', startedAt: 0, endedAt: 53 },
+  ], async () => null)
+  expect(task).toMatchObject({ owner: 'harness-triggered', pluginEntryOverlapMs: 0,
+    entryLedgerWrapperMs: 53, entryLedgerExportMs: 0 })
+  expect(longTaskVerdict(task).status).toBe('PASS')
+})
 it('attributes a covered lifecycle task without plugin entries to the host', async () => {
   const rows = await profileSummary([{ event: 'long-task', device: '0', startedAt: 10,
     durationMs: 90 }], [...coverage, { event: 'renderer-lifecycle', device: '0',
@@ -147,7 +186,7 @@ it('uses measured ledger export time when profile samples conflict inside that e
   expect(row.owner).toBe('harness-triggered')
   expect(longTaskVerdict(row).status).toBe('PASS')
 })
-it('flushes entry start and completion synchronously and survives quit', async () => {
+it('drains entry start and completion through the asynchronous sink at quit', async () => {
   const { createEntryLedger } = require('../scale/entry-ledger.cjs')
   const directory = await mkdtemp(join(tmpdir(), 'sample-entry-'))
   const file = join(directory, 'ledger.jsonl')
@@ -158,12 +197,11 @@ it('flushes entry start and completion synchronously and survives quit', async (
     const callback = ledger.wrap(() => { now = 80 }, 'vault event')
     callback()
     ledger.teardown()
-    ledger.close()
+    await ledger.close()
     const rows = decode(await readFile(file, 'utf8'))
     expect(rows.find(row => row.event === 'plugin-entry-start')?.at).toBe(0)
     expect(rows.find(row => row.event === 'plugin-entry-end')?.at).toBe(80)
-    expect(rows.at(-1)?.event).toBe('plugin-entry-ledger-checkpoint')
-    expect(rows.at(-1)?.complete).toBe(true)
+    expect(rows.findLast(row => row.event === 'plugin-entry-ledger-checkpoint')?.complete).toBe(true)
   } finally { await rm(directory, { recursive: true }) }
 })
 it('wraps host registration callbacks, promise callbacks and lifecycle', () => {
@@ -196,6 +234,22 @@ it('records native async await continuations that bypass then wrappers', async (
     await ledger.wrap(async () => { await Promise.resolve(); await Promise.resolve() }, 'entry')()
   } finally { close() }
   expect(rows.filter(row => row.kind === 'async continuation').length).toBeGreaterThan(0)
+})
+it('propagates root ownership without caller stacks and fails closed on async-slot collision', () => {
+  const { createEntryLedger, installEntryLedger } = require('../scale/entry-ledger.cjs')
+  const rows: any[] = [], callbacks: any[] = []
+  let hooks: any
+  class Events { on(_name: string, fn: any) { callbacks.push(fn) } }
+  const ledger = createEntryLedger({ write: (text: string) => rows.push(...decode(text)), device: '0' })
+  const close = installEntryLedger({ ledger, target: {}, Events,
+    asyncHooks: { createHook(value: any) { hooks = value; return { enable() {}, disable() {} } } } })
+  ledger.wrap(() => new Events().on('changed', () => {
+    hooks.init(1, 'PROMISE'); hooks.init(262145, 'PROMISE')
+  }), 'plugin evaluation')()
+  callbacks[0]()
+  close()
+  expect(rows.filter(row => row.event === 'plugin-entry-start')).toHaveLength(2)
+  expect(rows.findLast(row => row.event === 'plugin-entry-ledger-checkpoint')?.complete).toBe(false)
 })
 it('wraps native event subscriptions while preserving once and removal', () => {
   const { createEntryLedger, installEntryLedger } = require('../scale/entry-ledger.cjs')

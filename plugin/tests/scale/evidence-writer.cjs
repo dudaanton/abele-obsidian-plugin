@@ -57,6 +57,31 @@ exports.createEvidenceWriter = function (append, { maximumBytes = 128 * 1024 ** 
 }
 
 const writers = new Map()
+const quitDrains = new WeakMap()
+// The renderer may already be gone. Drain host-owned queues after window unload
+// and before the host exits, including the final asynchronous ledger batch.
+exports.drainOnQuit = function (app, writer) {
+  if (!app?.on) return
+  let state = quitDrains.get(app)
+  if (!state) {
+    state = { writers: new Set(), done: undefined, failures: 0 }
+    const drain = event => {
+      event.preventDefault()
+      if (state.done) return
+      state.done = (async () => {
+        await new Promise(resolve => setImmediate(resolve))
+        const results = await Promise.allSettled([...state.writers].map(sink => sink.flush()))
+        state.failures = results.filter(row => row.status === 'rejected').length
+        app.removeListener('will-quit', drain)
+        app.quit()
+      })()
+    }
+    app.on('will-quit', drain)
+    quitDrains.set(app, state)
+  }
+  state.writers.add(writer)
+  return state
+}
 exports.writerFor = function (file) {
   if (!writers.has(file)) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Host-owned evidence sink.

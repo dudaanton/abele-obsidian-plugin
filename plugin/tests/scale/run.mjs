@@ -636,7 +636,7 @@ export async function run(config) {
       const at = Date.now()
       const flushed = await device
         .evaluate(
-          'globalThis.__scalePrepareTeardown?.();globalThis.__scaleFlushEntryLedger?.();return globalThis.__scaleFlushEvidence ? await globalThis.__scaleFlushEvidence() : false'
+          'globalThis.__scalePrepareTeardown?.();await globalThis.__scaleFlushEntryLedger?.();return globalThis.__scaleFlushEvidence ? await globalThis.__scaleFlushEvidence() : false'
         )
         .catch(() => false)
       ;(report.observerFlushes ??= []).push({
@@ -1629,6 +1629,9 @@ export async function run(config) {
       if (sourceMap) report.qualificationSourceMapSha256 = sha(Buffer.from(JSON.stringify(sourceMap)))
       report.profileGaps = entries.filter(row =>
         ['cpu-profile-gap', 'cpu-profile-unavailable'].includes(row.event))
+      report.allocationProfileWindows = entries.filter(row =>
+        ['allocation-profile', 'allocation-profile-ready', 'allocation-profile-gap',
+          'allocation-profile-unavailable'].includes(row.event))
       const qualificationTasks = entries.filter(row => row.event === 'long-task' &&
         (!report.productionLoad || row.startedAt < report.productionLoad.startedAt))
       const productionTasks = entries.filter(row => row.event === 'long-task' &&

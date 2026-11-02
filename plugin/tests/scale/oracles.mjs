@@ -107,7 +107,8 @@ export function attributePauseRequests(requests, traces) {
 
 export function longTaskVerdict(task) {
   const owner = task.owner ?? 'unattributed'
-  const durationMs = ['ours during sync', 'plugin load'].includes(owner) && task.entryLedgerComplete
+  const durationMs = ['ours during sync', 'plugin load'].includes(owner) && task.entryLedgerComplete &&
+    !['V8 allocation samples', 'CPU non-GC samples'].includes(task.attributionSource)
     ? Math.min(task.pluginEntryOverlapMs, task.withoutTracepointSetupMs ?? task.durationMs)
     : task.withoutTracepointSetupMs ?? task.durationMs
   const limit = owner === 'plugin load' ? 800 : 50

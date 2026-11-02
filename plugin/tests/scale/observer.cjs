@@ -24,23 +24,33 @@ module.exports = class extends Plugin {
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Native watcher/event completion callbacks.
       const { EventEmitter } = require('node:events')
       fs.mkdirSync(config.profileDirectory, { recursive: true })
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Host owns asynchronous ledger persistence.
+      const ledgerRemote = require('@electron/remote')
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Batched evidence leaves the renderer through IPC.
+      const ledgerIpc = require('electron').ipcRenderer
+      const ledgerFile = path.join(config.profileDirectory, `entry-${config.device}-${Date.now()}.jsonl`)
+      const ledgerChannel = ledgerRemote.require(config.diagnostics).openEvidencePort(
+        ledgerRemote.getCurrentWebContents().id, JSON.stringify({ evidence: ledgerFile }))
       entryLedger = createEntryLedger({
-        file: path.join(config.profileDirectory, `entry-${config.device}-${Date.now()}.jsonl`),
+        write: text => ledgerIpc.send(ledgerChannel, text),
         device: config.device, pluginAbsent: !this.app.plugins?.plugins?.abele,
       })
       const restore = installEntryLedger({ ledger: entryLedger, target: globalThis, Events,
         Component, Workspace, Plugin: ProductPlugin, EventEmitter, asyncHooks })
       const mark = performance.mark.bind(performance)
       let evaluation
-      Object.defineProperty(performance, 'mark', { configurable: true, value(name, ...args) {
+      Object.defineProperty(performance, 'mark', { configurable: true, value(name) {
         if (name === 'abele:eval-start') evaluation = entryLedger.begin('plugin evaluation')
-        try { return mark(name, ...args) } finally {
+        try { return mark.apply(null, arguments) } finally {
           if (name === 'abele:eval-end' && evaluation !== undefined) {
             entryLedger.end(evaluation); evaluation = undefined
           }
         }
       } })
-      globalThis.__scaleFlushEntryLedger = () => entryLedger.flush()
+      globalThis.__scaleFlushEntryLedger = async () => {
+        await entryLedger.flush()
+        await ledgerIpc.invoke(ledgerChannel)
+      }
       globalThis.__scalePrepareTeardown = () => entryLedger.teardown()
       // Keep the ledger through the observer's own unload: the product may be
       // unloaded later in the host's component order.

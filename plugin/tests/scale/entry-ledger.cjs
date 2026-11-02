@@ -5,63 +5,101 @@ const { randomUUID } = require('node:crypto')
 
 // Qualification observer only. Nothing is added to the product bundle.
 exports.createEntryLedger = function ({ file, write, device, generation = randomUUID(),
-  now = Date.now, performance = globalThis.performance, pluginAbsent = true }) {
-  const append = write ?? (text => fs.appendFileSync(file, text))
-  const epoch = now()
-  let ring = [], sequence = 0, depth = 0, lastFlush = -Infinity, closed = false
-  const stamp = () => ({ at: now(), monotonicMs: performance.now() })
-  const record = (row, autoFlush = true) => {
-    ring.push({ device, generation, ...stamp(), ...row })
-    if (autoFlush && (ring.length >= 256 || now() - lastFlush >= 100)) flush()
+  now = Date.now, performance = globalThis.performance, pluginAbsent = true,
+  capacity = 65536, schedule = setInterval, cancel = clearInterval }) {
+  const epoch = now(), ring = new Float64Array(capacity * 6)
+  const kinds = [], kindIds = new Map()
+  let used = 0, sequence = 0, depth = 0, closed = false, dropped = 0
+  let pending = Promise.resolve(), failure
+  const append = text => {
+    if (write) write(text)
+    else pending = pending.then(() => fs.promises.appendFile(file, text)).catch(error => { failure = error })
+  }
+  const kindId = kind => {
+    if (typeof kind === "number") return kind
+    if (!kind) return -1
+    if (!kindIds.has(kind)) { kindIds.set(kind, kinds.length); kinds.push(kind) }
+    return kindIds.get(kind)
+  }
+  const record = (type, id, at, monotonic, kind = -1, stop = 0) => {
+    if (used === capacity) { dropped++; return }
+    const offset = used++ * 6
+    ring[offset] = type; ring[offset + 1] = id; ring[offset + 2] = at
+    ring[offset + 3] = monotonic; ring[offset + 4] = kind; ring[offset + 5] = stop
+  }
+  const selfTime = startedAt => {
+    const endedAt = now()
+    if (endedAt > startedAt) record(2, 0, startedAt, 0, -1, endedAt)
   }
   const flush = () => {
-    if (closed) return
-    const startedAt = now()
-    ring.push({ device, generation, ...stamp(), event: 'plugin-entry-ledger-checkpoint',
-      complete: true, sequence })
-    const entries = ring.filter(row => /^plugin-entry-(?:start|end)$/.test(row.event))
-    const kinds = [...new Set(entries.map(row => row.kind).filter(Boolean))]
-    const batch = { device, generation, event: 'plugin-entry-batch', epoch,
-      kinds, records: entries.map(row => [row.event === 'plugin-entry-start' ? 0 : 1,
-        row.id, row.at - epoch, Math.round(row.monotonicMs * 1000) / 1000,
-        row.kind ? kinds.indexOf(row.kind) : -1]) }
-    const other = ring.filter(row => !/^plugin-entry-(?:start|end)$/.test(row.event))
-    const text = [...(entries.length ? [batch] : []), ...other].map(row => JSON.stringify(row)).join('\n') + '\n'
-    ring = []
+    if (closed) return pending
+    const startedAt = now(), records = [], overhead = []
+    for (let i = 0; i < used; i++) {
+      const at = i * 6
+      if (ring[at] === 2) overhead.push({ device, generation,
+        event: "plugin-entry-ledger-overhead", kind: 'wrapper self-time',
+        startedAt: ring[at + 2], endedAt: ring[at + 5] })
+      else records.push([ring[at], ring[at + 1], ring[at + 2] - epoch,
+        ring[at + 3], ring[at + 4]])
+    }
+    used = 0
+    const checkpoint = { device, generation, at: now(),
+      event: "plugin-entry-ledger-checkpoint", complete: dropped === 0, dropped, sequence }
+    const text = JSON.stringify({ device, generation, event: "plugin-entry-batch", epoch,
+      kinds, records }) + "\n" + overhead.map(row => JSON.stringify(row) + "\n").join("") +
+      JSON.stringify(checkpoint) + "\n"
+    // Export is invoked only by the scheduled batch or an explicit lifecycle flush.
+    // The renderer supplies IPC; a standalone file sink uses asynchronous append.
     append(text)
-    lastFlush = now()
-    ring.push({ device, generation, ...stamp(), event: 'plugin-entry-ledger-overhead',
-      startedAt, endedAt: lastFlush })
+    append(JSON.stringify({ device, generation, event: 'plugin-entry-ledger-overhead',
+      kind: 'batch export', startedAt, endedAt: now() }) + '\n')
+    return pending
   }
   const begin = kind => {
-    // Persist pending evidence before entering product code, never inside its
-    // measured span. Nested flushes also have explicit overhead intervals.
-    if (ring.length >= 256 || now() - lastFlush >= 100) flush()
-    const id = ++sequence
+    const before = now(), id = ++sequence
     depth++
-    record({ event: 'plugin-entry-start', id, kind }, false)
+    const code = kindId(kind), at = now()
+    record(0, id, at, performance.now(), code)
+    selfTime(before)
     return id
   }
   const end = id => {
+    const before = now()
     depth--
-    record({ event: 'plugin-entry-end', id })
+    record(1, id, before, performance.now())
+    selfTime(before)
   }
+  const timer = schedule(flush, 50)
+  timer?.unref?.()
   const api = {
-    begin, end, flush,
+    begin, end, flush, selfTime, selfStart: now, kindCode: kindId,
+    invalidate() { dropped++ },
     active: () => depth > 0,
     wrap(fn, kind) {
-      if (typeof fn !== 'function') return fn
-      return function (...args) {
-        const id = begin(kind)
-        try { return Reflect.apply(fn, this, args) } finally { end(id) }
+      const before = now()
+      if (typeof fn !== "function") { selfTime(before); return fn }
+      const code = kindId(kind)
+      function entered() {
+        const id = begin(code)
+        try { return fn.apply(this, arguments) } finally { end(id) }
       }
+      selfTime(before)
+      return entered
     },
-    teardown() { record({ event: 'renderer-lifecycle', kind: 'teardown' }, false); flush() },
-    close() { flush(); closed = true },
+    teardown() {
+      append(JSON.stringify({ device, generation, at: now(),
+        event: "renderer-lifecycle", kind: "teardown" }) + "\n")
+      return flush()
+    },
+    close() {
+      cancel(timer)
+      flush(); closed = true
+      return pending.then(() => { if (failure) throw failure })
+    },
   }
-  record({ event: 'plugin-entry-ledger-ready', complete: true, pluginAbsent,
-    coverageStartedAt: pluginAbsent ? performance.timeOrigin : now() })
-  flush()
+  const ready = JSON.stringify({ device, generation, at: now(), complete: true, pluginAbsent,
+    event: "plugin-entry-ledger-ready", coverageStartedAt: pluginAbsent ? performance.timeOrigin : now() }) + "\n"
+  append(ready)
   return api
 }
 
@@ -73,20 +111,22 @@ exports.decodeEntryBatch = row => row.event === 'plugin-entry-batch' ? row.recor
 })) : [row]
 
 exports.installEntryLedger = function ({ ledger, target = globalThis, Events, Component, Workspace, Plugin,
-  EventEmitter, asyncHooks, isPluginCaller = () => {
-    const limit = Error.stackTraceLimit
-    try {
-      Error.stackTraceLimit = 16
-      return /plugin:abele(?:[/:]|\b)/.test(new Error().stack ?? '')
-    } finally { Error.stackTraceLimit = limit }
-  } }) {
+  EventEmitter, asyncHooks, isPluginCaller = () => false }) {
+  // Evaluation/load are explicit roots; ownership propagates from those roots
+  // through registered callbacks and native async jobs, without per-call stacks.
   const undo = [], wrappers = new WeakMap()
-  const owned = () => ledger.active() || isPluginCaller()
+  const owned = () => {
+    const before = ledger.selfStart()
+    try { return ledger.active() || isPluginCaller() } finally { ledger.selfTime(before) }
+  }
   const wrap = (fn, kind) => {
-    if (typeof fn !== 'function') return fn
-    let wrapped = wrappers.get(fn)
-    if (!wrapped) { wrapped = ledger.wrap(fn, kind); wrappers.set(fn, wrapped) }
-    return wrapped
+    const before = ledger.selfStart()
+    try {
+      if (typeof fn !== 'function') return fn
+      let wrapped = wrappers.get(fn)
+      if (!wrapped) { wrapped = ledger.wrap(fn, kind); wrappers.set(fn, wrapped) }
+      return wrapped
+    } finally { ledger.selfTime(before) }
   }
   const patch = (object, name, replace) => {
     if (!object || typeof object[name] !== 'function') return
@@ -94,9 +134,12 @@ exports.installEntryLedger = function ({ ledger, target = globalThis, Events, Co
     object[name] = replacement
     undo.push(() => { if (object[name] === replacement) object[name] = original })
   }
-  const registration = (object, name, positions) => patch(object, name, original => function (...args) {
-    if (owned()) for (const index of positions) args[index] = wrap(args[index], name)
-    return Reflect.apply(original, this, args)
+  const registration = (object, name, positions) => patch(object, name, original => function () {
+    if (owned()) for (let i = 0; i < positions.length; i++) {
+      const index = positions[i]
+      arguments[index] = wrap(arguments[index], name)
+    }
+    return Reflect.apply(original, this, arguments)
   })
   for (const name of ['on', 'once']) registration(Events?.prototype, name, [1])
   for (const name of ['on', 'addListener', 'prependListener'])
@@ -112,8 +155,9 @@ exports.installEntryLedger = function ({ ledger, target = globalThis, Events, Co
     patch(EventEmitter?.prototype, name, original => function (event, fn) {
       return original.call(this, event, wrappers.get(fn) ?? fn)
     })
-  patch(Events?.prototype, 'off', original => function (name, fn, ...args) {
-    return original.call(this, name, wrappers.get(fn) ?? fn, ...args)
+  patch(Events?.prototype, 'off', original => function (name, fn) {
+    arguments[1] = wrappers.get(fn) ?? fn
+    return Reflect.apply(original, this, arguments)
   })
   registration(Workspace?.prototype, 'onLayoutReady', [0])
   for (const name of ['register', 'registerDomEvent', 'registerView', 'registerMarkdownPostProcessor',
@@ -167,22 +211,46 @@ exports.installEntryLedger = function ({ ledger, target = globalThis, Events, Co
       return Reflect.construct(Class, args, NewClass)
     } }))
   }
-  for (const name of ['load', 'unload']) patch(Component?.prototype, name, original => function (...args) {
-    if (this.manifest?.id !== 'abele') return Reflect.apply(original, this, args)
-    return ledger.wrap(original, `plugin:${name}`).apply(this, args)
+  for (const name of ['load', 'unload']) patch(Component?.prototype, name, original => {
+    const callback = wrap(original, `plugin:${name}`)
+    return function () {
+      if (this.manifest?.id !== 'abele') return Reflect.apply(original, this, arguments)
+      return callback.apply(this, arguments)
+    }
   })
   // Native async/await bypasses Promise.prototype.then. V8 promise hooks exposed
   // by Node cover those continuations, and native completion callbacks as well.
   if (asyncHooks) {
-    const jobs = new Set(), active = new Map()
+    const capacity = 262144, ids = new Float64Array(capacity), entries = new Float64Array(capacity)
+    const kind = ledger.kindCode('async continuation')
     const hook = asyncHooks.createHook({
-      init(id, type) { if (ledger.active() || (type === 'PROMISE' && isPluginCaller())) jobs.add(id) },
-      before(id) { if (jobs.has(id)) active.set(id, ledger.begin('async continuation')) },
-      after(id) { if (active.has(id)) { ledger.end(active.get(id)); active.delete(id) } },
-      destroy(id) { jobs.delete(id) },
+      init(id, type) {
+        const before = ledger.selfStart()
+        if (ledger.active() || (type === 'PROMISE' && isPluginCaller())) {
+          const slot = id % capacity
+          if (ids[slot] && ids[slot] !== id) ledger.invalidate()
+          ids[slot] = id; entries[slot] = 0
+        }
+        ledger.selfTime(before)
+      },
+      before(id) {
+        const before = ledger.selfStart(), slot = id % capacity
+        if (ids[slot] === id) entries[slot] = ledger.begin(kind)
+        ledger.selfTime(before)
+      },
+      after(id) {
+        const before = ledger.selfStart(), slot = id % capacity
+        if (ids[slot] === id && entries[slot]) { ledger.end(entries[slot]); entries[slot] = 0 }
+        ledger.selfTime(before)
+      },
+      destroy(id) {
+        const before = ledger.selfStart(), slot = id % capacity
+        if (ids[slot] === id) { ids[slot] = 0; entries[slot] = 0 }
+        ledger.selfTime(before)
+      },
     })
     hook.enable()
     undo.push(() => hook.disable())
   }
-  return () => { for (const restore of undo.reverse()) restore(); ledger.close() }
+  return () => { for (const restore of undo.reverse()) restore(); return ledger.close() }
 }
