@@ -18,6 +18,8 @@ type Input = keyof typeof SETTLE_MS
 export interface SettledSelectionHandlers {
   settled: () => void
   cleared: () => void
+  /** The owning view must still be attached when the delayed selection is read. */
+  scope?: () => HTMLElement | undefined
   /** A press here is not a new selection — the bar's own buttons. */
   ignore?: (target: Node) => boolean
 }
@@ -102,6 +104,14 @@ export class SettledSelection {
     if (!this.selected()) return
     this.timer = this.win.setTimeout(() => {
       this.timer = undefined
+      // Cancellation cannot retract a callback already queued by the host.
+      if (
+        this.abort.signal.aborted ||
+        typeof window === 'undefined' ||
+        typeof document === 'undefined' ||
+        (this.on.scope && !this.on.scope()?.isConnected)
+      )
+        return
       if (!this.down && this.selected()) this.on.settled()
     }, SETTLE_MS[this.last])
   }

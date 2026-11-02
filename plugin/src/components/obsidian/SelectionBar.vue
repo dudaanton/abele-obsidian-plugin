@@ -172,6 +172,7 @@ const onScroll = () => {
 }
 onMounted(() => {
   watcher = new SettledSelection(document, {
+    scope: () => props.scope,
     settled: update,
     cleared: () => {
       if (!pressing) picked.value = null

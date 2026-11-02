@@ -38,6 +38,7 @@ describe('test-only design catalogue', () => {
   })
   it('previews selection actions through the shared bar in the controls recipe', async () => {
     const view = mount(DesignCatalogue, {
+      attachTo: document.body,
       props: { page: 'controls' },
       global: { stubs: { Modal: { template: '<div><slot /></div>' }, NotePicker: true } },
     })

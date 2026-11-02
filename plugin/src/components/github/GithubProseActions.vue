@@ -179,6 +179,7 @@ onMounted(() => {
   // Waits for a drag, the mouse button or the handles to stop before showing anything; gone at
   // once when the selection goes, so it never floats over nothing.
   watcher = new SettledSelection(doc, {
+    scope: () => props.root,
     settled: update,
     cleared: () => {
       if (pressing) return
