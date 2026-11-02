@@ -2,7 +2,9 @@
 import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { readFile, writeFile, mkdir, copyFile, readdir, unlink, stat } from 'node:fs/promises'
-import { resolve, join, basename, dirname } from 'node:path'
+import { resolve, join, basename, dirname, sep } from 'node:path'
+import { createRequire } from 'node:module'
+import asyncHooks from 'node:async_hooks'
 import { fileURLToPath } from 'node:url'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
@@ -342,6 +344,41 @@ export async function manifest(token) {
   return result
 }
 
+async function verifyInstalledLedger(observer, device) {
+  const require = createRequire(join(observer, 'main.js'))
+  // Read the installed graph afresh, including transitive helpers, rather than
+  // trusting the driver's modules or a prior deployment in the Node cache.
+  const clearInstalled = () => {
+    for (const file of Object.keys(require.cache))
+      if (file.startsWith(observer + sep)) delete require.cache[file]
+  }
+  clearInstalled()
+  const api = require('./entry-ledger.cjs'), kinds = new Set()
+  let checkpoint
+  const ledger = api.createEntryLedger({ device, requireProductBridge: true,
+    write: text => {
+      for (const line of text.trim().split('\n')) for (const row of api.decodeEntryBatch(JSON.parse(line))) {
+        if (row.event === 'plugin-entry-start') kinds.add(row.kind)
+        if (row.event === 'plugin-entry-ledger-checkpoint') checkpoint = row
+      }
+    } })
+  let close
+  try {
+    close = api.installEntryLedger({ ledger, target: {}, asyncHooks })
+    const Product = api.wrapProductExport(class {
+      async onload() {
+        await Promise.resolve()
+        if (!ledger.active()) throw new Error('Installed ledger async ownership unavailable')
+      }
+    }, ledger)
+    await new Product().onload()
+  } finally { await (close ? close() : ledger.close()); clearInstalled() }
+  if (!checkpoint?.complete || checkpoint.dropped ||
+    !kinds.has('plugin:onload') || !kinds.has('async continuation'))
+    throw new Error('Installed ledger lifecycle coverage unavailable')
+  return { complete: true, device, kinds: [...kinds] }
+}
+
 export async function setupVault(config, root, device) {
   await mkdir(join(root, '.obsidian/plugins/abele'), { recursive: true })
   for (const name of ['main.js', 'manifest.json', 'styles.css']) {
@@ -358,6 +395,7 @@ export async function setupVault(config, root, device) {
   await copyFile(join(here, 'reindex.cjs'), join(observer, 'reindex.cjs'))
   await copyFile(join(here, 'diagnostics.cjs'), join(observer, 'diagnostics.cjs'))
   await copyFile(join(here, 'entry-ledger.cjs'), join(observer, 'entry-ledger.cjs'))
+  await copyFile(join(here, 'host-entries.cjs'), join(observer, 'host-entries.cjs'))
   await copyFile(join(here, 'heap.cjs'), join(observer, 'heap.cjs'))
   await copyFile(join(here, 'evidence-writer.cjs'), join(observer, 'evidence-writer.cjs'))
   await copyFile(join(here, 'profile-only.cjs'), join(observer, 'profile-only.cjs'))
@@ -427,6 +465,11 @@ export async function setupVault(config, root, device) {
       ),
     })
   )
+  if (config.continuousCpu) {
+    const proof = await verifyInstalledLedger(observer, device)
+    await mkdir(config.output, { recursive: true })
+    await writeFile(join(config.output, `observer-deployment-${device}.json`), JSON.stringify(proof))
+  }
 }
 
 export async function run(config) {
