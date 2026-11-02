@@ -18,6 +18,69 @@ const coverage = [
   { event: 'plugin-entry-ledger-checkpoint', device: '0', generation: 'sample', at: 200,
     complete: true },
 ]
+it('keeps colliding live async IDs separate and closes their ownership roots', async () => {
+  const { createEntryLedger, installEntryLedger } = require('../scale/entry-ledger.cjs')
+  const rows: any[] = []
+  let hook: any
+  const ledger = createEntryLedger({ device: '0',
+    write: (text: string) => rows.push(...decode(text)) })
+  const close = installEntryLedger({ ledger, target: {}, asyncCapacity: 8,
+    asyncHooks: { createHook(callbacks: any) {
+      hook = callbacks
+      return { enable() {}, disable() {} }
+    } } })
+  const root = ledger.begin('sample root')
+  hook.init(1, 'PROMISE')
+  ledger.end(root)
+  hook.before(1)
+  hook.init(262145, 'PROMISE') // Same slot in the previous direct-mapped table.
+  hook.init(9, 'PROMISE')
+  hook.after(1)
+  expect(ledger.active()).toBe(false)
+  hook.destroy(1)
+  for (const id of [262145, 9]) {
+    hook.before(id)
+    expect(ledger.active()).toBe(true)
+    hook.after(id)
+    expect(ledger.active()).toBe(false)
+    hook.destroy(id)
+  }
+  // A later host resource must not inherit leaked product ownership.
+  hook.init(17, 'PROMISE')
+  hook.before(17)
+  expect(ledger.active()).toBe(false)
+  hook.after(17)
+  await close()
+  expect(rows.findLast(row => row.event === 'plugin-entry-ledger-checkpoint'))
+    .toMatchObject({ complete: true, dropped: 0 })
+})
+it('fails closed on actual async table exhaustion without overwriting active entries', async () => {
+  const { createEntryLedger, installEntryLedger } = require('../scale/entry-ledger.cjs')
+  const rows: any[] = []
+  let hook: any
+  const ledger = createEntryLedger({ device: '0',
+    write: (text: string) => rows.push(...decode(text)) })
+  const close = installEntryLedger({ ledger, target: {}, asyncCapacity: 4,
+    asyncHooks: { createHook(callbacks: any) {
+      hook = callbacks
+      return { enable() {}, disable() {} }
+    } } })
+  const root = ledger.begin('sample root')
+  for (const id of [1, 5, 9, 13, 17]) hook.init(id, 'PROMISE')
+  ledger.end(root)
+  hook.destroy(5)
+  for (const id of [1, 9, 13]) {
+    hook.before(id)
+    expect(ledger.active()).toBe(true)
+    hook.after(id)
+    expect(ledger.active()).toBe(false)
+  }
+  hook.before(17)
+  expect(ledger.active()).toBe(false)
+  await close()
+  expect(rows.findLast(row => row.event === 'plugin-entry-ledger-checkpoint'))
+    .toMatchObject({ complete: false, dropped: 1 })
+})
 it('keeps callback recording in a fixed ring without exporting on the call path', async () => {
   const { createEntryLedger } = require('../scale/entry-ledger.cjs')
   const rows: any[] = []
@@ -235,13 +298,13 @@ it('records native async await continuations that bypass then wrappers', async (
   } finally { close() }
   expect(rows.filter(row => row.kind === 'async continuation').length).toBeGreaterThan(0)
 })
-it('propagates root ownership without caller stacks and fails closed on async-slot collision', () => {
+it('propagates root ownership without caller stacks and fails closed on async table exhaustion', () => {
   const { createEntryLedger, installEntryLedger } = require('../scale/entry-ledger.cjs')
   const rows: any[] = [], callbacks: any[] = []
   let hooks: any
   class Events { on(_name: string, fn: any) { callbacks.push(fn) } }
   const ledger = createEntryLedger({ write: (text: string) => rows.push(...decode(text)), device: '0' })
-  const close = installEntryLedger({ ledger, target: {}, Events,
+  const close = installEntryLedger({ ledger, target: {}, Events, asyncCapacity: 1,
     asyncHooks: { createHook(value: any) { hooks = value; return { enable() {}, disable() {} } } } })
   ledger.wrap(() => new Events().on('changed', () => {
     hooks.init(1, 'PROMISE'); hooks.init(262145, 'PROMISE')
@@ -284,6 +347,8 @@ it('does not declare complete product-root coverage before the export bridge ack
     write: (text: string) => rows.push(...decode(text)), device: '0' })
   expect(rows.find(row => row.event === 'plugin-entry-ledger-ready')?.complete).toBe(false)
   expect(ledger.productBridgeReady()).toBe(false)
+  await ledger.flush()
+  expect(rows.findLast(row => row.event === 'plugin-entry-ledger-checkpoint')?.complete).toBe(false)
   wrapProductExport({ default: class Product { onload() {} } }, ledger)
   expect(ledger.productBridgeReady()).toBe(true)
   await ledger.close()

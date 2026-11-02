@@ -48,7 +48,7 @@ exports.createEntryLedger = function ({ file, write, device, generation = random
     }
     used = 0
     const checkpoint = { device, generation, at: now(),
-      event: "plugin-entry-ledger-checkpoint", complete: dropped === 0, dropped, sequence }
+      event: "plugin-entry-ledger-checkpoint", complete: bridgeReady && dropped === 0, dropped, sequence }
     const text = JSON.stringify({ device, generation, event: "plugin-entry-batch", epoch,
       kinds, records }) + "\n" + overhead.map(row => JSON.stringify(row) + "\n").join("") +
       JSON.stringify(checkpoint) + "\n"
@@ -144,7 +144,7 @@ exports.wrapProductExport = function (value, ledger) {
 }
 
 exports.installEntryLedger = function ({ ledger, target = globalThis, Events, Component, Workspace, Plugin,
-  EventEmitter, asyncHooks, isPluginCaller = () => false }) {
+  EventEmitter, asyncHooks, asyncCapacity = 262144, isPluginCaller = () => false }) {
   // Evaluation/load are explicit roots; ownership propagates from those roots
   // through registered callbacks and native async jobs, without per-call stacks.
   const undo = [], wrappers = new WeakMap()
@@ -254,31 +254,55 @@ exports.installEntryLedger = function ({ ledger, target = globalThis, Events, Co
   // Native async/await bypasses Promise.prototype.then. V8 promise hooks exposed
   // by Node cover those continuations, and native completion callbacks as well.
   if (asyncHooks) {
-    const capacity = 262144, ids = new Float64Array(capacity), entries = new Float64Array(capacity)
+    const capacity = asyncCapacity, ids = new Float64Array(capacity), entries = new Float64Array(capacity)
+    // Async IDs can wrap onto a slot while an older resource is still live.
+    // Preserve both: overwriting an active entry would lose its matching end
+    // and leave every subsequent host job inside product ownership.
+    const slotFor = id => {
+      const start = id % capacity
+      let slot = start
+      do {
+        if (!ids[slot] || ids[slot] === id) return slot
+        slot = (slot + 1) % capacity
+      } while (slot !== start)
+      return -1
+    }
+    const remove = slot => {
+      ids[slot] = 0; entries[slot] = 0
+      // Reinsert the following cluster so a lookup never stops at a hole.
+      let next = (slot + 1) % capacity
+      for (let visited = 0; visited < capacity - 1 && ids[next]; visited++) {
+        const id = ids[next], entry = entries[next]
+        ids[next] = 0; entries[next] = 0
+        const destination = slotFor(id)
+        ids[destination] = id; entries[destination] = entry
+        next = (next + 1) % capacity
+      }
+    }
     const kind = ledger.kindCode('async continuation')
     const hook = asyncHooks.createHook({
       init(id, type) {
         const before = ledger.selfStart()
         if (ledger.active() || (type === 'PROMISE' && isPluginCaller())) {
-          const slot = id % capacity
-          if (ids[slot] && ids[slot] !== id) ledger.invalidate()
-          ids[slot] = id; entries[slot] = 0
+          const slot = slotFor(id)
+          if (slot < 0) ledger.invalidate()
+          else { ids[slot] = id; entries[slot] = 0 }
         }
         ledger.selfTime(before)
       },
       before(id) {
-        const before = ledger.selfStart(), slot = id % capacity
-        if (ids[slot] === id) entries[slot] = ledger.begin(kind)
+        const before = ledger.selfStart(), slot = slotFor(id)
+        if (slot >= 0 && ids[slot] === id) entries[slot] = ledger.begin(kind)
         ledger.selfTime(before)
       },
       after(id) {
-        const before = ledger.selfStart(), slot = id % capacity
-        if (ids[slot] === id && entries[slot]) { ledger.end(entries[slot]); entries[slot] = 0 }
+        const before = ledger.selfStart(), slot = slotFor(id)
+        if (slot >= 0 && ids[slot] === id && entries[slot]) { ledger.end(entries[slot]); entries[slot] = 0 }
         ledger.selfTime(before)
       },
       destroy(id) {
-        const before = ledger.selfStart(), slot = id % capacity
-        if (ids[slot] === id) { ids[slot] = 0; entries[slot] = 0 }
+        const before = ledger.selfStart(), slot = slotFor(id)
+        if (slot >= 0 && ids[slot] === id) remove(slot)
         ledger.selfTime(before)
       },
     })
