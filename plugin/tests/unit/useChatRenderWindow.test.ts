@@ -5,6 +5,23 @@ import { useChatRenderWindow } from '@/composables/useChatRenderWindow'
 const rows = (count: number) => Array.from({ length: count }, (_, i) => `sample-${i}`)
 
 describe('bounded chat rendering', () => {
+  it('keeps a completed reply mounted below a reader until the window is full', () => {
+    const messages = ref(rows(2))
+    const window = useChatRenderWindow(
+      () => messages.value,
+      () => false,
+      3,
+      9
+    )
+    messages.value.push('completed-reply')
+    expect(window.visible.value).toContain('completed-reply')
+    expect(window.hasNewer.value).toBe(false)
+    messages.value.push(...rows(20).map((id) => `new-${id}`))
+    expect(window.start.value).toBe(0)
+    expect(window.visible.value).toHaveLength(9)
+    expect(window.hasNewer.value).toBe(true)
+  })
+
   it('evicts the old tail while following arriving messages', async () => {
     const messages = ref(rows(2000))
     const following = ref(true)

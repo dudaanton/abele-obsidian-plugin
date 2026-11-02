@@ -326,6 +326,19 @@ export function useChatScroll(options: ChatScrollOptions) {
    */
   let mutObserver: MutationObserver | null = null
   let sizeObserver: ResizeObserver | null = null
+  const observedMessages = new Set<Element>()
+  const observeMessageSizes = (el: HTMLElement) => {
+    for (const message of observedMessages) {
+      if (message.parentElement === el) continue
+      sizeObserver?.unobserve(message)
+      observedMessages.delete(message)
+    }
+    for (const message of Array.from(el.children)) {
+      if (observedMessages.has(message)) continue
+      sizeObserver?.observe(message)
+      observedMessages.add(message)
+    }
+  }
   /**
    * The container's height as last reported, for telling a change of box from a scroll. Null
    * until the observer has reported once: the first scroll to arrive before then measures it.
@@ -381,6 +394,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     mutObserver = new MutationObserver(() => {
       // Hidden under the opened composer; it is put right when the composer closes.
       if (composing.value) return
+      observeMessageSizes(el)
       // A message that has just rendered its markdown changes the subtree and the layout
       // with it — which is exactly when the anchor needs putting back.
       holdAnchor()
@@ -392,12 +406,23 @@ export function useChatScroll(options: ChatScrollOptions) {
     mutObserver.observe(el, {
       childList: true,
       subtree: true,
+      characterData: true,
       attributes: true,
       attributeFilter: ['open'],
     })
     boxHeight = null
-    sizeObserver = new ResizeObserver(onBoxResized)
+    // The box itself stays the same size when an image loads, a tool row expands or
+    // markdown finishes laying out. Watch the mounted messages too, including new ones
+    // as the render window moves, so following does not wait for another stream chunk.
+    sizeObserver = new ResizeObserver(() => {
+      if (composing.value) return
+      holdAnchor()
+      holdSteady()
+      keepGapCurrent()
+      onBoxResized()
+    })
     sizeObserver.observe(el)
+    observeMessageSizes(el)
     anchors.nextFrame(el.win, revealUntilScrollable)
   }
 
@@ -406,6 +431,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     mutObserver = null
     sizeObserver?.disconnect()
     sizeObserver = null
+    observedMessages.clear()
   }
 
   watch(

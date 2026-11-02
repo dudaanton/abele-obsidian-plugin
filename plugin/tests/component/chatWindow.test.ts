@@ -567,22 +567,25 @@ function resizableModel(wrapper: ReturnType<typeof mount>, contentHeight: number
 }
 
 describe('the box shrinking under the reader, as it does when a keyboard opens', () => {
-  const observers: Array<{ target: Element | null; fire: () => void }> = []
+  const observers: Array<{ targets: Set<Element>; fire: () => void }> = []
 
   beforeEach(() => {
     observers.length = 0
     vi.stubGlobal(
       'ResizeObserver',
       class {
-        private entry = { target: null as Element | null, fire: () => this.cb([]) }
+        private entry = { targets: new Set<Element>(), fire: () => this.cb([]) }
         constructor(private cb: (entries: ResizeObserverEntry[]) => void) {
           observers.push(this.entry)
         }
         observe(target: Element) {
-          this.entry.target = target
+          this.entry.targets.add(target)
+        }
+        unobserve(target: Element) {
+          this.entry.targets.delete(target)
         }
         disconnect() {
-          this.entry.target = null
+          this.entry.targets.clear()
         }
       }
     )
@@ -590,7 +593,8 @@ describe('the box shrinking under the reader, as it does when a keyboard opens',
 
   afterEach(() => vi.unstubAllGlobals())
 
-  const boxObserver = (container: Element) => observers.find((o) => o.target === container) ?? null
+  const boxObserver = (container: Element) =>
+    observers.find((o) => o.targets.has(container)) ?? null
 
   const settle = async () => {
     await nextTick()

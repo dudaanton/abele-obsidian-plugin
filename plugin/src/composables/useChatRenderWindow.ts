@@ -44,6 +44,10 @@ export function useChatRenderWindow<T>(
       else if (following()) {
         last.value = now
         first.value = Math.max(first.value, now - capacity)
+      } else if (last.value === before) {
+        // Completing a streamed reply mounts its message below the reader. Keep that
+        // tail visible without moving their start, up to the existing capacity.
+        last.value = Math.min(now, first.value + capacity)
       }
     },
     { flush: 'sync' }
