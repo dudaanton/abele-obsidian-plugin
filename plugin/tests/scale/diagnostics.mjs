@@ -128,6 +128,22 @@ export async function allocationAttribution(task, captures, load, symbolize = fr
       ageMs: task.startedAt - capture.endedAt, path: capture.path },
     stacks: stacks.sort((a, b) => b.sampledBytes - a.sampledBytes).slice(0, 20) }
 }
+export function longTaskScope(task, evidence) {
+  const rows = evidence.filter(row => row.device === task.device)
+  const launches = rows.filter(row => ['renderer-start', 'harness-launch-request'].includes(row.event) ||
+    row.event === 'plugin-load-mark' && row.name === 'abele:eval-start').sort((a, b) => a.at - b.at)
+  const launch = launches.filter(row => row.at <= task.startedAt).at(-1)
+  const begin = launch?.at ?? -Infinity
+  if (rows.some(row => row.event === 'harness-stop-request' && row.at >= begin && row.at <= task.startedAt))
+    return 'teardown'
+  if (rows.some(row => row.event === 'plugin-load-mark' && row.name === 'abele:eval-start' &&
+    row.at > task.startedAt && row.at < task.startedAt + task.durationMs)) return 'load'
+  const completed = rows.filter(row => row.event === 'plugin-load-mark' && row.name === 'abele:onload-end' && row.at >= begin)
+  if (completed.some(row => row.at <= task.startedAt)) return 'sync'
+  if (launches.length || completed.length) return 'load'
+  return null
+}
+
 export async function profileSummary(tasks, captures, load, symbolize = (frame) => frame) {
   const cache = new Map()
   const results = []
@@ -141,7 +157,7 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
     )
     const counts = {},
       frames = []
-    let loaderSample = false, gcSampleMs = 0, totalSampleMs = 0, nonGcPluginMs = 0
+    let gcSampleMs = 0, totalSampleMs = 0, nonGcPluginMs = 0
     const intervals = [], pluginSamples = []
     for (const capture of matches) {
       if (!cache.has(capture.path))
@@ -189,11 +205,8 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
           /scale-observer|reindex\.cjs|diagnostics\.cjs|entry-ledger\.cjs/.test(f.url ?? '')
         )
         const pluginFrame = stack.findIndex((f) => /plugin:abele(?:[/:]|$)/.test(f.url ?? ''))
-        loaderSample ||= stack.some(f => /loadPlugin|loadManifest/.test(f.functionName ?? ''))
         const source =
-          observerFrame >= 0 && (pluginFrame < 0 || observerFrame < pluginFrame)
-            ? 'harness'
-            : pluginFrame >= 0 ? 'abele'
+          pluginFrame >= 0 ? 'abele' : observerFrame >= 0 ? 'harness'
               : stack.some(f => /plugin:/.test(f.url ?? '')) ? 'other-plugin'
                 : stack.some(f => /app:\/\/obsidian\.md\//.test(f.url ?? '')) ? 'host' : 'unknown'
         counts[source] = (counts[source] ?? 0) + 1
@@ -225,41 +238,21 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
         })
       : captures.some(e => e.event === 'plugin-load' && e.device === task.device &&
           e.at >= task.startedAt && e.at <= task.startedAt + task.durationMs)
-    let owner = !attributionPass ? 'unattributed' :
-      (counts.abele || loaderSample) && (loadMarker || (loaderSample &&
-        (!evalStarts.length || task.startedAt < Math.min(...evalStarts.map(row => row.at)))))
-        ? 'plugin load' :
-      counts.abele ? 'ours during sync' :
-      !attributionPass ? 'unattributed' :
-      counts.harness ? 'harness-triggered' :
-      counts.host ? 'host-only' : 'unattributed'
+    const scope = longTaskScope(task, captures) ?? (loadMarker ? 'load' : 'sync')
     const gcDominated = totalSampleMs > 0 && gcSampleMs > totalSampleMs / 2
     const ledger = entryLedgerEvidence(task, captures)
-    // A positive entry elsewhere in the same task cannot cover an omitted
-    // root. Compare each definite plugin sample with the recorded net spans.
     const entryLedgerConflict = ledger.complete && pluginSamples.some(([at, latestAt]) =>
       !ledger.pluginIntervals.some(([start, end]) => at >= start - 1 && latestAt <= end + 1))
-    // Ledger instrumentation can occupy nearly an entire reported task.
-    // Only excuse them when no plugin entry remains and the remainder fits
-    // the one-millisecond rounding of the ledger's epoch timestamps.
-    const ledgerHarnessTask = ledger.complete && ledger.overlapMs === 0 &&
-      ledger.harnessMs > 0 && task.durationMs - ledger.harnessMs <= 1
-    if (entryLedgerConflict) owner = 'unattributed'
-    else if (ledger.overlapMs > 0)
-      owner = loadMarker ? 'plugin load' : 'ours during sync'
-    else if (counts.abele && ((!counts.unknown && !counts['other-plugin']) ||
-      gcDominated && nonGcPluginMs > 50))
-      owner = loadMarker || loaderSample ? 'plugin load' : 'ours during sync'
-    else if (loadMarker) owner = 'plugin load'
-    else if (ledgerHarnessTask && !counts.abele) owner = 'harness-triggered'
-    else if (ledger.complete && ledger.lifecycle && owner === 'unattributed') owner = 'host-only'
-    if (ledger.partial && !ledger.overlapMs && !counts.abele && !loadMarker)
-      owner = 'unattributed'
+    // CPU evidence is decisive. Partial ledger coverage never vetoes it;
+    // complete ledger coverage cannot fill a missing CPU interval.
+    const owner = scope === 'teardown' ? 'teardown' : scope === 'load' ? 'plugin load' :
+      counts.abele ? 'ours during sync' :
+      attributionPass ? (counts.harness ? 'harness-triggered' : 'host-only') :
+      profileWindowComplete && ledger.complete && ledger.overlapMs > 0 ? 'ours during sync' : 'unattributed'
     const allocations = gcDominated ? await allocationAttribution(task, captures, load, symbolize) : undefined
-    const attributionSource = entryLedgerConflict ? 'Conflicting CPU and entry evidence' :
-      ledger.partial && owner === 'unattributed' ? 'Partial host-method coverage' :
-        ledger.overlapMs > 0 || ledger.complete && (ledger.lifecycle || ledgerHarnessTask)
-          ? 'entry ledger' : 'CPU profile'
+    const attributionSource = scope !== 'sync' ? 'Lifecycle boundary' :
+      !counts.abele && !attributionPass && profileWindowComplete && ledger.complete && ledger.overlapMs > 0
+        ? 'entry ledger supporting CPU coverage' : 'CPU profile'
     // Preceding allocation samples describe a window, not the cause of a later
     // collection. Keep the split for diagnosis; it never promotes/exempts an
     // owner or resolves a CPU/entry contradiction.
@@ -270,6 +263,7 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
       source: Object.keys(counts).length ? 'sampled' : 'unknown',
       frames,
       owner,
+      scope,
       attributionSource,
       gcSampleMs, gcDominated, nonGcPluginMs, allocationAttribution: allocations,
       entryLedgerComplete: ledger.complete,

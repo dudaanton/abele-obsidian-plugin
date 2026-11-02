@@ -108,7 +108,7 @@ it('records wrapper self-time separately and marks ring overflow incomplete', as
   expect(rows.findLast(row => row.event === 'plugin-entry-ledger-checkpoint')).toMatchObject({ complete: false })
   expect(rows.findLast(row => row.event === 'plugin-entry-ledger-checkpoint').dropped).toBeGreaterThan(0)
 })
-it('charges measured wrapper self-time to the harness instead of its enclosing plugin entry', async () => {
+it('reports wrapper self-time without filling missing CPU coverage', async () => {
   const [task] = await profileSummary([{ event: 'long-task', device: '0', startedAt: 0,
     durationMs: 53 }], [...coverage,
     { event: 'plugin-entry-start', device: '0', generation: 'sample', id: 1, at: 0 },
@@ -116,26 +116,25 @@ it('charges measured wrapper self-time to the harness instead of its enclosing p
     { event: 'plugin-entry-ledger-overhead', device: '0', generation: 'sample',
       kind: 'wrapper self-time', startedAt: 0, endedAt: 53 },
   ], async () => null)
-  expect(task).toMatchObject({ owner: 'harness-triggered', pluginEntryOverlapMs: 0,
+  expect(task).toMatchObject({ owner: 'unattributed', pluginEntryOverlapMs: 0,
     entryLedgerWrapperMs: 53, entryLedgerExportMs: 0 })
-  expect(longTaskVerdict(task).status).toBe('PASS')
+  expect(longTaskVerdict(task).status).toBe('FAIL')
 })
-it('attributes a covered lifecycle task without plugin entries to the host', async () => {
+it('does not exempt lifecycle tasks without a harness stop receipt or CPU coverage', async () => {
   const rows = await profileSummary([{ event: 'long-task', device: '0', startedAt: 10,
     durationMs: 90 }], [...coverage, { event: 'renderer-lifecycle', device: '0',
       generation: 'sample', kind: 'teardown', at: 0 }], async () => null)
-  expect(rows[0].owner).toBe('host-only')
-  expect(rows[0].attributionSource).toBe('entry ledger')
-  expect(longTaskVerdict(rows[0]).status).toBe('PASS')
+  expect(rows[0].owner).toBe('unattributed')
+  expect(longTaskVerdict(rows[0]).status).toBe('FAIL')
 })
-it('charges overlapping plugin entry time and keeps a spanning entry ours', async () => {
+it('reports spanning entry time but missing CPU coverage still fails', async () => {
   const entries = [
     { event: 'plugin-entry-start', device: '0', generation: 'sample', id: 1, at: 0 },
     { event: 'plugin-entry-end', device: '0', generation: 'sample', id: 1, at: 160 },
   ]
   const [row] = await profileSummary([{ event: 'long-task', device: '0', startedAt: 10,
     durationMs: 90 }], [...coverage, ...entries], async () => null)
-  expect(row.owner).toBe('ours during sync')
+  expect(row.owner).toBe('unattributed')
   expect(row.pluginEntryOverlapMs).toBe(90)
   expect(longTaskVerdict(row).status).toBe('FAIL')
 })
@@ -144,14 +143,14 @@ it('does not treat absent ledger coverage as proof of host ownership', async () 
     durationMs: 90 }], [], async () => null)
   expect(row.owner).toBe('unattributed')
 })
-it('keeps contradictory profile and ledger evidence unknown until investigated', async () => {
+it('uses definite plugin CPU evidence despite contradictory ledger', async () => {
   const captures = [...coverage, { event: 'cpu-profile', device: '0', startedAt: 0,
     endedAt: 100, path: 'sample', clock: { beforeAt: 0, afterAt: 0, timestampMs: 0 } }]
   const [row] = await profileSummary([{ event: 'long-task', device: '0', startedAt: 0,
     durationMs: 100 }], captures, async () => ({ startTime: 0, endTime: 100000,
       nodes: [{ id: 1, callFrame: { functionName: 'sample', url: 'plugin:abele' } }],
       samples: [1], timeDeltas: [50000] }))
-  expect(row.owner).toBe('unattributed')
+  expect(row.owner).toBe('ours during sync')
   expect(row.entryLedgerConflict).toBe(true)
 })
 it('does not use a damaged ledger to prove absence of plugin entries', async () => {
@@ -199,7 +198,7 @@ it('does not charge a synchronous ledger flush to the entered callback', () => {
   const end = rows.find(row => row.event === 'plugin-entry-end')
   expect(end.at - start.at).toBe(10)
 })
-it('subtracts nested ledger I/O from plugin spans and reports a pure flush as harness work', async () => {
+it('subtracts nested ledger I/O but requires CPU evidence to exempt a flush', async () => {
   const entries = [
     { event: 'plugin-entry-start', device: '0', generation: 'sample', id: 1, at: 0 },
     { event: 'plugin-entry-end', device: '0', generation: 'sample', id: 1, at: 150 },
@@ -208,17 +207,17 @@ it('subtracts nested ledger I/O from plugin spans and reports a pure flush as ha
   const [row] = await profileSummary([{ event: 'long-task', device: '0', startedAt: 10,
     durationMs: 100 }], [...coverage, ...entries], async () => null)
   expect(row.pluginEntryOverlapMs).toBe(0)
-  expect(row.owner).toBe('harness-triggered')
-  expect(longTaskVerdict(row).status).toBe('PASS')
+  expect(row.owner).toBe('unattributed')
+  expect(longTaskVerdict(row).status).toBe('FAIL')
 })
-it('attributes a task dominated by a synchronous ledger flush without hiding a real remainder', async () => {
+it('does not exempt ledger flushes or remainders without CPU coverage', async () => {
   const task = { event: 'long-task', device: '0', startedAt: 0, durationMs: 195 }
   const flush = (endedAt: number) => ({ event: 'plugin-entry-ledger-overhead',
     device: '0', generation: 'sample', startedAt: 0, endedAt })
   const [almostAllFlush] = await profileSummary([task], [...coverage, flush(194)], async () => null)
   expect(almostAllFlush.entryLedgerOverheadMs).toBe(194)
-  expect(almostAllFlush.owner).toBe('harness-triggered')
-  expect(longTaskVerdict(almostAllFlush).status).toBe('PASS')
+  expect(almostAllFlush.owner).toBe('unattributed')
+  expect(longTaskVerdict(almostAllFlush).status).toBe('FAIL')
 
   const [unexplainedRemainder] = await profileSummary([task], [...coverage, flush(120)], async () => null)
   expect(unexplainedRemainder.owner).toBe('unattributed')
@@ -234,7 +233,7 @@ it('attributes a task dominated by a synchronous ledger flush without hiding a r
   expect(pluginRemainder.pluginEntryOverlapMs).toBe(75)
   expect(longTaskVerdict(pluginRemainder).status).toBe('FAIL')
 })
-it('keeps conflicting plugin CPU and ledger export evidence unattributed', async () => {
+it('retains plugin CPU ownership despite conflicting ledger export evidence', async () => {
   const captures = [...coverage,
     { event: 'plugin-entry-ledger-overhead', device: '0', generation: 'sample',
       startedAt: 0, endedAt: 143 },
@@ -246,7 +245,7 @@ it('keeps conflicting plugin CPU and ledger export evidence unattributed', async
       nodes: [{ id: 1, callFrame: { functionName: 'sample', url: 'plugin:abele' } }],
       samples: [1], timeDeltas: [50000] }))
   expect(row.entryLedgerConflict).toBe(true)
-  expect(row.owner).toBe('unattributed')
+  expect(row.owner).toBe('ours during sync')
   expect(longTaskVerdict(row).status).toBe('FAIL')
 })
 it('drains entry start and completion through the asynchronous sink at quit', async () => {

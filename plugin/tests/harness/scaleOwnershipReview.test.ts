@@ -41,19 +41,19 @@ it('review 1: a preceding plugin allocation window cannot prove ownership of lat
   expect(row.owner).toBe('unattributed')
   expect(longTaskVerdict(row).status).toBe('FAIL')
 })
-it('review 2: CPU plugin execution outside a claimed complete entry stays contradictory', async () => {
+it('review 2: CPU plugin execution wins over a claimed complete entry', async () => {
   const [row] = await profileSummary([task], [...ledgerRows(1010), cpuCapture, heapCapture],
     async path => path === 'cpu' ? cpu('plugin:abele', 'work', 1090) : heap('plugin:scale-observer'))
-  expect(row).toMatchObject({ owner: 'unattributed', entryLedgerConflict: true })
+  expect(row).toMatchObject({ owner: 'ours during sync', entryLedgerConflict: true })
   expect(longTaskVerdict(row).status).toBe('FAIL')
 })
-it('review 2: GC and heap samples cannot erase a CPU/entry contradiction', async () => {
+it('review 2: GC and heap samples cannot erase definite CPU plugin ownership', async () => {
   const [row] = await profileSummary([task], [...ledgerRows(1010), cpuCapture, heapCapture],
     async path => path === 'cpu' ? { startTime: 0, endTime: 1200000,
       nodes: [{ id: 1, callFrame: { functionName: '(garbage collector)', url: '' } },
         { id: 2, callFrame: { functionName: 'work', url: 'plugin:abele' } }],
       samples: [1, 2], timeDeltas: [1080000, 10000] } : heap('app://obsidian.md/app.js'))
-  expect(row).toMatchObject({ owner: 'unattributed', entryLedgerConflict: true, gcDominated: true })
+  expect(row).toMatchObject({ owner: 'ours during sync', entryLedgerConflict: true, gcDominated: true })
   expect(longTaskVerdict(row).status).toBe('FAIL')
 })
 it('review 2: adjacent entry intervals cover a sample spanning their boundary', async () => {
@@ -65,21 +65,21 @@ it('review 2: adjacent entry intervals cover a sample spanning their boundary', 
   async () => cpu('plugin:abele', 'work', 1048))
   expect(row).toMatchObject({ owner: 'ours during sync', entryLedgerConflict: false })
 })
-it('review 1: positive measured entries remain evidence when other coverage is partial', async () => {
+it('review 1: partial measured entries cannot fill missing CPU coverage', async () => {
   const rows = ledgerRows(1100).map(row => row.event === 'plugin-entry-ledger-checkpoint'
     ? { ...row, complete: false } : row)
   const [row] = await profileSummary([task], rows, async () => null)
-  expect(row).toMatchObject({ owner: 'ours during sync', entryLedgerComplete: false })
+  expect(row).toMatchObject({ owner: 'unattributed', entryLedgerComplete: false })
   expect(longTaskVerdict(row).status).toBe('FAIL')
 })
-it('review 4: explicitly partial host-method coverage cannot prove a host-only task', async () => {
+it('review 4: complete host CPU coverage proves ownership despite partial host-method ledger', async () => {
   const rows = ledgerRows(1000)
   rows.push({ event: 'plugin-entry-ledger-partial', device: '0', generation: 'sample',
     at: 900, reason: 'Host methods are not instrumented' } as any)
   const [row] = await profileSummary([task], [...rows, cpuCapture],
     async () => cpu('app://obsidian.md/app.js'))
-  expect(row).toMatchObject({ entryLedgerComplete: false, owner: 'unattributed' })
-  expect(longTaskVerdict(row).status).toBe('FAIL')
+  expect(row).toMatchObject({ entryLedgerComplete: false, owner: 'host-only' })
+  expect(longTaskVerdict(row).status).toBe('PASS')
 })
 it.each([['ours during sync', 90, 20, 50], ['plugin load', 900, 10, 800]])(
   'review 3: budgets the entire %s task', (owner, durationMs, pluginEntryOverlapMs, limit) => {

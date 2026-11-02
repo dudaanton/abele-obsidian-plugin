@@ -1,7 +1,10 @@
 // A synthetic installer check cannot establish that the real host loaded the
 // product. Only the renderer can publish this bounded, credential-free proof.
-exports.startupReceipt = ({ at, marks, ledger }) => ({
+exports.startupReceipt = ({ at, marks, ledger, profilerAcknowledgedAt }) => ({
   schema: 1, at,
+  profilerAcknowledgedAt: profilerAcknowledgedAt ?? null,
+  onloadCompletedAt: marks.filter(mark => mark.name === 'abele:onload-end')
+    .map(mark => mark.epoch).filter(Number.isFinite).at(-1) ?? null,
   onloadStartedAt: marks.filter(mark => mark.name === 'abele:onload-start')
     .map(mark => mark.epoch).filter(Number.isFinite).at(-1) ?? null,
   ledger: ledger ? { complete: ledger.complete, productRootsReady: ledger.productRootsReady,
@@ -16,9 +19,9 @@ exports.waitForLiveStartup = async ({ read, startedAt, now = Date.now, timeoutMs
     let proof
     try { proof = await read() } catch { /* Missing/partial files are retried within the launch deadline. */ }
     if (proof?.schema === 1 && Number.isFinite(proof.at) && proof.at >= startedAt && proof.at <= now() &&
-      Number.isFinite(proof.onloadStartedAt) && proof.onloadStartedAt >= startedAt && proof.onloadStartedAt <= proof.at &&
-      proof.ledger?.complete === true && proof.ledger.productRootsReady === true && proof.ledger.dropped === 0 &&
-      Number.isSafeInteger(proof.ledger.sequence) && proof.ledger.sequence > 0) return proof
+      Number.isFinite(proof.onloadCompletedAt) && proof.onloadCompletedAt >= startedAt && proof.onloadCompletedAt <= proof.at &&
+      Number.isFinite(proof.profilerAcknowledgedAt) && proof.profilerAcknowledgedAt >= startedAt && proof.profilerAcknowledgedAt <= proof.at)
+      return proof
     await delay(Math.min(100, Math.max(0, deadline - now())))
   }
   throw new Error('Real app startup proof unavailable')

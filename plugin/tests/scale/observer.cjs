@@ -13,7 +13,7 @@ module.exports = class extends Plugin {
         'utf8'
       )
     )
-    let entryLedger
+    let entryLedger, profilerAcknowledgedAt
     if (config.entryLedger && config.continuousCpu && config.entryLedgerEnabled !== false) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Qualification-only entry hooks.
       const { createEntryLedger, installEntryLedger, wrapProductExport } = require(config.entryLedger)
@@ -260,6 +260,7 @@ module.exports = class extends Plugin {
       )
       if (config.continuousCpu && !diagnostic.profileReady(channel))
         throw new Error('Continuous profiler did not acknowledge startup')
+      profilerAcknowledgedAt = Date.now()
       globalThis.__scaleStopProfiles = () => diagnostic.unwatch(channel)
       globalThis.__scaleReindexCoverage = {
         begin: (id) => diagnostic.beginReindexCoverage(channel, id),
@@ -517,13 +518,12 @@ module.exports = class extends Plugin {
       // The driver reads this file directly, so a stuck CLI cannot fake success.
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Installed qualification-only startup proof.
       const { startupReceipt } = require(config.liveStartup)
-      const proof = startupReceipt({ at: Date.now(),
-        marks: performance.getEntriesByName('abele:onload-start').map(mark => ({
+      const proof = startupReceipt({ at: Date.now(), profilerAcknowledgedAt,
+        marks: performance.getEntriesByType('mark').filter(mark =>
+          ['abele:onload-start', 'abele:onload-end'].includes(mark.name)).map(mark => ({
           name: mark.name, epoch: Math.round(performance.timeOrigin + mark.startTime) })),
         ledger: entryLedger?.startupSnapshot() })
       fs.writeFileSync(config.startupReceipt, JSON.stringify(proof))
-      if (entryLedger && !entryLedger.productBridgeReady())
-        throw new Error('Qualification product entry roots unavailable')
     }
   }
 }

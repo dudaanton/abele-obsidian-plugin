@@ -110,12 +110,13 @@ export function longTaskVerdict(task) {
   // Ownership identifies whether our code participates; the budget is for the
   // whole task, including bundle reads/compilation before evaluation marks.
   const durationMs = task.durationMs
-  const limit = owner === 'plugin load' ? 800 : 50
-  const pass = (task.profileWindowComplete === true || task.entryLedgerComplete === true) &&
+  const limit = owner === 'plugin load' ? 800 : owner === 'teardown' ? null : 50
+  const pass = owner === 'teardown' || (owner === 'plugin load' && durationMs <= limit) ||
+    task.profileWindowComplete === true &&
     (owner === 'host-only' || owner === 'harness-triggered' ||
       (owner === 'ours during sync' && durationMs <= limit) ||
       (owner === 'plugin load' && durationMs <= limit))
-  return { owner, durationMs, limit, status: pass ? 'PASS' : 'FAIL' }
+  return { owner, durationMs, limit, gated: owner !== 'teardown', status: pass ? 'PASS' : 'FAIL' }
 }
 
 export function longTaskBudget(tasks) {

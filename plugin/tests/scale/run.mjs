@@ -676,6 +676,8 @@ export async function run(config) {
     }
   }
   const stop = async (hard, { minimal = false } = {}) => {
+    if (appProcess) await appendFile(join(config.output, 'renderer.jsonl'), devices.map((_, index) =>
+      JSON.stringify({ event: 'harness-stop-request', device: String(index), at: Date.now(), kind: hard ? 'kill' : 'quit' }) + '\n').join(''))
     clearInterval(memoryTimer)
     await memoryPending
     if (!appProcess) return
@@ -721,6 +723,8 @@ export async function run(config) {
         managed ? ['scale-observer'] : ['scale-observer', 'abele'])
     }
     const at = Date.now()
+    await appendFile(join(config.output, 'renderer.jsonl'), devices.map((_, index) =>
+      JSON.stringify({ event: 'harness-launch-request', device: String(index), at }) + '\n').join(''))
     appProcess = spawn(config.app, config.appArgs ?? [], { stdio: 'ignore' })
     appProcess.on('error', () => {})
     const rootPid = appProcess.pid
@@ -760,6 +764,9 @@ export async function run(config) {
       for (const { device, file } of startupGates) {
         const proof = await liveStartup.waitForLiveStartup({ read: () => readEvidenceJson(file), startedAt: at })
         ;(report.liveStartupReceipts ??= []).push({ device: String(devices.indexOf(device)), startedAt: at, ...proof })
+        await appendFile(join(config.output, 'renderer.jsonl'), JSON.stringify({ event: 'plugin-load-mark',
+          device: String(devices.indexOf(device)), name: 'abele:onload-end', at: proof.onloadCompletedAt,
+          source: 'startup receipt' }) + '\n')
       }
       await devices[0].ready()
     }
@@ -1337,6 +1344,8 @@ export async function run(config) {
       const cut = await wait('targeted edit commit applied before acknowledgement', () =>
         p.events.find(e => e.at >= since && e.event === 'trigger' && e.kind === 'batch'), 120000)
       // No renderer round trips between the held commit and kill.
+      await appendFile(join(config.output, 'renderer.jsonl'), devices.map((_, index) =>
+        JSON.stringify({ event: 'harness-stop-request', device: String(index), at: Date.now(), kind: 'kill' }) + '\n').join(''))
       appProcess.kill('SIGKILL')
       await stop(true,{minimal:true})
       p.release()

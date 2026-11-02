@@ -173,7 +173,7 @@ it('charges evaluation to plugin load and later startup sync work to the sync bu
   const captures = [
     { event: 'plugin-load-mark', name: 'abele:eval-start', device: '0', at: 120 },
     { event: 'plugin-load-mark', name: 'abele:eval-end', device: '0', at: 190 },
-    { event: 'plugin-load', device: '0', at: 320 },
+    { event: 'plugin-load-mark', name: 'abele:onload-end', device: '0', at: 250 },
     ...tasks.map((task, index) => ({ event: 'cpu-profile', device: '0',
       startedAt: task.startedAt, endedAt: task.startedAt + task.durationMs,
       path: String(index), clock: { beforeAt: 0, afterAt: 0, timestampMs: 0 } })),
@@ -204,7 +204,7 @@ it('classifies GC through its parent and leaves a parentless native sample unkno
   expect(rows[1].owner).toBe('unattributed')
 })
 
-it('does not assign a plugin owner when the same task has unresolved samples', async () => {
+it('retains unresolved samples while definite plugin frames establish plugin ownership', async () => {
   const tasks = [{ event: 'long-task', device: '0', startedAt: 0, durationMs: 100 }]
   const captures = [{ event: 'cpu-profile', device: '0', startedAt: 0, endedAt: 100,
     path: 'sample', continuous: true,
@@ -217,7 +217,8 @@ it('does not assign a plugin owner when the same task has unresolved samples', a
     ], samples: [1, 2], timeDeltas: [50000, 50000],
   }))
   expect(rows[0].samplesBySource).toEqual({ abele: 1, unknown: 1 })
-  expect(rows[0].owner).toBe('unattributed')
+  expect(rows[0].owner).toBe('ours during sync')
+  expect(longTaskVerdict(rows[0]).status).toBe('FAIL')
 })
 
 it('resolves a generated plugin frame through the exact external map', () => {
@@ -719,7 +720,7 @@ it('arms continuous sampling before renderer work and rotates without waiting fo
   expect(calls.at(-1)).toBe('Profiler.stop')
 })
 
-it('attributes observer work separately from the plugin frame that called it', async () => {
+it('retains plugin ownership when a harness leaf is called by plugin code', async () => {
   const tasks = [{ event: 'long-task', device: '0', startedAt: 0, durationMs: 100 }]
   const captures = [
     {
@@ -739,7 +740,8 @@ it('attributes observer work separately from the plugin frame that called it', a
     samples: [1],
     timeDeltas: [50000],
   }))
-  expect(result.samplesBySource).toEqual({ harness: 1 })
+  expect(result.samplesBySource).toEqual({ abele: 1 })
+  expect(longTaskVerdict(result).status).toBe('FAIL')
   expect(result.coverage).toContain('Continuous')
 })
 
