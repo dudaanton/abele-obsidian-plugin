@@ -579,7 +579,7 @@ export class ObsidianFileSystem implements FileSystem {
       const key = this.pathKey(item.path)
       const revision = host.scanFingerprintRevision(key)
       const watched = this.watchPathRevision(key)
-      const contentRevision = await nativeOf(this.disk)?.fileContentRevision?.(item.path)
+      const contentRevision = await this.native?.fileContentRevision?.(item.path)
       if (
         publishedClocks &&
         (!contentRevision || publishedClocks.get(item.path) !== contentRevision)
@@ -593,7 +593,7 @@ export class ObsidianFileSystem implements FileSystem {
         stat.size !== item.size ||
         stamp(stat.mtime) !== item.mtime ||
         (contentRevision
-          ? contentRevision !== (await nativeOf(this.disk)?.fileContentRevision?.(item.path))
+          ? contentRevision !== (await this.native?.fileContentRevision?.(item.path))
           : watched !== this.watchPathRevision(key))
       )
         continue
@@ -639,7 +639,7 @@ export class ObsidianFileSystem implements FileSystem {
       before.mtime === saved.mtime &&
       before.ctime === saved.ctime &&
       (await this.fileIdentity?.(entry.target)) === saved.identity &&
-      (await nativeOf(this.disk)?.fileContentRevision?.(entry.target)) === saved.contentRevision
+      (await this.native?.fileContentRevision?.(entry.target)) === saved.contentRevision
     await remove()
     if (
       saved &&
@@ -1945,7 +1945,7 @@ export class ObsidianFileSystem implements FileSystem {
         item &&
         saved?.sha === item.sha &&
         saved.contentRevision &&
-        saved.contentRevision === (await nativeOf(this.disk)?.fileContentRevision?.(item.path))
+        saved.contentRevision === (await this.native?.fileContentRevision?.(item.path))
       if (!(await this.writer.discardReceipt(receipt))) await this.conditional.discard(receipt)
       // Removing the private hard-link alias advances the inode change clock.
       // Capture the final public identity after that acknowledged cleanup too.
@@ -2037,7 +2037,12 @@ export class ObsidianFileSystem implements FileSystem {
     return this.nativeFor(this.disk)
   }
 
+  private readonly nativePorts = new WeakMap<DataAdapter, NativeFs>()
+
   private nativeFor(disk: DataAdapter): NativeFs | null {
+    const cached = this.nativePorts.get(disk)
+    if (cached) return cached
+    const methods = new Map<PropertyKey, (...args: unknown[]) => unknown>()
     const raw = nativeOf(
       disk,
       (paths = [], mutation = true) => {
@@ -2066,35 +2071,43 @@ export class ObsidianFileSystem implements FileSystem {
             ].includes(String(key))
           )
             return value
-          return (...args: unknown[]) => {
-            const count = key === 'archiveBackup' || key === 'rmdirEmpty' ? 1 : 2
-            return this.withScanMutation(args.slice(0, count) as string[], () =>
-              value.apply(target, args)
-            )
+          let wrapped = methods.get(key)
+          if (!wrapped) {
+            wrapped = (...args: unknown[]) => {
+              const count = key === 'archiveBackup' || key === 'rmdirEmpty' ? 1 : 2
+              return this.withScanMutation(args.slice(0, count) as string[], () =>
+                value.apply(target, args)
+              )
+            }
+            methods.set(key, wrapped)
           }
+          return wrapped
         },
       })
-    return native && this.runtimeFence
-      ? fencedPort(
-          native,
-          this.runtimeFence,
-          [
-            'rename',
-            'rmdirEmpty',
-            'replaceFenced',
-            'replaceFencedIdentity',
-            'installExclusive',
-            'restoreDirectoryExclusive',
-            'archiveBackup',
-            'syncPath',
-            'syncFile',
-            'sameObject',
-            'fileIdentity',
-            'pathCandidateStat',
-          ],
-          false
-        )
-      : native
+    const port =
+      native && this.runtimeFence
+        ? fencedPort(
+            native,
+            this.runtimeFence,
+            [
+              'rename',
+              'rmdirEmpty',
+              'replaceFenced',
+              'replaceFencedIdentity',
+              'installExclusive',
+              'restoreDirectoryExclusive',
+              'archiveBackup',
+              'syncPath',
+              'syncFile',
+              'sameObject',
+              'fileIdentity',
+              'pathCandidateStat',
+            ],
+            false
+          )
+        : native
+    if (port) this.nativePorts.set(disk, port)
+    return port
   }
 
   private get disk(): DataAdapter {
@@ -3380,7 +3393,7 @@ export class ObsidianFileSystem implements FileSystem {
       saved.mtime === before.mtime &&
       saved.ctime === before.ctime &&
       (!saved.contentRevision ||
-        saved.contentRevision === (await nativeOf(this.disk)?.fileContentRevision?.(path))) &&
+        saved.contentRevision === (await this.native?.fileContentRevision?.(path))) &&
       typeof saved.sha === 'string' &&
       /^[a-f0-9]{64}$/.test(saved.sha)
     ) {
@@ -3392,7 +3405,7 @@ export class ObsidianFileSystem implements FileSystem {
         after.ctime === before.ctime &&
         (await this.fileIdentity(path)) === beforeIdentity &&
         (!saved.contentRevision ||
-          saved.contentRevision === (await nativeOf(this.disk)?.fileContentRevision?.(path))) &&
+          saved.contentRevision === (await this.native?.fileContentRevision?.(path))) &&
         (!fromInstall || host.scanInstallation(key) === installed)
       ) {
         signal?.throwIfAborted()

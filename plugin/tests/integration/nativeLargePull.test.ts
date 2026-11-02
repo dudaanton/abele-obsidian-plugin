@@ -32,6 +32,8 @@ it('pulls 256 MiB through one suffix response with bounded durable native append
   const sha = digest.digest('hex')
   const counts = { requests: 0, writes: 0, writtenBytes: 0, dataSyncs: 0, otherSyncs: 0 }
   const ranges: (string | null)[] = []
+  const payloadBuffers = new WeakSet<ArrayBufferLike>()
+  let payloadBackingBytes = 0
   // Only the peer port is instrumented: server blob-store writes are setup work.
   const native = {
     ...disk,
@@ -48,6 +50,10 @@ it('pulls 256 MiB through one suffix response with bounded durable native append
               position?: number
             ) => {
               expect(bytes.buffer.byteLength).toBeLessThanOrEqual(MAX_CHUNK_BYTES)
+              if (!payloadBuffers.has(bytes.buffer)) {
+                payloadBuffers.add(bytes.buffer)
+                payloadBackingBytes += bytes.buffer.byteLength
+              }
               const result = await target.write(bytes, offset, length, position)
               counts.writes++
               counts.writtenBytes += result.bytesWritten
@@ -132,6 +138,8 @@ it('pulls 256 MiB through one suffix response with bounded durable native append
     // One continuous suffix response replaces 256 independently fetched MiB ranges.
     expect(ranges).toEqual([`bytes=0-${size - 1}`])
     expect(counts.requests).toBe(1)
+    // One payload's worth of bounded input backing stores; no per-MiB oversizing.
+    expect(payloadBackingBytes).toBeLessThanOrEqual(size + MAX_CHUNK_BYTES)
     // Native installation batches retain durable ownership, then flush the sealed
     // inode once before publication; they do not acknowledge durable chunk offsets.
     // Standalone streaming stages retain their per-append durability barriers.

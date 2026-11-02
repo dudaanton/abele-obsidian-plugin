@@ -131,10 +131,35 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     this.assertRecovery()
     return this.read('cannot read committed write acknowledgements', [ENTRIES], async (tx) => {
       const entries = tx.objectStore(ENTRIES)
-      const rows = await Promise.all(
-        paths.map((path) => wait<StateEntry | undefined>(entries.get(path)))
-      )
-      return rows.filter((row): row is StateEntry => row !== undefined)
+      return new Promise<StateEntry[]>((resolve, reject) => {
+        const result: StateEntry[] = []
+        let offset = 0
+        const page = () => {
+          const end = Math.min(paths.length, offset + 128)
+          if (offset === end) return resolve(result)
+          const start = offset
+          const rows = new Array<StateEntry | undefined>(end - start)
+          let pending = rows.length
+          try {
+            for (; offset < end; offset++) {
+              const at = offset - start
+              const request = entries.get(paths[offset])
+              request.onerror = () => reject(request.error)
+              request.onsuccess = () => {
+                rows[at] = request.result as StateEntry | undefined
+                if (--pending !== 0) return
+                for (const row of rows) if (row) result.push(row)
+                // Queue from the success callback, not after a timer/await: even hosts
+                // with eager transaction completion keep the same readonly snapshot.
+                page()
+              }
+            }
+          } catch (error) {
+            reject(asEngineError('cannot read committed write acknowledgements', error))
+          }
+        }
+        page()
+      })
     })
   }
 
@@ -571,18 +596,26 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     if (keys.length === 0) return result
     const readPage = async (names: readonly string[]): Promise<Map<string, string | null>> => {
       const rows = await this.read('cannot read plugin metadata batch', [META], async (tx) =>
-        Promise.all(names.map((key) => wait<MetaRow | undefined>(tx.objectStore(META).get(own(key)))))
+        Promise.all(
+          names.map((key) => wait<MetaRow | undefined>(tx.objectStore(META).get(own(key))))
+        )
       )
-      return new Map(names.map((key, index) => {
-        const row = rows[index]
-        const value = row === undefined ? null : row.value
-        if (value !== null && typeof value !== 'string')
-          throw new EngineError('io', `the stored ${key} is not a string`)
-        return [key, value] as [string, string | null]
-      }))
+      return new Map(
+        names.map((key, index) => {
+          const row = rows[index]
+          const value = row === undefined ? null : row.value
+          if (value !== null && typeof value !== 'string')
+            throw new EngineError('io', `the stored ${key} is not a string`)
+          return [key, value] as [string, string | null]
+        })
+      )
     }
     let known: Set<string> | null = null
-    if (this.normalizationCache && !this.transactionPending && keys.every((key) => key.startsWith(PULL_WRITE))) {
+    if (
+      this.normalizationCache &&
+      !this.transactionPending &&
+      keys.every((key) => key.startsWith(PULL_WRITE))
+    ) {
       let inventory = this.pullWrites
       if (!inventory) {
         const loading = this.metadataKeys(PULL_WRITE).then((names) => {
@@ -592,10 +625,13 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
         })
         this.pullWrites = inventory = loading
       }
-      known = inventory instanceof Set ? inventory : await inventory.catch((error) => {
-        if (this.pullWrites === inventory) this.pullWrites = null
-        throw error
-      })
+      known =
+        inventory instanceof Set
+          ? inventory
+          : await inventory.catch((error) => {
+              if (this.pullWrites === inventory) this.pullWrites = null
+              throw error
+            })
       // A commit while the inventory was loading invalidates its absence proof.
       if (this.pullWrites !== inventory && this.pullWrites !== known) known = null
     }
@@ -842,7 +878,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
         else await wait(meta.put({ key: own(item.key), value: item.value }))
       }
       await wait(meta.put({ key: own(EXTERNAL_STATE_KEY), value: batch.next }))
-      await bumpRevision(tx, new Error('external file phase').stack ?? 'external file phase')
+      await bumpRevision(tx, this.writerLabel('external file phase'))
       await done
       if (!this.permitsEngineEffects) throw new ExternalStateError('commit-unknown')
     } catch (cause) {
@@ -871,12 +907,20 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     }
   }
 
+  /** Compact writer provenance: full stacks remain on actual errors, not every hot write. */
+  private readonly writerId = crypto.randomUUID()
+  private writerSequence = 0
+  private writerLabel(operation: string): string {
+    return `${operation} (${this.writerId}:${++this.writerSequence})`
+  }
+
   readonly transactionScoped = true
 
   async transaction<T>(fn: (tx: StateStore) => Promise<T>): Promise<T> {
     this.assertRecovery()
     if (this.externalPhasePending) throw new ExternalStateError('nested-transaction')
-    const owner = new Error('state transaction').stack ?? 'state transaction'
+    // Retain lazy caller provenance; format it only when a real revision conflict occurs.
+    const owner = new Error('state transaction')
     const previous = this.committed
     let finish!: () => void
     this.committed = new Promise<void>((resolve) => {
@@ -899,7 +943,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     }
   }
 
-  private async runScoped<T>(fn: (tx: StateStore) => Promise<T>, owner: string): Promise<T> {
+  private async runScoped<T>(fn: (tx: StateStore) => Promise<T>, owner: Error): Promise<T> {
     const revision = (await this.metaValue('revision')) ?? 0
     const reads = new Set<string>()
     const prefixes = new Set<string>()
@@ -994,7 +1038,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     revision: unknown,
     reads: Set<string>,
     prefixes: Set<string>,
-    owner: string
+    owner: Error
   ): Promise<void> {
     await this.write(
       'cannot commit the state transaction',
@@ -1024,7 +1068,10 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
             }
           }
           if (!independent) {
-            throw new RevisionConflict(owner, current?.owner ?? 'unknown connection')
+            throw new RevisionConflict(
+              owner.stack ?? owner.message,
+              current?.owner ?? 'unknown connection'
+            )
           }
           // Only disjoint plugin metadata changed. Apply the original overlay to the current
           // database, preserving acknowledged receipts without replaying any file effects.
@@ -1114,7 +1161,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     metadataKey: string | null = null,
     entriesChanged = stores.includes(ENTRIES)
   ): Promise<T> {
-    const owner = new Error(what).stack ?? what
+    const owner = this.writerLabel(what)
     if (stores.includes(ENTRIES)) {
       this.entrySnapshot = null
       this.entryIndex = null

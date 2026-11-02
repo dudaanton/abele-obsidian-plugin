@@ -158,6 +158,8 @@ for (const fault of [
         })
         await state.setCursor(1)
       }
+      const payloadBuffers = new WeakSet<ArrayBufferLike>()
+      let payloadBackingBytes = 0
       const flushes = new Map<string, number>()
       const durableDirectories = new Set<string>()
       let commits = 0,
@@ -265,6 +267,10 @@ for (const fault of [
               if (key === 'read' || key === 'write')
                 return (bytes: Uint8Array, ...args: [number, number, number]) => {
                   expect(bytes.buffer.byteLength).toBeLessThanOrEqual(1024 * 1024)
+                  if (key === 'write' && own(opened) && !payloadBuffers.has(bytes.buffer)) {
+                    payloadBuffers.add(bytes.buffer)
+                    payloadBackingBytes += bytes.buffer.byteLength
+                  }
                   if (key === 'read' && own(opened) && !opened.endsWith('.tmp')) {
                     contentReads++
                   }
@@ -1149,6 +1155,9 @@ for (const fault of [
         )
         expect(report.applied).toBe(count)
         expect(report.held).toEqual([])
+        // Budget backing stores reaching native writes, including small-buffer pool slack.
+        // This does not claim to count VM metadata or copies which never reach the port.
+        expect(payloadBackingBytes).toBeLessThanOrEqual(count * (size + 8192))
         for (const item of items) {
           expect(await sha256(await disk.readFile(join(root, item.path)))).toBe(item.sha)
           expect((await state.get(item.path))?.versionId).toBe(item.version_id)

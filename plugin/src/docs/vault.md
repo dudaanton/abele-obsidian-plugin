@@ -3828,6 +3828,10 @@ size, retain size/mtime, drain pending host saves and stat again immediately bef
 The interval between that final stat and mutation remains a race; success does not prove
 atomic exclusion or object identity. Checked hosts never certify a recovered installation.
 
+Ledger revision diagnostics retain the operation label, a writer-instance identifier and a
+sequence number. They do not capture a full stack on every successful write. Actual failures
+keep their error stacks; revision comparisons and transaction ownership checks are unchanged.
+
 The sync ledger also retains per-file retry schedules (`file-retry:*`) and exact server
 answers awaiting local settlement (`push-receipt:*`), including their original operation,
 result and ledger base. Settlement retires the owning answer and retry schedule in one

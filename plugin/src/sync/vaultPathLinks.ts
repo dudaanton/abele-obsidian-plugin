@@ -68,16 +68,46 @@ export function vaultPathKey(vault: Vault): (path: string) => string {
   return key
 }
 
+// Pure lexical values only: never retain a link/stat answer across operations.
+const ancestorPrefixes = new Map<string, { values: readonly string[]; bytes: number }>()
+let ancestorPrefixBytes = 0
+function lexicalAncestors(path: string): readonly string[] {
+  const cached = ancestorPrefixes.get(path)
+  if (cached) {
+    ancestorPrefixes.delete(path)
+    ancestorPrefixes.set(path, cached)
+    return cached.values
+  }
+  const parts = path.split('/').filter(Boolean)
+  if (parts.some((part) => part === '..' || part === '.'))
+    throw new EngineError('io', 'Invalid vault path')
+  const values: string[] = []
+  let prefix = '',
+    bytes = path.length * 2
+  for (const part of parts) {
+    prefix = prefix ? prefix + '/' + part : part
+    values.push(prefix)
+    bytes += prefix.length * 2
+  }
+  if (bytes <= 256 * 1024) {
+    while (ancestorPrefixes.size >= 512 || ancestorPrefixBytes + bytes > 256 * 1024) {
+      const first = ancestorPrefixes.keys().next().value!
+      ancestorPrefixBytes -= ancestorPrefixes.get(first).bytes
+      ancestorPrefixes.delete(first)
+    }
+    ancestorPrefixes.set(path, { values, bytes })
+    ancestorPrefixBytes += bytes
+  }
+  return values
+}
+
 /** Probe from the vault boundary: lstat of a leaf alone follows linked parents. */
 export async function assertNoLinkedAncestors(
   path: string,
   isLink: (path: string) => Promise<boolean>
 ): Promise<void> {
-  const parts = path.split('/').filter(Boolean)
-  if (parts.some((part) => part === '..' || part === '.'))
-    throw new EngineError('io', 'Invalid vault path')
-  for (let n = 1; n <= parts.length; n++)
-    if (await isLink(parts.slice(0, n).join('/')))
+  for (const ancestor of lexicalAncestors(path))
+    if (await isLink(ancestor))
       throw new EngineError('io', 'Vault path contains a symbolic link; sync remains stopped')
 }
 
@@ -134,7 +164,8 @@ export async function assertVaultMetadataPath(
   const pin = rootAccess(adapter).pin
   if (!pin || !metadataInventories.has(pin)) return assertVaultPath(adapter, path)
   // The caller reads the leaf itself without following it, so only its folders are checked.
-  const leaf = path.split('/').filter(Boolean).join('/')
+  const ancestors = lexicalAncestors(path)
+  const leaf = ancestors[ancestors.length - 1] ?? ''
   await assertNoLinkedAncestors(path, async (component) =>
     component === leaf ? false : vaultPathIsLink(adapter, component)
   )
