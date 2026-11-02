@@ -126,6 +126,18 @@ const probe = async (phone: boolean): Promise<ProbeResult> =>
     if (!iconRow) throw new Error('Icon controls row missing')
     const xBox = iconRow.querySelector('.clickable-icon').getBoundingClientRect(), buttonBox = iconRow.querySelector('button').getBoundingClientRect()
     if (Math.abs((xBox.top+xBox.bottom)/2-(buttonBox.top+buttonBox.bottom)/2)>2) throw new Error('Icon controls must share a line')
+    editor.scrollIntoView({block:'center'})
+    await wait(300)
+    if (${phone}) {
+      const content = modal.querySelector('.modal-content')
+      const contentStyle = d.defaultView.getComputedStyle(content)
+      const contentEdge = content.getBoundingClientRect().left + content.clientLeft + content.clientWidth - parseFloat(contentStyle.paddingRight)
+      const edge = Math.min(contentEdge, editor.closest('.abele-select-property__option').querySelector('.abele-select-property__row > .clickable-icon').getBoundingClientRect().right)
+      for (const [name, el] of [['editor', editor], ['button', iconRow.querySelector('button')], ...[...editor.querySelectorAll('input')].map(el => ['input', el])]) {
+        const right = el.getBoundingClientRect().right
+        if (right > edge + 0.5) throw new Error('Phone option exceeds row cross: ' + JSON.stringify({name,right,edge}))
+      }
+    }
     await shoot('option', editor)
     modal.querySelector('.abele-select-property__row > .clickable-icon').click()
     const confirm = await until(() => d.querySelector('.abele-confirm__message'))

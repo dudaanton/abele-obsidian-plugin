@@ -285,11 +285,26 @@ const done = () => {
   flex-wrap: nowrap;
   align-items: center;
   gap: var(--size-4-2);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.abele-select-property__icon-controls > .clickable-icon,
+.abele-select-property__icon-controls .abele-obsidian-button__icon {
+  flex: 0 0 auto;
 }
 
 .abele-select-property .abele-select-property__icon-controls > button {
   width: auto;
-  flex: 0 0 auto;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.abele-select-property__icon-controls .abele-obsidian-button__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .abele-select-property__options {
@@ -366,6 +381,9 @@ const done = () => {
 }
 
 .abele-select-property__editor {
+  box-sizing: border-box;
+  width: auto;
+  min-width: 0;
   /* The rule runs down from the middle of the option's mark, and the fields' names start where
      the option's name does: 16 px grip, 4 px gap, 6 px padding, half a 16 px mark. */
   margin-top: var(--size-4-2);
@@ -376,6 +394,13 @@ const done = () => {
 
 .abele-select-property__editor .setting-item {
   padding: var(--size-4-2) 0;
+}
+
+/* Native phone modal rows otherwise retain an inset outside this nested editor. */
+body.is-phone .abele-select-property__editor .setting-item {
+  margin-inline: 0;
+  padding-inline-end: 0;
+  min-width: 0;
 }
 
 .abele-select-property__editor .setting-item:first-child {
