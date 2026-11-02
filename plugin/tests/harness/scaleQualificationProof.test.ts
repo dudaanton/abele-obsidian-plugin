@@ -1,11 +1,12 @@
 // @vitest-environment node
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { classifyReindexHashes } from '../scale/reindex.mjs'
 import { profileSummary } from '../scale/diagnostics.mjs'
 import * as restart from '../scale/restart.mjs'
 import capture from '../scale/receipt-capture.cjs'
 import diagnostics from '../scale/diagnostics.cjs'
+import { canContinueQualificationFromSmoke } from '../scale/qualification-smoke.mjs'
 import { runInNewContext } from 'node:vm'
 
 const sha = 'a'.repeat(64)
@@ -19,6 +20,35 @@ const digest = {
   stack: 'at V2EngineClient.multipart\n at V2EngineClient.putBlobSource',
 }
 const end = { device: '0', at: 150, event: 'reindex-complete', id: operation.id }
+
+it('keeps attribution failures recorded while allowing a completed smoke to reach full measurement', () => {
+  const report: any = {
+    status: 'FAIL',
+    phase: 'complete',
+    verificationComplete: true,
+    verifiedFiles: 3000,
+    mismatches: [],
+    failures: [],
+    budgets: [
+      { name: 'long task attribution', status: 'FAIL' },
+      { name: 'interruptions', status: 'PASS' },
+    ],
+  }
+  expect(canContinueQualificationFromSmoke(report, 3000)).toBe(true)
+  expect(report.status).toBe('FAIL')
+  expect(report.budgets[0].status).toBe('FAIL')
+  for (const extra of [
+    { phase: 'second device pull' },
+    { verifiedFiles: 2000 },
+    { mismatches: [{}] },
+    { failures: [{}] },
+    { failure: 'sample failure' },
+    { errorObservations: [{}] },
+    { budgets: [{ name: 'interruptions', status: 'FAIL' }] },
+    { budgets: [{ name: 'installed file read-back', status: 'FAIL' }] },
+  ])
+    expect(canContinueQualificationFromSmoke({ ...report, ...extra }, 3000)).toBe(false)
+})
 
 it('separates a proven queued payload digest, including a transfer starting after rebuild', () => {
   const scanned = { ...digest, at: 50, stack: 'at BoundedVaultIo.fingerprint' }
@@ -355,6 +385,175 @@ it('exports pending and acknowledged intent outcomes without unrelated metadata'
       })
     ).targets
   ).toMatchObject([{ pending: false, usableIdentityReceipt: true }])
+})
+
+it('captures committed receipts without waiting behind an engine transaction holding a response', async () => {
+  let queued = false
+  let nativeCompleted = false
+  let finish: () => void = () => {}
+  const db = {
+    transaction: (stores: string[], mode: string) => {
+      expect(stores).toEqual(['entries', 'meta'])
+      expect(mode).toBe('readonly')
+      const tx: any = {
+        objectStore: (_name: string) => ({
+          get: (_key: string) => request(undefined),
+          openKeyCursor: () => request(null),
+          index: () => ({ getAll: () => request([]) }),
+        }),
+        abort: () => tx.onabort?.(),
+      }
+      function request(result: unknown) {
+        const req: any = { result }
+        queueMicrotask(() => req.onsuccess?.())
+        return req
+      }
+      finish = () => {
+        nativeCompleted = true
+        tx.oncomplete?.()
+      }
+      return tx
+    },
+  }
+  const runtime = {
+    options: {
+      fs: { pathKey: (x: string) => x },
+      state: {
+        db,
+        metadataKeys: () => [],
+        transaction: () => {
+          queued = true
+          return new Promise(() => {})
+        },
+      },
+    },
+  }
+  let settled = false
+  const pending = capture
+    .captureRuntime(runtime, { scanInstallation: () => undefined })
+    .then((value: unknown) => {
+      settled = true
+      return value
+    })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(queued).toBe(false)
+  expect(settled).toBe(false)
+  finish()
+  expect(await pending).toMatchObject({ targets: [], uploads: [] })
+  expect(nativeCompleted).toBe(true)
+})
+
+it('reads only committed receipt metadata and acknowledges from the same native snapshot', async () => {
+  const meta = new Map<string, unknown>([
+    [
+      'plugin:pull-write:sample',
+      JSON.stringify({
+        target: 'Sample/file.md',
+        fileId: 'f',
+        versionId: 'v2',
+        sha,
+        token: 'sample-private-value',
+      }),
+    ],
+    [
+      'plugin:plugin:prepared-upload-sources',
+      JSON.stringify({
+        rows: [{ path: 'Sample/upload.md', sha, size: 3, secret: 'sample-private-value' }],
+      }),
+    ],
+    ['plugin:unrelated', 'sample-private-value'],
+  ])
+  const reads: string[] = []
+  const db = {
+    transaction: (_stores: string[], mode: string) => {
+      expect(mode).toBe('readonly')
+      let pending = 0
+      const request = (result: unknown) => {
+        pending++
+        const req: any = { result }
+        queueMicrotask(() => {
+          req.onsuccess?.()
+          if (--pending === 0) queueMicrotask(() => tx.oncomplete?.())
+        })
+        return req
+      }
+      const tx: any = {
+        objectStore: (name: string) =>
+          name === 'meta'
+            ? {
+                get: (key: string) => {
+                  reads.push(key)
+                  return request({ value: meta.get(key) })
+                },
+                openKeyCursor: () => {
+                  const keys = [...meta.keys()]
+                  let i = 0
+                  const req: any = {}
+                  pending++
+                  const next = () =>
+                    queueMicrotask(() => {
+                      req.result = i < keys.length ? { key: keys[i++], continue: next } : null
+                      req.onsuccess?.()
+                      if (!req.result && --pending === 0) queueMicrotask(() => tx.oncomplete?.())
+                    })
+                  next()
+                  return req
+                },
+              }
+            : {
+                index: (index: string) => {
+                  expect(index).toBe('byFileId')
+                  return { getAll: () => request([{ versionId: 'v2', sha }]) }
+                },
+              },
+        abort: () => tx.onabort?.(),
+      }
+      return tx
+    },
+  }
+  const result = await capture.captureRuntime(
+    { options: { state: { db }, fs: { pathKey: (x: string) => x } } },
+    { scanInstallation: () => undefined }
+  )
+  expect(result.targets).toMatchObject([
+    { target: 'Sample/file.md', pending: false, usableIdentityReceipt: false },
+  ])
+  expect(result.uploads).toEqual([{ path: 'Sample/upload.md', sha, size: 3 }])
+  expect(reads).not.toContain('plugin:unrelated')
+  expect(JSON.stringify(result)).not.toContain('sample-private-value')
+})
+
+it('seeks only the current host journal during a held-request boundary', async () => {
+  const prefix = JSON.stringify(['sample-namespace', 'abele-sync-writes']).slice(0, -1) + ','
+  vi.stubGlobal('IDBKeyRange', { bound: (lower: string, upper: string) => ({ lower, upper }) })
+  let range: unknown
+  const host = {
+    namespace: 'sample-namespace',
+    db: {
+      transaction: () => {
+        const tx: any = {
+          objectStore: () => ({
+            openCursor: (value: unknown) => {
+              range = value
+              const request: any = { result: null }
+              queueMicrotask(() => {
+                request.onsuccess?.()
+                tx.oncomplete?.()
+              })
+              return request
+            },
+          }),
+        }
+        return tx
+      },
+    },
+  }
+  try {
+    expect(await capture.captureHostStages(host, {}, 'sample-owner', (x: string) => x)).toEqual([])
+    expect(range).toEqual({ lower: prefix, upper: prefix + '\uffff' })
+  } finally {
+    vi.unstubAllGlobals()
+  }
 })
 
 it('installs diagnostic access before onload without copying unrelated product state', () => {

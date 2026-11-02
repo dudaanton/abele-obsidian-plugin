@@ -14,6 +14,8 @@ ${/\b(?:var|class) ObsidianFileSystem\b/.test(source) ? 'globalThis.__scaleWrapF
 exports.captureRuntime = async function (runtime, host) {
   const state = runtime.options?.state
   const fs = runtime.options?.fs
+  if (state?.db && host?.scanInstallation && typeof fs?.pathKey === 'function')
+    return captureCommitted(state.db, fs, host)
   if (
     !state?.transaction ||
     !state.metadataKeys ||
@@ -64,6 +66,85 @@ exports.captureRuntime = async function (runtime, host) {
   })
 }
 
+// SDK overlays may await the deliberately held network request. Snapshot committed
+// rows with one native readonly transaction, independently of that mutation queue.
+function captureCommitted(db, fs, host) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(['entries', 'meta'], 'readonly')
+    const targets = []
+    let uploads = []
+    tx.oncomplete = () => resolve({ targets, uploads })
+    tx.onabort = () => reject(new Error('Committed receipt snapshot aborted'))
+    const fail = () => tx.abort()
+    const metadata = tx.objectStore('meta')
+    const prepared = metadata.get('plugin:plugin:prepared-upload-sources')
+    prepared.onerror = fail
+    prepared.onsuccess = () => {
+      try {
+        const value = JSON.parse(prepared.result?.value ?? 'null')
+        uploads = (value?.rows ?? []).map((x) => ({ path: x.path, sha: x.sha, size: x.size }))
+      } catch {
+        fail()
+      }
+    }
+    const prefix = 'plugin:pull-write:'
+    const range =
+      typeof IDBKeyRange === 'undefined' ? undefined : IDBKeyRange.bound(prefix, prefix + '\uffff')
+    const keys = metadata.openKeyCursor(range)
+    keys.onerror = fail
+    keys.onsuccess = () => {
+      const cursor = keys.result
+      if (!cursor) return
+      if (String(cursor.key).startsWith(prefix)) {
+        const request = metadata.get(cursor.key)
+        request.onerror = fail
+        request.onsuccess = () => {
+          try {
+            const intent = JSON.parse(request.result?.value ?? 'null')
+            if (!intent || typeof intent.target !== 'string' || typeof intent.sha !== 'string')
+              return fail()
+            const entry = tx.objectStore('entries').index('byFileId').getAll(intent.fileId)
+            entry.onerror = fail
+            entry.onsuccess = () => {
+              try {
+                const row = entry.result[0]
+                const proof = host.scanInstallation(fs.pathKey(intent.target))
+                targets.push({
+                  target: intent.target,
+                  sha: intent.sha,
+                  size: intent.size,
+                  fileId: intent.fileId,
+                  versionId: intent.versionId,
+                  stageId: intent.stageId,
+                  receiptId: intent.receiptId,
+                  stage: intent.stage,
+                  pending: row?.versionId !== intent.versionId || row?.sha !== intent.sha,
+                  usableIdentityReceipt: proof !== undefined,
+                  identityReceipt: proof
+                    ? {
+                        identity: proof.identity,
+                        sha: proof.sha,
+                        size: proof.size,
+                        mtime: proof.mtime,
+                        ctime: proof.ctime,
+                        contentRevision: proof.contentRevision,
+                      }
+                    : null,
+                })
+              } catch {
+                fail()
+              }
+            }
+          } catch {
+            fail()
+          }
+        }
+      }
+      cursor.continue()
+    }
+  })
+}
+
 exports.captureHostStages = async function (host, state, owner, pathKey) {
   if (!host?.db || !host.namespace) throw new Error('Host receipt database unavailable')
   const rows = await new Promise((resolve, reject) => {
@@ -71,7 +152,10 @@ exports.captureHostStages = async function (host, state, owner, pathKey) {
     const tx = host.db.transaction(['host-records-v3'], 'readonly')
     tx.oncomplete = () => resolve(values)
     tx.onabort = () => reject(new Error('Host receipt transaction aborted'))
-    const request = tx.objectStore('host-records-v3').openCursor()
+    const prefix = JSON.stringify([host.namespace, 'abele-sync-writes']).slice(0, -1) + ','
+    const range =
+      typeof IDBKeyRange === 'undefined' ? undefined : IDBKeyRange.bound(prefix, prefix + '\uffff')
+    const request = tx.objectStore('host-records-v3').openCursor(range)
     request.onerror = () => tx.abort()
     request.onsuccess = () => {
       const cursor = request.result
@@ -129,6 +213,7 @@ exports.captureBoundary = async function ({ id, device, app, emit, now = Date.no
     const runtimes = [...app.plugins.plugins.abele.tokenEngines.live.values()]
     if (!runtimes.length) throw new Error('Receipt runtime unavailable')
     for (const runtime of runtimes) {
+      if (!runtime.options?.state?.db) throw new Error('Committed receipt port unavailable')
       const captured = await exports.captureRuntime(runtime, host)
       receipt.targets.push(...captured.targets)
       receipt.uploads.push(...captured.uploads)
