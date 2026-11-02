@@ -212,9 +212,12 @@ describe('conversation presentation', () => {
     const input = chat.findComponent({ name: 'AiChatInput' })
     expect(input.props('scopeCode')).toBe('3')
     expect(input.props('scopeLabel')).toBe(
-      // Node places are said by name; with no node here to ask, the ids stand in for the names.
-      'Access: Sample/reference.md, Sample/Pages · sample-node node · sample-project · worktree sample-workspace · can read files'
+      // No node catalogue is available in this fixture. The missing place is said in
+      // words; opaque project/workspace identities remain in the grant, not its label.
+      'Access: Sample/reference.md, Sample/Pages · sample-node node · Folder no longer exists · can read files'
     )
+    expect(input.props('scopeLabel')).not.toContain('sample-project')
+    expect(input.props('scopeLabel')).not.toContain('sample-workspace')
   })
   it('passes background question and approval state to the tree dots', async () => {
     const active = fakeChatSession({ kind: 'chat' })
