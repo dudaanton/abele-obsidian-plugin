@@ -622,7 +622,11 @@ import TemplateVariablesModal from './TemplateVariablesModal.vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { ChatService, type PendingInput } from '@/ai/ChatService'
 import AiNodeScopeChips from './AiNodeScopeChips.vue'
-import { nodeScopeNames, nodeScopeSentence } from '@/ai/tools/node/scopeNames'
+import {
+  nodeScopeDisplayNames as nodeScopeNames,
+  nodeScopeSentence,
+  useNodeScopeNameRefresh,
+} from '@/ai/tools/node/scopeNames'
 import { fileMentions } from '@/ai/fileMentions'
 import { GlobalStore } from '@/stores/GlobalStore'
 import {
@@ -1325,18 +1329,24 @@ const refusalApproves = (r: NodeAccessRefusal) =>
   r.kind === 'not-approved' ? nodeAccess.value.filter((e) => e.node_id === r.node_id) : []
 /** Each node place said by its names — node, folder, branch — and what may be done there. */
 const nodeSaid = ref<string[]>([])
+const nodeNameRevision = useNodeScopeNameRefresh()
 watch(
-  nodeAccess,
-  async (list) => {
-    nodeSaid.value = await Promise.all(
+  [nodeAccess, nodeNameRevision, session],
+  async ([list, , chat], _previous, cleanup) => {
+    let stale = false
+    cleanup(() => {
+      stale = true
+    })
+    const said = await Promise.all(
       list.map(async (entry) => {
         const said = nodeScopeSentence(await nodeScopeNames(entry), entry.access)
-        const source = session.value?.inheritedNodeScopes?.find((source) =>
+        const source = chat?.inheritedNodeScopes?.find((source) =>
           source.entries.some((value) => JSON.stringify(value) === JSON.stringify(entry))
         )
         return source ? `${said} · ${t('chatTree.fromFolder', { name: source.folder })}` : said
       })
     )
+    if (!stale) nodeSaid.value = said
   },
   { immediate: true }
 )

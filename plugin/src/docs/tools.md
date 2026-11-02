@@ -5,6 +5,14 @@ easy to get wrong. Which of these an agent actually has depends on its own tool 
 
 ## Node session boundary
 
+Node worktree grants use the stable worktree identity, never its current Git branch name.
+Command status and cancellation may include both project and worktree IDs without requiring
+whole-project access. Revoking the exact grant still prevents subsequent status requests.
+The folder picker reads the current paginated catalogue on each opening. Successful worktree
+creation selects only the worktree resolved from its accepted workspace receipt, never another
+folder whose branch happens to match. Access labels refresh their display names after branch
+changes or reconnects without rewriting the grant.
+
 Node chats use AbeleNode's authenticated client API. Nodes advertising `obsidian.tools.v1`
 can also use the ordinary vault catalogue through an explicitly configured executor. Local-token
 connections remain loopback-only. Remote devices enroll independently with invitations, pinned

@@ -70,7 +70,8 @@ import {
 } from '@/ai/nodeScope'
 import { removeObsidianChatNodeAccess } from '@/ai/tools/node/owner'
 import {
-  nodeScopeNames,
+  nodeScopeDisplayNames as nodeScopeNames,
+  useNodeScopeNameRefresh,
   nodeScopeSentence,
   nodeScopeTitle,
   type NodeScopeNames,
@@ -108,14 +109,21 @@ const selected = computed(() => {
 const error = ref('')
 const names = ref<Record<string, NodeScopeNames>>({})
 const selectedNames = ref<NodeScopeNames>()
+const nameRevision = useNodeScopeNameRefresh()
 watch(
-  [entries, selected],
-  async ([list, current]) => {
-    const found = await Promise.all(
-      list.map(async (e) => [nodeScopeKey(e), await nodeScopeNames(e)] as const)
-    )
+  [entries, selected, nameRevision],
+  async ([list, current], _previous, cleanup) => {
+    let stale = false
+    cleanup(() => {
+      stale = true
+    })
+    const [found, active] = await Promise.all([
+      Promise.all(list.map(async (e) => [nodeScopeKey(e), await nodeScopeNames(e)] as const)),
+      current ? nodeScopeNames(current) : undefined,
+    ])
+    if (stale) return
     names.value = Object.fromEntries(found)
-    selectedNames.value = current ? await nodeScopeNames(current) : undefined
+    selectedNames.value = active
   },
   { immediate: true }
 )

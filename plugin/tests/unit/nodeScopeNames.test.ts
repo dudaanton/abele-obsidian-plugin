@@ -43,7 +43,12 @@ const sampleConnection = () => ({
     },
   },
 })
-import { forgetNodeScopeNames, nodeScopeNames } from '@/ai/tools/node/scopeNames'
+import {
+  forgetNodeScopeNames,
+  nodeScopeNames,
+  nodeScopeSentence,
+  nodeScopeDisplayNames,
+} from '@/ai/tools/node/scopeNames'
 
 const place = {
   node_id: 'sample-node',
@@ -58,6 +63,14 @@ beforeEach(() => {
 })
 
 describe('the names of a place on a node', () => {
+  it('says an unavailable folder in words while keeping the original grant', async () => {
+    const display = await nodeScopeDisplayNames(place)
+    const sentence = nodeScopeSentence(display, 'read')
+    expect(sentence).toContain('Folder no longer exists')
+    expect(sentence).not.toContain('sample-project')
+    expect(sentence).not.toContain('sample-tree')
+    expect(place.target.worktree_id).toBe('sample-tree')
+  })
   it('learns them once the node connects, not keeping the ids from before', async () => {
     expect(await nodeScopeNames(place)).toEqual({
       node: 'Sample node',
@@ -71,6 +84,15 @@ describe('the names of a place on a node', () => {
       folder: 'sample-app',
       branch: 'main',
     })
+  })
+
+  it('refreshes the branch words without changing the granted worktree identity', async () => {
+    node.connected = true
+    node.worktrees = [{ worktree_id: 'sample-tree', branch: 'refs/heads/main', path_label: '/x' }]
+    expect((await nodeScopeNames(place)).branch).toBe('main')
+    node.worktrees = [{ worktree_id: 'sample-tree', branch: 'refs/heads/topic', path_label: '/x' }]
+    expect((await nodeScopeNames(place)).branch).toBe('topic')
+    expect(place.target.worktree_id).toBe('sample-tree')
   })
 
   it('finds the connected one when the node is registered here twice', async () => {

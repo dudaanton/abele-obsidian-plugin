@@ -1,3 +1,18 @@
+import { onMounted, onUnmounted, ref } from 'vue'
+
+/** Refresh presentation after reconnects and branch switches; never modifies a grant. */
+export function useNodeScopeNameRefresh() {
+  const revision = ref(0)
+  let timer: number | undefined
+  onMounted(() => {
+    timer = window.setInterval(() => {
+      revision.value++
+    }, 5000)
+  })
+  onUnmounted(() => window.clearInterval(timer))
+  return revision
+}
+
 import { delegationBranchLabel } from '@/node/delegation'
 import { t } from '@/i18n'
 import type { NodeChatTarget, NodeScopeEntry } from '@/ai/nodeScope'
@@ -78,8 +93,9 @@ function folderNames(nodeId: string) {
         const batch = await client.listProjects(after)
         for (const p of batch)
           names.set(p.project_id, { name: lastPart(p.root_path), git: !!p.repository_path })
-        if (batch.length < 100) break
-        after = batch.at(-1)?.project_id
+        const next = batch.at(-1)?.project_id
+        if (!next || next === after) break
+        after = next
       }
       return names
     })().catch(() => {
@@ -137,7 +153,9 @@ export async function nodeScopeNames(place: Place | NodeScopeEntry): Promise<Nod
   }
   const projectId = 'project_id' in place ? place.project_id : undefined
   if (!projectId) return { node }
-  // A folder or worktree added since the names were looked up is asked about once more.
+  // Names are presentation, not authority. A stable worktree may now have a different
+  // branch, and a project may have moved since the preceding lookup.
+  forgetNodeScopeNames(place.node_id)
   let folder = (await folderNames(place.node_id)).get(projectId)
   if (!folder) {
     folders.delete(place.node_id)
@@ -153,6 +171,20 @@ export async function nodeScopeNames(place: Place | NodeScopeEntry): Promise<Nod
     branch = (await branchNames(place.node_id, projectId, git)).get(nodeTargetId(target))
   }
   return { node, folder: folder?.name ?? projectId, branch: branch ?? nodeTargetId(target) }
+}
+
+/** UI fallback only: keep opaque identities in grants, not in the access label. */
+export async function nodeScopeDisplayNames(
+  place: Place | NodeScopeEntry
+): Promise<NodeScopeNames> {
+  const names = await nodeScopeNames(place)
+  const project = 'project_id' in place ? place.project_id : undefined
+  const target = 'target' in place ? place.target : undefined
+  if (project && names.folder === project)
+    return { node: names.node, folder: t('chatTree.folderMissing') }
+  if (target && names.branch === nodeTargetId(target))
+    return { node: names.node, folder: names.folder, branch: t('chatTree.folderMissing') }
+  return names
 }
 
 /** The place as a short title: «sample-app / sample-branch», the node's name when it is all. */

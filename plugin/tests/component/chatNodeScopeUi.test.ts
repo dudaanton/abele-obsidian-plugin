@@ -389,6 +389,53 @@ describe('node scope beside vault scope and in the header', () => {
     ])
     view.unmount()
   })
+  it('refreshes header branch words without replacing the stable grant', async () => {
+    vi.useFakeTimers()
+    const session = setup()
+    const grant = {
+      kind: 'target',
+      node_id: 'sample-node',
+      project_id: 'sample-project',
+      target: { kind: 'worktree', worktree_id: 'sample-tree' },
+      access: 'read',
+    }
+    session.overrides.value.nodeScope = [grant] as never
+    let branch = 'refs/heads/main'
+    mocks.host.mockResolvedValue({
+      nodes: () => [{ id: 'sample-node', label: 'Sample node' }],
+      connection: () => ({
+        client: {
+          connected: true,
+          listProjects: async () => [
+            {
+              project_id: 'sample-project',
+              root_path: '/samples/sample-app',
+              repository_path: '/samples/sample-app',
+            },
+          ],
+          repository: {
+            worktrees: async () => ({
+              entries: [{ worktree_id: 'sample-tree', branch, path_label: '/samples/tree' }],
+            }),
+          },
+        },
+      }),
+    })
+    const view = mount(AiNodeScopeChips, { props: { session } })
+    try {
+      await flushPromises()
+      expect(view.text()).toContain('sample-app / main')
+      branch = 'refs/heads/topic'
+      await vi.advanceTimersByTimeAsync(5100)
+      await flushPromises()
+      expect(view.text()).toContain('sample-app / topic')
+      expect(session.overrides.value.nodeScope).toEqual([grant])
+      expect(mocks.give).not.toHaveBeenCalled()
+    } finally {
+      view.unmount()
+      vi.useRealTimers()
+    }
+  })
   it('renders removable header access without silently approving it', async () => {
     const session = setup()
     const view = mount(AiNodeScopeChips, { props: { session } })
