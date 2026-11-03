@@ -1,3 +1,5 @@
+import boundary from './interruption-boundary.cjs'
+
 const kinds = [
   'Error',
   'TypeError',
@@ -20,19 +22,10 @@ export async function flushExitEvidence(device, minimal = false, { requireProfil
           : `try {globalThis.__scalePrepareTeardown?.();await globalThis.__scaleFlushEntryLedger?.();}
         catch(error){return failed('ledger-flush-failed',error);}`
       }
-      let profilerExported=false;
-      if(typeof globalThis.__scaleStopProfiles==='function') {
-        try {await globalThis.__scaleStopProfiles();profilerExported=true;}
-        catch(error){return failed('profiler-stop-failed',error);}
-      } else if(${requireProfiler}) return failed('profiler-hook-unavailable');
-      ${
-        minimal
-          ? ''
-          : `if(typeof globalThis.__scaleFlushEvidence!=='function')return failed('evidence-hook-unavailable');
-        try {if(!await globalThis.__scaleFlushEvidence())return failed('evidence-flush-failed');}
-        catch(error){return failed('evidence-flush-failed',error);}`
-      }
-      return {flushed:true,profilerExported};
+      const saveBoundary=(${boundary.saveInterruptionBoundary.toString()});
+      return await saveBoundary({id:'app-exit',emit:globalThis.__scaleEmitEvidence,
+        stopProfiles:globalThis.__scaleStopProfiles,flushEvidence:globalThis.__scaleFlushEvidence,
+        requireProfiler:${requireProfiler},requireEvidence:${!minimal}});
     `)
     if (result?.flushed === true)
       return { flushed: true, profilerExported: result.profilerExported === true }

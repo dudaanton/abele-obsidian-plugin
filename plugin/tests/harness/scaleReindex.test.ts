@@ -170,6 +170,7 @@ it('clicks the real setting once, persists actual click time, and observes host 
     __scaleEmitEvidence: (value) => rows.push(value),
     require: (name) => (name === 'node:fs' ? fs : { resolve: (p) => p }),
     setTimeout: (fn) => scheduled.push(fn),
+    __scaleSaveInterruptionBoundary: async () => ({ flushed: true, profilerExported: true }),
     Date,
     Buffer,
   })
@@ -211,13 +212,14 @@ it('clicks the real setting once, persists actual click time, and observes host 
     'trace.0.reindex.json'
   )
   expect(calls).toEqual(['open', 'file'])
-  scheduled[0]()
+  await scheduled[0]()
   expect(calls).toEqual(['open', 'file', 'click'])
   expect(rows[0]).toMatchObject({
     event: 'reindex-click',
     id: 'sample',
     device: '0',
     at: expect.any(Number),
+    cpuExport: { flushed: true, profilerExported: true },
   })
   api.observeRebuild(
     app,

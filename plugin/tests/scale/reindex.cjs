@@ -56,8 +56,17 @@ exports.clickRebuild = async function (app, document, receipt, pendingFile) {
       if (globalThis.__scaleCaptureBoundary) receiptCapture = await globalThis.__scaleCaptureBoundary(receipt.id)
     }
     catch { receiptCapture = { id: receipt.id, complete: false } }
+    // The receipt ends sync scope. Save the preceding live context before the
+    // host's button can replace it; navigation-time stop is too late.
+    const cpuExport = receiptCapture?.cpuExport ?? await globalThis.__scaleSaveInterruptionBoundary?.(receipt.id) ?? {
+      flushed: false, diagnostic: { kind: 'Error', category: 'boundary-hook-unavailable' },
+    }
     const clicked = { ...operation, at: Date.now() }
     if (receiptCapture) clicked.receiptCapture = receiptCapture
+    if (cpuExport) clicked.cpuExport = cpuExport
+    if (!cpuExport.flushed)
+      appendEvidence(pendingFile.slice(0, pendingFile.lastIndexOf('.' + receipt.device + '.reindex.json')),
+        { event: 'interruption-cpu-export', id: receipt.id, at: Date.now(), ...cpuExport })
     fs.writeFileSync(pendingFile, JSON.stringify(clicked))
     appendEvidence(
       pendingFile.slice(0, pendingFile.lastIndexOf('.' + receipt.device + '.reindex.json')),

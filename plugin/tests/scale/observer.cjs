@@ -260,7 +260,7 @@ module.exports = class extends Plugin {
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Heartbeats carry no file content.
       const { ipcRenderer } = require('electron')
       const diagnostic = remote.require(config.diagnostics)
-      const channel = await diagnostic.watch(
+      let channel = await diagnostic.watch(
         remote.getCurrentWebContents().id,
         JSON.stringify(config)
       )
@@ -268,6 +268,14 @@ module.exports = class extends Plugin {
         throw new Error('Continuous profiler did not acknowledge startup')
       profilerAcknowledgedAt = Date.now()
       globalThis.__scaleStopProfiles = () => diagnostic.unwatch(channel)
+      globalThis.__scaleResumeProfiles = async (id, load = false) => {
+        if (load) emit({ event: 'harness-load-request', id })
+        channel = await diagnostic.watch(remote.getCurrentWebContents().id, JSON.stringify(config))
+        if (config.continuousCpu && !diagnostic.profileReady(channel))
+          throw new Error('Continuous profiler did not acknowledge resume')
+        emit({ event: 'harness-interruption-resume', id })
+        return true
+      }
       globalThis.__scaleReindexCoverage = {
         begin: (id) => diagnostic.beginReindexCoverage(channel, id),
         end: () => diagnostic.endReindexCoverage(channel),
@@ -290,6 +298,13 @@ module.exports = class extends Plugin {
     if (config.receiptCapture && config.fingerprintObserver) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Read-only disposable diagnostics.
       const receiptCapture = require(config.receiptCapture)
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- Shared disposable cut/exit export protocol.
+      const { saveInterruptionBoundary } = require('./interruption-boundary.cjs')
+      globalThis.__scaleSaveInterruptionBoundary = id => saveInterruptionBoundary({
+        id, emit, stopProfiles: globalThis.__scaleStopProfiles,
+        flushEvidence: globalThis.__scaleFlushEvidence,
+        requireProfiler: config.continuousCpu === true,
+      })
       globalThis.__scaleCaptureBoundary = async id => {
         const receipt = await receiptCapture.captureBoundary({ id, device: config.device,
           app: this.app, emit })
@@ -297,7 +312,8 @@ module.exports = class extends Plugin {
         fs.mkdirSync(config.profileDirectory, { recursive: true })
         fs.writeFileSync(file, JSON.stringify(receipt))
         await globalThis.__scaleFlushEvidence()
-        return { id, at: receipt.at, completedAt: receipt.completedAt, complete: receipt.complete, file }
+        const cpuExport = await globalThis.__scaleSaveInterruptionBoundary(id)
+        return { id, at: receipt.at, completedAt: receipt.completedAt, complete: receipt.complete, file, cpuExport }
       }
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Argument-to-digest linkage only.
       const fingerprints = require(config.fingerprintObserver)
@@ -309,6 +325,7 @@ module.exports = class extends Plugin {
       })
       this.register(() => {
         delete globalThis.__scaleCaptureBoundary
+        delete globalThis.__scaleSaveInterruptionBoundary
         delete globalThis.__scaleWrapFingerprints
       })
     }

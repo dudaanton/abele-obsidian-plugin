@@ -54,7 +54,7 @@ it('restarts and acknowledges CPU capture for a navigated webContents before reu
     events: any[] = [],
     calls: string[] = []
   let attached = false,
-    sequence = 0
+    sequence = 0, stopFails = false
   let blockFlush = false, releaseFlush: () => void = () => {}
   const flushPermit = new Promise<void>(resolve => { releaseFlush = resolve })
   wc.debugger = {
@@ -67,6 +67,7 @@ it('restarts and acknowledges CPU capture for a navigated webContents before reu
     },
     sendCommand: async (name: string) => {
       calls.push(name)
+      if (stopFails && name === 'Profiler.stop') throw new TypeError('Private stop detail')
       return name === 'Performance.getMetrics'
         ? { metrics: [{ name: 'Timestamp', value: 1 }] }
         : { profile: { nodes: [] } }
@@ -125,4 +126,8 @@ it('restarts and acknowledges CPU capture for a navigated webContents before reu
     try { expect(closed).toBe(false) }
     finally { releaseFlush(); await closing }
   }
+  const third = await api.watch(7, config)
+  stopFails = true
+  await expect(api.unwatch(third)).rejects.toThrow('CPU export unavailable')
+  expect(events.at(-1)).toMatchObject({ event: 'cpu-profile-unavailable' })
 })

@@ -396,6 +396,7 @@ export async function setupVault(config, root, device) {
   await copyFile(join(here, 'observer.cjs'), join(observer, 'main.js'))
   await copyFile(join(here, 'writes.cjs'), join(observer, 'writes.cjs'))
   await copyFile(join(here, 'reindex.cjs'), join(observer, 'reindex.cjs'))
+  await copyFile(join(here, 'interruption-boundary.cjs'), join(observer, 'interruption-boundary.cjs'))
   await copyFile(join(here, 'diagnostics.cjs'), join(observer, 'diagnostics.cjs'))
   await copyFile(join(here, 'entry-ledger.cjs'), join(observer, 'entry-ledger.cjs'))
   await copyFile(join(here, 'host-entries.cjs'), join(observer, 'host-entries.cjs'))
@@ -899,7 +900,15 @@ export async function run(config) {
       const receipt = await device.evaluate(`return await globalThis.__scaleCaptureBoundary?.(${JSON.stringify(id)}) ?? {id:${JSON.stringify(id)},complete:false}`)
       ;(report.interruptionReceipts ??= []).push(receipt)
       checkpoint(true)
+      const cpuExport = receipt.cpuExport ?? { flushed: false,
+        diagnostic: { kind: 'Error', category: 'boundary-hook-unavailable' } }
+      ;(report.boundaryCpuExports ??= []).push({ id, device: String(devices.indexOf(device)), ...cpuExport })
+      if (!cpuExport.flushed) report.failure ??= 'Observer evidence flush failed'
       return receipt
+    }
+    const resumeBoundary = async (device, id, load = false) => {
+      const resumed = await device.evaluate(`return await globalThis.__scaleResumeProfiles?.(${JSON.stringify(id)},${load}) ?? false`)
+      if (!resumed) throw new Error('Observer evidence flush failed')
     }
     const reindex = async (id, device, proxy, nextBreakpoint = null) => {
       const declared = report.declaredInterruptions.find((one) => one.id === id)
@@ -937,6 +946,10 @@ export async function run(config) {
         async () => (await receipt(pendingFile)) ?? (await receipt(pendingFile + '.complete.json')),
         config.timeoutMs
       )
+      ;(report.boundaryCpuExports ??= []).push({ id, device: declared.device,
+        ...(clicked.cpuExport ?? { flushed: false,
+          diagnostic: { kind: 'Error', category: 'boundary-hook-unavailable' } }) })
+      if (!clicked.cpuExport?.flushed) report.failure ??= 'Observer evidence flush failed'
       const operation = {
         ...declared,
         at: clicked.at,
@@ -1056,11 +1069,13 @@ export async function run(config) {
     mark('network drop')
     await sleep(2000)
     p.offline = false
+    await resumeBoundary(a, 'network drop')
     await a.sync()
     await a.inFlight(p, 'plugin interruption in flight')
     await captureBoundary(a, 'plugin disable-enable')
     await a.invalidateJob()
     report.pluginDisable = await a.pluginEnabled(false)
+    await resumeBoundary(a, 'plugin disable-enable', true)
     report.pluginEnable = await a.pluginEnabled(true)
     mark('plugin disable-enable')
     await a.ready()
@@ -1105,6 +1120,7 @@ export async function run(config) {
     })
     report.pauseBoundaryQuiescence = pauseBoundary.quiescence
     mark('pause mid-pull')
+    await resumeBoundary(b, 'pause mid-pull')
     if (config.reindex === true || config.shape === 'scale') {
       await triggered(q, 'pull', async () => {
         await b.paused(false)
@@ -1539,6 +1555,10 @@ export async function run(config) {
         report.evidenceReadFailures = (report.evidenceReadFailures ?? 0) + 1
         return []
       })
+      report.boundaryCpuExports = [...(report.boundaryCpuExports ??= []),
+        ...entries.filter(row => row.event === 'interruption-cpu-export')]
+      if (report.boundaryCpuExports.some(row => row.flushed !== true))
+        report.failure ??= 'Observer evidence flush failed'
       for (const saved of rebuilds) {
         const proxy = proxies[Number(saved.operation.device)]
         const end = entries.find(

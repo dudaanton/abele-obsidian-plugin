@@ -207,9 +207,12 @@ exports.createStallProfiler = function ({
       if (startedAt !== undefined)
         try {
           await finish(at, false, 'close')
+          return true
         } catch {
           emit({ event: 'cpu-profile-unavailable' })
+          return false
         }
+      return false
     },
   }
 }
@@ -526,7 +529,8 @@ exports.watch = async function (id, serializedConfig) {
       ipcMain.removeListener(channel, heartbeat)
       try {
         await endCoverage()
-        await profiler.close(Date.now())
+        const saved = await profiler.close(Date.now())
+        if (config.continuousCpu && !saved) throw new Error('CPU export unavailable')
         await allocations?.close()
       } finally {
         try {
