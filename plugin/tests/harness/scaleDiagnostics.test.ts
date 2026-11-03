@@ -264,7 +264,7 @@ it('keeps a running profiler across a reload in the same renderer', async () => 
     clearInterval() {}, require: (name: string) => {
       if (name === 'electron') return { webContents: { fromId: () => wc }, ipcMain: new EventEmitter() }
       if (name === 'node:crypto') return { randomUUID: () => 'sample' }
-      if (name === './evidence-writer.cjs') return { writerFor: () => ({ enqueue() {} }) }
+      if (name === './evidence-writer.cjs') return { writerFor: () => ({ enqueue() {}, async flush() {} }) }
       if (name === 'node:fs') return { mkdirSync() {}, writeFileSync() {} }
       throw Error(name)
     } })
@@ -667,7 +667,7 @@ it('replaces only its own debugger watch across a renderer reload', async () => 
       if (name === 'electron') return { webContents: { fromId: () => wc }, ipcMain }
       if (name === 'node:crypto') return { randomUUID: () => String(++sequence) }
       if (name === './evidence-writer.cjs')
-        return { writerFor: () => ({ enqueue: (line) => rows.push(JSON.parse(line)) }) }
+        return { writerFor: () => ({ enqueue: (line) => rows.push(JSON.parse(line)), async flush() {} }) }
       if (name === 'node:fs')
         return {
           appendFileSync: (_p, line) => rows.push(JSON.parse(line)),

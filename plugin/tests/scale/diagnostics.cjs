@@ -529,8 +529,14 @@ exports.watch = async function (id, serializedConfig) {
         await profiler.close(Date.now())
         await allocations?.close()
       } finally {
-        if (transport.isAttached()) transport.detach()
-        if (ownedContents.get(id) === close) ownedContents.delete(id)
+        try {
+          // CPU bytes alone are insufficient: persist their timestamped receipt
+          // before a controller can kill the host immediately after export.
+          await evidence.flush()
+        } finally {
+          if (transport.isAttached()) transport.detach()
+          if (ownedContents.get(id) === close) ownedContents.delete(id)
+        }
       }
     })()
     return closing

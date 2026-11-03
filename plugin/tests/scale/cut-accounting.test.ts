@@ -55,6 +55,8 @@ it('restarts and acknowledges CPU capture for a navigated webContents before reu
     calls: string[] = []
   let attached = false,
     sequence = 0
+  let blockFlush = false, releaseFlush: () => void = () => {}
+  const flushPermit = new Promise<void>(resolve => { releaseFlush = resolve })
   wc.debugger = {
     isAttached: () => attached,
     attach: () => {
@@ -88,6 +90,7 @@ it('restarts and acknowledges CPU capture for a navigated webContents before reu
             enqueue(line: string) {
               events.push(JSON.parse(line))
             },
+            flush: () => blockFlush ? flushPermit : Promise.resolve(),
           }),
         }
       if (name === 'node:fs') return { mkdirSync() {}, writeFileSync() {} }
@@ -115,6 +118,11 @@ it('restarts and acknowledges CPU capture for a navigated webContents before reu
     expect(api.profileReady(second)).toBe(true)
     expect(events.filter((row) => row.event === 'renderer-navigation')).toHaveLength(1)
   } finally {
-    await api.unwatch(second)
+    blockFlush = true
+    let closed = false
+    const closing = api.unwatch(second).then(() => { closed = true })
+    await new Promise(resolve => setImmediate(resolve))
+    try { expect(closed).toBe(false) }
+    finally { releaseFlush(); await closing }
   }
 })

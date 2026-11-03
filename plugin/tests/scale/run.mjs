@@ -58,7 +58,7 @@ import { enablePluginWhenReady } from './startup-enable.mjs'
 import { validateBuildReceipt, validateQualificationArtifact, buildArtifactPath } from './build.mjs'
 import { qualificationScenario } from './qualification-config.mjs'
 import { observerDeploymentConfig } from './observer-config.mjs'
-import { flushExitEvidence } from './exit-evidence.mjs'
+import { flushExitEvidence, stopAtCommitCut } from './exit-evidence.mjs'
 import { capturePausedBoundary } from './pause-boundary.mjs'
 import { applyCombinedChanges } from './combined.mjs'
 import { planOfflineChanges, updateExpectedOfflineChanges } from './qualification-offline.mjs'
@@ -644,7 +644,7 @@ export async function run(config) {
       checkpoint(true)
     }
   }
-  const stop = async (hard, { minimal = false } = {}) => {
+  const stop = async (hard, { minimal = false, requireProfiler = !minimal } = {}) => {
     if (appProcess) await appendFile(join(config.output, 'renderer.jsonl'), devices.map((_, index) =>
       JSON.stringify({ event: 'harness-stop-request', device: String(index), at: Date.now(), kind: hard ? 'kill' : 'quit' }) + '\n').join(''))
     clearInterval(memoryTimer)
@@ -652,11 +652,16 @@ export async function run(config) {
     if (!appProcess) return
     for (const device of devices) {
       const at = Date.now()
-      const flushed = await flushExitEvidence(device, minimal).catch(() => false)
+      const result = await flushExitEvidence(device, minimal, {
+        requireProfiler: config.continuousCpu === true && requireProfiler,
+      })
+      const flushed = result.flushed
       ;(report.observerFlushes ??= []).push({
         device: String(devices.indexOf(device)),
         at,
         flushed,
+        profilerExported: result.profilerExported,
+        ...(result.diagnostic ? { diagnostic: result.diagnostic } : {}),
       })
       if (!flushed) report.failure ??= 'Observer evidence flush failed'
     }
@@ -1318,12 +1323,9 @@ export async function run(config) {
       await a.sync()
       const cut = await wait('targeted edit commit applied before acknowledgement', () =>
         p.events.find(e => e.at >= since && e.event === 'trigger' && e.kind === 'batch'), 120000)
-      // No renderer round trips between the held commit and kill.
-      await appendFile(join(config.output, 'renderer.jsonl'), devices.map((_, index) =>
-        JSON.stringify({ event: 'harness-stop-request', device: String(index), at: Date.now(), kind: 'kill' }) + '\n').join(''))
-      appProcess.kill('SIGKILL')
-      await stop(true,{minimal:true})
-      p.release()
+      // Export CPU evidence while alive; the commit acknowledgement remains held
+      // until stop() has recorded its marker and killed the app.
+      await stopAtCommitCut({ stop, release: () => p.release() })
       report.targeted.D = {commitCut:cut.serverApplied === true,cutAt:cut.at}
       await start()
       report.targeted.D.primaryIdle = await settle(a, 'crash resume primary')
