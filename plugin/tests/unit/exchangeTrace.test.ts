@@ -3,6 +3,35 @@ import { ExchangeTrace } from '@/sync/exchangeTrace'
 import { assertPullEvidence } from '../helpers/smallPullBounds'
 import * as pullCounters from '@/sync/pullOperationCounts'
 
+it('keeps strict cohort proof when concurrent diagnostics exhaust their bounded slots', async () => {
+  const trace = new ExchangeTrace()
+  await trace.nativeBatch(['Notes/a.md', 'Notes/b.md'], async (proof) => {
+    proof(() => ({ files: 2, small: 2, staged: 2, publications: 2, retired: 2, smallWrites: 2 }))
+    const a = trace.beginPull(3, 'Notes/a.md')
+    const b = trace.beginPull(3, 'Notes/b.md')
+    const finish = Array.from({ length: 64 }, () => trace.begin('fs stat'))
+    trace.record('GET /v2/files/a/content', Date.now(), 'complete')
+    trace.record('GET /v2/files/b/content', Date.now(), 'complete')
+    for (const done of finish) done()
+    a(true)
+    b(true)
+  })
+  const snapshot = trace.snapshot()
+  expect(snapshot.firstSync.operations.dropped).toBe(32)
+  const evidence = snapshot.firstSync.pulls
+  expect(() => assertPullEvidence(evidence, { small: 2, large: 0, requests: 2 })).not.toThrow()
+  expect(() =>
+    assertPullEvidence(
+      { ...evidence, contentRequests: 3 },
+      {
+        small: 2,
+        large: 0,
+        requests: 2,
+      }
+    )
+  ).toThrow()
+})
+
 it('attributes native cohort work once and requires a complete installation proof', async () => {
   const trace = new ExchangeTrace()
   await trace.nativeBatch(['Notes/a.md', 'Notes/b.md'], async (proof) => {

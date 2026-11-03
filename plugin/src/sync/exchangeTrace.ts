@@ -167,6 +167,7 @@ export class ExchangeTrace {
     maxMs: 0,
   }))
   private detailCount = 0
+  private droppedOperations = 0
 
   beginPullCycle(): void {
     if (!this.pulling) {
@@ -247,7 +248,9 @@ export class ExchangeTrace {
         break
       }
     if (!slot) {
-      if (!this.sealed) this.pulls.overlap = true
+      // Exhausting detail slots says nothing about per-file placement overlap.
+      // Pull scopes and native cohort proofs have their own strict admission.
+      this.droppedOperations++
       return () => {}
     }
     slot.active = true
@@ -393,6 +396,7 @@ export class ExchangeTrace {
         // Legacy event-map evidence is intentionally unavailable; exact aggregates never truncate.
         operations: {
           truncated: true,
+          dropped: this.droppedOperations,
           placements: [] as { path: string; counts: Record<string, number> }[],
           contentRequests: {} as Record<string, number>,
         },
