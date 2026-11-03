@@ -678,6 +678,7 @@ const localTreeSource: ChatTreeSource = {
   open: (id) => tree.open(id),
   close: (id) => tree.close(id),
   move: (id, folder) => tree.move(id, folder),
+  moveFolder: (path, parent) => tree.moveFolder(path, parent),
   newChat: (folder) => tree.newChat(folder),
   newFolder: (parent, name) => tree.newFolder(parent, name),
   renameFolder: (path, name) => tree.renameFolder(path, name),

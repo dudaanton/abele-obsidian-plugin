@@ -83,7 +83,7 @@ const probe = (label: string) => `(async () => {
     if (!app.isMobile) {
       await service.folders.create(folder, 'Synthetic child')
       await service.tree.refresh()
-      const folderRow = path => document.querySelector('[data-path="' + path + '"]')
+      const folderRow = path => document.querySelector('.abele-chat-tree__folder[data-path="' + path + '"]')
       const childPath = folder + '/Synthetic child'
       const childRow = await until(() => folderRow(childPath))
       if (childRow.getAttribute('draggable') !== 'true') throw Error('Folder is not draggable')
