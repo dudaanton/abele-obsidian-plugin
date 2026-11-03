@@ -171,6 +171,7 @@ it('charges evaluation to plugin load and later startup sync work to the sync bu
     { event: 'long-task', device: '0', startedAt: 300, durationMs: 100 },
   ]
   const captures = [
+    { event: 'cpu-profile-ready', device: '0', at: 90 },
     { event: 'plugin-load-mark', name: 'abele:eval-start', device: '0', at: 120 },
     { event: 'plugin-load-mark', name: 'abele:eval-end', device: '0', at: 190 },
     { event: 'plugin-load-mark', name: 'abele:onload-end', device: '0', at: 250 },

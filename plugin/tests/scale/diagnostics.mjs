@@ -130,7 +130,7 @@ export async function allocationAttribution(task, captures, load, symbolize = fr
 }
 export function longTaskScope(task, evidence) {
   const rows = evidence.filter(row => row.device === task.device)
-  const launches = rows.filter(row => ['renderer-start', 'harness-launch-request'].includes(row.event) ||
+  const launches = rows.filter(row => ['renderer-start', 'renderer-navigation', 'harness-launch-request'].includes(row.event) ||
     row.event === 'plugin-load-mark' && row.name === 'abele:eval-start').sort((a, b) => a.at - b.at)
   const launch = launches.filter(row => row.at <= task.startedAt).at(-1)
   const begin = launch?.at ?? -Infinity
@@ -139,7 +139,13 @@ export function longTaskScope(task, evidence) {
   if (rows.some(row => row.event === 'plugin-load-mark' && row.name === 'abele:eval-start' &&
     row.at > task.startedAt && row.at < task.startedAt + task.durationMs)) return 'load'
   const completed = rows.filter(row => row.event === 'plugin-load-mark' && row.name === 'abele:onload-end' && row.at >= begin)
-  if (completed.some(row => row.at <= task.startedAt)) return 'sync'
+  // Profiler readiness is emitted before renderer-start/eval-start; anchor its
+  // generation at the actual navigation/launch, not those later load marks.
+  const generationStart = rows.filter(row => ['renderer-navigation', 'harness-launch-request'].includes(row.event) &&
+    row.at <= task.startedAt).sort((a, b) => a.at - b.at).at(-1)?.at ?? -Infinity
+  const acknowledged = rows.some(row => row.event === 'cpu-profile-ready' &&
+    row.at >= generationStart && row.at <= task.startedAt)
+  if (acknowledged && completed.some(row => row.at <= task.startedAt)) return 'sync'
   if (launches.length || completed.length) return 'load'
   return null
 }

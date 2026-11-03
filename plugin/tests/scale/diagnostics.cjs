@@ -482,6 +482,9 @@ exports.watch = async function (id, serializedConfig) {
     }
   }
   const beginCoverage = async (id) => {
+    // Persist the preceding sync/UI work before the awaited reindex action can
+    // replace V8's context. A later stop may return only the new bootstrap tail.
+    if (config.continuousCpu) await profiler.restart(Date.now())
     if (config.preciseHashCoverage === false) {
       emit({
         event: 'reindex-js-coverage-skipped',
@@ -536,9 +539,12 @@ exports.watch = async function (id, serializedConfig) {
     void close().catch(() => {})
   }
   const navigating = (_event, _url, inPlace, mainFrame) => {
-    // Replacing a continuous watch on reload can stop the new generation's
-    // profiler and mislabel its short tail as a full capture.
-    if (!config.continuousCpu && mainFrame && !inPlace) destroyed()
+    if (!mainFrame || inPlace) return
+    // A webContents can survive while V8 replaces its renderer context. The
+    // previous channel's acknowledgement is not proof of a new CPU session.
+    // Close it now; watch() waits for this close before attaching the new one.
+    emit({ event: 'renderer-navigation' })
+    destroyed()
   }
   try {
     await transport.sendCommand('Profiler.enable')

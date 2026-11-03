@@ -5,6 +5,7 @@ import { longTaskVerdict } from './oracles.mjs'
 
 const lifecycle = [
   { event: 'renderer-start', device: '0', at: 0 },
+  { event: 'cpu-profile-ready', device: '0', at: 500 },
   { event: 'plugin-load-mark', device: '0', name: 'abele:onload-end', at: 1000 },
   { event: 'harness-stop-request', device: '0', at: 2000 },
 ]

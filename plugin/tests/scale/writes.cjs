@@ -15,7 +15,8 @@ exports.isHostPersistence = (row) => {
   // The host saves its recent-files list through the instrumented adapter.
   // Recognize the adapter chain, not arbitrary plugin work dispatched by the host.
   let stack = row.stack
-  if (row.path === '.obsidian/workspace.json' && typeof stack === 'string') {
+  const configuration = /^\.obsidian\/(?:workspace[^/]*|app|appearance|hotkeys|core-plugins|community-plugins|graph|bookmarks|types)\.json$/.test(row.path ?? '')
+  if (configuration && typeof stack === 'string') {
     const frames = stack
       .split('\n')
       .filter(
@@ -24,25 +25,20 @@ exports.isHostPersistence = (row) => {
       )
     let count = 0
     while (
-      /^\s+at (?:mutate|ChangeTracker\.around|(?:[\w$]+\.)?eval(?: \[as write\])?) \(plugin:abele[:/].*\)$/.test(
+      /^\s+at (?:(?:mutate|ChangeTracker\.around|(?:[\w$]+\.)?(?:eval(?: \[as write\])?|<anonymous>|write)) \(plugin:abele[:/].*\)|plugin:abele[:/].*)$/.test(
         frames[count] ?? ''
       )
     ) {
       count++
-      if (/\[as write\]/.test(frames[count - 1])) break
+      if (/\[as write\]|at [\w$]+\.write \(plugin:abele/.test(frames[count - 1])) break
     }
     if (
-      /\[as write\]/.test(frames[count - 1] ?? '') &&
+      /\[as write\]|at [\w$]+\.write \(plugin:abele/.test(frames[count - 1] ?? '') &&
       frames.slice(0, count).some((line) => /at ChangeTracker\.around /.test(line))
     )
       stack = frames.slice(count).join('\n')
   }
-  return (
-    exports.writeOrigin(stack) === 'host' &&
-    /^\.obsidian\/(?:workspace[^/]*|app|appearance|hotkeys|core-plugins|community-plugins|graph|bookmarks|types)\.json$/.test(
-      row.path ?? ''
-    )
-  )
+  return configuration && exports.writeOrigin(stack) === 'host'
 }
 
 // Port restoration lives for the observer, but handle restoration must not keep

@@ -58,6 +58,7 @@ import { enablePluginWhenReady } from './startup-enable.mjs'
 import { validateBuildReceipt, validateQualificationArtifact, buildArtifactPath } from './build.mjs'
 import { qualificationScenario } from './qualification-config.mjs'
 import { observerDeploymentConfig } from './observer-config.mjs'
+import { flushExitEvidence } from './exit-evidence.mjs'
 import { applyCombinedChanges } from './combined.mjs'
 import { planOfflineChanges, updateExpectedOfflineChanges } from './qualification-offline.mjs'
 import { verifyDirectoryChanges } from './directory-oracle.mjs'
@@ -648,13 +649,9 @@ export async function run(config) {
     clearInterval(memoryTimer)
     await memoryPending
     if (!appProcess) return
-    for (const device of minimal ? [] : devices) {
+    for (const device of devices) {
       const at = Date.now()
-      const flushed = await device
-        .evaluate(
-          'globalThis.__scalePrepareTeardown?.();await globalThis.__scaleFlushEntryLedger?.();return globalThis.__scaleFlushEvidence ? await globalThis.__scaleFlushEvidence() : false'
-        )
-        .catch(() => false)
+      const flushed = await flushExitEvidence(device, minimal).catch(() => false)
       ;(report.observerFlushes ??= []).push({
         device: String(devices.indexOf(device)),
         at,
