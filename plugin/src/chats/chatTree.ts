@@ -60,6 +60,7 @@ export interface ChatTreeSource {
   close(id: string): void
   /** `folder` is a folder's path, '' for the top. */
   move(id: string, folder: string): void
+  moveFolder?(path: string, parent: string): void
   newChat(folder: string): void
   newFolder(parent: string, name: string): void
   renameFolder(path: string, name?: string): void

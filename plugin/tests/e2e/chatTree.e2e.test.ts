@@ -80,6 +80,33 @@ const probe = (label: string) => `(async () => {
     name.textContent = folder; name.dispatchEvent(new Event('input', { bubbles: true }))
     name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     await until(() => service.folders.paths.includes(folder))
+    if (!app.isMobile) {
+      await service.folders.create(folder, 'Synthetic child')
+      await service.tree.refresh()
+      const folderRow = path => document.querySelector('[data-path="' + path + '"]')
+      const childPath = folder + '/Synthetic child'
+      const childRow = await until(() => folderRow(childPath))
+      if (childRow.getAttribute('draggable') !== 'true') throw Error('Folder is not draggable')
+      childRow.dispatchEvent(new DragEvent('dragstart', { bubbles: true }))
+      document.querySelector('.abele-chat-tree__list').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true }))
+      await until(() => service.folders.paths.includes('Synthetic child'))
+      await service.tree.refresh()
+      folderRow('Synthetic child').dispatchEvent(new DragEvent('dragstart', { bubbles: true }))
+      folderRow(folder).dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true }))
+      if (!folderRow(folder).classList.contains('is-being-dragged-over')) await wait(100)
+      if (!folderRow(folder).classList.contains('is-being-dragged-over')) throw Error('Folder target has no highlight')
+      await shot('folder-drag-highlight')
+      folderRow(folder).dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true }))
+      await until(() => service.folders.paths.includes(childPath))
+      await service.tree.refresh(); await wait(100)
+      await shot('folder-drag-nested')
+      folderRow(childPath).dispatchEvent(new DragEvent('dragstart', { bubbles: true }))
+      document.querySelector('.abele-chat-tree__list').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true }))
+      await until(() => service.folders.paths.includes('Synthetic child'))
+      await service.tree.refresh(); await wait(100)
+      await shot('folder-drag-top')
+      await service.folders.remove('Synthetic child')
+    }
     await service.folders.setNodeScope(folder, [{ kind: 'node', node_id: 'sample-folder-node', access: 'read' }])
     await session.createInDirectory(path)
     await service.folders.move(first, folder)
@@ -402,6 +429,7 @@ const probe = (label: string) => `(async () => {
     await shot('plus-at-cap')
     return { composer: { focusedComposer, blurredComposer }, closedTogether: !service.tabOrder.value.includes(second), inherited, dropped: reopened.toolModes.value.web_search === ownMode, moved: true, overflow, width: bounds.width, viewport: innerWidth, sidebarWidth: root.getBoundingClientRect().width, pictures: pictureCount }
   } finally {
+    if (service.folders.paths.includes('Synthetic child')) await service.folders.remove('Synthetic child')
     service.closedNodeChats.value=priorNodes.slice();service.saveTabs();await service.folders.forgetNode(sampleNodeId)
     for (const id of created) {
       const session = service.getSession(id)
@@ -469,7 +497,7 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('chat tree navigation', (
     expect(result.moved).toBe(true)
     expect(result.overflow).toBeLessThanOrEqual(1)
     expect(result.width).toBeLessThanOrEqual(result.viewport)
-    expect(result.pictures).toBe(onPhone() ? 36 : 37)
+    expect(result.pictures).toBe(onPhone() ? 36 : 40)
     console.log('Sample composer geometry', JSON.stringify(result.composer))
     if (!onPhone()) {
       expect(result.sidebarWidth).toBeGreaterThanOrEqual(340)

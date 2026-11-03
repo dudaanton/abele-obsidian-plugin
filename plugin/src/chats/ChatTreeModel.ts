@@ -481,6 +481,9 @@ export class ChatTreeModel implements ChatTreeSource {
   newFolder(parent: string, name: string): void {
     this.run(() => this.service.folders.create(parent, name))
   }
+  moveFolder(path: string, parent: string): void {
+    this.run(() => this.service.folders.moveFolder(path, parent))
+  }
   renameFolder(path: string, name?: string): void {
     if (name === undefined) {
       this.renaming.value = { kind: 'folder', id: path }

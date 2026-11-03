@@ -19,6 +19,25 @@ import { approveObsidianChatNodeAccess, nodeAgentHost } from '@/ai/tools/node/ow
 let service: ChatService
 let folders: ChatFolders
 let app: FakeApp
+it('moves folders without changing descendant identities or chat membership', async () => {
+  await folders.create('', 'Sample')
+  await folders.create('Sample', 'Child')
+  await folders.create('', 'Target')
+  await folders.move('AI/Chats/sample.abchat', 'Sample/Child')
+  const identity = folders.nodeScopeIdentity('Sample/Child')
+  await folders.moveFolder('Sample', 'Target')
+  await folders.reload()
+  expect(folders.paths).toContain('Target/Sample/Child')
+  expect(folders.nodeScopeIdentity('Target/Sample/Child')).toBe(identity)
+  expect(folders.folderOf('AI/Chats/sample.abchat')).toBe('Target/Sample/Child')
+  await folders.moveFolder('Target/Sample', '')
+  await folders.moveFolder('Sample', '')
+  await expect(folders.moveFolder('Sample', 'Sample/Child')).rejects.toThrow()
+  await expect(folders.moveFolder('Sample', 'Sample')).rejects.toThrow()
+  await folders.create('Target', 'Sample')
+  await expect(folders.moveFolder('Sample', 'Target')).rejects.toThrow()
+  expect(folders.paths).toContain('Sample/Child')
+})
 it('persists hidden state and reloads remote visibility changes', async () => {
   await folders.create('', 'Collection')
   await folders.create('Collection', 'Nested')

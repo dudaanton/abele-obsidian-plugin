@@ -403,6 +403,26 @@ export class ChatFolders {
     ChatStorage.getInstance().noteTreeFolder(file.path, id)
     this.metadata.set(file, { mtime: file.stat.mtime, size: file.stat.size, folder: id })
   }
+  moveFolder(folder: string, parent: string): Promise<void> {
+    return this.mutate(async () => {
+      await this.load()
+      const record = this.record(folder)
+      const target = parent ? this.record(parent) : null
+      if (!record || (parent && !target)) throw new Error(t('chatTree.folderMissing'))
+      if (parent === folder || parent.startsWith(`${folder}/`))
+        throw new Error(t('chatTree.invalidFolder'))
+      const parentId = target?.id ?? null
+      if (record.parent === parentId) return
+      if (
+        this.catalog.folders.some(
+          (other) => other.parent === parentId && other.name === record.name
+        )
+      )
+        throw new Error(t('chatTree.folderExists'))
+      record.parent = parentId
+      await this.persist()
+    })
+  }
   rename(folder: string, name: string): Promise<void> {
     return this.mutate(async () => {
       await this.load()

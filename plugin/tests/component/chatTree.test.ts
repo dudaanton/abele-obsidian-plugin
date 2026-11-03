@@ -9,6 +9,54 @@ import ChatToolModes from '@/components/ChatToolModes.vue'
 import { Menu, Platform } from 'obsidian'
 
 let source: ChatTreeSource
+it.each(['Target', '', 'Sample', 'Sample/Child'])(
+  'drags folders only to valid targets: %s',
+  async (target) => {
+    source.moveFolder = vi.fn()
+    source.root.value = [
+      {
+        kind: 'folder',
+        name: 'Sample',
+        path: 'Sample',
+        children: [{ kind: 'folder', name: 'Child', path: 'Sample/Child', children: [] }],
+      },
+      { kind: 'folder', name: 'Target', path: 'Target', children: [] },
+    ]
+    const view = show()
+    expect(view.get('[data-path="Sample"]').attributes('draggable')).toBe('true')
+    await view.get('[data-path="Sample"]').trigger('dragstart')
+    const row = target ? view.get(`[data-path="${target}"]`) : view.get('.abele-chat-tree__list')
+    await row.trigger('dragover')
+    expect(view.find('.is-being-dragged-over').exists()).toBe(target === 'Target')
+    await row.trigger('drop')
+    if (target === 'Target') expect(source.moveFolder).toHaveBeenCalledWith('Sample', target)
+    else expect(source.moveFolder).not.toHaveBeenCalled()
+    expect(source.move).not.toHaveBeenCalled()
+  }
+)
+it('drags a nested folder back to root', async () => {
+  source.moveFolder = vi.fn()
+  source.root.value = [
+    {
+      kind: 'folder',
+      path: 'Sample',
+      name: 'Sample',
+      children: [{ kind: 'folder', path: 'Sample/Child', name: 'Child', children: [] }],
+    },
+  ]
+  const view = show()
+  await view.get('[data-path="Sample/Child"]').trigger('dragstart')
+  await view.get('.abele-chat-tree__list').trigger('drop')
+  expect(source.moveFolder).toHaveBeenCalledWith('Sample/Child', '')
+})
+it.each([true, false])('prevents folder dragging on phone or while renaming: %s', (phone) => {
+  Platform.isPhone = phone
+  source.moveFolder = vi.fn()
+  source.renaming = shallowRef(phone ? null : { kind: 'folder', id: 'Sample' })
+  source.root.value = [{ kind: 'folder', path: 'Sample', name: 'Sample', children: [] }]
+  const view = show()
+  expect(view.get('[data-path="Sample"]').attributes('draggable')).toBe('false')
+})
 it('starts F2 rename before the host document keymap consumes it', async () => {
   const view = show()
   const hostKey = (event: KeyboardEvent) => event.stopImmediatePropagation()

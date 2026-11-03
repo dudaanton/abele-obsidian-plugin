@@ -1443,6 +1443,9 @@ transcript. This survives transcript renames and moves. Folder names and paths a
 presentation only. Folder access raises agent/default modes for every descendant, is resolved
 at use time, and is never copied into chat overrides. Leaving a folder removes its contribution.
 The catalog travels in settings transfer's **Chat folder access** file section.
+Dragging a folder changes only its catalog parent id, retaining descendant identities and
+chat membership. Self/descendant targets and unchanged parents are ignored; a sibling name
+clash is rejected, as with renaming. Folder access is resolved from the new ancestry.
 
 Existing disk directories and their `_folder.abeleaccess` files are ignored and left unchanged.
 They are never converted to logical folders, and no chat membership is inferred from disk

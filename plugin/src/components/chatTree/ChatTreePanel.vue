@@ -25,7 +25,7 @@
       :class="{ 'is-being-dragged-over': dropTop }"
       role="tree"
       :aria-label="t('chatTree.chats')"
-      @dragover.prevent="dropTop = true"
+      @dragover="canDrop('') && ($event.preventDefault(), (dropTop = true))"
       @dragleave.self="dropTop = false"
       @drop.prevent="dropAtTop"
     >
@@ -62,7 +62,16 @@ import Button from '../obsidian/Button.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import ChatTreeRows from './ChatTreeRows.vue'
 import { chatsOf, folderPathOf, useChatTreeSource, type ChatTreeEntry } from '@/chats/chatTree'
-import { dragged, foldsOf, matches, revealCurrentChat, revealSelection } from './chatTreeView'
+import {
+  dragged,
+  draggedFolder,
+  canDrop,
+  dropInto,
+  foldsOf,
+  matches,
+  revealCurrentChat,
+  revealSelection,
+} from './chatTreeView'
 
 const emit = defineEmits<{ close: [] }>()
 // On a phone the keyboard would cover half the chats before anyone asked to search.
@@ -217,13 +226,12 @@ const newFolder = async (parent: string) => {
 }
 
 const dropTop = ref(false)
-watch(dragged, (id) => {
-  if (!id) dropTop.value = false
+watch([dragged, draggedFolder], () => {
+  dropTop.value = false
 })
 const dropAtTop = () => {
   dropTop.value = false
-  if (dragged.value) source.value.move(dragged.value, '')
-  dragged.value = null
+  dropInto(source.value, '')
 }
 </script>
 

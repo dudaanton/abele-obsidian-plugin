@@ -69,6 +69,24 @@ export function revealCurrentChat(
 
 /** The chat being dragged onto a folder, by id. */
 export const dragged = ref<string | null>(null)
+export const draggedFolder = ref<string | null>(null)
+export const canDrop = (parent: string) => {
+  const path = draggedFolder.value
+  if (path === null) return !!dragged.value
+  return (
+    parent !== path &&
+    !parent.startsWith(`${path}/`) &&
+    parent !== path.split('/').slice(0, -1).join('/')
+  )
+}
+export const dropInto = (source: ChatTreeSource, parent: string) => {
+  if (canDrop(parent)) {
+    if (draggedFolder.value !== null) source.moveFolder?.(draggedFolder.value, parent)
+    else if (dragged.value) source.move(dragged.value, parent)
+  }
+  dragged.value = null
+  draggedFolder.value = null
+}
 
 /** Every word of the query is in the title. */
 export const matches = (title: string, query: string) => {

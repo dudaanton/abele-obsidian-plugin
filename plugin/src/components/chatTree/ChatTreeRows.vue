@@ -54,12 +54,19 @@
       :data-path="folder.path"
       collapsible
       :collapsed="!searching && folded.has(folder.path)"
+      :draggable="
+        !phone &&
+        !!source.moveFolder &&
+        !(source.renaming?.value?.kind === 'folder' && source.renaming.value.id === folder.path)
+      "
       @click="flip(folder.path)"
       @rename="source.renameFolder(folder.path, $event)"
       @rename-cancel="source.cancelRename?.()"
       @keydown.f2.prevent.stop="source.renameFolder(folder.path)"
       @contextmenu.prevent="folderMenu($event, folder)"
-      @dragover.prevent="dropOn = folder.path"
+      @dragstart.stop="startDrag($event, folder.path)"
+      @dragend.stop="draggedFolder = null"
+      @dragover.stop="over($event, folder.path)"
       @dragleave="dropOn === folder.path && (dropOn = null)"
       @drop.prevent.stop="drop(folder.path)"
     >
@@ -151,7 +158,7 @@
 
 <script setup lang="ts">
 import { t } from '@/i18n'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Menu, Platform, setIcon } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import TreeItem from '../obsidian/TreeItem.vue'
@@ -162,7 +169,7 @@ import {
   type ChatTreeEntry,
   type ChatTreeFolder,
 } from '@/chats/chatTree'
-import { dragged, matches } from './chatTreeView'
+import { dragged, draggedFolder, canDrop, dropInto, matches } from './chatTreeView'
 import { confirmDialog } from '../obsidian/dialogs'
 
 const phone = Platform.isPhone
@@ -217,10 +224,24 @@ const flip = (path: string) => emit('flip', path)
 const accessCount = (folder: ChatTreeFolder) => Object.keys(folder.access ?? {}).length
 
 const dropOn = ref<string | null>(null)
+watch([dragged, draggedFolder], () => {
+  dropOn.value = null
+})
+const startDrag = (event: DragEvent, path: string) => {
+  if (phone || source.value.renaming?.value?.id === path) {
+    event.preventDefault()
+    return
+  }
+  dragged.value = null
+  draggedFolder.value = path
+}
+const over = (event: DragEvent, path: string) => {
+  dropOn.value = canDrop(path) ? path : null
+  if (dropOn.value) event.preventDefault()
+}
 const drop = (path: string) => {
   dropOn.value = null
-  if (dragged.value) source.value.move(dragged.value, path)
-  dragged.value = null
+  dropInto(source.value, path)
 }
 
 /** A folder's own actions: a chat or a folder in it, its access, its name, removing it. */
