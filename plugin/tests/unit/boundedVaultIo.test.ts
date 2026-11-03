@@ -8,6 +8,37 @@ import { mobileStreamFixture } from '../helpers/mobileStreamFixture'
 const MiB = 1024 * 1024
 afterEach(() => vi.unstubAllGlobals())
 
+it('shares one mobile probe when a native proxy returns fresh method wrappers', async () => {
+  const fixture = mobileStreamFixture()
+  const capacitor = Reflect.get(window, 'Capacitor')
+  const files = capacitor.Plugins.Filesystem
+  const probe = vi.spyOn(fixture.adapter, 'writeBinary')
+  await new BoundedVaultIo(fixture.adapter).canReplayStage()
+  const baseline = probe.mock.calls.length
+  probe.mockClear()
+  let reads = 0
+  capacitor.Plugins.Filesystem = new Proxy(
+    {},
+    {
+      get(_target, key) {
+        const value = Reflect.get(files, key)
+        // Bound the broken implementation's retry loop so a red test also drains.
+        return typeof value === 'function' && reads++ < 24
+          ? (...args: unknown[]) => value.apply(files, args)
+          : value
+      },
+    }
+  )
+  const io = new BoundedVaultIo(fixture.adapter)
+  // Two overlapping consumers must join the same capability attempt, not
+  // invalidate each other's in-flight probe because native wrappers differ.
+  await Promise.all([io.canReplayStage(), io.canReplayStage()])
+  const count = probe.mock.calls.length
+  expect(count).toBe(baseline)
+  await io.canReplayStage()
+  expect(probe).toHaveBeenCalledTimes(count)
+})
+
 it('shares verified mobile capabilities across operation ports and reprobes after a fresh poll', async () => {
   const fixture = mobileStreamFixture()
   const base = new BoundedVaultIo(fixture.adapter)

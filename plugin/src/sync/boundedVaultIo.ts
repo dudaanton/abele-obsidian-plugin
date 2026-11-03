@@ -102,6 +102,19 @@ export class BoundedVaultIo {
   }
   private capabilityInputs(): unknown[] {
     const files = mobileFiles()
+    // Native plugin proxies manufacture a fresh callable on every property read.
+    // Own method/getter descriptors detect real replacements without making those
+    // wrappers invalidate an overlapping probe forever. Proxy-only methods keep
+    // their capability kind until the bridge/mapping changes or a fresh poll.
+    const method = (key: string) => {
+      if (!files) return undefined
+      const descriptor = Object.getOwnPropertyDescriptor(files, key)
+      return (
+        descriptor?.value ??
+        (descriptor && Reflect.get(descriptor, 'get')) ??
+        typeof Reflect.get(files, key)
+      )
+    }
     let mapping: string
     try {
       mapping = this.mobilePath(
@@ -113,9 +126,9 @@ export class BoundedVaultIo {
     return [
       typeof window === 'undefined' ? undefined : Reflect.get(window, 'fetch'),
       files,
-      files && Reflect.get(files, 'stat'),
-      files && Reflect.get(files, 'readFile'),
-      files && Reflect.get(files, 'readFileInChunks'),
+      method('stat'),
+      method('readFile'),
+      method('readFileInChunks'),
       mapping,
     ]
   }
