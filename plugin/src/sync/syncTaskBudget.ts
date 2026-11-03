@@ -47,3 +47,24 @@ export async function yieldSyncTask(): Promise<void> {
       else self.setTimeout(resolve, 0)
     })
 }
+
+/** Cancel only a reader's wait; the underlying writer retains ownership and must drain. */
+export async function waitForSyncRead<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return work
+  let cancel!: () => void
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      cancel = () =>
+        reject(
+          signal.reason instanceof Error
+            ? signal.reason
+            : new DOMException('Sync read cancelled', 'AbortError')
+        )
+      signal.addEventListener('abort', cancel, { once: true })
+      void work.then(resolve, reject)
+      if (signal.aborted) cancel()
+    })
+  } finally {
+    signal.removeEventListener('abort', cancel)
+  }
+}

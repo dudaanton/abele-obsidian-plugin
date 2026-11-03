@@ -1200,7 +1200,7 @@ export class ObsidianFileSystem implements FileSystem {
       const segments = path.split('/')
       for (let length = 1; length <= segments.length; length++) {
         const parent = segments.slice(0, length).join('/')
-        if (!this.withinFileScope(parent)) continue
+        if (!this.inventoryVisible(parent) || !this.withinFileScope(parent)) continue
         if (result.some((one) => one.path === parent)) continue
         const stat = await this.rawStat(parent)
         if (stat?.type !== 'folder') continue
@@ -2205,11 +2205,14 @@ export class ObsidianFileSystem implements FileSystem {
     )
   }
   async *listDirectories() {
+    const signal = this.runIndexSignal ?? this.indexWaitSignal?.()
+    signal?.throwIfAborted()
     if (this.prepareStartupInventory) {
-      await this.waitForStartupIndex()
+      await this.waitForStartupIndex(signal)
       if (this.inventoryDepth === 0) this.indexFallback = false
     }
     for (;;) {
+      signal?.throwIfAborted()
       const directories: { path: string; identity: string; mtime: number }[] = []
       try {
         for await (const directory of this.listDirectoriesUnlocked())
@@ -2218,7 +2221,10 @@ export class ObsidianFileSystem implements FileSystem {
           throw new ScanInterrupted('Host index changed during inventory; wait for indexing')
       } catch (error) {
         if (!(error instanceof ScanInterrupted) || !this.prepareStartupInventory) throw error
-        await this.waitForStartupIndex()
+        signal?.throwIfAborted()
+        await yieldSyncTask()
+        signal?.throwIfAborted()
+        await this.waitForStartupIndex(signal)
         this.indexFallback = false
         this.directories.invalidateInventory()
         continue
@@ -2728,28 +2734,39 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async *list(): AsyncIterable<FileInfo> {
+    const signal = this.runIndexSignal ?? this.indexWaitSignal?.()
+    signal?.throwIfAborted()
     const own = this.inventory === null && this.inventoryDepth === 0
     if (own && this.prepareStartupInventory) {
-      await this.waitForStartupIndex()
+      await this.waitForStartupIndex(signal)
       this.indexFallback = false
     }
     let inventory = own ? this.createInventory() : this.inventory
     if (own) this.inventory = inventory
     try {
       for (;;) {
-        const before = !own && inventory && (await this.fileListStamp(inventory))
+        signal?.throwIfAborted()
+        this.runtimeFence?.assertReady()
+        const before = !own && inventory && (await this.fileListStamp(inventory, signal))
         if (before && inventory?.fileList?.stamp === before) {
           yield* inventory.fileList.files
           break
         }
-        await this.conditional.waitSettled()
+        await this.conditional.waitSettled(signal)
         const files: FileInfo[] = []
         try {
-          for await (const file of this.listUnlocked()) files.push(file)
+          for await (const file of this.listUnlocked()) {
+            signal?.throwIfAborted()
+            files.push(file)
+          }
         } catch (error) {
           if (!(error instanceof ScanInterrupted)) throw error
+          signal?.throwIfAborted()
+          // Let host deletion/index callbacks finish before retrying a discarded scan.
+          await yieldSyncTask()
+          signal?.throwIfAborted()
           if (this.prepareStartupInventory) {
-            await this.waitForStartupIndex()
+            await this.waitForStartupIndex(signal)
             this.indexFallback = false
           }
           // A conditional effect or folder mutation crossed this inventory. None of
@@ -2770,7 +2787,7 @@ export class ObsidianFileSystem implements FileSystem {
           this.configInventory = null
           continue
         }
-        const after = !own && inventory && (await this.fileListStamp(inventory))
+        const after = !own && inventory && (await this.fileListStamp(inventory, signal))
         if (before && before === after && inventory) inventory.fileList = { stamp: before, files }
         yield* files
         break
@@ -2781,15 +2798,18 @@ export class ObsidianFileSystem implements FileSystem {
   }
   /** Reuse one complete disk fallback listing only while its inventory and watcher clocks
    * still cover it. An unobserved/indexed or group-discovery view keeps fresh listing. */
-  private async fileListStamp(inventory: InventoryPass): Promise<string | undefined> {
+  private async fileListStamp(
+    inventory: InventoryPass,
+    signal?: AbortSignal
+  ): Promise<string | undefined> {
     if (
       !this.scanWatchers ||
       this.indexReady() !== false ||
       (this.discovery && this.discovery.roots.length === 0)
     )
       return undefined
-    await this.conditional.waitSettled()
-    await folderMutations(this.app.vault).settled()
+    await this.conditional.waitSettled(signal)
+    await folderMutations(this.app.vault).settled(signal)
     this.syncInventoryConfig(inventory)
     const clock =
       this.ledger && Reflect.get(this.ledger, Symbol.for('abele.sync.local-scan-state-revision-v1'))
@@ -2830,7 +2850,7 @@ export class ObsidianFileSystem implements FileSystem {
     await this.prepareStartupInventory?.()
     const conditionalRevision = this.conditional.assertSettled()
     const mutations = folderMutations(this.app.vault)
-    await mutations.settled()
+    await mutations.settled(this.runIndexSignal ?? this.indexWaitSignal?.())
     const revision = mutations.revision
     const indexedExact = new Set<string>()
     let indexedKeys: Set<string> | undefined
@@ -3121,7 +3141,8 @@ export class ObsidianFileSystem implements FileSystem {
     path: string
     stat: { size: number; mtime: number; ctime: number }
   }> {
-    if (this.prepareStartupInventory) await this.waitForStartupIndex()
+    if (this.prepareStartupInventory)
+      await this.waitForStartupIndex(this.runIndexSignal ?? this.indexWaitSignal?.())
     const indexed = new Map(this.indexedFiles(scope).map((file) => [file.path, file]))
     const readiness = this.indexReady()
     if (readiness === false && this.prepareStartupInventory)

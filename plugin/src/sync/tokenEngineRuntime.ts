@@ -2842,11 +2842,25 @@ export class TokenEngineRuntime
     await this.sync(false)
   }
   async sync(retryHeld = true): Promise<void> {
-    this.renewIndexWait()
-    await this.checkRoot()
-    if (this.fatalFailure !== undefined && !this.userPaused) this.quiet.pause(false)
-    if (retryHeld) return this.quiet.flush(() => this.syncUnpaced(retryHeld))
-    return this.syncUnpaced(false)
+    // Item-set refresh may retire a runtime already captured by its parent's sync.
+    // Joining that cancellation must not turn a surviving item into a failed connection.
+    if (!this.active) return
+    try {
+      this.renewIndexWait()
+      await this.checkRoot()
+      if (this.fatalFailure !== undefined && !this.userPaused) this.quiet.pause(false)
+      if (retryHeld) await this.quiet.flush(() => this.syncUnpaced(retryHeld))
+      else await this.syncUnpaced(false)
+    } catch (error) {
+      if (
+        !this.active &&
+        (error instanceof SyncCancelled ||
+          (error instanceof EngineError && error.code === 'lost') ||
+          (error instanceof Error && error.name === 'AbortError'))
+      )
+        return
+      throw error
+    }
   }
   private async syncUnpaced(retryHeld: boolean): Promise<void> {
     this.runFailure = undefined

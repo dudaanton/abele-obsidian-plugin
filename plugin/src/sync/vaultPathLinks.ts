@@ -1,3 +1,4 @@
+import { waitForSyncRead } from './syncTaskBudget'
 import { directEntryDurability, entryEffect } from './directEntryDurability'
 import { desktopFileIdentity } from './desktopFileIdentity'
 import { inheritHostStorage } from './hostSyncStorage'
@@ -2003,8 +2004,10 @@ class FolderMutations {
     }
   }
 
-  async settled(): Promise<void> {
-    while (this.pending.size > 0) await Promise.all(this.pending)
+  async settled(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted()
+    while (this.pending.size > 0) await waitForSyncRead(Promise.all(this.pending), signal)
+    signal?.throwIfAborted()
   }
 }
 
@@ -2319,7 +2322,13 @@ export function checkedVaultPort(
   }
 ) {
   // Lease clocks also run in headless hosts, independently of any UI window.
-  const timers = { setTimeout, clearTimeout }
+  const timers =
+    typeof window === 'undefined'
+      ? {
+          setTimeout: setTimeout.bind(undefined),
+          clearTimeout: clearTimeout.bind(undefined),
+        }
+      : window
   return {
     async acquire(paths: string[]) {
       let release!: () => void

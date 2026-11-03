@@ -393,7 +393,7 @@ liveCase(
       a.create(installed, content)
       await s.cycle()
       b.run(
-        `await poll(async()=>await app.vault.adapter.exists(${JSON.stringify(installed)})&&!svc.candidates.value.some(one=>one.path===${JSON.stringify(installed)})&&svc.activity.value[${JSON.stringify(recipient)}]?.events?.some(one=>one.text.includes('Installed code from ')&&one.text.includes(${JSON.stringify(installed)})),30000,'trusted incoming code installed and logged');return true`
+        `await poll(async()=>await app.vault.adapter.exists(${JSON.stringify(installed)})&&!svc.candidates.value.some(one=>one.path===${JSON.stringify(installed)})&&[...(svc.activity.value[${JSON.stringify(recipient)}]?.events??[])].some(one=>one.text.includes('Installed code from ')&&one.text.includes(${JSON.stringify(installed)})),30000,'trusted incoming code installed and logged');return true`
       )
       expect(b.read(installed)).toBe(content)
       expect(b.run(`return !!modal('Review incoming code')`)).toBe(false)

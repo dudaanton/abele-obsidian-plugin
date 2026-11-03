@@ -72,7 +72,10 @@ const desktopRequest = async (
   // Injected Node hosts use Node timers; production uses this vault window.
   const clock =
     typeof window === 'undefined' || typeof window.setTimeout !== 'function'
-      ? { setTimeout, clearTimeout }
+      ? {
+          setTimeout: setTimeout.bind(undefined),
+          clearTimeout: clearTimeout.bind(undefined),
+        }
       : window
   const waitNative = async <T>(work: Promise<T>, deadlineMs: number): Promise<T> => {
     let timer: ReturnType<typeof setTimeout> | undefined

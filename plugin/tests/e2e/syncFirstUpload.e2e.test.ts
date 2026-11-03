@@ -23,8 +23,12 @@ it('uploads a large local inventory to an empty server despite unsupported local
   expect(await s.items()).toEqual([])
   await s.connect(a, s.server.rootToken, undefined, 300_000)
   const items = (await s.items()).filter((item) => item.kind !== 'directory')
-  expect(items).toHaveLength(3004)
-  expect(items.some((item) => /["?*:]/.test(item.path))).toBe(false)
+  // These names are rejected on Windows/Android; macOS/iOS admit all five.
+  const restricted = a.run<boolean>(
+    `return /Win32|Win64|Windows/.test(navigator.platform)||/Android/i.test(navigator.userAgent)`
+  )
+  expect(items).toHaveLength(restricted ? 3004 : 3009)
+  expect(items.filter((item) => /["?*:]/.test(item.path))).toHaveLength(restricted ? 0 : 5)
   expect(items.find((item) => item.path === s.root + '/Bucket-29/Sample-99.md')).toBeDefined()
   for (let n = 0; n < 4; n++)
     expect(items.find((item) => item.path === s.root + '/sample-' + n + '.bin')?.size).toBe(

@@ -738,3 +738,19 @@ it.each([false, true])(
     expect(ui.candidates.value.map((one) => one.source.id)).toEqual([other.id])
   }
 )
+
+it('syncs surviving items without running a paused item', async () => {
+  const { ui } = setup()
+  vi.spyOn(ui.itemSets.store, 'get').mockReturnValue({
+    items: [
+      { recordId: 'paused-record', paused: true },
+      { recordId: 'live-record', paused: false },
+    ],
+  } as never)
+  vi.spyOn(ui.itemSets, 'refresh').mockResolvedValue(false)
+  const sync = vi
+    .spyOn(ui as unknown as { syncRecord(id: string): Promise<void> }, 'syncRecord')
+    .mockResolvedValue()
+  await ui.sync('sample-set')
+  expect(sync.mock.calls).toEqual([['live-record']])
+})

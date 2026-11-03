@@ -43,7 +43,17 @@ export class RetainedShareCopies {
   async remember(value: StateEntry): Promise<void> {
     await this.meta.write(
       RETAINED_SHARE_COPIES + ':' + encodeURIComponent(value.fileId),
-      JSON.stringify(entry.parse(value))
+      JSON.stringify(
+        entry.parse({
+          path: value.path,
+          wirePath: value.wirePath,
+          fileId: value.fileId,
+          versionId: value.versionId,
+          sha: value.sha,
+          size: value.size,
+          mtime: value.mtime,
+        })
+      )
     )
   }
   async forget(fileId: string): Promise<void> {

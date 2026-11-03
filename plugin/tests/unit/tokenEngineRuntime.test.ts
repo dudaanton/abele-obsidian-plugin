@@ -81,8 +81,7 @@ it('marks startup idle with a settled long automatic cycle before the observer s
     const route = new URL(
       typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     ).pathname
-    if (route === '/v2/connection')
-      await new Promise((resolve) => setTimeout(resolve, 650))
+    if (route === '/v2/connection') await new Promise((resolve) => setTimeout(resolve, 650))
     return fetch(input, init)
   })
   const marks: string[] = []
@@ -112,7 +111,9 @@ it('does not mark startup idle while a deletion awaits a decision', async () => 
     await one.runtime.sync()
     const status = one.runtime.engine.status
     const held = vi.spyOn(one.runtime.engine, 'status', 'get').mockReturnValue({
-      ...status, state: 'idle', heldDeletes: 1,
+      ...status,
+      state: 'idle',
+      heldDeletes: 1,
     })
     await new Promise((resolve) => setTimeout(resolve, 600))
     expect(marks).not.toContain('idle')
@@ -4776,3 +4777,24 @@ it.each([false, true])(
     }
   }
 )
+
+it.each([false, true])(
+  'joins retirement of a captured item runtime (paused=%s)',
+  async (paused) => {
+    const one = runtime(await server('Notes/sample.md', 'sample'), new MemoryFileSystem())
+    if (paused) await one.runtime.pause(true)
+    await one.runtime.close()
+    await expect(one.runtime.sync()).resolves.toBeUndefined()
+  }
+)
+
+it('joins an item retirement racing an already captured manual sync', async () => {
+  const one = runtime(await server('Notes/sample.md', 'sample'), new MemoryFileSystem())
+  try {
+    const pending = one.runtime.sync()
+    one.runtime.invalidate()
+    await expect(pending).resolves.toBeUndefined()
+  } finally {
+    await one.runtime.close()
+  }
+})

@@ -1,4 +1,5 @@
 import { EngineError, sha256 } from '@abele/sync-sdk/core'
+import { waitForSyncRead } from './syncTaskBudget'
 import { RETENTION_MS, MemoryRetention, type RetentionIndex } from './retentionIndex'
 import { fitGeneratedName } from '@abele/sync-sdk/protocol'
 
@@ -168,12 +169,17 @@ export class ConditionalFiles {
       throw new ScanInterrupted('scan held while conditional file effects are in flight')
     return revision
   }
-  async waitSettled(): Promise<void> {
+  async waitSettled(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted()
     while (this.host.active.size)
-      await new Promise<void>((resolve) => {
-        if (typeof window !== 'undefined') window.setTimeout(resolve, 10)
-        else self.setTimeout(resolve, 10)
-      })
+      await waitForSyncRead(
+        new Promise<void>((resolve) => {
+          if (typeof window !== 'undefined') window.setTimeout(resolve, 10)
+          else self.setTimeout(resolve, 10)
+        }),
+        signal
+      )
+    signal?.throwIfAborted()
   }
   async waitInactive(receipt: string): Promise<void> {
     const key = this.host.root + '/' + idOf(receipt)

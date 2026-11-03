@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { LOCAL_ONLY_COPIES } from '../sync/localOnlyCopies'
 import { EXTERNAL_ACTIVATION_KEY } from '../sync/external/recovery'
 import { EXTERNAL_RETIRED_KEY } from '../sync/external/connectionSwitch'
+import { hostStorageOf } from '../sync/hostSyncStorage'
 import type { LocalStorage } from '../sync/ledgerId'
 const envelope = z
   .object({
@@ -20,11 +21,14 @@ const envelope = z
 
 /** Only proofs of token databases in the guarded reset's ownership journal are removed. */
 export function tokenPoolMarkers(storage: LocalStorage, owned: readonly string[]): () => void {
+  // Activation is committed in host storage; clearing its compatibility preview is insufficient.
+  const target = (key: string) =>
+    key === EXTERNAL_ACTIVATION_KEY ? hostStorageOf(storage) : storage
   const plans: { key: string; before: unknown; after: unknown }[] = [
     EXTERNAL_ACTIVATION_KEY,
     EXTERNAL_RETIRED_KEY,
   ].map((key) => {
-    const before = storage.loadLocalStorage(key) ?? null
+    const before = target(key).loadLocalStorage(key) ?? null
     if (before === null) return { key, before, after: null }
     const groups =
       key === EXTERNAL_ACTIVATION_KEY ? [envelope.parse(before)] : z.array(envelope).parse(before)
@@ -62,11 +66,11 @@ export function tokenPoolMarkers(storage: LocalStorage, owned: readonly string[]
   })
   return () => {
     for (const { key, before } of plans)
-      if (JSON.stringify(storage.loadLocalStorage(key) ?? null) !== JSON.stringify(before))
+      if (JSON.stringify(target(key).loadLocalStorage(key) ?? null) !== JSON.stringify(before))
         throw new Error('Pool activation ownership changed during reset')
     for (const { key, after } of plans) {
-      storage.saveLocalStorage(key, after)
-      if (JSON.stringify(storage.loadLocalStorage(key) ?? null) !== JSON.stringify(after))
+      target(key).saveLocalStorage(key, after)
+      if (JSON.stringify(target(key).loadLocalStorage(key) ?? null) !== JSON.stringify(after))
         throw new Error('Pool activation cleanup was not stored')
     }
   }

@@ -11,7 +11,7 @@ import {
   TOKEN_REGISTRY_KEY,
   type DeviceTokenSecrets,
 } from '../sync/tokenConnectionRegistry'
-import { durableHostOf } from '../sync/hostSyncStorage'
+import { durableHostOf, flushHostStorage } from '../sync/hostSyncStorage'
 import { SETS_KEY } from '../sync/connectionSets'
 import { resetTokenPool, type TokenPoolResetRequest } from './resetTokenPool'
 import { tokenPoolMarkers } from './tokenPoolMarkers'
@@ -116,13 +116,14 @@ async function performResetSyncTokenState(
       databases: async () => {
         const owned = await captureSyncTokenOwnership(plugin, request.vault)
         ownedDatabases = owned
-        clearMarkers = tokenPoolMarkers(plugin.app, owned)
         return [...owned, 'abele-sync-reviews-' + reviewsId]
       },
       stop: async () => {
         old.cancelStartup()
         await old.close()
         ui.reviews?.close()
+        // Draining startup may finish activation; snapshot its ownership only now.
+        clearMarkers = tokenPoolMarkers(plugin.app, ownedDatabases)
         // Native publication retains the incoming inode. Drain writers, then move
         // private artifacts into recovery before deleting the ledgers. Ownership alone
         // never proves these bytes disposable; independent writers may have edited them.
@@ -151,6 +152,7 @@ async function performResetSyncTokenState(
       removeDatabase: (name) => IndexedDbStateStore.delete(window.indexedDB, name),
       forget: async () => {
         clearMarkers()
+        await flushHostStorage(plugin.app)
         const secrets = (
           ui as unknown as { secrets: DeviceTokenSecrets & { remove(reference: string): void } }
         ).secrets

@@ -45,7 +45,32 @@ async function shot(a: SyncDriver, state: string, selector: string): Promise<voi
   }
 }
 
-async function openConfirmation(a: SyncDriver, id: string, state: string): Promise<void> {
+async function openConfirmation(
+  a: SyncDriver,
+  id: string,
+  state: string,
+  issuedLabel?: string
+): Promise<void> {
+  if (issuedLabel) {
+    // Folder deletion belongs to the issuer's share UI, not the recipient connection menu.
+    await a.long(
+      'open issuer item deletion menu',
+      `
+      const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'share-2');
+      await poll(()=>modal('Share access'));const box=modal('Share access');let row;
+      await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))===${JSON.stringify(issuedLabel)}));
+      row.click();await poll(()=>modal(${JSON.stringify(issuedLabel)}));const detail=modal(${JSON.stringify(issuedLabel)});
+      let item;await poll(()=>item=detail.querySelector('.abele-share-detail__item'));const native=app.vault.getConfig('nativeMenus');try{app.vault.setConfig('nativeMenus',false);icon(item,'more-horizontal')}finally{app.vault.setConfig('nativeMenus',native)}
+      await poll(()=>[...(${menu})?.querySelectorAll('.menu-item')||[]].some(one=>textOf(one)==='Delete from the server…'&&!one.classList.contains('is-disabled')));return true
+    `
+    )
+    await shot(a, state + '-menu', '.menu')
+    a.run(
+      `const item=[...(${menu}).querySelectorAll('.menu-item')].find(one=>textOf(one)==='Delete from the server…');item.click();await poll(()=>${dialog});return true`
+    )
+    expect(a.rows().some((row) => row.id === id)).toBe(true)
+    return
+  }
   const labels = await a.long<string[]>(
     'open connection deletion menu',
     `
@@ -80,9 +105,9 @@ function expectConfirmation(
   expect(observed.facts.Files).toBe(String(files))
   expect(observed.facts.Size).toBe(bytes + ' B')
   expect(observed.facts['Access closed']).toContain('Sample reading device')
-  expect(observed.note).toContain("server's trash for 30 days")
+  expect(observed.note).toContain('the server keeps them in trash for 30 days')
   expect(observed.note).toContain('keeps every file')
-  expect(observed.note).toContain('Devices with that access stop and keep their copies')
+  expect(observed.note).toContain('Your other connected devices remove theirs')
 }
 
 async function confirmDone(
@@ -90,8 +115,21 @@ async function confirmDone(
   id: string,
   state: string,
   path: string,
-  content: string
+  content: string,
+  retainIssuer = false
 ): Promise<void> {
+  if (retainIssuer) {
+    a.run(
+      `await press(${dialog},'Delete from the server');await poll(()=>!(${dialog}));return true`
+    )
+    expect(a.rows().some((row) => row.id === id)).toBe(true)
+    expect(a.read(path)).toBe(content)
+    a.run(
+      `for(const button of [...document.querySelectorAll('.modal-close-button')].reverse())button.click();await openSyncTab();return true`
+    )
+    await shot(a, state + '-done', '.token-sync-settings')
+    return
+  }
   a.run(
     `await press(${dialog},'Delete from the server');await poll(()=>!svc.registry.records().some(one=>one.id===${JSON.stringify(id)})&&!(${dialog}));await poll(()=>inWindows('.notice-container')?.textContent.includes('Its files stay on this device.'));return true`
   )
@@ -153,14 +191,13 @@ it.each([
     await s.put(sibling, 'Unrelated server note')
     const scope = await deletionFolder(s.server.rootToken, folder, fixtureFetch)
     expect(scope).toBeDefined()
-    const token = await s.server.issue(
-      { kind: 'folder', id: scope!.file_id },
-      'Sample folder device'
-    )
+    // Issuer authority is required on servers with item sets. Keep its root connection.
+    const id = await s.connect(a, s.server.rootToken)
+    const issuedLabel = 'Sample deletion share'
+    const { token } = await a.shareSet(id, ['Folder: ' + folder], issuedLabel)
     await issueDeletionDevice(token, 'Sample reading device', true, fixtureFetch)
-    const id = await s.connect(a, token)
     try {
-      await openConfirmation(a, id, state)
+      await openConfirmation(a, id, state, issuedLabel)
       expectConfirmation(
         a,
         '“' + name + '”',
@@ -169,7 +206,7 @@ it.each([
         Buffer.byteLength(content)
       )
       await shot(a, state + '-confirmation', factsSelector)
-      await confirmDone(a, id, state, path, content)
+      await confirmDone(a, id, state, path, content, true)
       const items = await s.items()
       expect(items.some((one) => one.path === path)).toBe(false)
       expect(items.some((one) => one.path === sibling)).toBe(true)
@@ -192,11 +229,9 @@ it.skipIf(onPhone())(
     await s.put(sibling, 'Unrelated server note')
     const scope = await deletionFolder(s.server.rootToken, folder, fixtureFetch)
     expect(scope).toBeDefined()
-    const token = await s.server.issue(
-      { kind: 'folder', id: scope!.file_id },
-      'Sample folder device'
-    )
-    const id = await s.connect(a, token)
+    const id = await s.connect(a, s.server.rootToken)
+    const issuedLabel = 'Sample in-flight deletion share'
+    await a.shareSet(id, ['Folder: ' + folder], issuedLabel)
     // Enough synthetic files that the next download pass is still running when Delete is pressed.
     const owner = new V2EngineClient(s.server.rootToken, { fetch: fixtureFetch })
     const ops = []
@@ -220,22 +255,22 @@ it.skipIf(onPhone())(
       a.run(
         `void svc.sync(${JSON.stringify(id)}).catch(()=>{});await poll(()=>app.plugins.plugins.abele.tokenEngines.live.get(${JSON.stringify(id)})?.engine.status.state==='syncing',30000,'download pass to start');return true`
       )
-      await openConfirmation(a, id, 'in-flight')
+      await openConfirmation(a, id, 'in-flight', issuedLabel)
       const elapsed = await a.long<{ ms: number; syncing: boolean }>(
         'delete while syncing',
-        `const syncing=app.plugins.plugins.abele.tokenEngines.live.get(${JSON.stringify(id)})?.engine.status.state==='syncing';const started=Date.now();await press(${dialog},'Delete from the server');await poll(()=>!svc.registry.records().some(one=>one.id===${JSON.stringify(id)})&&!(${dialog})||(${dialog})?.querySelector('[role="alert"]'),90000,'deletion to finish');const alert=(${dialog})?.querySelector('[role="alert"]');if(alert) throw new Error('Deletion failed: '+textOf(alert));return {ms:Date.now()-started,syncing}`
+        `const syncing=app.plugins.plugins.abele.tokenEngines.live.get(${JSON.stringify(id)})?.engine.status.state==='syncing';const started=Date.now();await press(${dialog},'Delete from the server');await poll(()=>!(${dialog})||(${dialog})?.querySelector('[role="alert"]'),90000,'deletion to finish');const alert=(${dialog})?.querySelector('[role="alert"]');if(alert) throw new Error('Deletion failed: '+textOf(alert));return {ms:Date.now()-started,syncing}`
       )
       console.log('[server delete in flight]', JSON.stringify(elapsed))
       expect(elapsed.syncing).toBe(true)
-      expect(a.rows().some((row) => row.id === id)).toBe(false)
+      expect(a.rows().some((row) => row.id === id)).toBe(true)
       expect(a.read(first)).toBe('First sample field note')
       const items = await s.items()
       expect(items.some((one) => one.path.startsWith(folder + '/'))).toBe(false)
       expect(items.some((one) => one.path === sibling)).toBe(true)
-      // Nothing restarts the stopped connection after the deletion.
+      // Deleting one issued folder leaves the issuer connection available for its other files.
       expect(
         a.run(`return app.plugins.plugins.abele.tokenEngines.live.has(${JSON.stringify(id)})`)
-      ).toBe(false)
+      ).toBe(true)
     } finally {
       closeSyncScreens(a)
     }

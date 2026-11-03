@@ -9,6 +9,7 @@
  * away in releases; the production module fence also excludes this graph. Test builds
  * can therefore exercise the production runtime without exposing this API in releases.
  */
+export { syncTransportForTests } from './syncTransportOverride'
 import { EditorView } from '@codemirror/view'
 import { setTestLocale } from './i18nLocale'
 const codeView = (element: HTMLElement) => EditorView.findFromDOM(element)

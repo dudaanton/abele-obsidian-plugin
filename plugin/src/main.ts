@@ -63,7 +63,7 @@ import updateLocale from 'dayjs/plugin/updateLocale'
 import dayOfYear from 'dayjs/plugin/dayOfYear'
 import dayjs from 'dayjs'
 import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
-import { exposeTestApi } from '@/testing/exposeTestApi'
+import { exposeTestApi, syncTransportForTests } from '@/testing/exposeTestApi'
 import './helpers/vaultUtils'
 import './helpers/runAfterSync'
 import './helpers/protocolHandler'
@@ -426,6 +426,13 @@ export default class AbelePlugin extends Plugin {
           }
           if (typeof reviewId !== 'string')
             throw new Error('Device review identity requires recovery')
+          // Refuse an unsupported transport before acquiring the review handle.
+          const transport = timedSyncTransport(
+            transportOf(
+              process.env.NODE_ENV !== 'production' ? { fetch: syncTransportForTests() } : {}
+            ),
+            this.syncTimeline
+          )
           const reviews = await openDeviceReviews(window.indexedDB, reviewId, {
             configRoots: [this.app.vault.configDir],
             scriptsFolder: AbeleConfig.getInstance().ai.scriptsFolder || 'Scripts',
@@ -434,7 +441,6 @@ export default class AbelePlugin extends Plugin {
             reviews.close()
             return
           }
-          const transport = timedSyncTransport(transportOf({}), this.syncTimeline)
           const ui = new TokenUi(registry, tokenSecrets, transport, reviews)
           tokenUi.value = ui
           this.register(

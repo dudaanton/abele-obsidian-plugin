@@ -12,6 +12,7 @@ import { mkdirSync, rmdirSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { delay } from './syncServer'
+import { TOKEN_HOST_READY } from './tokenHostReady'
 import type { VaultCli } from './obsidianCli'
 import { openTestVault, waitFor, type TestVault } from './syncVault'
 
@@ -123,7 +124,8 @@ export async function reloadAs(vault: VaultCli, mobile: boolean): Promise<void> 
       // This remains desktop layout/lifecycle evidence, never native phone HTTP evidence.
       vault.evalAwait(
         `(async () => {
-        const api = window.__abeleTest, tokenHost = app.plugins.plugins.abele.tokenEngines
+        ${TOKEN_HOST_READY}
+        const api = window.__abeleTest
         const remote = require('@electron/remote'), buffer = require('node:buffer').Buffer
         const host = {
           session: remote.getCurrentWebContents().session,
@@ -131,18 +133,29 @@ export async function reloadAs(vault: VaultCli, mobile: boolean): Promise<void> 
           body: bytes => buffer.from(bytes),
           controller: () => new (remote.getGlobal('AbortController'))()
         }
-        // The engines the reload started finish starting first: reset in the middle of their
-        // start, they left staging files behind that sync then announced as recovered copies.
-        await tokenHost.engines.settled()
-        await tokenHost.engines.reset()
         const transport = api.desktopTransport(undefined, host)
-        // UI metadata (including sync-now refresh and trash) uses its own clients.
-        // They need the same emulated native host as the restarted engines.
-        tokenHost.ui.transport = transport
-        tokenHost.ui.itemSets.transport = transport
-        tokenHost.deps.fetch = transport
-        tokenHost.start()
-        await tokenHost.engines.settled()
+        const override = Symbol.for('abele.sync.test-transport-v1')
+        // Mobile emulation can fail transport construction before any token host exists.
+        // Supply a test-build dependency first, then reopen only that failed startup.
+        window[override] = transport
+        try {
+          if (app.plugins.plugins.abele?.tokenHostStartup?.state === 'failed') {
+            await app.plugins.disablePlugin('abele')
+            await app.plugins.enablePlugin('abele')
+          }
+          const tokenHost = await tokenHostReady(
+            () => app.plugins.plugins.abele?.tokenEngines, 25000,
+            () => app.plugins.plugins.abele?.tokenHostStartup?.state === 'ready',
+            () => { const state=app.plugins.plugins.abele?.tokenHostStartup; return state?.state==='failed' ? state.error || 'Unknown startup error' : undefined }
+          )
+          tokenHost.ui.transport = transport
+          tokenHost.ui.itemSets.transport = transport
+          tokenHost.deps.fetch = transport
+          await tokenHost.engines.settled()
+          await tokenHost.engines.reset()
+          tokenHost.start()
+          await tokenHost.engines.settled()
+        } finally { delete window[override] }
         return 'ok'
       })()`,
         30_000

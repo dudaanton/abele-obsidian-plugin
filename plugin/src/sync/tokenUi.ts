@@ -1310,7 +1310,7 @@ export class TokenUi {
       }
       const failures: unknown[] = []
       for (const item of this.itemSets.store.get(id).items) {
-        if (!item.recordId || item.detached) continue
+        if (!item.recordId || item.detached || item.paused) continue
         try {
           await this.syncRecord(item.recordId)
         } catch (error) {
