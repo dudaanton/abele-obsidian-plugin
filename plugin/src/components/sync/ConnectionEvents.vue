@@ -72,6 +72,18 @@ onBeforeUnmount(() => {
 watch(
   () => [props.events, props.revision],
   () => {
+    // A programmatic return to the bottom can precede its queued scroll event.
+    // Read before rendering changes the height; never replace a reader's anchor.
+    if (owner && owner.scrollHeight - owner.scrollTop - owner.clientHeight <= 4) {
+      following = true
+      anchor = undefined
+    }
+  },
+  { flush: 'pre' }
+)
+watch(
+  () => [props.events, props.revision],
+  () => {
     const parent = owner
     if (parent?.isConnected) {
       if (following) parent.scrollTop = parent.scrollHeight

@@ -4,6 +4,35 @@ import { nextTick } from 'vue'
 import { ActivityHistory } from '@/sync/activityHistory'
 import ConnectionEvents from '@/components/sync/ConnectionEvents.vue'
 
+it('recognizes a return to the bottom before the browser delivers its scroll event', async () => {
+  const host = document.createElement('div')
+  host.className = 'abele-modal__body'
+  document.body.append(host)
+  let height = 1000
+  Object.defineProperties(host, {
+    clientHeight: { get: () => 100 },
+    scrollHeight: { get: () => height },
+  })
+  const view = mount(ConnectionEvents, {
+    props: { events: [{ at: 1, text: 'Uploaded sample.md' }] },
+    attachTo: host,
+  })
+  try {
+    host.scrollTop = 200
+    host.dispatchEvent(new Event('scroll'))
+    // Moving the viewport and appending can share a task before the scroll event.
+    host.scrollTop = 900
+    await view.setProps({ events: [{ at: 2, text: 'Downloaded next.md' }] })
+    expect(host.scrollTop).toBe(1000)
+    height = 1200
+    await view.setProps({ events: [{ at: 3, text: 'Uploaded last.md' }] })
+    expect(host.scrollTop).toBe(1200)
+  } finally {
+    view.unmount()
+    host.remove()
+  }
+})
+
 it('appends live lines and follows the bottom until the reader scrolls up', async () => {
   const host = document.createElement('div')
   host.className = 'abele-modal__body'
