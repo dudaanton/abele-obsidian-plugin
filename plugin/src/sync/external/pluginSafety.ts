@@ -947,11 +947,19 @@ export async function requireExternalEnrollmentSafety(app: App): Promise<void> {
   activation(app)
   retiredLedgers(app)
   const installation = new WriteJournal(app, undefined, connectionJournalOwner(app))
-  if (
-    (await installation.currentEntries()).some((entry) => !entry.streaming || entry.backup) ||
-    (await installation.currentRecovered()).length
+  const unfinished = (await installation.currentEntries()).find(
+    (entry) => !entry.streaming || entry.backup
   )
-    throw new ExternalRecoveryRequired('installation or retained-byte recovery is unfinished')
+  const recovered = unfinished ? undefined : (await installation.currentRecovered())[0]
+  if (unfinished || recovered) {
+    const entry = unfinished ?? recovered
+    const locator = unfinished?.temp ?? recovered?.backup ?? entry.target
+    throw new ExternalRecoveryRequired('installation or retained-byte recovery is unfinished', {
+      kind: unfinished ? 'installation' : 'retained-byte',
+      id: locator.slice(locator.lastIndexOf('/') + 1),
+      path: entry.target,
+    })
+  }
 }
 /** Explicit departure resolves stopped first-publication receipts by retaining their bytes.
  * It retires evidence, never acknowledges a version or replays it onto a public path. */

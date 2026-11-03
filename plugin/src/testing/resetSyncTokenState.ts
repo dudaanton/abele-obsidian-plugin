@@ -219,7 +219,9 @@ async function performResetSyncTokenState(
         // reset may have lost ownership while retaining an activation marker.
         // Keep the journal on failure, and never erase unowned recovery evidence.
         try {
+          Reflect.set(plugin, 'tokenPoolResetStage', 'checking enrollment safety')
           await requireExternalEnrollmentSafety(plugin.app)
+          Reflect.set(plugin, 'tokenPoolResetStage', 'checking lifecycle safety')
           await requireExternalLifecycleSafety(
             plugin.app,
             window.indexedDB,
@@ -234,7 +236,9 @@ async function performResetSyncTokenState(
         } catch (error) {
           const record =
             error instanceof ExternalRecoveryRequired ? error.recoveryRecord : undefined
-          const locator = record ? ` (${record.kind}: ${record.id}; database: ${record.path})` : ''
+          const locator = record
+            ? ` (${record.kind}: ${record.id}; ${record.kind.includes('activation') ? 'database' : 'path'}: ${record.path})`
+            : ''
           throw new Error(
             'Pool reset is not connectable' +
               locator +
