@@ -19,3 +19,13 @@ it.each(['.obsidian/plugins/abele/sample-review.js', '.obsidian/hotkeys.json'])(
       expect(rules.ignores(other), other).toBe(true)
   }
 )
+
+it('includes the fixture folders themselves as well as their children', () => {
+  const rules = IgnoreRules.parse(syncFixtureRules('Sync fixtures sample'))
+  for (const path of [
+    'Sync fixtures sample/',
+    'Sync fixtures sample/Shared/',
+    'Sync fixtures sample/Shared/Topic/',
+  ])
+    expect(rules.ignores(path), path).toBe(false)
+})

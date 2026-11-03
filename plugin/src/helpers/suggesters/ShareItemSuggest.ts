@@ -18,12 +18,20 @@ export function matchingShareItems(
   query: string
 ): ShareItem[] {
   const ids = new Set(taken.map((one) => one.id))
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
-  return choices
-    .filter((one) => !ids.has(one.id))
-    .filter((one) => one.kind !== 'vault' || !taken.length)
-    .filter((one) => words.every((w) => (one.path + ' ' + itemName(one)).toLowerCase().includes(w)))
-    .slice(0, 50)
+  const exact = query.trim().toLowerCase()
+  const words = exact.split(/\s+/).filter(Boolean)
+  const ranked: ShareItem[][] = [[], [], []]
+  for (const one of choices) {
+    if (ids.has(one.id) || (one.kind === 'vault' && taken.length)) continue
+    const path = one.path.toLowerCase(),
+      name = itemName(one).toLowerCase()
+    if (!words.every((word) => (path + ' ' + name).includes(word))) continue
+    // A folder can follow thousands of its children in the server inventory.
+    // Keep exact choices ahead of substring matches before bounding the popup.
+    const rank = exact && path === exact ? 0 : exact && name === exact ? 1 : 2
+    if (ranked[rank].length < 50) ranked[rank].push(one)
+  }
+  return ranked.flat().slice(0, 50)
 }
 
 /**
