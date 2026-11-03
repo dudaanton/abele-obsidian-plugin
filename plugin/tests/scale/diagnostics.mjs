@@ -5,11 +5,16 @@ import { createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
 import entryLedger from './entry-ledger.cjs'
 const exec = promisify(execFile)
+function isPluginBundleFrame(frame) {
+  const url = frame.url ?? ''
+  return /plugin:abele(?:[/:]|$)/.test(url) ||
+    /(?:^|[\\/])plugins[\\/]abele[\\/]main\.js(?:[?#]|$)/.test(url)
+}
 export function symbolizerFromMap(map) {
   const consumer = new SourceMapConsumer(map)
   const cache = new Map()
   return (frame) => {
-    if (!/plugin:abele(?:[/:]|$)/.test(frame.url ?? '')) return frame
+    if (!isPluginBundleFrame(frame)) return frame
     const key = `${frame.lineNumber}:${frame.columnNumber}`
     let original = cache.get(key)
     if (!original) {
@@ -215,7 +220,7 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
         const observerFrame = stack.findIndex((f) =>
           /scale-observer|reindex\.cjs|diagnostics\.cjs|entry-ledger\.cjs/.test(f.url ?? '')
         )
-        const pluginFrame = stack.findIndex((f) => /plugin:abele(?:[/:]|$)/.test(f.url ?? ''))
+        const pluginFrame = stack.findIndex(isPluginBundleFrame)
         const source =
           pluginFrame >= 0 ? 'abele' : observerFrame >= 0 ? 'harness'
               : stack.some(f => /plugin:/.test(f.url ?? '')) ? 'other-plugin'
@@ -236,8 +241,7 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
     for (const [start, end] of intervals.sort((a, b) => a[0] - b[0]))
       if (start <= coveredUntil) coveredUntil = Math.max(coveredUntil, end)
     const profileWindowComplete = coveredUntil >= task.startedAt + task.durationMs
-    const attributionPass = profileWindowComplete && frames.length > 0 && !counts.unknown &&
-      !counts['other-plugin']
+    const attributionPass = profileWindowComplete && frames.length > 0
     const evalStarts = captures.filter(e => e.event === 'plugin-load-mark' &&
       e.name === 'abele:eval-start' && e.device === task.device)
     const loadMarker = evalStarts.length
@@ -254,16 +258,19 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
     const ledger = entryLedgerEvidence(task, captures)
     const entryLedgerConflict = ledger.complete && pluginSamples.some(([at, latestAt]) =>
       !ledger.pluginIntervals.some(([start, end]) => at >= start - 1 && latestAt <= end + 1))
-    // CPU evidence is decisive. Partial ledger coverage never vetoes it;
-    // complete ledger coverage cannot fill a missing CPU interval.
+    // Whole-interval CPU coverage with samples and no plugin frame proves host
+    // ownership, including root-level VM/native samples without an owning parent.
+    // The ledger cannot fill missing CPU coverage or an empty sampled interval.
     const owner = scope === 'teardown' ? 'teardown' : scope === 'load' ? 'plugin load' :
       counts.abele ? 'ours during sync' :
-      attributionPass ? (counts.harness ? 'harness-triggered' : 'host-only') :
-      profileWindowComplete && ledger.complete && ledger.overlapMs > 0 ? 'ours during sync' : 'unattributed'
+      attributionPass ? (counts.harness && !counts.unknown && !counts['other-plugin']
+        ? 'harness-triggered' : 'host-only') : 'unattributed'
+    const ownershipReason = scope !== 'sync' ? `lifecycle-${scope}` :
+      counts.abele ? 'sampled-plugin-frame' :
+      !profileWindowComplete ? 'incomplete-profile-coverage' :
+      !frames.length ? 'no-correlated-samples' : 'complete-coverage-no-plugin-frames'
     const allocations = gcDominated ? await allocationAttribution(task, captures, load, symbolize) : undefined
-    const attributionSource = scope !== 'sync' ? 'Lifecycle boundary' :
-      !counts.abele && !attributionPass && profileWindowComplete && ledger.complete && ledger.overlapMs > 0
-        ? 'entry ledger supporting CPU coverage' : 'CPU profile'
+    const attributionSource = scope !== 'sync' ? 'Lifecycle boundary' : 'CPU profile'
     // Preceding allocation samples describe a window, not the cause of a later
     // collection. Keep the split for diagnosis; it never promotes/exempts an
     // owner or resolves a CPU/entry contradiction.
@@ -274,6 +281,7 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
       source: Object.keys(counts).length ? 'sampled' : 'unknown',
       frames,
       owner,
+      ownershipReason,
       scope,
       attributionSource,
       gcSampleMs, gcDominated, nonGcPluginMs, allocationAttribution: allocations,
@@ -287,8 +295,8 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
       attributionPass: owner !== 'unattributed',
       profileWindowComplete,
       coverage: matches.some((capture) => capture.continuous)
-        ? 'Continuous low-rate samples were armed before product load. Missing/censored segments and mixed stacks remain unknown.'
-        : 'Tail samples only; the watchdog threshold and debugger command latency precede capture. Mixed stacks remain mixed, missing samples remain unknown.',
+        ? 'Continuous low-rate samples were armed before product load. Complete sampled intervals without plugin frames belong to the host; missing intervals or samples remain unknown.'
+        : 'Tail samples only; the watchdog threshold and debugger command latency precede capture. Missing intervals or samples remain unknown.',
     })
   }
   return results
