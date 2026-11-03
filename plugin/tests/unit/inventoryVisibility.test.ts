@@ -8,6 +8,22 @@ const pass = Symbol.for('abele.sync.inventory-pass-v1')
 const children = Symbol.for('abele.sync.inventory-children-v1')
 const directories = Symbol.for('abele.sync.inventory-directories-v1')
 
+it('lists group file ancestors without claiming a physical directory identity', async () => {
+  const path = 'Shared/Field notes/sample.md'
+  const app = buildFakeVault([{ path, content: 'sample group note' }])
+  const host = new ObsidianFileSystem(app as never, {
+    discovery: { roots: [], includes: (candidate) => candidate === path },
+  })
+  await Reflect.get(host, pass).call(host, async () => {
+    await expect(host.listChildren('Shared')).resolves.toEqual([
+      { path: 'Shared/Field notes', kind: 'directory' },
+    ])
+    expect(await Array.fromAsync(host.listDirectories())).toEqual([])
+    await expect(host.mkdir('Shared/Field notes')).rejects.toThrow('outside this connection')
+    expect(app.loadLocalStorage('abele-sync-local-directories-v1') ?? []).toEqual([])
+  })
+})
+
 it.each([
   [' bad.md', 'leading space'],
   ['bad\\name.md', 'forbidden character'],

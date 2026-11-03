@@ -2340,12 +2340,8 @@ export class ObsidianFileSystem implements FileSystem {
         const tail = file.path.slice(prefix.length)
         const cut = tail.indexOf('/')
         const path = cut < 0 ? file.path : prefix + tail.slice(0, cut)
-        children.set(
-          path,
-          cut < 0
-            ? { path, kind: 'file' }
-            : { path, kind: 'directory', identity: await this.directories.identity(path, true) }
-        )
+        // Group ancestors describe file membership, not physical directory ownership.
+        children.set(path, { path, kind: cut < 0 ? 'file' : 'directory' })
       }
       return [...children.values()]
     }
