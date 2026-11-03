@@ -68,7 +68,7 @@ async function wipePoolInternal(plugin: Plugin, request: PhoneWipeIdentity, gene
     stop: async () => {
       await host.tokenEngines?.close(false)
       host.tokenEngines?.ui.reviews?.close()
-      await flushHostStorage(app)
+      if (!durableHostOf(app)?.isClosed) await flushHostStorage(app)
       await plugins.disablePlugin('abele')
       durableHostOf(app)?.close()
     },
@@ -166,7 +166,17 @@ async function wipePoolInternal(plugin: Plugin, request: PhoneWipeIdentity, gene
         }
       }
       tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault)).clearDrainedState()
-      // Commit namespace row removal before deleting private bytes. Never delete shared DBs.
+      for (const name of plan.databases) {
+        console.debug('[e2e sync wipe] deleting owned database', name)
+        await IndexedDbStateStore.delete(factory, name)
+      }
+      console.debug('[e2e sync wipe] owned databases removed; removing private directory')
+      // No legacy config-folder cleanup, public-file walk, or recursive alternate path.
+      if (await app.vault.adapter.exists('.abele-sync'))
+        await app.vault.adapter.rmdir('.abele-sync', true)
+      console.debug('[e2e sync wipe] private directory removed; clearing namespace rows')
+      // Keep ownership evidence until databases and private bytes are gone.
+      // Never delete shared databases.
       for (const name of shared.keys()) {
         const selected = plan.rows.filter((row) => row.database === name)
         if (!selected.length) continue
@@ -194,14 +204,8 @@ async function wipePoolInternal(plugin: Plugin, request: PhoneWipeIdentity, gene
           db.close()
         }
       }
-      for (const name of plan.databases) {
-        console.debug('[e2e sync wipe] deleting owned database', name)
-        await IndexedDbStateStore.delete(factory, name)
-      }
+      console.debug('[e2e sync wipe] namespace rows removed; clearing local keys')
       for (const key of plan.keys) app.saveLocalStorage(key, null)
-      // No legacy config-folder cleanup, public-file walk, or recursive alternate path.
-      if (await app.vault.adapter.exists('.abele-sync'))
-        await app.vault.adapter.rmdir('.abele-sync', true)
     },
     reload: async () => {
       await plugins.enablePlugin('abele')
@@ -209,34 +213,42 @@ async function wipePoolInternal(plugin: Plugin, request: PhoneWipeIdentity, gene
       while (Date.now() < deadline) {
         const loaded = plugins.plugins.abele
         if (loaded?.tokenHostStartup?.state === 'failed')
-          throw new Error('Phone pool host failed to reload: ' + loaded.tokenHostStartup.error)
+          throw new Error('Pool vault host failed to reload: ' + loaded.tokenHostStartup.error)
         if (loaded?.tokenHostStartup?.state === 'ready' && loaded.tokenEngines) return
         await new Promise<void>((resolve) => window.setTimeout(resolve, 20))
       }
-      throw new Error('Phone pool host did not become ready after reload')
+      throw new Error('Pool vault host did not become ready after reload')
     },
     verify: async () => {
-      await requireExternalEnrollmentSafety(app)
-      await requireExternalLifecycleSafety(
-        app,
-        factory,
-        undefined,
-        true,
-        undefined,
-        () => {},
-        {},
-        false,
-        true
-      )
-      const registry = durableHostOf(app)?.loadLocalStorage('abele-sync-connections-v2') as {
-        records?: unknown[]
-      } | null
-      if (registry?.records?.length) throw new Error('Phone pool still has connections')
-      for (const key of ['abele-sync-writes', 'abele-sync-recovered-writes']) {
-        const rows = durableHostOf(app)?.loadLocalStorage(key)
-        if (Array.isArray(rows) && rows.length)
-          throw new Error('Phone pool still has recovery records')
-      }
+      // The old module's WeakMap still points at its closed host after reload.
+      await (
+        window as unknown as { __abeleTest: { verifyPoolWipe(): Promise<void> } }
+      ).__abeleTest.verifyPoolWipe()
     },
   })
+}
+
+/** Must run in the newly loaded plugin generation, never the stopped caller. */
+export async function verifyPoolWipe(app: App): Promise<void> {
+  const factory = window.indexedDB
+  await requireExternalEnrollmentSafety(app)
+  await requireExternalLifecycleSafety(
+    app,
+    factory,
+    undefined,
+    true,
+    undefined,
+    () => {},
+    {},
+    false,
+    true
+  )
+  const registry = durableHostOf(app)?.loadLocalStorage('abele-sync-connections-v2') as {
+    records?: unknown[]
+  } | null
+  if (registry?.records?.length) throw new Error('Pool vault still has connections')
+  for (const key of ['abele-sync-writes', 'abele-sync-recovered-writes']) {
+    const rows = durableHostOf(app)?.loadLocalStorage(key)
+    if (Array.isArray(rows) && rows.length) throw new Error('Pool vault still has recovery records')
+  }
 }

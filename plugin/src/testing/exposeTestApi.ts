@@ -158,7 +158,7 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { resetSyncTokenState, captureSyncTokenOwnership } from './resetSyncTokenState'
 import type { TokenPoolResetRequest } from './resetTokenPool'
-import { wipePhonePool, wipePool } from './wipePhonePool'
+import { wipePhonePool, wipePool, verifyPoolWipe } from './wipePhonePool'
 import type { PhoneWipeIdentity } from './phonePoolWipe'
 import { ExternalState } from '@/sync/external/state'
 import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
@@ -309,6 +309,7 @@ interface AbeleTestApi {
   }
   wipePhonePool(request: PhoneWipeIdentity): ReturnType<typeof wipePhonePool>
   wipePool(request: PhoneWipeIdentity): ReturnType<typeof wipePool>
+  verifyPoolWipe(): Promise<void>
   resetSyncTokenState(request: TokenPoolResetRequest): Promise<void>
   captureSyncTokenOwnership(vault: string): Promise<string[]>
   scriptTrust: {
@@ -945,6 +946,7 @@ export function exposeTestApi(plugin: Plugin): void {
       })),
     wipePhonePool: (request) => wipePhonePool(plugin, request),
     wipePool: (request) => wipePool(plugin, request),
+    verifyPoolWipe: () => verifyPoolWipe(plugin.app),
     resetSyncTokenState: (request) => resetSyncTokenState(plugin, request),
     captureSyncTokenOwnership: (vault) => captureSyncTokenOwnership(plugin, vault),
     canvasProbe: createCanvasProbe(plugin),

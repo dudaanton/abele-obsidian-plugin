@@ -167,9 +167,21 @@ async function executeWipe(expected: PhoneWipeIdentity, ports: PhoneWipePorts, p
     phonePoolWipePlan(expected, actual, [], [], [])
     return actual
   }
+  const stage = async <T>(name: string, work: () => Promise<T>): Promise<T> => {
+    console.debug('[e2e sync wipe] stage', name, 'start')
+    try {
+      const result = await work()
+      console.debug('[e2e sync wipe] stage', name, 'complete')
+      return result
+    } catch (cause) {
+      throw new Error('Pool wipe ' + name + ': ' + String((cause as Error)?.message ?? cause), {
+        cause,
+      })
+    }
+  }
   check()
-  await ports.stop()
-  const snapshot = await ports.snapshot()
+  await stage('stop', () => ports.stop())
+  const snapshot = await stage('snapshot', () => ports.snapshot())
   const plan = phonePoolWipePlan(
     expected,
     check(),
@@ -177,10 +189,10 @@ async function executeWipe(expected: PhoneWipeIdentity, ports: PhoneWipePorts, p
     snapshot.rows,
     snapshot.local
   )
-  await ports.erase(plan)
+  await stage('erase', () => ports.erase(plan))
   check()
-  await ports.reload()
+  await stage('reload', () => ports.reload())
   check()
-  await ports.verify()
+  await stage('verify', () => ports.verify())
   return { databases: plan.databases, rows: plan.rows.length, keys: plan.keys, paths: plan.paths }
 }

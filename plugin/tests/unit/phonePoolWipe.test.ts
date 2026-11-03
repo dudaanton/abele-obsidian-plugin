@@ -166,13 +166,15 @@ it('preserves recovery bytes and their durable owner during ordinary readiness e
 })
 
 it.each([
-  { valid: true, desktop: false },
+  { valid: true, desktop: false, partial: false },
+  { valid: true, desktop: false, partial: true },
   { valid: false, desktop: false },
-  { valid: true, desktop: true },
+  { valid: true, desktop: true, partial: false },
+  { valid: true, desktop: true, partial: true },
   { valid: false, desktop: true },
 ])(
-  'wipes real adapters only with a plugin ledger schema ($valid/$desktop)',
-  async ({ valid, desktop }) => {
+  'wipes real adapters only with a plugin ledger schema ($valid/$desktop/$partial)',
+  async ({ valid, desktop, partial }) => {
     const { IDBFactory } = await import('fake-indexeddb')
     const { HostSyncStorage } = await import('@/sync/hostSyncStorage')
     const { wipePhonePool, wipePool } = await import('@/testing/wipePhonePool')
@@ -184,6 +186,7 @@ it.each([
     const { Platform } = await import('obsidian')
     const platform = Platform as { isMobile: boolean; isDesktop: boolean }
     const prior = { isMobile: platform.isMobile, isDesktop: platform.isDesktop }
+    const apiDescriptor = Object.getOwnPropertyDescriptor(window, '__abeleTest')
     const descriptor = Object.getOwnPropertyDescriptor(window, 'indexedDB')
     const factory = new IDBFactory()
     Object.defineProperty(window, 'indexedDB', { configurable: true, value: factory })
@@ -235,9 +238,17 @@ it.each([
     Object.assign(app, {
       plugins: {
         plugins: { abele: { tokenHostStartup: { state: 'ready' }, tokenEngines: {} } },
-        disablePlugin: async () => {},
+        disablePlugin: async () => {
+          ownHost.close()
+        },
         enablePlugin: async () => {
-          ownHost = await HostSyncStorage.open(factory, actual.appId, app)
+          await (await import('vitest')).vi.resetModules()
+          const fresh = await import('@/sync/hostSyncStorage')
+          ownHost = await fresh.HostSyncStorage.open(factory, actual.appId, app)
+          const verification = await import('@/testing/wipePhonePool')
+          Object.assign(window, {
+            __abeleTest: { verifyPoolWipe: () => verification.verifyPoolWipe(app as never) },
+          })
         },
       },
     })
@@ -254,8 +265,31 @@ it.each([
         expect(await app.vault.adapter.exists('.abele-sync/private.bin')).toBe(true)
         return
       }
+      if (partial) {
+        const remove = app.vault.adapter.rmdir.bind(app.vault.adapter)
+        app.vault.adapter.rmdir = async () => {
+          throw new Error('sample interrupted private removal')
+        }
+        await expect(wipe({ app } as never, request)).rejects.toThrow(
+          'sample interrupted private removal'
+        )
+        const retained = await new Promise<unknown[]>((resolve, reject) => {
+          const open = factory.open('abele-sync-host-v1')
+          open.onerror = () => reject(open.error)
+          open.onsuccess = () => {
+            const db = open.result
+            const tx = db.transaction('host-records-v3', 'readonly')
+            const rows = tx.objectStore('host-records-v3').getAll()
+            rows.onerror = () => reject(rows.error)
+            rows.onsuccess = () => resolve(rows.result)
+            tx.oncomplete = () => db.close()
+          }
+        })
+        expect(JSON.stringify(retained)).toContain(own)
+        app.vault.adapter.rmdir = remove
+      }
       const result = await wipe({ app } as never, request)
-      expect(result.databases).toEqual([own])
+      expect(result.databases).toEqual(partial ? [] : [own])
       expect(offloads.files()).toEqual([])
       const names = (await factory.databases()).map((db) => db.name)
       expect(names).toContain(foreign)
@@ -265,9 +299,13 @@ it.each([
       expect(await other.readValue('abele-sync-connections-v2')).toEqual(beforeForeign)
       expect(await app.vault.adapter.read('Notes/user.md')).toBe('keep')
       expect(await app.vault.adapter.exists('.abele-sync')).toBe(false)
+      const repeated = await wipe({ app } as never, request)
+      expect(repeated.databases).toEqual([])
     } finally {
       ownHost.close()
       other.close()
+      if (apiDescriptor) Object.defineProperty(window, '__abeleTest', apiDescriptor)
+      else Reflect.deleteProperty(window, '__abeleTest')
       Object.assign(platform, prior)
       if (descriptor) Object.defineProperty(window, 'indexedDB', descriptor)
       else Reflect.deleteProperty(window, 'indexedDB')
