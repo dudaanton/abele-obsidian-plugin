@@ -1,7 +1,9 @@
 import { assertDiscardableSyncLedger } from '../sync/privateRemovalFileSystem'
 import { preservePrivateArtifacts, finishRetainedWrites } from '../sync/privateRecovery'
 import type { Plugin } from 'obsidian'
-import { sha256 } from '@abele/sync-sdk/core'
+import { recoverPendingPullWrites, sha256 } from '@abele/sync-sdk/core'
+import { ObsidianFileSystem } from '../sync/ObsidianFileSystem'
+import { connectionJournalApp } from '../sync/connectionScope'
 import { TokenEngines } from '../sync/tokenEngines'
 import type { TokenUi } from '../sync/tokenUi'
 import { IndexedDbStateStore } from '../sync/IndexedDbStateStore'
@@ -164,45 +166,72 @@ async function performResetSyncTokenState(
         Reflect.set(plugin, 'tokenPoolResetStage', 'cancelling startup')
         old.cancelStartup()
         await stage('draining token host', () => old.close(false))
-        const reviews = ui.reviews
-        // Readiness/snapshot callers may still ask the visible UI for reviews.
-        // Detach first, join queued readers, then close the old database handle.
-        ;(ui as { reviews?: typeof reviews }).reviews = undefined
-        await ui.refreshReviews()
-        reviews?.close()
-        // Draining startup may finish activation; snapshot its ownership only now.
-        clearMarkers = tokenPoolMarkers(plugin.app, ownedDatabases)
-        // Native publication retains the incoming inode. Drain writers, then move
-        // private artifacts into recovery before deleting the ledgers. Ownership alone
-        // never proves these bytes disposable; independent writers may have edited them.
-        const paths = new Set<string>()
-        const directory = stagingDirectory(plugin.app.vault.configDir) + '/'
-        for (const name of ownedDatabases) {
-          const found = await stage('checking ledger ' + name, () =>
-            inspectExistingLedger(window.indexedDB, name)
-          )
-          if (found) assertDiscardableSyncLedger(found.metadata)
-          const raw = found?.metadata.get('plugin:' + EXTERNAL_STATE_KEY)
-          if (raw == null) continue
-          if (typeof raw !== 'string') throw new Error('Pool external journal requires recovery')
-          const document = decodeExternalDocument(raw)
-          for (const artifact of [
-            ...document.files.flatMap((file) => file.retained),
-            ...document.operations.flatMap((operation) => operation.ownedArtifacts),
-          ]) {
-            if (
-              artifact.path.startsWith(directory) &&
-              !artifact.path.split('/').some((part) => part === '..' || part === '.')
-            )
-              paths.add(artifact.path)
-          }
-        }
-        await stage('preserving private artifacts', () =>
-          preservePrivateArtifacts(plugin.app, paths)
-        )
         try {
+          const reviews = ui.reviews
+          // Readiness/snapshot callers may still ask the visible UI for reviews.
+          // Detach first, join queued readers, then close the old database handle.
+          ;(ui as { reviews?: typeof reviews }).reviews = undefined
+          await ui.refreshReviews()
+          reviews?.close()
+          // Draining startup may finish activation; snapshot its ownership only now.
+          clearMarkers = tokenPoolMarkers(plugin.app, ownedDatabases)
+          // Native publication retains the incoming inode. Drain writers, then move
+          // private artifacts into recovery before deleting the ledgers. Ownership alone
+          // never proves these bytes disposable; independent writers may have edited them.
+          const paths = new Set<string>()
+          const directory = stagingDirectory(plugin.app.vault.configDir) + '/'
+          for (const name of ownedDatabases) {
+            let found = await stage('checking ledger ' + name, () =>
+              inspectExistingLedger(window.indexedDB, name)
+            )
+            if (found?.metadata.get('plugin:pull-cleanup-head')) {
+              // Only committed retirement, never an uncommitted download or a new
+              // exchange. The durable ledger identity also covers a retired record
+              // that the test ownership journal captured before shutdown.
+              const record = ui.registry.records().find((one) => one.ledgerId === name)
+              const identity = found.metadata.get('plugin:token-engine-identity-v2')
+              const binding: unknown = typeof identity === 'string' ? JSON.parse(identity) : null
+              const id =
+                record?.id ?? (Array.isArray(binding) && binding[1] === name ? binding[0] : null)
+              if (typeof id !== 'string' || !uuid.test(id))
+                throw new Error('Pool cleanup ledger requires a proven connection owner')
+              const store = await IndexedDbStateStore.open(window.indexedDB, name)
+              try {
+                const files = new ObsidianFileSystem(connectionJournalApp(plugin.app, id), {
+                  connectionId: id,
+                  journalOwner: id,
+                })
+                await stage('finishing committed pull cleanup', () =>
+                  recoverPendingPullWrites(files, store, [])
+                )
+              } finally {
+                store.close()
+              }
+              found = await inspectExistingLedger(window.indexedDB, name)
+            }
+            if (found) assertDiscardableSyncLedger(found.metadata)
+            const raw = found?.metadata.get('plugin:' + EXTERNAL_STATE_KEY)
+            if (raw == null) continue
+            if (typeof raw !== 'string') throw new Error('Pool external journal requires recovery')
+            const document = decodeExternalDocument(raw)
+            for (const artifact of [
+              ...document.files.flatMap((file) => file.retained),
+              ...document.operations.flatMap((operation) => operation.ownedArtifacts),
+            ]) {
+              if (
+                artifact.path.startsWith(directory) &&
+                !artifact.path.split('/').some((part) => part === '..' || part === '.')
+              )
+                paths.add(artifact.path)
+            }
+          }
+          await stage('preserving private artifacts', () =>
+            preservePrivateArtifacts(plugin.app, paths)
+          )
           await stage('finishing retained copies', () => finishRetainedWrites(plugin.app))
         } catch (error) {
+          // Any refused maintenance step must leave a usable host/review handle,
+          // not only failures while archiving retained copies.
           await restartHost()
           throw error
         }

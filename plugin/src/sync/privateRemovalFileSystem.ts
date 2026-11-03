@@ -67,6 +67,6 @@ export function assertDiscardableSyncLedger(metadata: ReadonlyMap<string, unknow
         key.startsWith('plugin:removal-decision:') ||
         key.startsWith('plugin:removal-source:'))
     )
-      throw new Error('SDK cleanup must settle before ledger deletion')
+      throw new Error('SDK cleanup must settle before ledger deletion: ' + key)
   }
 }

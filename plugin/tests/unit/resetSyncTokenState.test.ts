@@ -20,9 +20,23 @@ import { pathCoordinatorOf } from '@/sync/pathCoordinator'
 import { HostSyncStorage, inheritHostStorage, hostStorageOf } from '@/sync/hostSyncStorage'
 import { SETS_KEY } from '@/sync/connectionSets'
 import { WriteJournal } from '@/sync/writeJournal'
+import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { connectionJournalApp } from '@/sync/connectionScope'
 vi.mock('../../src/sync/tokenEngines', () => ({
   TokenEngines: class {
+    constructor(
+      app: unknown,
+      ui: unknown,
+      key: unknown,
+      deps: unknown,
+      scriptsFolder: unknown,
+      ownSettings: unknown
+    ) {
+      Object.assign(this, { app, ui, key, deps, scriptsFolder, ownSettings })
+    }
     start() {}
+    cancelStartup() {}
+    async close() {}
   },
 }))
 
@@ -44,10 +58,12 @@ const resetCases = [
   { retry: false, durable: true, orphan: true },
   { retry: false, durable: true, orphan: false, retained: true },
   { retry: false, durable: true, orphan: false, retained: 'missing' },
+  { retry: false, durable: true, orphan: false, cleanup: true },
+  { retry: false, durable: true, orphan: false, cleanup: 'blocked' },
 ]
 it.each(resetCases)(
   'owned reset ($retry/$durable/$orphan/$retained)',
-  async ({ retry, durable, orphan, retained }) => {
+  async ({ retry, durable, orphan, retained, cleanup }) => {
     const factory = new IDBFactory()
     const descriptor = Object.getOwnPropertyDescriptor(window, 'indexedDB')
     Object.defineProperty(window, 'indexedDB', { configurable: true, value: factory })
@@ -166,7 +182,7 @@ it.each(resetCases)(
     const reviewData = await IndexedDbStateStore.open(factory, 'abele-sync-reviews-' + reviewId)
     await reviewData.setMeta('token-attachment-consent-v1', 'stored accepted and denied decisions')
     await reviewData.setMeta('token-executable-review-v1', 'stored immutable pending bytes')
-    if (retained === 'missing') {
+    if (retained === 'missing' || cleanup === 'blocked' || retry === true) {
       // A refused reset reopens these documents; model valid persisted review state.
       await reviewData.setMeta(
         'token-executable-review-v1',
@@ -235,6 +251,54 @@ it.each(resetCases)(
       },
     } as unknown as Plugin
     const oldHost = Reflect.get(plugin, 'tokenEngines')
+    if (cleanup) {
+      // Publication committed before shutdown, but its private stage retirement
+      // did not. Reset must finish this owner before attempting ledger deletion.
+      const files = new ObsidianFileSystem(connectionJournalApp(plugin.app, id), {
+        connectionId: id,
+        journalOwner: id,
+      })
+      const stage = await files.beginAtomicWrite('note.md', 1, null)
+      await stage.append(0, new TextEncoder().encode('keep'))
+      const sha = await sha256(new TextEncoder().encode('keep'))
+      await stage.seal({ size: 4, sha })
+      const pending = {
+        fileId: 'sample-file',
+        versionId: 'sample-version',
+        wirePath: 'note.md',
+        target: 'note.md',
+        from: null,
+        base: null,
+        sha,
+        size: 4,
+        mtime: 1,
+        seq: 1,
+        stageId: stage.id,
+        retiring: true,
+      }
+      await ledger.transaction(async (tx) => {
+        await tx.put({
+          path: pending.target,
+          wirePath: pending.wirePath,
+          fileId: pending.fileId,
+          versionId: pending.versionId,
+          sha: pending.sha,
+          size: pending.size,
+          mtime: pending.mtime,
+        })
+        await tx.setMeta('pull-cleanup-head', 'pull-cleanup:11111111-1111-4111-8111-111111111111')
+        await tx.setMeta(
+          'pull-cleanup:11111111-1111-4111-8111-111111111111',
+          JSON.stringify({ pending, next: null })
+        )
+        await tx.setMeta('pull-write:sample-file', JSON.stringify(pending))
+      })
+      if (cleanup === 'blocked') {
+        vi.spyOn(vault.adapter, 'remove').mockImplementation(async () => {
+          throw new Error('Sample cleanup cannot finish')
+        })
+      }
+    }
     if (retained) {
       const backup = '.obsidian/plugins/abele/sync-staging/.abele-sync-abcdefgh.old'
       if (retained !== 'missing') await fake.vault.adapter.write(backup, 'sample retained bytes')
@@ -245,6 +309,21 @@ it.each(resetCases)(
     manager.remember('sample-old', [{ path: 'Media/sample.pdf', size: 1, mtime: 1 }], [])
     try {
       await captureSyncTokenOwnership(plugin, 'leased-pool')
+      if (cleanup === 'blocked') {
+        await expect(
+          resetSyncTokenState(plugin, { vault: 'leased-pool', confirm: 'reset-sync-token-state' })
+        ).rejects.toThrow('Sample cleanup cannot finish')
+        expect(Reflect.get(plugin, 'tokenEngines')).not.toBe(oldHost)
+        expect(registry.records()).toHaveLength(1)
+        const retainedLedger = await IndexedDbStateStore.open(factory, record.ledgerId)
+        try {
+          expect(await retainedLedger.getMeta('pull-cleanup-head')).toBeTruthy()
+        } finally {
+          retainedLedger.close()
+        }
+        await expect(ui.refreshReviews()).resolves.toBeUndefined()
+        return
+      }
       if (retained === 'missing') {
         await expect(
           resetSyncTokenState(plugin, { vault: 'leased-pool', confirm: 'reset-sync-token-state' })
@@ -305,6 +384,12 @@ it.each(resetCases)(
         expect(registry.records()).toHaveLength(1)
         expect(local.get(EXTERNAL_ACTIVATION_KEY)).not.toBeNull()
         expect(await vault.adapter.exists(staging)).toBe(true)
+        // Refused maintenance reopens a fresh host, rather than reusing the
+        // already closed generation on the next reset.
+        const reopened = Reflect.get(plugin, 'tokenEngines')
+        expect(reopened).not.toBe(oldHost)
+        reopened.close = close
+        reopened.cancelStartup = cancelStartup
       }
       await Promise.all([
         resetSyncTokenState(plugin, { vault: 'leased-pool', confirm: 'reset-sync-token-state' }),

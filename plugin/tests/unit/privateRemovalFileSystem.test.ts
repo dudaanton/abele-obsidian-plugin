@@ -80,7 +80,7 @@ it.each([
 ])('refuses raw ledger deletion while %s owns cleanup', async (key) => {
   const { assertDiscardableSyncLedger } = await import('@/sync/privateRemovalFileSystem')
   expect(() => assertDiscardableSyncLedger(new Map([['plugin:' + key, 'sample owner']]))).toThrow(
-    'SDK cleanup'
+    'SDK cleanup must settle before ledger deletion: plugin:' + key
   )
 })
 
