@@ -55,7 +55,8 @@ function capture(s: TokenSyncLive, state: string) {
 }
 
 function stoppedRow(s: TokenSyncLive, id: string, reason: string) {
-  return s.primary.run<{ line: string; disabled: boolean; state: string; lastSyncAt: number }>(
+  return s.primary.long<{ line: string; disabled: boolean; state: string; lastSyncAt: number }>(
+    'inspect stopped folder row',
     `await poll(()=>svc.rows.value.find(row=>row.id===${JSON.stringify(id)})?.rootIssue,10000,'persisted stopped folder issue');const root=await openSyncTab();const row=connectionRow(root,${JSON.stringify(id)});row.scrollIntoView({block:'center'});await poll(()=>textOf(row).includes(${JSON.stringify(reason)}),10000,'visible stopped folder row');const button=row.querySelector('svg.lucide-refresh-cw').closest('.abele-obsidian-icon');const status=host.live.get(${JSON.stringify(id)}).engine.status;return {line:textOf(row),disabled:button.classList.contains('abele-obsidian-icon_disabled'),state:status.state,lastSyncAt:status.lastSyncAt}`
   )
 }
@@ -78,7 +79,7 @@ export async function deletedRootRecovery(s: TokenSyncLive) {
   const { a, folder, id } = await connectedFolder(s)
   const before = serverState(await s.items())
   a.remove([folder])
-  const stopped = stoppedRow(s, id, 'Folder is gone; sync stopped')
+  const stopped = await stoppedRow(s, id, 'Folder is gone; sync stopped')
   expect(stopped.disabled).toBe(true)
   expect(stopped.state).toBe('paused')
   capture(s, 'deleted-row')
@@ -88,7 +89,9 @@ export async function deletedRootRecovery(s: TokenSyncLive) {
       `try{await svc.sync(${JSON.stringify(id)});return 'allowed'}catch(error){return error.message}`
     )
   ).toMatch(/paused|folder/i)
-  expect(stoppedRow(s, id, 'Folder is gone; sync stopped').lastSyncAt).toBe(stopped.lastSyncAt)
+  expect((await stoppedRow(s, id, 'Folder is gone; sync stopped')).lastSyncAt).toBe(
+    stopped.lastSyncAt
+  )
   expect(serverState(await s.items())).toEqual(before)
   expect(a.exists(folder)).toBe(false)
   openAction(s, id, 'Restore from the server')
@@ -107,7 +110,7 @@ export async function movedRootRecovery(s: TokenSyncLive) {
   const moved = s.root + '/moved',
     before = serverState(await s.items())
   a.rename(folder, moved)
-  const stopped = stoppedRow(s, id, 'Folder moved to ' + moved + '; sync stopped')
+  const stopped = await stoppedRow(s, id, 'Folder moved to ' + moved + '; sync stopped')
   expect(stopped.disabled).toBe(true)
   expect(stopped.state).toBe('paused')
   capture(s, 'moved-row')
@@ -159,14 +162,18 @@ export async function serverRenamedRootRecovery(s: TokenSyncLive) {
   const outcome = V2CommitResponseSchema.parse(await response.json())
   expect(outcome.results.every((item) => item.status === 'applied')).toBe(true)
   const before = serverState(await s.items())
-  a.run(`try{await svc.sync(${JSON.stringify(id)})}catch{}return true`)
+  await a.long(
+    'observe server folder rename',
+    `try{await svc.sync(${JSON.stringify(id)})}catch{}return true`
+  )
   const reason =
     'Shared folder renamed on the server: ' + folder + ' → ' + renamed + '; sync stopped'
   // Item sets summarize a waiting item on the row; its connection window retains
   // the full root-change reason and explicit recovery action.
-  const stopped = stoppedRow(s, id, '1 of 1 waiting')
+  const stopped = await stoppedRow(s, id, '1 of 1 waiting')
   expect(stopped.disabled).toBe(true)
-  a.run(
+  await a.long(
+    'inspect server rename reason',
     `const root=await openSyncTab();connectionRow(root,${JSON.stringify(id)}).click();await poll(()=>inWindows('.abele-sync-window')?.textContent.includes(${JSON.stringify(reason)}),10000,'server rename reason in the connection window');inWindows('.abele-sync-window').closest('.modal').querySelector('.modal-close-button, .modal-header-button:has(svg.lucide-x)').click();return true`
   )
   capture(s, 'server-renamed-row')
