@@ -85,7 +85,7 @@
         <StagedSettingsBlock v-if="changes.length" :changes="changes" :names="{}" :port="port" />
       </Section>
 
-      <SelectiveSync />
+      <SelectiveSync v-if="port" :port="port" />
 
       <Setting :name="t('sync.window.trusted')" :desc="t('sync.window.trustedDesc')">
         <Checkbox :is-enabled="!!row?.trusted" @toggle="toggleTrusted" />

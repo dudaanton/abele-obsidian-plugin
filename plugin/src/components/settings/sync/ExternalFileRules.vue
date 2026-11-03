@@ -56,7 +56,8 @@ import { readRule, saveRule, previewRule } from '@/sync/external/rules'
 import { confirmOffload, externalStatus } from '@/sync/external/registerActions'
 
 const app = GlobalStore.getInstance().app
-const id = TokenSettingsPort.getInstance().connectionId
+const props = defineProps<{ port?: TokenSettingsPort }>()
+const id = (props.port ?? TokenSettingsPort.getInstance()).connectionId
 const saved = readRule(app, id)
 const folder = ref(saved.folder)
 const extensions = ref(saved.extensions.join(', '))

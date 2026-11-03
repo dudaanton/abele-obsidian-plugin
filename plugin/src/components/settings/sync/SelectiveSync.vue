@@ -25,7 +25,7 @@
         @commit="commitCap"
       />
     </Setting>
-    <ExternalFileRules />
+    <ExternalFileRules :port="sync" />
   </Section>
 
   <Section
@@ -204,7 +204,8 @@ const SETTINGS_KINDS = (
   ['main', 'appearance', 'hotkeys', 'corePlugins', 'communityPlugins', 'pluginSettings'] as const
 ).map((key) => ({ key, ...SETTINGS_TEXT[key] }))
 
-const sync = TokenSettingsPort.getInstance()
+const props = defineProps<{ port?: TokenSettingsPort }>()
+const sync = props.port ?? TokenSettingsPort.getInstance()
 
 /**
  * This vault's config folder, when it is not the `.obsidian` the sync knows. Obsidian lets a
