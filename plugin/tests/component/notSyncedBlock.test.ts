@@ -1,4 +1,6 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
+import { notSyncedRow } from '../helpers/notSyncedRow'
 import { mount, shallowMount } from '@vue/test-utils'
 import NotSyncedBlock from '@/components/sync/NotSyncedBlock.vue'
 import PathLabel from '@/components/obsidian/PathLabel.vue'
@@ -19,6 +21,51 @@ const item: NotSyncedItem = {
   direction: 'in',
   since: '2026-01-01T00:00:00Z',
 }
+
+it('keeps an unsent local file visible through offline retry with an empty durable list', async () => {
+  const ui = tokenUiFixture()
+  const id = ui.rows.value[0].id
+  const selected = historyConnection.value
+  const path = 'Media/sample-pending.bin'
+  const reason = 'Server unavailable; kept locally until it reconnects'
+  ui.registry.setStatus(id, 'offline')
+  ui.refresh()
+  ui.activity.value = {
+    [id]: { notSynced: [], refused: [{ path, reason, waiting: true }], error: reason, pending: 1 },
+  }
+  const view = mount(ConnectionWindow, {
+    props: { ui, connectionId: id },
+    global: { stubs: { Modal: { template: '<main><slot /></main>' }, SelectiveSync: true } },
+  })
+  try {
+    const row = () => notSyncedRow(view.element, path)
+    expect(row()).not.toBeNull()
+    expect(row()!.closest('.abele-section')!.textContent).toContain('Waiting')
+    expect(row()!.textContent).toContain('server offline')
+    expect(view.get('[role=alert]').text()).toContain(reason)
+    expect(notSyncedRow(view.element, 'Other/sample-pending.bin')).toBeNull()
+    // Starting a retry is not proof of delivery; the durable projection can
+    // refresh to [] while the connection check is still waiting on the server.
+    ui.registry.setStatus(id, 'syncing')
+    ui.refresh()
+    ui.publish(id, { notSynced: [] })
+    await nextTick()
+    expect(row()).not.toBeNull()
+    // Specific durable evidence wins, without drawing a duplicate live row.
+    ui.publish(id, { notSynced: [{ path, kind: 'too-large', direction: 'out', since: '' }] })
+    await nextTick()
+    await vi.waitFor(() => {
+      expect(view.findAll('.abele-not-synced__row')).toHaveLength(1)
+      expect(row()!.closest('.abele-section')!.textContent).toContain('Not synced')
+    })
+    ui.publish(id, { notSynced: [], refused: [], pending: 0, error: undefined })
+    await nextTick()
+    await vi.waitFor(() => expect(row()).toBeNull())
+  } finally {
+    view.unmount()
+    historyConnection.value = selected
+  }
+})
 it('keeps the connection metadata separator with the preceding nowrap part', () => {
   const ui = tokenUiFixture()
   const view = mount(SyncSettings, { props: { model: ui } })

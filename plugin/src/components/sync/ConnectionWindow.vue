@@ -284,7 +284,27 @@ const tone = computed(() =>
 const progress = computed(() => connectionProgress(activity.value))
 const failure = computed(() => trustError.value || props.error || activity.value?.error || '')
 const refused = computed(() => activity.value?.refused ?? [])
-const notSyncedParts = computed(() => splitNotSynced(activity.value?.notSynced ?? []))
+const notSyncedParts = computed(() => {
+  const listed = activity.value?.notSynced
+  // Before the durable list arrives, the legacy block below still owns these rows.
+  if (!listed) return splitNotSynced([])
+  const rows = [...listed]
+  const known = new Set(rows.map((item) => item.path))
+  // An empty durable refusal list does not acknowledge pending local bytes.
+  // Keep the host's transient offline/retry evidence until it reports delivery.
+  for (const item of activity.value?.refused ?? []) {
+    if (!item.waiting || known.has(item.path)) continue
+    known.add(item.path)
+    rows.push({
+      path: item.path,
+      kind: 'waiting',
+      direction: 'out',
+      since: '',
+      fact: item.reason,
+    })
+  }
+  return splitNotSynced(rows)
+})
 const conflicts = computed(() => activity.value?.conflicts ?? [])
 // The same list until an event is added, so the rows below are left alone on progress ticks.
 const events = computed(() => activity.value?.events)

@@ -14,6 +14,7 @@ import {
   V2CommitResponseSchema,
 } from '@abele/sync-sdk/protocol'
 import { rawManifest } from '../helpers/rawManifest'
+import { notSyncedRow } from '../helpers/notSyncedRow'
 import { fixtureFetch } from './helpers/syncServer'
 targets('phone')
 const fixture = liveSuite(false)
@@ -169,11 +170,13 @@ liveCase(
       expect(a.rows().find((one) => one.id === id)?.error).toMatch(
         /unavailable|interrupted|reachable|timed out/i
       )
+      // Transient offline files use the existing Waiting block, separate from refusals.
       expect(
         a.run(
-          `const root=inWindows('.abele-sync-window');let refused;await poll(()=>refused=[...root.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))===${JSON.stringify(path)}),20000,'unsent phone file stays visible during retry');const section=refused.closest('.abele-section');return textOf(section.querySelector('.abele-section__heading'))+': '+textOf(refused)`
+          `const root=inWindows('.abele-sync-window');let refused;await poll(()=>refused=(${notSyncedRow.toString()})(root,${JSON.stringify(path)}),20000,'unsent phone file stays visible during retry');refused.scrollIntoView({block:'center'});if(refused.getBoundingClientRect().height<=0)throw new Error('Unsent file row is hidden');const section=refused.closest('.abele-section');return textOf(section.querySelector('.abele-section__heading'))+': '+textOf(refused)`
         )
-      ).toMatch(/Not sent:.*(?:unavailable|interrupted|reachable|timed out)/i)
+      ).toMatch(/Waiting.*(?:offline|unavailable|interrupted|reachable|timed out)/i)
+      driver(['shot', shotDir('abele-sync-evidence') + '/retry-waiting.png'])
     } finally {
       s.server.resume()
       a.run('window.__abeleTest.setNativeSyncTimeout(null);return true')
