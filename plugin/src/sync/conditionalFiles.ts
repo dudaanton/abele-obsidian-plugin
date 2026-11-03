@@ -47,7 +47,7 @@ export interface ConditionalFileHost {
     maxBytes: number
     wait(path: string): Promise<void>
     acquire(paths: string[]): Promise<CheckedLease>
-    publicationCheck(path: string): () => boolean
+    publicationCheck(path: string, capturedAt?: string): () => boolean
   }
   retention?: RetentionIndex
   root: string
@@ -1003,7 +1003,7 @@ export class ConditionalFiles {
         mtime = (await h.stat(stage.path))?.mtime ?? 0
       }
       if (payload && payload.length > checked.maxBytes) return false
-      const publicationAllowed = checked.publicationCheck(op.path)
+      const publicationAllowed = checked.publicationCheck(op.path, op.expected ? victim : undefined)
       const destination = op.effect.kind === 'move' ? op.effect.to : op.path
       const parent = destination.slice(0, Math.max(0, destination.lastIndexOf('/')))
       if (parent) await h.mkdir(parent)

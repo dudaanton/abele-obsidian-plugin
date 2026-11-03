@@ -2410,9 +2410,15 @@ export function checkedVaultPort(
         if (saving !== true && raw.promise === queue && file?.saving === saving) return
       }
     },
-    publicationCheck(path: string): () => boolean {
+    publicationCheck(path: string, capturedAt?: string): () => boolean {
       const file = vault.getAbstractFileByPath(path)
-      return () => !(file instanceof TFile) || file.path === path
+      // The host can apply our capture notification before rename acknowledges.
+      // That exact private destination is this operation's move, not a user
+      // rename. An unrelated destination must still refuse publication.
+      return () =>
+        !(file instanceof TFile) ||
+        file.path === path ||
+        (capturedAt !== undefined && file.path === capturedAt)
     },
   }
 }

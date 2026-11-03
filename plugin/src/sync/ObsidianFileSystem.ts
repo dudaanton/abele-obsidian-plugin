@@ -1665,7 +1665,8 @@ export class ObsidianFileSystem implements FileSystem {
               maxBytes: MOBILE_WHOLE_READ_MAX,
               wait: (path: string) => checked.wait(path),
               acquire: (paths: string[]) => checked.acquire(paths),
-              publicationCheck: (path: string) => checked.publicationCheck(path),
+              publicationCheck: (path: string, capturedAt?: string) =>
+                checked.publicationCheck(path, capturedAt),
             },
           }
         : {}),

@@ -4,10 +4,26 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { MOBILE_WHOLE_READ_MAX } from '@/sync/mobileWholeRead'
 import { countPullOperation, emptyPullCounts } from '@/sync/pullOperationCounts'
-import { adapterPathGate } from '@/sync/vaultPathLinks'
+import { adapterPathGate, checkedVaultPort } from '@/sync/vaultPathLinks'
 import { deferred } from '../helpers/deferred'
 
 const bytes = (value: string) => new TextEncoder().encode(value)
+
+it('recognizes only its exact indexed capture, never an unrelated local rename', () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'keep' }])
+  const checked = checkedVaultPort(app.vault as never, app.vault.adapter as never, {
+    ready() {},
+    effect: (work) => work(),
+  })
+  const file = app.vault.getFileByPath('sample.md')!
+  const capturedAt = '.private/objects/sample/victim'
+  const allowed = checked.publicationCheck('sample.md', capturedAt)
+  expect(allowed()).toBe(true)
+  file.path = capturedAt
+  expect(allowed()).toBe(true)
+  file.path = 'Other/renamed.md'
+  expect(allowed()).toBe(false)
+})
 
 it('stops real incoming recovery after its mkdir acknowledgement outlives the lease', async () => {
   vi.useFakeTimers()
