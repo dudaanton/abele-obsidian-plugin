@@ -120,7 +120,7 @@ async function performResetSyncTokenState(
       },
       stop: async () => {
         old.cancelStartup()
-        await old.close()
+        await old.close(false)
         ui.reviews?.close()
         // Draining startup may finish activation; snapshot its ownership only now.
         clearMarkers = tokenPoolMarkers(plugin.app, ownedDatabases)

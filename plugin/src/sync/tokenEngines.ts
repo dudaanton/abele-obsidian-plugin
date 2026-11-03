@@ -304,7 +304,10 @@ export class TokenEngines {
       const inspecting = this.startupCancels.has(id) && !ui.runtimes.has(id)
       const deleting = !!record?.state?.['abele-sync-token-state:server-delete']
       if (id) {
-        if (!deleting) await this.live.get(id)?.prepareConnectionChange()
+        // A detached item was already stopped and drained before copy inspection.
+        // Its revoked runtime cannot prepare effects again; the independent
+        // lifecycle checks below still inspect its durable recovery records.
+        if (!deleting && !this.drained.has(id)) await this.live.get(id)?.prepareConnectionChange()
         await this.offloadPorts.get(id)?.prepareDisconnect()
       }
       if (deleting) {
@@ -1903,10 +1906,10 @@ export class TokenEngines {
   cancelStartup(): void {
     for (const cancel of this.startupCancels.values()) cancel()
   }
-  close(): Promise<void> {
+  close(flushUploads = true): Promise<void> {
     if (this.closing !== undefined) return this.closing
     const prior = pendingTeardown(this.app)
-    this.drainingUploads = true
+    this.drainingUploads = flushUploads
     this.closed = true
     this.stopBackgroundActivity()
     this.ui.itemSets.uninstall()
@@ -1916,10 +1919,14 @@ export class TokenEngines {
     this.app.vault.offref(this.deleteEvent)
     this.ui.connectionsChanged = async () => {}
     this.ui.connectionForgotten = async () => {}
-    this.closing = this.flushUploads().finally(() => {
-      this.drainingUploads = false
-      return this.engines.close()
-    })
+    // Reset cancels readers before draining; a fresh exchange could block the
+    // cancellation it is waiting for. Ordinary unload retains its upload flush.
+    this.closing = flushUploads
+      ? this.flushUploads().finally(() => {
+          this.drainingUploads = false
+          return this.engines.close()
+        })
+      : this.engines.close()
     recordTeardown(this.app, Promise.all([prior, this.closing]))
     return this.closing
   }

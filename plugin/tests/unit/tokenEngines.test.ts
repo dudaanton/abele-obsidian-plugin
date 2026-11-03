@@ -772,6 +772,47 @@ it('records host visibility transitions beside sync diagnostics', async () => {
   }
 })
 
+it('checks recovery independently after an item runtime has already drained', async () => {
+  const f = inspectionFixture()
+  f.release()
+  try {
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await f.ui.sync(id)
+    await f.ui.stopRuntime(id)
+    await expect(f.ui.connectionChangeGuard(id)).resolves.toBeUndefined()
+    expect(f.registry.records()).toHaveLength(1)
+  } finally {
+    await f.host.close()
+  }
+})
+
+it('revokes running connections before pool reset drains them without starting another sync', async () => {
+  const f = inspectionFixture()
+  f.release()
+  try {
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await f.ui.sync(id)
+    const runtime = Reflect.get(f.host, 'live').get(id)
+    const order: string[] = []
+    const invalidate = runtime.invalidate.bind(runtime)
+    vi.spyOn(runtime, 'invalidate').mockImplementation(() => {
+      order.push('invalidate')
+      invalidate()
+    })
+    const sync = vi.spyOn(runtime, 'sync').mockImplementation(async () => {
+      order.push('new sync')
+    })
+    await f.host.close(false)
+    expect(sync).not.toHaveBeenCalled()
+    expect(order[0]).toBe('invalidate')
+    expect(f.registry.records()).toHaveLength(1)
+  } finally {
+    await f.host.close()
+  }
+})
+
 it('does not flush a paused connection when leaving the foreground or unloading', async () => {
   const f = inspectionFixture()
   f.release()

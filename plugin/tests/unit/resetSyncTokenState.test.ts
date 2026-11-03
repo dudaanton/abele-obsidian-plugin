@@ -227,6 +227,7 @@ it.each(resetCases)('resets owned state ($retry/$durable)', async ({ retry, dura
     ])
     expect(cancelStartup).toHaveBeenCalledTimes(retry === true ? 2 : 1)
     expect(close).toHaveBeenCalledTimes(retry === true ? 2 : 1)
+    expect(close).toHaveBeenCalledWith(false)
     expect(ui.activity.value).toEqual({})
     expect(tokenOffloadsOf(vault, pathCoordinatorOf(vault))).toBe(manager)
     expect(manager.files()).toEqual([])
