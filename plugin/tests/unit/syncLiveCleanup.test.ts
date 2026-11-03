@@ -51,6 +51,77 @@ it('waits for both peers to consume a directory commit queued after the child de
   expect(primarySeen).toBe(head)
   expect(peerCalls).toBe(3)
 })
+it('waits through a retried read conflict instead of rejecting a successful connect', async () => {
+  const device = new SyncDriver({} as never)
+  const rows: { id: string; status: string }[] = []
+  let activity: { error?: string } = { error: 'Sample file changed while reading' }
+  const engine = {
+    state: 'syncing',
+    lastSyncAt: null as number | null,
+    lastError: 'Sample read conflict' as string | null,
+  }
+  const svc = { rows: { value: rows }, connectionActivity: () => activity }
+  const app = {
+    plugins: {
+      plugins: {
+        abele: {
+          tokenEngines: { ui: svc, live: new Map([['sample', { engine: { status: engine } }]]) },
+        },
+      },
+    },
+  }
+  let first: { ready: boolean; error?: string } | undefined
+  vi.spyOn(device, 'long').mockImplementation(async (_what, body) => {
+    const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor
+    let connected = false
+    return new AsyncFunction(
+      'svc',
+      'app',
+      'openSyncTab',
+      'press',
+      'poll',
+      'modal',
+      'typeInto',
+      'waitForStartup',
+      'closeSettings',
+      body
+    )(
+      svc,
+      app,
+      async () => ({}),
+      async (_root: unknown, label: string) => {
+        if (label === 'Connect') {
+          connected = true
+          rows.push({ id: 'sample', status: 'syncing' })
+        }
+      },
+      async () => {},
+      () => (connected ? null : { querySelector: () => ({}) }),
+      () => {},
+      async (read: () => { ready: boolean; error?: string }) => {
+        first = read()
+        expect(first).toMatchObject({ ready: false, error: undefined })
+        rows[0].status = 'error'
+        engine.state = 'error'
+        expect(read().error).toBe('Sample file changed while reading')
+        activity = {}
+        engine.lastError = null
+        expect(read().error).toBe('Connection entered error before its first successful sync')
+        activity = {}
+        rows[0].status = 'idle'
+        engine.state = 'idle'
+        engine.lastSyncAt = 1000
+        engine.lastError = null
+        expect(read()).toMatchObject({ ready: true, error: undefined })
+      },
+      async () => {}
+    )
+  })
+  const result = await device.connect('sample-token').catch((error: unknown) => error)
+  expect(first).toMatchObject({ ready: false, error: undefined })
+  expect(result).toBe('sample')
+})
+
 it('revokes old polling jobs and refuses late completion without resurrecting them', () => {
   const jobs = { __abeleSyncJobold: null, __abeleSyncJobcurrent: null, unrelated: 'keep' }
   cancelSyncJobs(jobs, '__abeleSyncJobcurrent')
