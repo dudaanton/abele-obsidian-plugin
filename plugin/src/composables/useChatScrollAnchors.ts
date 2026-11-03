@@ -6,8 +6,9 @@ export const offsetOf = (el: HTMLElement, container: HTMLElement) =>
 
 interface ChatScrollAnchorsOptions {
   messagesContainer: Ref<HTMLElement | null>
-  scrollContainerTo: (el: HTMLElement, top: number) => void
+  scrollContainerTo: (el: HTMLElement, top: number, reason: string) => void
   shouldAutoScroll: () => boolean
+  isStreaming?: () => boolean
 }
 
 export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
@@ -46,7 +47,7 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
 
     const drift = offsetOf(anchor.el, container) - anchor.offset
     if (Math.abs(drift) < 1) return
-    scrollContainerTo(container, container.scrollTop + drift)
+    scrollContainerTo(container, container.scrollTop + drift, 'message-anchor')
   }
 
   /**
@@ -107,8 +108,9 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
    * not following the end.
    *
    * Kept as the block at the top of the box, a paragraph or a chart of a message, and where it
-   * sits in the conversation. Whatever moves that block up or down is layout, and is taken back
-   * out of the scroll; the reader scrolling moves the box, not the block, so it is never fought.
+   * sits in the box. Only its remaining visual drift is taken back out of the scroll, including
+   * any layout scroll the browser already applied. Reader input releases the hold before the
+   * next reading position is measured, so that scrolling is never fought.
    * That is what the browser's own scroll anchoring does too, and the two cannot both correct the
    * same change: the browser's is off for as long as this one holds.
    *
@@ -119,7 +121,70 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
    * folded away, the message's own chrome.
    */
   const STEADY_MS = 1500
-  let steady: { el: HTMLElement; at: number; until: number } | null = null
+  interface BlockKey {
+    root: HTMLElement
+    index: number
+    tag: string
+    text: string
+    messageId?: string
+    streamingHost: HTMLElement | null
+    precedingIds: Set<string | undefined>
+  }
+  let steady: {
+    el: HTMLElement
+    key: BlockKey | null
+    offset: number
+    until: number
+    waiting?: boolean
+  } | null = null
+
+  const blockKey = (el: HTMLElement, container: HTMLElement): BlockKey | null => {
+    const root = el.parentElement
+    if (!root?.classList.contains('abele-markdown')) return null
+    return {
+      root,
+      index: Array.from(root.children).indexOf(el),
+      tag: el.tagName,
+      text: el.textContent ?? '',
+      messageId: el.closest<HTMLElement>('[data-message-id]')?.dataset.messageId,
+      streamingHost: el.closest<HTMLElement>('.abele-ai-chat__streaming'),
+      precedingIds: new Set(
+        Array.from(container.querySelectorAll<HTMLElement>('[data-message-id]')).map(
+          (message) => message.dataset.messageId
+        )
+      ),
+    }
+  }
+
+  /** Re-rendered blocks keep their place within the same message, including stream handoff. */
+  const resolveBlock = (key: BlockKey, container: HTMLElement): HTMLElement | null => {
+    const roots: HTMLElement[] = []
+    if (container.contains(key.root)) roots.push(key.root)
+    for (const message of Array.from(
+      container.querySelectorAll<HTMLElement>('[data-message-id]')
+    )) {
+      const id = message.dataset.messageId
+      if (key.messageId ? id !== key.messageId : !key.streamingHost || key.precedingIds.has(id))
+        continue
+      roots.push(...Array.from(message.querySelectorAll<HTMLElement>('.abele-markdown')))
+    }
+    if (!key.messageId && key.streamingHost && container.contains(key.streamingHost))
+      roots.push(...Array.from(key.streamingHost.querySelectorAll<HTMLElement>('.abele-markdown')))
+    for (const root of roots) {
+      const blocks = Array.from(root.children)
+      const matches = (el: Element | undefined): el is HTMLElement =>
+        !!el?.instanceOf(HTMLElement) &&
+        el.tagName === key.tag &&
+        (el.textContent ?? '').startsWith(key.text)
+      const indexed = blocks[key.index]
+      const found = matches(indexed) ? indexed : blocks.find(matches)
+      if (!found) continue
+      key.root = root
+      key.messageId = found.closest<HTMLElement>('[data-message-id]')?.dataset.messageId
+      return found
+    }
+    return null
+  }
 
   /** Where an element sits in the conversation, whatever the scroll. */
   const placeOf = (el: HTMLElement, container: HTMLElement) =>
@@ -148,6 +213,8 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
   }
 
   const endSteady = (container?: HTMLElement | null) => {
+    if (steady)
+      console.debug('[chat-scroll] release reading anchor', { scrollTop: container?.scrollTop })
     steady = null
     container?.classList.remove('abele-ai-chat__messages_steady')
   }
@@ -156,20 +223,41 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
   const holdSteady = () => {
     const container = messagesContainer.value
     if (!container || !steady) return
-    const { el } = steady
-    if (
-      !el.isConnected ||
-      !el.getClientRects().length ||
-      container.win.performance.now() > steady.until
-    ) {
+    if (options.isStreaming?.() && !options.shouldAutoScroll())
+      steady.until = container.win.performance.now() + STEADY_MS
+    if (container.win.performance.now() > steady.until) {
+      console.debug('[chat-scroll] invalid reading anchor', {
+        expired: true,
+        streaming: options.isStreaming?.(),
+      })
       endSteady(container)
       return
     }
-    const at = placeOf(el, container)
-    const moved = at - steady.at
+    if (!container.contains(steady.el) || !steady.el.getClientRects().length) {
+      const replacement = steady.key && resolveBlock(steady.key, container)
+      if (!replacement?.getClientRects().length) {
+        // Keep the original offset while the renderer's new host is still empty.
+        // A transition watcher must not replace it with another visible paragraph.
+        if (!steady.waiting)
+          console.debug('[chat-scroll] waiting for reading block', { keyed: !!steady.key })
+        steady.waiting = true
+        return
+      }
+      steady.el = replacement
+      steady.waiting = false
+      console.debug('[chat-scroll] resolved reading block', {
+        index: steady.key?.index,
+        offset: offsetOf(replacement, container),
+        wantedOffset: steady.offset,
+      })
+    }
+    const { el } = steady
+    // Measure the remaining visual drift. Layout may already have moved scrollTop
+    // (for example during a host transfer); document-space growth would correct it twice.
+    const moved = offsetOf(el, container) - steady.offset
     // Another hold is putting the reader back already — a page revealed above them.
-    if (!anchor && Math.abs(moved) >= 1) scrollContainerTo(container, container.scrollTop + moved)
-    steady.at = at
+    if (!anchor && Math.abs(moved) >= 1)
+      scrollContainerTo(container, container.scrollTop + moved, 'reading-block')
   }
 
   /**
@@ -233,14 +321,32 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
   const steadyReader = () => {
     const container = messagesContainer.value
     if (!container || options.shouldAutoScroll() || closed) return
+    // Apply any layout still pending on the existing block before taking a new
+    // measurement for a transition or reader scroll.
+    holdSteady()
     holdFloor(container)
+    if (steady) {
+      steady.until = container.win.performance.now() + STEADY_MS
+      return
+    }
     const el = blockAtTop(container)
     if (!el) return
     const win = container.win
-    const fresh = !steady
-    steady = { el, at: placeOf(el, container), until: win.performance.now() + STEADY_MS }
+    steady = {
+      el,
+      key: blockKey(el, container),
+      offset: offsetOf(el, container),
+      until: win.performance.now() + STEADY_MS,
+    }
+    console.debug('[chat-scroll] reading anchor', {
+      tag: el.tagName,
+      className: el.className,
+      offset: steady.offset,
+      scrollTop: container.scrollTop,
+      scrollHeight: container.scrollHeight,
+      clientHeight: container.clientHeight,
+    })
     container.classList.add('abele-ai-chat__messages_steady')
-    if (!fresh) return
     const hold = () => {
       if (!steady) return
       holdSteady()

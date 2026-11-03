@@ -49,10 +49,24 @@ export function useChatScroll(options: ChatScrollOptions) {
   let bottomGap = 0
 
   /** Scrolls the container, remembering where the browser actually settled. */
-  const scrollContainerTo = (el: HTMLElement, top: number) => {
+  const scrollContainerTo = (el: HTMLElement, top: number, reason: string) => {
+    const before = el.scrollTop
     el.scrollTop = top
     codeScrollTop = el.scrollTop
     bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (Math.abs(el.scrollTop - before) >= 1)
+      console.debug('[chat-scroll] correction', {
+        reason,
+        delta: el.scrollTop - before,
+        requestedDelta: top - before,
+        before,
+        after: el.scrollTop,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        bottomGap,
+        following: shouldAutoScroll,
+        streaming: isStreaming.value,
+      })
   }
 
   /**
@@ -79,6 +93,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     messagesContainer,
     scrollContainerTo,
     shouldAutoScroll: () => shouldAutoScroll,
+    isStreaming: () => isStreaming.value,
   })
   const { captureAnchor, holdAnchor, holdAnchorAWhile, steadyReader, holdSteady, endSteady } =
     anchors
@@ -94,8 +109,13 @@ export function useChatScroll(options: ChatScrollOptions) {
    * being taken hold of says what the scroll event cannot.
    */
   const readerTakesOver = (event?: Event) => {
+    console.debug('[chat-scroll] reader input', {
+      type: event?.type,
+      scrollTop: messagesContainer.value?.scrollTop,
+    })
     sendScrollPending = false
     anchors.anchor = null
+    endSteady(messagesContainer.value)
     // Heading up, said before the frame reports any scroll: a piece of the reply landing in
     // between used to take a reader still near the end back to it, flick after flick.
     // By type rather than by class: a chat in a popped-out window gets that window's events.
@@ -127,6 +147,8 @@ export function useChatScroll(options: ChatScrollOptions) {
     if (!el) return
     bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
     shouldAutoScroll = !hasNewer.value && bottomGap < AUTO_SCROLL_THRESHOLD_PX
+    if (shouldAutoScroll) endSteady(el)
+    else if (isStreaming.value) steadyReader()
   }
 
   /**
@@ -265,11 +287,21 @@ export function useChatScroll(options: ChatScrollOptions) {
     if (el.clientHeight !== boxHeight) return
     // The container is exactly where it was put, so nobody has moved it since.
     if (codeScrollTop !== null && Math.abs(el.scrollTop - codeScrollTop) < 1) return
+    console.debug('[chat-scroll] scroll event', {
+      scrollTop: el.scrollTop,
+      codeScrollTop,
+      bottomGap: el.scrollHeight - el.scrollTop - el.clientHeight,
+      following: shouldAutoScroll,
+      readingAnchor: anchors.keepingReader,
+      fingerDown,
+    })
     codeScrollTop = null
     // The reader has taken over; whatever was being held is where they left it.
     anchors.anchor = null
     bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
     shouldAutoScroll = !hasNewer.value && bottomGap < AUTO_SCROLL_THRESHOLD_PX
+    if (shouldAutoScroll) endSteady(el)
+    else if (isStreaming.value && !fingerDown) steadyReader()
     if (el.scrollTop < LOAD_OLDER_THRESHOLD_PX) loadOlder()
     else if (bottomGap < LOAD_OLDER_THRESHOLD_PX) loadNewer()
   }
@@ -280,7 +312,7 @@ export function useChatScroll(options: ChatScrollOptions) {
       const el = messagesContainer.value
       // Asked again: the reader may have scrolled away in the tick between.
       if (!el || !shouldAutoScroll || fingerDown) return
-      scrollContainerTo(el, el.scrollHeight)
+      scrollContainerTo(el, el.scrollHeight, sendScrollPending ? 'send' : 'follow')
       sendScrollPending = false
     })
   }
@@ -321,8 +353,13 @@ export function useChatScroll(options: ChatScrollOptions) {
     void nextTick(() => {
       if (!el || !messagesContainer.value) return
       boxHeight = el.clientHeight
-      if (shouldAutoScroll) scrollContainerTo(el, el.scrollHeight)
-      else scrollContainerTo(el, el.scrollHeight - el.clientHeight - gapBeforeComposing)
+      if (shouldAutoScroll) scrollContainerTo(el, el.scrollHeight, 'composer-close-follow')
+      else
+        scrollContainerTo(
+          el,
+          el.scrollHeight - el.clientHeight - gapBeforeComposing,
+          'composer-close-gap'
+        )
       revealUntilScrollable()
     })
   })
@@ -371,13 +408,23 @@ export function useChatScroll(options: ChatScrollOptions) {
     // Hidden under the opened composer: a box of nothing is not a change the reader made.
     if (!el || composing.value) return
     if (el.clientHeight !== boxHeight) {
+      console.debug('[chat-scroll] box resize', {
+        before: boxHeight,
+        after: el.clientHeight,
+        scrollTop: el.scrollTop,
+        scrollHeight: el.scrollHeight,
+        bottomGap,
+        following: shouldAutoScroll,
+        messageAnchor: !!anchors.anchor,
+        readingAnchor: anchors.keepingReader,
+      })
       boxHeight = el.clientHeight
       if (!shouldAutoScroll) {
         // A reply and the composer can change together. The old bottom gap excludes the
         // reply's new height; using it would scroll that height past the reader.
         if (anchors.anchor) holdAnchor()
         else if (anchors.keepingReader) holdSteady()
-        else scrollContainerTo(el, el.scrollHeight - el.clientHeight - bottomGap)
+        else scrollContainerTo(el, el.scrollHeight - el.clientHeight - bottomGap, 'box-resize-gap')
         bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
       }
     }

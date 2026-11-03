@@ -39,6 +39,7 @@ const READ_AT = 40
 
 interface Report {
   error?: string
+  scrollTrace?: unknown[]
   /** How far the paragraph read strayed from where the reader put it, while the reply streamed. */
   driftWhileStreaming: number
   /** And once the reply had ended and settled as a message. */
@@ -89,9 +90,17 @@ const script = (phone: boolean) => `(async () => {
   const REPLY = ${JSON.stringify(REPLY)}
   const READ_AT = ${READ_AT}
   const FAKE = 'https://abele-e2e-fake-provider.invalid/v1'
-  const report = { driftWhileStreaming: 0, driftAfter: 0, atEndAfter: false, samples: 0, chartErrors: 0, placeholders: 0, chartsAfter: 0, placeholdersAfter: 0 }
+  const report = { scrollTrace: [], driftWhileStreaming: 0, driftAfter: 0, atEndAfter: false, samples: 0, chartErrors: 0, placeholders: 0, chartsAfter: 0, placeholdersAfter: 0 }
   const createdDirs = []
   const realFetch = window.fetch
+  const realDebug = console.debug
+  console.debug = (...args) => {
+    if (typeof args[0] === 'string' && args[0].startsWith('[chat-scroll]')) {
+      report.scrollTrace.push({ at: performance.now(), args })
+      if (report.scrollTrace.length > 1000) report.scrollTrace.shift()
+    }
+    realDebug.apply(console, args)
+  }
 
   const cut = (text) => {
     const out = []
@@ -198,6 +207,7 @@ const script = (phone: boolean) => `(async () => {
     await wait(200)
 
     // The reader takes over and scrolls the paragraph to near the top.
+    report.scrollTrace.length = 0
     el.dispatchEvent(new ${phone ? "Event('touchstart'" : "WheelEvent('wheel'"}, { bubbles: true, deltaY: -120 }))
     el.scrollTop = el.scrollTop + offset(el, reading(el)) - READ_AT
     // No scroll event is waited for: the wheel or the finger has said it, and a piece of the
@@ -237,6 +247,7 @@ const script = (phone: boolean) => `(async () => {
   } finally {
     watching = false
     window.fetch = realFetch
+    console.debug = realDebug
     try {
       if (session) {
         session.abort()
@@ -255,8 +266,11 @@ const script = (phone: boolean) => `(async () => {
   return JSON.stringify(report)
 })()`
 
-const run = async (phone: boolean): Promise<Report> =>
-  JSON.parse(await evalLong(script(phone), 120_000)) as Report
+const run = async (phone: boolean): Promise<Report> => {
+  const report = JSON.parse(await evalLong(script(phone), 120_000)) as Report
+  console.debug('[chat-scroll] live trace', JSON.stringify({ phone, trace: report.scrollTrace }))
+  return report
+}
 
 const expectSteady = (get: () => Report) => {
   it('got through without an error of its own', () => {

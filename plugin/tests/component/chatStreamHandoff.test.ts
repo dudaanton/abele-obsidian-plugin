@@ -13,7 +13,7 @@ afterEach(() => {
   document.body.replaceChildren()
 })
 
-it('holds the paragraph below a clipped chart through a streamed reply and tool handoff', async () => {
+async function streamScenario(replaceDom: boolean) {
   useVault([])
   const messages = ref<ChatMessage[]>([
     { id: 'sample-question', role: 'user', content: 'A sample plan', timestamp: 1 } as ChatMessage,
@@ -22,12 +22,12 @@ it('holds the paragraph below a clipped chart through a streamed reply and tool 
   const streaming = ref(true)
   const box = document.createElement('div')
   box.innerHTML =
-    '<div class="abele-chat-msg" data-message-id="sample-question"></div><div class="streaming"><div class="abele-markdown"><div class="chart"></div><p>Reading point</p><p>More of the reply</p></div></div>'
+    '<div class="abele-chat-msg" data-message-id="sample-question"></div><div class="abele-ai-chat__streaming"><div class="abele-ai-chat__streaming-content"><div class="abele-markdown"><div class="chart"></div><p>Reading point</p><p>More of the reply</p></div></div></div>'
   document.body.append(box)
   const stream = box.lastElementChild as HTMLElement
-  const markdown = stream.firstElementChild as HTMLElement
+  let markdown = stream.querySelector('.abele-markdown') as HTMLElement
   const chart = markdown.children[0] as HTMLElement
-  const paragraph = markdown.children[1] as HTMLElement
+  let paragraph = markdown.children[1] as HTMLElement
   const more = markdown.children[2] as HTMLElement
   let chartHeight = 220
   let tailHeight = 1200
@@ -97,6 +97,42 @@ it('holds the paragraph below a clipped chart through a streamed reply and tool 
     await nextTick()
     expect(paragraph.getBoundingClientRect().top).toBe(40)
   }
+  // Layout above the reading point can finish long before the tool handoff, after
+  // a short transition hold would have expired.
+  await advance(1800)
+  chartHeight += 172
+  await advance(40)
+  expect(Math.abs(paragraph.getBoundingClientRect().top - 40)).toBeLessThanOrEqual(2)
+  // An actual wheel gesture replaces the held reading position rather than being
+  // mistaken for a layout scroll and corrected back to the old position.
+  scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: -100 }))
+  box.scrollTop -= 100
+  scroll.onMessagesScroll()
+  await advance(40)
+  expect(paragraph.getBoundingClientRect().top).toBe(140)
+  scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: 100 }))
+  box.scrollTop += 100
+  scroll.onMessagesScroll()
+  await advance(40)
+  expect(paragraph.getBoundingClientRect().top).toBe(40)
+  if (replaceDom) {
+    const replacement = markdown.cloneNode(true) as HTMLElement
+    markdown.remove()
+    text.value = ''
+    await nextTick()
+    text.value = 'Continuing the sample reply'
+    await nextTick()
+    // A render can leave the host empty across several frames. The streaming hold
+    // must retain its identity longer than the ordinary transition timeout.
+    await advance(1800)
+    chartHeight += 172
+    markdown = replacement
+    paragraph = markdown.children[1] as HTMLElement
+    layout(paragraph, paragraphAt, () => 60)
+    stream.firstElementChild!.append(markdown)
+    await advance(40)
+    expect(Math.abs(paragraph.getBoundingClientRect().top - 40)).toBeLessThanOrEqual(2)
+  }
   // A tool call ends the first answer. Markdown transfers its existing blocks to the
   // completed message, as the real renderer does, while the next answer starts below it.
   messages.value = [
@@ -120,8 +156,27 @@ it('holds the paragraph below a clipped chart through a streamed reply and tool 
   )
   answer.append(markdown)
   stream.replaceWith(answer)
+  if (replaceDom) {
+    // The completed message may render a fresh host too. Resolve the block in the
+    // newly mounted message rather than the next streamed answer below it.
+    const replacement = markdown.cloneNode(true) as HTMLElement
+    markdown.replaceWith(replacement)
+    markdown = replacement
+    paragraph = markdown.children[1] as HTMLElement
+    layout(paragraph, paragraphAt, () => 60)
+    chartHeight += 168
+    await advance(40)
+    expect(Math.abs(paragraph.getBoundingClientRect().top - 40)).toBeLessThanOrEqual(2)
+  }
   // The chart finishes its layout in the new host. Its top does not move; its bottom
   // and the reading paragraph move by one row's height unless the paragraph is held.
+  chartHeight += 170
+  // A layout scroll has already compensated the growth before our hold runs.
+  // Correcting by document-space growth again would move the reader twice.
+  box.scrollTop += 170
+  await advance(40)
+  expect(Math.abs(paragraph.getBoundingClientRect().top - 40)).toBeLessThanOrEqual(2)
+  // The same layout change without a browser adjustment still needs one correction.
   chartHeight += 170
   await advance(40)
   expect(Math.abs(paragraph.getBoundingClientRect().top - 40)).toBeLessThanOrEqual(2)
@@ -139,4 +194,12 @@ it('holds the paragraph below a clipped chart through a streamed reply and tool 
     'sample-question',
     'sample-answer',
   ])
-})
+  await advance(1600)
+  expect(box.classList.contains('abele-ai-chat__messages_steady')).toBe(false)
+}
+
+it('holds the paragraph below a clipped chart through a streamed reply and tool handoff', () =>
+  streamScenario(false))
+
+it('holds the same paragraph when streaming and completed Markdown replace their DOM', () =>
+  streamScenario(true))
