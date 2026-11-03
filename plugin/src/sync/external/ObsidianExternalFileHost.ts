@@ -246,8 +246,9 @@ export class ExternalFileHost {
           const work = async () => {
             this.assertOwned()
             if (key === 'remove') {
-              await this.options.beforeRemoval?.(args[0] as string)
-              // Synchronous permission check inside the placement lock, after all awaits.
+              // prepareRemoval captured owed bytes before the exclusive reservation.
+              // Capturing again here would use engine paths held by that reservation.
+              // The byte and synchronous permission checks still fence deletion.
               this.options.assertRemovalAllowed?.(args[0] as string)
             }
             return this.effect(() => value.apply(target, args))

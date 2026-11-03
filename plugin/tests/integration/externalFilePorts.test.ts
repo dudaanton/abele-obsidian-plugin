@@ -760,3 +760,30 @@ describe('external-file host coordination and filesystem effects', () => {
     )
   })
 })
+
+it('captures an offload source before reservation, never again inside the reserved removal', async () => {
+  const fake = buildFakeVault([{ path: source, content: 'sample verified bytes' }])
+  Object.assign(fake.workspace, { iterateAllLeaves: () => {} })
+  let reserved = false
+  const capture = vi.fn(async () => {
+    if (reserved) throw new Error('Cannot capture a path reserved for offload')
+  })
+  const host = new ExternalFileHost(fake as unknown as App, {
+    platform: 'mobile',
+    assertOwned: () => {},
+    beforeRemoval: capture,
+  })
+  try {
+    await host.prepareRemoval(source)
+    reserved = true
+    const expected = { path: source, sha: await sha256(base), size: base.length }
+    reserved = true
+    expect(await host.run(queue(), request, (effects) => effects.deleteOriginal(expected))).toEqual(
+      { status: 'deleted', reclaimedBytes: base.length }
+    )
+    expect(capture).toHaveBeenCalledTimes(1)
+    expect(await fake.vault.adapter.exists(source)).toBe(false)
+  } finally {
+    host.close()
+  }
+})
