@@ -249,6 +249,13 @@ async function setup(scopedMode = false) {
   })
   return { factory, name, store, state, fake, fs, runtime, verify, file, projection }
 }
+it('shares dirty-provenance persistence when concurrent readers see an offloaded original', async () => {
+  const s = await setup()
+  await s.fake.vault.adapter.writeBinary(path, bytes.buffer as ArrayBuffer)
+  const decisions = await Promise.all(Array.from({ length: 8 }, () => s.runtime.classify(path)))
+  expect(decisions.every((decision) => decision.kind === 'hold')).toBe(true)
+  await expect(s.runtime.classify(path)).resolves.toMatchObject({ kind: 'hold' })
+})
 const event = (patch = {}) => ({
   seq: 2,
   file_id: id,
@@ -872,6 +879,9 @@ describe('common external representation and durable remote projection work', ()
       .mockImplementation(commit)
     await expect(s.runtime.detach(id)).rejects.toThrow('sample aborted detach')
     expect((await s.state.snapshot()).files[0].availability).toBe('active')
+    await expect(s.runtime.classify(path)).rejects.toMatchObject({
+      cause: { message: 'sample aborted detach' },
+    })
     const runtime = await ExternalRepresentation.open({
       state: await ExternalState.open(s.store, 'sample-ledger', s.file.binding),
       ledger: s.store,

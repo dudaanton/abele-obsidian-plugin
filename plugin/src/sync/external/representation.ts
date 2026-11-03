@@ -124,6 +124,8 @@ export class ExternalRepresentation {
   private readonly entries = new Map<string, StateEntry>()
   private inspectionDirty = false
   private stopped = false
+  private stopCause?: unknown
+  private unexpectedSave: Promise<void> = Promise.resolve()
   private readonly unexpected = new Set<string>()
   private readonly inspected = new Map<string, InspectionEntry>()
   /** Files whose identity was verified in the current proof scope, by their revision in it. */
@@ -256,7 +258,32 @@ export class ExternalRepresentation {
   private owned(): void {
     this.options.assertOwned()
     if (this.stopped)
-      throw new ExternalRecoveryRequired('external commit outcome requires recovery')
+      throw Object.assign(
+        new ExternalRecoveryRequired('external commit outcome requires recovery'),
+        { cause: this.stopCause }
+      )
+  }
+  private saveUnexpected(fileId: string): Promise<void> {
+    // Several host/core readers can discover the same original in one task.
+    // Share the persisted provenance bit; parallel phase commits are not nested
+    // transactions and must never invalidate the connection's recovery boundary.
+    const next = this.unexpectedSave.then(async () => {
+      if (this.unexpected.has(fileId)) return
+      this.owned()
+      const state = this.options.state
+      if (!state) throw new ExternalRecoveryRequired('external state missing')
+      const current = await state.snapshot()
+      this.owned()
+      await state.commit({
+        expectedRevision: current.revision,
+        ledger: { metadata: [{ key: unexpectedKey(fileId), value: 'unresolved' }] },
+      })
+      this.document = await state.snapshot()
+      this.owned()
+      this.unexpected.add(fileId)
+    })
+    this.unexpectedSave = next.catch(() => {})
+    return next
   }
   private ownedInTask = false
   /** Ownership for a read-only decision, proven once per host task. A ledger walk classifies
@@ -264,7 +291,10 @@ export class ExternalRepresentation {
    * another runtime's claim lands in a task of its own. Every effect keeps {@link owned}. */
   private ownedRead(): void {
     if (this.stopped)
-      throw new ExternalRecoveryRequired('external commit outcome requires recovery')
+      throw Object.assign(
+        new ExternalRecoveryRequired('external commit outcome requires recovery'),
+        { cause: this.stopCause }
+      )
     if (this.ownedInTask) return
     this.owned()
     this.ownedInTask = true
@@ -299,7 +329,11 @@ export class ExternalRepresentation {
         const decision = inspection.trustedUninspected(entry)
         this.count(
           'state.trust',
-          decision === true ? 'uninspected-trusted' : typeof decision === 'string' ? decision : 'other'
+          decision === true
+            ? 'uninspected-trusted'
+            : typeof decision === 'string'
+              ? decision
+              : 'other'
         )
         return decision === true
       }
@@ -460,16 +494,9 @@ export class ExternalRepresentation {
           // Dirty provenance survives unavailable/delete/approval blockers. The observation is
           // durable before scanner/metadata callers can acknowledge it; no second head table.
           try {
-            if (!this.options.state) throw new ExternalRecoveryRequired('external state missing')
-            this.owned()
-            await this.options.state.commit({
-              expectedRevision: this.document.revision,
-              ledger: { metadata: [{ key: unexpectedKey(file.fileId), value: 'unresolved' }] },
-            })
-            this.document = await this.options.state.snapshot()
-            this.owned()
-            this.unexpected.add(file.fileId)
+            await this.saveUnexpected(file.fileId)
           } catch (error) {
+            this.stopCause ??= error
             this.stopped = true
             throw error
           }
@@ -990,6 +1017,7 @@ export class ExternalRepresentation {
       for (const entry of ledger?.putEntries ?? []) this.entries.set(entry.fileId, entry)
       this.owned()
     } catch (error) {
+      this.stopCause ??= error
       this.stopped = true
       throw error
     }
