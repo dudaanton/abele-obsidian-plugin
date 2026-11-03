@@ -15,6 +15,24 @@ import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { deferred } from '../helpers/deferred'
 import { LocalPlacementError } from '@/sync/localFolderPlacement'
 
+it('drains a retry before inspecting disconnect safety without discarding local state', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  const order: string[] = []
+  Reflect.set(ui, 'prepareDisconnect', async () => {
+    order.push('drain')
+    expect(registry.records().some((one) => one.id === id)).toBe(true)
+  })
+  ui.connectionChangeGuard = async () => {
+    expect(order).toEqual(['drain'])
+    order.push('inspect')
+  }
+  await ui.disconnect(id)
+  expect(order).toEqual(['drain', 'inspect'])
+  expect(registry.records()).toEqual([])
+})
+
 it('keeps bounded stack frames and the cause chain for a startup failure', () => {
   const cause = Object.assign(new Error('saved row is unreadable'), { code: 'io' })
   const wrapper = new Error('Could not finish starting sync', { cause })

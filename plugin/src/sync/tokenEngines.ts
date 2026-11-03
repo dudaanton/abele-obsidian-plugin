@@ -239,6 +239,9 @@ export class TokenEngines {
       } else await this.engines.remove(id)
       this.drained.add(id)
     }
+    ui.prepareDisconnect = async (id) => {
+      if (this.live.has(id) && !this.drained.has(id)) await ui.stopRuntime(id)
+    }
     ui.connectionForgotten = async (id) => {
       await this.engines.remove(id)
       if (ui.registry.records().length === 0) releaseVaultPathGuard(this.app.vault)
@@ -310,14 +313,15 @@ export class TokenEngines {
         if (!deleting && !this.drained.has(id)) await this.live.get(id)?.prepareConnectionChange()
         await this.offloadPorts.get(id)?.prepareDisconnect()
       }
-      if (deleting) {
+      if (deleting || this.drained.has(id)) {
         const stopped = () => {
           assertCurrent()
           const current = this.ui.registry.records().find((one) => one.id === id)
           if (
             this.closed ||
             !this.drained.has(id) ||
-            !current?.state?.['abele-sync-token-state:server-delete']
+            !current ||
+            (deleting && !current.state?.['abele-sync-token-state:server-delete'])
           )
             throw new Error(
               'Server deletion is awaiting confirmation; this connection cannot restart.'
@@ -346,7 +350,7 @@ export class TokenEngines {
             store.close()
           }
         }
-        await settleStoppedInstallationsForDeletion(scopedApp, stopped)
+        if (deleting) await settleStoppedInstallationsForDeletion(scopedApp, stopped)
       }
       await requireExternalLifecycleSafety(
         scopedApp,

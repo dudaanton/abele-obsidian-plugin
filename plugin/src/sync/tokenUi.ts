@@ -398,6 +398,7 @@ export class TokenUi {
   disconnectRuntime: (id: string) => Promise<void> = async (id) => {
     await this.runtimes.get(id)?.disconnect()
   }
+  prepareDisconnect: (id: string) => Promise<void> = async () => {}
   /** Stop a connection's sync for good: abort its requests and wait for its effects to drain. */
   stopRuntime: (id: string) => Promise<void> = async (id) => {
     await this.runtimes.get(id)?.disconnect()
@@ -1420,6 +1421,7 @@ export class TokenUi {
       }
     const before = JSON.stringify(identity(record))
     this.runtimes.get(id)?.assertCurrent?.()
+    await this.prepareDisconnect(id)
     await this.connectionChangeGuard(id)
     this.runtimes.get(id)?.assertCurrent?.()
     const current = this.registry.records().find((one) => one.id === id)
