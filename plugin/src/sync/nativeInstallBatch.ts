@@ -17,6 +17,20 @@ export interface InstallItem {
   sha: string
   mtime: number
 }
+/** Diagnostic evidence only: an intent owns a stage but does not certify its bytes. */
+export interface StageRecoveryVerification {
+  kind: 'private-stage-recovery'
+  id: string
+  target: string
+  stage: string
+  sha: string
+  size: number
+  pending: true
+  usableIdentityReceipt: false
+  startedAt: number
+  completedAt?: number
+  status: 'started' | 'verified' | 'mismatch' | 'failed'
+}
 export interface InstallBatchHost {
   fs: FileSystem
   disk: DataAdapter
@@ -30,6 +44,7 @@ export interface InstallBatchHost {
   parents(path: string): Promise<void>
   publish(from: string, to: string, signal?: AbortSignal): Promise<void>
   installed(item: InstallItem): void | Promise<void>
+  recoveryVerification?(receipt: StageRecoveryVerification): void
   /** Caller may join final journal retirement with durable installation receipts. */
   retire?(work: () => void): void
 }
@@ -93,8 +108,33 @@ export async function nativeInstallBatch<T>(
       let previous: JournalEntry | undefined
       for (const entry of existing) {
         if (entry.replacementSha !== item.sha || !(await disk.stat(entry.temp))) continue
-        const identity = await io.fingerprint(entry.temp, undefined, true)
-        if (identity.sha === item.sha && identity.size === item.size) {
+        // A previous batch owns this private cache, not a durable content identity.
+        // Even an earlier seal may have been interrupted before its receipt committed.
+        const receipt: StageRecoveryVerification = {
+          kind: 'private-stage-recovery',
+          id: crypto.randomUUID(),
+          target: item.path,
+          stage: entry.temp,
+          sha: item.sha,
+          size: item.size,
+          pending: true,
+          usableIdentityReceipt: false,
+          startedAt: Date.now(),
+          status: 'started',
+        }
+        host.recoveryVerification?.({ ...receipt })
+        let verified = false
+        try {
+          const identity = await io.fingerprint(entry.temp, undefined, true)
+          verified = identity.sha === item.sha && identity.size === item.size
+          receipt.status = verified ? 'verified' : 'mismatch'
+        } catch (error) {
+          receipt.status = 'failed'
+          throw error
+        } finally {
+          host.recoveryVerification?.({ ...receipt, completedAt: Date.now() })
+        }
+        if (verified) {
           previous = entry
           break
         }

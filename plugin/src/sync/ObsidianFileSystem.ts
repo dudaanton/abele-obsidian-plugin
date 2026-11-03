@@ -513,6 +513,16 @@ export class ObsidianFileSystem implements FileSystem {
               release()
             }
           },
+          recoveryVerification: (receipt) => {
+            // Device-local lifecycle evidence; never an installation acknowledgement.
+            this.diagnostic?.(
+              'stage recovery verification',
+              receipt.startedAt,
+              JSON.stringify(receipt),
+              [receipt.target, receipt.stage]
+            )
+            console.debug('[abele-sync] stage recovery verification', receipt)
+          },
           retire: host
             ? (work) => {
                 retire = work
