@@ -23,6 +23,10 @@ deep heap diagnostics are disabled. Phase overrides cannot replace those flags.
 The full profile retains reindex and interruption phases; only fixture and phase
 settings differ. Strict-restart setup suppression remains a per-launch setting in
 the shared runner for both profiles, with the same interruption oracle.
+Policy uses `failureDiagnosticEnabled` (boolean); the deployed observer's
+`failureDiagnostic` is a module path resolved by `observerDeploymentConfig`, never
+a policy flag. Module locations and flags are checked separately before observer
+startup in the no-app regression tests.
 
 The targeted defaults are `seed: 42` and
 `parameters: {"files":5000,"bytes":1789569707,"wideFolderFiles":512}`.

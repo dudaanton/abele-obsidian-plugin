@@ -20,8 +20,6 @@ import {
   declaredInterruptions,
   reindexEvidence,
   javascriptHashEvidence,
-  hashTracepoints,
-  hashTracepointBoundary,
   digestCoverage,
   completedBlobShas,
   previouslyHashedShas,
@@ -58,7 +56,8 @@ import { settleRestartDevices, controlTiming, strictWindowEvidence } from './res
 import { triggerComparisonAtRestart } from './restart-trigger.mjs'
 import { enablePluginWhenReady } from './startup-enable.mjs'
 import { validateBuildReceipt, validateQualificationArtifact, buildArtifactPath } from './build.mjs'
-import { qualificationScenario, instrumentationOf } from './qualification-config.mjs'
+import { qualificationScenario } from './qualification-config.mjs'
+import { observerDeploymentConfig } from './observer-config.mjs'
 import { applyCombinedChanges } from './combined.mjs'
 import { planOfflineChanges, updateExpectedOfflineChanges } from './qualification-offline.mjs'
 import { verifyDirectoryChanges } from './directory-oracle.mjs'
@@ -148,7 +147,7 @@ export class RealVault {
           })
         ).catch(() => {})
     }, 3000)
-    const cliTimeoutMs = timeoutMs ?? (this.config.failureDiagnostic ? 120000 : 12000)
+    const cliTimeoutMs = timeoutMs ?? (this.config.failureDiagnosticEnabled ? 120000 : 12000)
     const expression = evaluationExpression(body, nonce)
     try {
       ;({ stdout } = await exec(
@@ -433,40 +432,8 @@ export async function setupVault(config, root, device) {
     )
   await writeFile(
     join(root, '.scale-observer.json'),
-    JSON.stringify({
-      evidence: join(config.output, 'renderer.jsonl'),
-      device,
-      controlError: join(observer, 'control-error.cjs'),
-      ...(config.failureDiagnostic ? {
-        failureDiagnostic: join(observer, 'failure-diagnostic.cjs'),
-        failureEvents: join(config.output, `failure-events-${device}.jsonl`),
-        failureMarker: join(config.output, `failure-marker-${device}.json`),
-        failureArmed: join(config.output, 'failure-capture-armed'),
-      } : {}),
-      contentPrefix: config.contentPrefix,
-      targeted: config.targeted === true,
-      observeContentReads: false,
-      writeObserver: join(observer, 'writes.cjs'),
-      reindexObserver: join(observer, 'reindex.cjs'),
-      diagnostics: join(observer, 'diagnostics.cjs'),
-      entryLedger: join(observer, 'entry-ledger.cjs'),
-      liveStartup: join(observer, 'live-startup.cjs'),
-      startupReceipt: join(config.output, `live-startup-${device}.json`),
-      receiptCapture: join(observer, 'receipt-capture.cjs'),
-      fingerprintObserver: join(observer, 'failure-diagnostic.cjs'),
-      profileGate: join(observer, 'profile-gate.cjs'),
-      profileOnly: join(observer, 'profile-only.cjs'),
-      metadataCache: join(observer, 'metadata-cache.cjs'),
-      indexWaitCapture: join(observer, 'index-wait-capture.cjs'),
-      profileDirectory: join(config.output, 'profiles'),
-      ...instrumentationOf(config),
-      javascriptHashBoundary: hashTracepointBoundary(
-        await readFile(join(config.buildDir, 'main.js'), 'utf8')
-      ),
-      javascriptHashTracepoints: hashTracepoints(
-        await readFile(join(config.buildDir, 'main.js'), 'utf8')
-      ),
-    })
+    JSON.stringify(observerDeploymentConfig(config, observer, device,
+      await readFile(join(config.buildDir, 'main.js'), 'utf8')))
   )
   if (config.continuousCpu) {
     const proof = await verifyInstalledLedger(observer, device)
@@ -773,7 +740,7 @@ export async function run(config) {
     return at
   }
   await mkdir(config.output, { recursive: true })
-  if (config.failureDiagnostic) {
+  if (config.failureDiagnosticEnabled) {
     await writeFile(join(config.output, 'failure-capture-armed'), String(Date.now()))
     failureDiagnostics = createFailureMonitor({
       readMarkers: () => Promise.all(devices.map((_, index) =>
@@ -1457,7 +1424,7 @@ export async function run(config) {
               .then(JSON.parse)
               .catch(() => null)
             if (receipt?.fatal) {
-              if (!config.failureDiagnostic) throw new Error('Fatal sync state in control restart')
+              if (!config.failureDiagnosticEnabled) throw new Error('Fatal sync state in control restart')
               const observed = report.errorObservations?.some(row =>
                 row.device === String(index) && row.at >= controlAt)
               if (!observed) await recoverObservedError(devices[index],
@@ -1475,7 +1442,7 @@ export async function run(config) {
     )
     const controlActivity = await Promise.all(devices.map((device) => device.activityEvidence()))
     report.controlRestart = {
-      mode: config.failureDiagnostic
+      mode: config.failureDiagnosticEnabled
         ? 'startup error/console capture, host load/idle marks and proxy requests only'
         : 'observer load/idle marks and proxy requests only',
       forcedReindex: false,

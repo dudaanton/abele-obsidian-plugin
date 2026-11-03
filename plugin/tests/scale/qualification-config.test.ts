@@ -22,6 +22,8 @@ it('prepares full and targeted builds with identical instrumentation, including 
   })
   expect(instrumentationOf(full.scenarioConfig)).toEqual(instrumentationOf(targeted.scenarioConfig))
   expect(full.scenarioConfig).toMatchObject({ continuousCpu: true, entryLedgerEnabled: true })
+  expect(full.scenarioConfig.failureDiagnosticEnabled).toBe(true)
+  expect(full.scenarioConfig).not.toHaveProperty('failureDiagnostic')
   expect(full.scenarioConfig.shape).toBe('scale')
   expect(targeted.scenarioConfig.shape).toBe('smoke')
   const differentKeys = [

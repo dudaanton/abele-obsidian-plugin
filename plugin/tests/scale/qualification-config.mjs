@@ -3,7 +3,7 @@
 export const qualificationInstrumentation = Object.freeze({
   continuousCpu: true,
   entryLedgerEnabled: true,
-  failureDiagnostic: true,
+  failureDiagnosticEnabled: true,
   preciseHashCoverage: false,
   strictRestartMeasurement: false,
   heapDiagnostics: false,
@@ -13,7 +13,7 @@ export const qualificationInstrumentation = Object.freeze({
 export function qualificationScenario(mode, overrides = {}) {
   if (!['full', 'targeted'].includes(mode)) throw new Error('Unknown qualification mode')
   const targeted = mode === 'targeted'
-  return {
+  const scenario = {
     targeted,
     shape: targeted ? 'smoke' : 'scale',
     seed: 42,
@@ -24,6 +24,9 @@ export function qualificationScenario(mode, overrides = {}) {
     ...overrides,
     ...qualificationInstrumentation,
   }
+  // Retire the legacy policy name; failureDiagnostic is a deployed module path.
+  delete scenario.failureDiagnostic
+  return scenario
 }
 export function qualificationBuildConfig(config) {
   return {
