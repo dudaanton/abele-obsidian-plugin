@@ -1114,7 +1114,13 @@ export async function requireExternalLifecycleSafety(
       activated &&
       (!found || found.identity !== activated.databaseIdentity || activated.phase !== 'active')
     )
-      throw new ExternalRecoveryRequired('activated ledger is missing or changed')
+      throw new ExternalRecoveryRequired('activated ledger is missing or changed', {
+        kind: marker?.ledgers.some((item) => item.databaseName === name)
+          ? 'activation'
+          : 'retired-activation',
+        id: activated.ledgerId,
+        path: activated.databaseName,
+      })
     const raw = found?.metadata.get('plugin:external-files')
     if (activated && raw == null) throw new ExternalRecoveryRequired('activated journal is missing')
     if (raw != null) {

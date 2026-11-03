@@ -17,7 +17,7 @@ import { projectionEvidence } from '@/sync/external/pluginSafety'
 import { EXTERNAL_STATE_KEY } from '@/sync/external/state'
 import { tokenOffloadsOf } from '@/sync/tokenOffloadCoordinator'
 import { pathCoordinatorOf } from '@/sync/pathCoordinator'
-import { HostSyncStorage, inheritHostStorage } from '@/sync/hostSyncStorage'
+import { HostSyncStorage, inheritHostStorage, hostStorageOf } from '@/sync/hostSyncStorage'
 import { SETS_KEY } from '@/sync/connectionSets'
 vi.mock('../../src/sync/tokenEngines', () => ({
   TokenEngines: class {
@@ -38,8 +38,11 @@ it('refuses to clear offload state while a provider still owns it', () => {
   expect(manager.files()).toEqual([])
 })
 
-const resetCases = cases.flatMap((retry) => [false, true].map((durable) => ({ retry, durable })))
-it.each(resetCases)('resets owned state ($retry/$durable)', async ({ retry, durable }) => {
+const resetCases = [
+  ...cases.flatMap((retry) => [false, true].map((durable) => ({ retry, durable, orphan: false }))),
+  { retry: false, durable: true, orphan: true },
+]
+it.each(resetCases)('owned reset ($retry/$durable/$orphan)', async ({ retry, durable, orphan }) => {
   const factory = new IDBFactory()
   const descriptor = Object.getOwnPropertyDescriptor(window, 'indexedDB')
   Object.defineProperty(window, 'indexedDB', { configurable: true, value: factory })
@@ -75,7 +78,7 @@ it.each(resetCases)('resets owned state ($retry/$durable)', async ({ retry, dura
   // Model a migrated installation whose compatibility copy still contains a connection.
   if (durable)
     storage.saveLocalStorage(TOKEN_REGISTRY_KEY, host!.loadLocalStorage(TOKEN_REGISTRY_KEY))
-  local.set(EXTERNAL_ACTIVATION_KEY, {
+  hostStorageOf(storage).saveLocalStorage(EXTERNAL_ACTIVATION_KEY, {
     schema: 1,
     ledgers: [
       {
@@ -87,6 +90,7 @@ it.each(resetCases)('resets owned state ($retry/$durable)', async ({ retry, dura
       },
     ],
   })
+  await host?.flush()
   const reviewId = crypto.randomUUID()
   local.set('abele-sync-device-review-id-v1', reviewId)
   const reviews = await openDeviceReviews(factory, reviewId)
@@ -167,7 +171,9 @@ it.each(resetCases)('resets owned state ($retry/$durable)', async ({ retry, dura
     {
       path: staging,
       content:
-        retry === 'unresolved' ? 'sample unique late edit' : new TextDecoder().decode(markerBytes),
+        retry === 'unresolved'
+          ? 'sample unique late edit'
+          : new TextDecoder().decode(markerBytes),
     },
     {
       path: '.obsidian/plugins/abele/sync-staging/orphan.incoming',
@@ -209,6 +215,40 @@ it.each(resetCases)('resets owned state ($retry/$durable)', async ({ retry, dura
   manager.remember('sample-old', [{ path: 'Media/sample.pdf', size: 1, mtime: 1 }], [])
   try {
     await captureSyncTokenOwnership(plugin, 'leased-pool')
+    if (orphan) {
+      const target = hostStorageOf(plugin.app)
+      const activation = structuredClone(target.loadLocalStorage(EXTERNAL_ACTIVATION_KEY)) as {
+        ledgers: { ledgerId: string; databaseName: string; databaseIdentity: string }[]
+      }
+      activation.ledgers.push({
+        ...activation.ledgers[0],
+        ledgerId: 'sample-unowned-ledger',
+        databaseName: 'sample-unowned-ledger',
+        databaseIdentity: 'sample-missing-identity',
+      })
+      target.saveLocalStorage(EXTERNAL_ACTIVATION_KEY, activation)
+      await host?.flush()
+      const failure = await resetSyncTokenState(plugin, {
+        vault: 'leased-pool',
+        confirm: 'reset-sync-token-state',
+      }).catch((error: unknown) => error)
+      expect(failure).toMatchObject({
+        message: expect.stringContaining('activated ledger is missing or changed'),
+        cause: {
+          recoveryRecord: {
+            kind: 'activation',
+            id: 'sample-unowned-ledger',
+            path: 'sample-unowned-ledger',
+          },
+        },
+      })
+      expect((failure as Error).message).toContain('database: sample-unowned-ledger')
+      expect(target.loadLocalStorage(EXTERNAL_ACTIVATION_KEY)).toMatchObject({
+        ledgers: [{ databaseName: 'sample-unowned-ledger' }],
+      })
+      expect(local.get('abele-sync-test-pool-ledgers-v1')).toContain(record.ledgerId)
+      return
+    }
     if (retry === true) {
       vi.spyOn(vault.adapter, 'rename').mockRejectedValueOnce(
         new Error('sample preservation failed')
@@ -255,9 +295,9 @@ it.each(resetCases)('resets owned state ($retry/$durable)', async ({ retry, dura
     expect(await vault.adapter.exists('.obsidian/plugins/abele/sync-staging/unowned.bin')).toBe(
       false
     )
-    expect(await vault.adapter.exists('.obsidian/plugins/abele/sync-staging/orphan.incoming')).toBe(
-      false
-    )
+    expect(
+      await vault.adapter.exists('.obsidian/plugins/abele/sync-staging/orphan.incoming')
+    ).toBe(false)
     if (retry === 'unresolved')
       expect(await vault.adapter.read(staging.replace('/sync-staging/', '/sync-recovery/'))).toBe(
         'sample unique late edit'

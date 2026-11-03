@@ -15,11 +15,17 @@ import { durableHostOf, flushHostStorage } from '../sync/hostSyncStorage'
 import { SETS_KEY } from '../sync/connectionSets'
 import { resetTokenPool, type TokenPoolResetRequest } from './resetTokenPool'
 import { tokenPoolMarkers } from './tokenPoolMarkers'
-import { inspectExistingLedger, recoverOrphanPrivateArtifacts } from '../sync/external/pluginSafety'
+import {
+  inspectExistingLedger,
+  recoverOrphanPrivateArtifacts,
+  requireExternalEnrollmentSafety,
+  requireExternalLifecycleSafety,
+} from '../sync/external/pluginSafety'
 import { decodeExternalDocument, EXTERNAL_STATE_KEY } from '../sync/external/state'
 import { stagingDirectory } from '../sync/stagingDirectory'
 import { tokenOffloadsOf } from '../sync/tokenOffloadCoordinator'
 import { pathCoordinatorOf } from '../sync/pathCoordinator'
+import { ExternalRecoveryRequired } from '../sync/external/recovery'
 
 const JOURNAL = 'abele-sync-test-pool-ledgers-v1'
 const REVIEW_ID = 'abele-sync-device-review-id-v1'
@@ -171,7 +177,6 @@ async function performResetSyncTokenState(
               throw new Error('Pool connection cleanup was not stored')
           }
         await recoverOrphanPrivateArtifacts(plugin.app, window.indexedDB)
-        plugin.app.saveLocalStorage(JOURNAL, null)
         ui.runtimes.clear()
         ui.activity.value = {}
         ui.available.value = false
@@ -180,6 +185,34 @@ async function performResetSyncTokenState(
         tokenOffloadsOf(plugin.app.vault, pathCoordinatorOf(plugin.app.vault)).clearDrainedState()
       },
       restart: async () => {
+        // An empty registry is not proof that enrollment can proceed: an older
+        // reset may have lost ownership while retaining an activation marker.
+        // Keep the journal on failure, and never erase unowned recovery evidence.
+        try {
+          await requireExternalEnrollmentSafety(plugin.app)
+          await requireExternalLifecycleSafety(
+            plugin.app,
+            window.indexedDB,
+            undefined,
+            true,
+            undefined,
+            () => {},
+            {},
+            false,
+            true
+          )
+        } catch (error) {
+          const record =
+            error instanceof ExternalRecoveryRequired ? error.recoveryRecord : undefined
+          const locator = record ? ` (${record.kind}: ${record.id}; database: ${record.path})` : ''
+          throw new Error(
+            'Pool reset is not connectable' +
+              locator +
+              ': ' +
+              (error instanceof Error ? error.message : 'Recovery check failed'),
+            { cause: error }
+          )
+        }
         const reviews = await openDeviceReviews(window.indexedDB, reviewsId, {
           configRoots: [plugin.app.vault.configDir],
           scriptsFolder: inputs.scriptsFolder,
@@ -196,6 +229,7 @@ async function performResetSyncTokenState(
           inputs.ownSettings
         )
         owner.tokenEngines.start()
+        plugin.app.saveLocalStorage(JOURNAL, null)
       },
     },
     request
