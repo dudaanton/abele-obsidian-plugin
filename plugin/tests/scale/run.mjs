@@ -29,7 +29,7 @@ import {
 import { openServer, verifyServerLimits, verifyUploadPresence } from './local-server.mjs'
 import diagnostics from './diagnostics.cjs'
 import receiptCapture from './receipt-capture.cjs'
-import { classifyRecoveryRead, linkFingerprint } from './recovery-receipts.mjs'
+import { classifyRecoveryRead, linkFingerprint, boundaryHasLaterWrites } from './recovery-receipts.mjs'
 import {
   noticeSummary,
   profileSummary,
@@ -59,6 +59,7 @@ import { validateBuildReceipt, validateQualificationArtifact, buildArtifactPath 
 import { qualificationScenario } from './qualification-config.mjs'
 import { observerDeploymentConfig } from './observer-config.mjs'
 import { flushExitEvidence } from './exit-evidence.mjs'
+import { capturePausedBoundary } from './pause-boundary.mjs'
 import { applyCombinedChanges } from './combined.mjs'
 import { planOfflineChanges, updateExpectedOfflineChanges } from './qualification-offline.mjs'
 import { verifyDirectoryChanges } from './directory-oracle.mjs'
@@ -1072,7 +1073,6 @@ export async function run(config) {
     const peerDownloadAt = Date.now()
     await b.ready()
     await triggered(q, 'pull', () => b.connect(tokenFiles[1]))
-    await captureBoundary(b, 'pause mid-pull')
     const pauseAt = Date.now()
     report.pauseActionAt = await b.paused(true)
     report.pauseControllerAt = pauseAt
@@ -1091,6 +1091,14 @@ export async function run(config) {
         Date.now()
       )
     )
+    const pauseBoundary = await capturePausedBoundary({
+      observe: () => b.evaluate(`${host}return {
+        paused:u.rows.value.length>0 && u.rows.value.every(r=>r.paused===true && r.status==='paused') &&
+          h.live.size>0 && [...h.live.values()].every(e=>e.engine.status.state==='paused'),
+        writes:globalThis.__scaleWriteState?.()??null}`),
+      capture: () => captureBoundary(b, 'pause mid-pull'), delay: sleep,
+    })
+    report.pauseBoundaryQuiescence = pauseBoundary.quiescence
     mark('pause mid-pull')
     if (config.reindex === true || config.shape === 'scale') {
       await triggered(q, 'pull', async () => {
@@ -1800,9 +1808,7 @@ export async function run(config) {
           ['primary-state', 'device-state'].includes(x.event) && x.snapshot?.rows?.length &&
           x.snapshot.rows.every(r => r.status === 'idle') && x.snapshot.engines?.length &&
           x.snapshot.engines.every(e => e.state === 'idle' && e.lastSyncAt))?.at
-        const changed = entries.some(x => x.device === row.device && x.event === 'write-start' &&
-          x.source === 'abele' && x.at > row.completedAt && x.at < interruptedAt &&
-          row.targets.some(t => t.target === x.path || t.stage === x.path))
+        const changed = boundaryHasLaterWrites(row, interruptedAt, entries)
         return { ...row, interruptedAt, recoveryEndedAt, complete: row.complete && !changed }
       })
       const classified = observed.plugin.map(row => {

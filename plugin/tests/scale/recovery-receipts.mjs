@@ -1,4 +1,10 @@
 // An interruption is not itself permission to re-read an installed file.
+export function boundaryHasLaterWrites(row, interruptedAt, entries) {
+  return entries.some(x => x.device === row.device && x.event === 'write-start' &&
+    x.source === 'abele' && x.at > row.completedAt && x.at < interruptedAt &&
+    row.targets.some(t => t.target === x.path || t.stage === x.path))
+}
+
 export function classifyRecoveryRead(read, boundaries) {
   const failed = { status: 'FAIL', reason: 'No matching committed boundary receipt evidence' }
   if (!read.target || !read.sha || !Number.isFinite(read.at)) return failed

@@ -71,6 +71,16 @@ const openedHandleRestoration = () => {
 exports.observeWrites = function (adapter, emit, nativePorts = []) {
   const root = path.resolve(adapter.getBasePath())
   const generation = `${Date.now()}-${Math.random()}`
+  const pending = new Set()
+  let revision = 0, complete = false
+  const publish = emit
+  emit = (event) => {
+    if (event.event === 'write-start') { pending.add(event.id); revision++ }
+    if (event.event === 'write-finish') { pending.delete(event.id); revision++ }
+    if (event.event === 'write-observer-ready') complete = true
+    if (event.event === 'write-observer-error') complete = false
+    publish(event)
+  }
   const restore = []
   const handles = new WeakSet()
   const handleRestoration = openedHandleRestoration()
@@ -300,10 +310,13 @@ exports.observeWrites = function (adapter, emit, nativePorts = []) {
   } catch {
     emit({ event: 'write-observer-error', generation })
   }
-  return () => {
+  const undo = () => {
+    complete = false
     handleRestoration.restore()
     for (const undo of restore.reverse()) undo()
   }
+  undo.snapshot = () => ({ generation, complete, active: pending.size, revision })
+  return undo
 }
 
 // Observe only generated payload paths; metadata stats and private control files are not content reads.
