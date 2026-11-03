@@ -4,8 +4,18 @@ import type { ChunkSource } from '@abele/sync-sdk/core'
 /** One large mobile allocation/transfer at a time, across connections and vault adapters. */
 export class MobileLargeFileGate {
   private active = false
+  private owner: string | null = null
+  private startedAt = 0
   private readonly queue: { start(): void; signal?: AbortSignal; abort(): void }[] = []
-  acquire(signal?: AbortSignal): Promise<() => void> {
+  snapshot() {
+    return {
+      active: this.active,
+      owner: this.owner,
+      queued: this.queue.length,
+      elapsedMs: this.active ? Math.max(0, Date.now() - this.startedAt) : 0,
+    }
+  }
+  acquire(signal?: AbortSignal, owner = 'large transfer'): Promise<() => void> {
     signal?.throwIfAborted()
     return new Promise((resolve, reject) => {
       const waiter = {
@@ -20,11 +30,14 @@ export class MobileLargeFileGate {
         start: () => {
           signal?.removeEventListener('abort', waiter.abort)
           this.active = true
+          this.owner = owner
+          this.startedAt = Date.now()
           let released = false
           resolve(() => {
             if (released) return
             released = true
             this.active = false
+            this.owner = null
             this.queue.shift()?.start()
           })
         },
@@ -60,7 +73,10 @@ export function gateMobileSource(source: ChunkSource, signal?: AbortSignal): Chu
         const abortRead = () => cancellation.abort(readSignal?.reason)
         readSignal?.addEventListener('abort', abortRead, { once: true })
         try {
-          release = await (ownership ??= mobileLargeFileGate.acquire(cancellation.signal))
+          release = await (ownership ??= mobileLargeFileGate.acquire(
+            cancellation.signal,
+            'remote download'
+          ))
         } finally {
           readSignal?.removeEventListener('abort', abortRead)
         }

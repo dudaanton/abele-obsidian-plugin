@@ -6,6 +6,7 @@ import {
   pullCountKeys,
 } from './pullOperationCounts'
 import { mobileReadSnapshot } from './mobileReadDiagnostics'
+import { mobileLargeFileGate } from './mobileLargeFileGate'
 import type { NativeInstallProof } from './nativeInstallBatch'
 
 interface PullScope {
@@ -370,6 +371,7 @@ export class ExchangeTrace {
     }
     return {
       localReads: mobileReadSnapshot(),
+      largeTransfer: mobileLargeFileGate.snapshot(),
       lastPull: this.lastPull ? { ...this.lastPull, paths: [...this.lastPull.paths] } : null,
       active: this.active
         .filter((one) => one.active)

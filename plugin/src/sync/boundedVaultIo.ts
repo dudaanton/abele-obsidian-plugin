@@ -368,7 +368,6 @@ export class BoundedVaultIo {
       !resource && files ? this.sequentialMobile?.open(path, original.size) : undefined
     let fallback: Uint8Array | null = null
     const meter = mobileReadMeter()
-    let releaseLarge: (() => void) | undefined
     if (!handle && !access) {
       if (!wholeFileUpload && original.size > PHONE_FALLBACK_BYTES)
         throw new EngineError(
@@ -376,15 +375,26 @@ export class BoundedVaultIo {
           'Bounded file reads are unavailable; the fallback limit is 50 MiB'
         )
       if (original.size > MOBILE_WHOLE_READ_MAX) throw new MobileWholeReadLimitError(original.size)
-      // iOS delivers the whole file anyway. Read directly, avoiding a fetch body plus a copy.
-      // Slice only the outgoing part: the bridge must never receive the whole backing buffer.
-      if (!small) releaseLarge = await mobileLargeFileGate.acquire(signal)
+    }
+    let releaseLarge: (() => void) | undefined
+    let closed = false
+    let loading: Promise<void> | undefined
+    const cancellation = !handle && !access && !small ? new AbortController() : undefined
+    const abort = () => cancellation?.abort(signal?.reason)
+    if (signal?.aborted) abort()
+    else if (cancellation) signal?.addEventListener('abort', abort, { once: true })
+    const loadFallback = async () => {
+      if (closed) throw new EngineError('io', 'bounded file source is closed')
+      const currentSignal = cancellation?.signal ?? signal
+      currentSignal?.throwIfAborted()
+      if (!small) releaseLarge = await mobileLargeFileGate.acquire(currentSignal, 'local upload')
       try {
         this.assertOwned()
-        signal?.throwIfAborted()
+        currentSignal?.throwIfAborted()
         if (!small) meter.wholeRead()
         fallback = new Uint8Array(await this.disk.readBinary(path))
         this.assertOwned()
+        currentSignal?.throwIfAborted()
         if (fallback.length !== original.size)
           throw new EngineError('conflict', `${path} changed while reading`)
         if (!small) {
@@ -398,10 +408,19 @@ export class BoundedVaultIo {
         meter.hold(0)
         meter.closed()
         releaseLarge?.()
+        releaseLarge = undefined
         throw error
       }
     }
-    let closed = false
+    if (!handle && !access) {
+      // iOS delivers the whole file anyway. Read directly, avoiding a fetch body plus a copy.
+      // Slice only the outgoing part: the bridge must never receive the whole backing buffer.
+      // Opening a queued source precedes its transfer-budget slot. Taking the
+      // buffer lease here can deadlock a scanner that already owns that slot.
+      // Large reads acquire only inside read(), like remote hydration sources.
+      if (small) loading = loadFallback()
+      if (loading !== undefined) await loading
+    }
     const unchanged = async () => {
       if (stampOf(await this.stat(path)).generation !== original.generation)
         throw new EngineError('conflict', `${path} changed while reading`)
@@ -445,6 +464,14 @@ export class BoundedVaultIo {
         } else if (files) {
           bytes = await readMobileChunk(files, this.mobilePath(path), offset, length, signal)
         } else {
+          const abortRead = () => cancellation?.abort(signal?.reason)
+          signal?.addEventListener('abort', abortRead, { once: true })
+          try {
+            await (loading ??= loadFallback())
+          } finally {
+            signal?.removeEventListener('abort', abortRead)
+          }
+          if (closed || !fallback) throw new EngineError('io', 'bounded file source is closed')
           bytes = fallback.slice(offset, offset + length)
           if (!small) {
             meter.output(bytes.length)
@@ -463,6 +490,8 @@ export class BoundedVaultIo {
       close: async () => {
         if (closed) return
         closed = true
+        cancellation?.abort(new Error('Bounded source closed'))
+        await loading?.catch(() => {})
         fallback = null
         meter.hold(0)
         meter.closed()
@@ -470,6 +499,7 @@ export class BoundedVaultIo {
         try {
           await handle?.close()
         } finally {
+          signal?.removeEventListener('abort', abort)
           releaseLarge?.()
         }
       },

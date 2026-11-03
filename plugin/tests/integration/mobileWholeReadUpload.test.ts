@@ -5,9 +5,62 @@ import { afterEach, expect, it, vi } from 'vitest'
 import type { DataAdapter } from 'obsidian'
 import { BoundedVaultIo } from '@/sync/boundedVaultIo'
 import { mobileReadSnapshot } from '@/sync/mobileReadDiagnostics'
+import { mobileLargeFileGate } from '@/sync/mobileLargeFileGate'
+import { TransferBudget } from '@abele/sync-sdk/core'
+
+it('opens an upload source without taking the large-buffer lease ahead of its transfer slot', async () => {
+  const size = 51 * MiB
+  const readBinary = vi.fn(async () => new ArrayBuffer(size))
+  const io = new BoundedVaultIo({
+    stat: async () => ({ type: 'file', size, mtime: 1, ctime: 1 }),
+    readBinary,
+  } as unknown as DataAdapter)
+  const source = await io.openUploadRead('sample.bin')
+  try {
+    expect(readBinary).not.toHaveBeenCalled()
+    // A queued publisher can open before acquiring a transfer slot. A scanner
+    // already holding that slot must still be able to take the buffer lease.
+    expect(Reflect.get(mobileLargeFileGate, 'active')).toBe(false)
+    const release = await mobileLargeFileGate.acquire()
+    release()
+    const budget = new TransferBudget({ maxActiveTransfers: 1 })
+    // Before lazy acquisition this is a cycle: the scanner holds the transfer
+    // slot waiting for the publisher's buffer; the publisher waits for that slot.
+    await Promise.all([
+      budget.run(() => io.fingerprintForUpload('other.bin', async () => {})),
+      budget.run(async () => {
+        expect((await source.read(0, 1))[0]).toBe(0)
+        await source.close()
+      }),
+    ])
+    expect(readBinary).toHaveBeenCalledTimes(2)
+  } finally {
+    await source.close()
+  }
+  expect(Reflect.get(mobileLargeFileGate, 'active')).toBe(false)
+})
 
 const MiB = 1024 * 1024
 afterEach(() => vi.unstubAllGlobals())
+it('closes a queued whole-read source without allocating or releasing another transfer', async () => {
+  const release = await mobileLargeFileGate.acquire()
+  const readBinary = vi.fn(async () => new ArrayBuffer(51 * MiB))
+  const io = new BoundedVaultIo({
+    stat: async () => ({ type: 'file', size: 51 * MiB, mtime: 1, ctime: 1 }),
+    readBinary,
+  } as unknown as DataAdapter)
+  try {
+    const source = await io.openUploadRead('sample.bin')
+    const reading = source.read(0, 1)
+    const rejected = expect(reading).rejects.toThrow('Bounded source closed')
+    await source.close()
+    await rejected
+    expect(readBinary).not.toHaveBeenCalled()
+    expect(mobileLargeFileGate.snapshot()).toMatchObject({ active: true, queued: 0 })
+  } finally {
+    release()
+  }
+})
 it('hashes and uploads from one whole mobile read and releases the buffer on failure', async () => {
   const size = 51 * MiB
   const readBinary = vi.fn(async () => new ArrayBuffer(size))
@@ -80,6 +133,8 @@ it('drops the whole upload buffer before a hydration or another adapter can read
     readBinary,
   } as unknown as DataAdapter
   const first = await new BoundedVaultIo(adapter).openUploadRead('first.bin')
+  // Opening is now allocation-free; first read takes the buffer lease.
+  await first.read(0, 1)
   const remoteRead = vi.fn(async () => new Uint8Array(1))
   const remote = gateMobileSource({
     size,
@@ -98,6 +153,7 @@ it('drops the whole upload buffer before a hydration or another adapter can read
   expect(readBinary).toHaveBeenCalledTimes(1)
   await remote.close()
   const source = await second
+  await source.read(0, 1)
   expect(readBinary).toHaveBeenCalledTimes(2)
   await source.close()
   expect(mobileReadSnapshot().retainedBytes).toBe(0)

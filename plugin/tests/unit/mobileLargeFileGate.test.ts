@@ -8,6 +8,7 @@ import {
 it('serializes whole uploads and hydration, releasing only after the owner has dropped its buffer', async () => {
   const gate = new MobileLargeFileGate()
   const releaseUpload = await gate.acquire()
+  expect(gate.snapshot()).toMatchObject({ active: true, queued: 0 })
   const hydrate = vi.fn(),
     secondUpload = vi.fn()
   const hydration = gate.acquire().then((release) => {
@@ -19,6 +20,7 @@ it('serializes whole uploads and hydration, releasing only after the owner has d
     return release
   })
   await Promise.resolve()
+  expect(gate.snapshot()).toMatchObject({ active: true, queued: 2 })
   expect(hydrate).not.toHaveBeenCalled()
   releaseUpload()
   const releaseHydration = await hydration
@@ -30,6 +32,7 @@ it('serializes whole uploads and hydration, releasing only after the owner has d
   const releaseSecond = await upload
   expect(secondUpload).toHaveBeenCalledOnce()
   releaseSecond()
+  expect(gate.snapshot()).toMatchObject({ active: false, queued: 0 })
 })
 it('removes an aborted waiter without releasing the current owner or blocking the next transfer', async () => {
   const gate = new MobileLargeFileGate()
