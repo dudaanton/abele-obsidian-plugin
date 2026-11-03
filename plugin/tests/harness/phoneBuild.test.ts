@@ -54,8 +54,11 @@ async function installedProbe(change: string) {
   let vault = 'sample-vault'
   const files = { ...bytes }
   const leftovers = new Set(
-    change === 'leftover sync recovery' ? ['.sample/plugins/abele/sync-recovery'] : []
+    change === 'leftover sync recovery'
+      ? ['.sample/plugins/abele/sync-recovery/sample.incoming']
+      : []
   )
+  const owners = new Map([...leftovers].map((temp) => [temp, { temp, target: 'Notes/sample.md' }]))
   if (change.endsWith('hash'))
     files[change.split(' ')[0] as keyof typeof files] = Buffer.from('different bytes')
   if (change === 'missing API') page.__abeleTest = null
@@ -69,9 +72,10 @@ async function installedProbe(change: string) {
       getName: () => vault,
       configDir: '.sample',
       adapter: {
-        exists: async (path: string) => leftovers.has(path),
+        exists: async (path: string) => [...leftovers].some((file) => file.startsWith(path)),
         rmdir: async (path: string, recursive: boolean) => {
-          if (recursive) leftovers.delete(path)
+          if (recursive)
+            for (const file of leftovers) if (file.startsWith(path)) leftovers.delete(file)
         },
         readBinary: async (path: string) => {
           if (change === 'unreadable files') throw Error('not readable')
@@ -89,7 +93,11 @@ async function installedProbe(change: string) {
     'console',
     'return ' + code
   )(page, app, { timeOrigin: 10 }, webcrypto, { info: () => {} })
-  if (change === 'leftover sync recovery') expect([...leftovers]).toEqual([])
+  if (change === 'leftover sync recovery') {
+    const temp = '.sample/plugins/abele/sync-recovery/sample.incoming'
+    expect([...leftovers]).toEqual([temp])
+    expect([...owners.values()]).toEqual([{ temp, target: 'Notes/sample.md' }])
+  }
   return accepted
 }
 
@@ -109,9 +117,13 @@ it.each([
   'replaced API',
   'unfinished page job',
   'plugin loader busy',
-  'leftover sync recovery',
 ])('does not accept %s as an installed build', async (change) => {
   await expect(installedProbe(change)).resolves.toBe(false)
+})
+it('recognizes a verified installed build while preserving leftover sync recovery', async () => {
+  await expect(installedProbe('leftover sync recovery')).resolves.toBe(true)
+  expect(phone.driver).not.toHaveBeenCalled()
+  expect(phone.eval.mock.calls.some(([code]) => code.includes('location.reload'))).toBe(false)
 })
 it('does not accept unreadable installed files', async () => {
   await expect(installedProbe('unreadable files')).rejects.toThrow('not readable')
@@ -465,7 +477,7 @@ it('preserves loader/page diagnostics even when the native screen query also fai
   }
 })
 
-it('clears leftover sync recovery in the phone vault before the reload that loads the build', async () => {
+it('keeps recovery bytes and owners through reload and surfaces the retained recovery notice', async () => {
   let generation = 10,
     requestId: string | null = null
   phone.eval.mockImplementation((code) => {
@@ -493,19 +505,21 @@ it('clears leftover sync recovery in the phone vault before the reload that load
   const code = phone.eval.mock.calls.find(([code]) => code.includes('location.reload'))![0]
   const events: string[] = []
   const leftovers = new Set([
-    '.sample/plugins/abele/sync-recovery',
-    '.sample/plugins/abele/sync-staging',
+    '.sample/plugins/abele/sync-recovery/sample.incoming',
+    '.sample/plugins/abele/sync-staging/sample.incoming',
   ])
+  const owners = new Map([...leftovers].map((temp) => [temp, { temp, target: 'Notes/sample.md' }]))
+  const retained = [...leftovers]
   const app = (vault: string) => ({
     plugins: { plugins: { abele: {} }, loadingPluginId: null },
     vault: {
       getName: () => vault,
       configDir: '.sample',
       adapter: {
-        exists: async (path: string) => leftovers.has(path),
+        exists: async (path: string) => [...leftovers].some((file) => file.startsWith(path)),
         rmdir: async (path: string) => {
           events.push('remove ' + path.split('/').pop())
-          leftovers.delete(path)
+          for (const file of leftovers) if (file.startsWith(path)) leftovers.delete(file)
         },
       },
     },
@@ -521,5 +535,23 @@ it('clears leftover sync recovery in the phone vault before the reload that load
   expect(events).toEqual(['reload'])
   events.length = 0
   await run('sample-vault')
-  expect(events).toEqual(['remove sync-recovery', 'remove sync-staging', 'reload'])
+  expect(events).toEqual(['reload'])
+  expect([...leftovers]).toEqual(retained)
+  expect([...owners.values()]).toEqual(
+    retained.map((temp) => ({ temp, target: 'Notes/sample.md' }))
+  )
+  const probe = phone.eval.mock.calls.find(([code]) => code.includes('screen:'))![0]
+  const state = JSON.parse(
+    new Function('window', 'document', 'performance', 'sessionStorage', 'return ' + probe)(
+      { app: app('sample-vault'), __abeleTest: {} },
+      {
+        body: { innerText: 'Sample retained-byte recovery is unfinished' },
+        readyState: 'complete',
+        visibilityState: 'visible',
+      },
+      { timeOrigin: generation },
+      { getItem: () => requestId }
+    )
+  )
+  expect(state.screen.text).toBe('Sample retained-byte recovery is unfinished')
 })
