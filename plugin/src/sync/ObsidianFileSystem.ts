@@ -18,6 +18,7 @@ import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlace
 import { isDeviceLocalPluginState } from './deviceLocalState'
 import { isHidden, isWireConfigDir } from './scope'
 import { durableHostOf } from './hostSyncStorage'
+import { finishRetainedWrites } from './privateRecovery'
 import { MemoryRetention, type RetentionIndex } from './retentionIndex'
 import { retainedFileStat } from './vaultPathLinks'
 import {
@@ -1278,6 +1279,7 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly publications = new Map<string, string>()
   private readonly stageOperations: Set<string>
   private readonly journal: WriteJournal
+  private readonly recoveryOwner?: string
   private readonly beforeEngineMutation: ((paths: string[]) => Promise<void>) | null
   private readonly runtimeFence: RuntimeFence | null
   private readonly privateRoot?: string
@@ -1540,6 +1542,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.onEngineWrite = options.onEngineWrite ?? null
     this.yieldsToServer = options.yieldsToServer ?? null
     const journalOwner = options.journalOwner ?? options.connectionId
+    this.recoveryOwner = journalOwner
     this.journal = new WriteJournal(
       options.storage ?? storageOf(app),
       () => this.runtimeFence?.assertOwned(),
@@ -2507,6 +2510,7 @@ export class ObsidianFileSystem implements FileSystem {
   }
   private async recoverOnce(): Promise<void> {
     this.runtimeFence?.assertOwned()
+    await finishRetainedWrites(this.app, this.recoveryOwner, () => this.runtimeFence?.assertOwned())
     if (
       this.scopedRoot() &&
       [
@@ -2579,6 +2583,9 @@ export class ObsidianFileSystem implements FileSystem {
       },
       () => this.runtimeFence?.assertOwned()
     )
+    // Recovery itself can preserve a displaced inode; finish its private archive
+    // before the retained-byte safety check in this same startup.
+    await finishRetainedWrites(this.app, this.recoveryOwner, () => this.runtimeFence?.assertOwned())
   }
 
   /** Private removal metadata has no server ledger row to acknowledge an anonymous install. */

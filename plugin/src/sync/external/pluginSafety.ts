@@ -950,7 +950,7 @@ export async function requireExternalEnrollmentSafety(app: App): Promise<void> {
   const unfinished = (await installation.currentEntries()).find(
     (entry) => !entry.streaming || entry.backup
   )
-  const recovered = unfinished ? undefined : (await installation.currentRecovered())[0]
+  const recovered = unfinished ? undefined : (await installation.currentUnfinishedRecovered())[0]
   if (unfinished || recovered) {
     const entry = unfinished ?? recovered
     const locator = unfinished?.temp ?? recovered?.backup ?? entry.target
@@ -1074,9 +1074,11 @@ export async function requireExternalLifecycleSafety(
           (!entry.streaming || entry.backup)
       )
     : undefined
-  const recovered = (await installation.currentRecovered())[0]
+  const recovered = recoverInstallation
+    ? undefined
+    : (await installation.currentUnfinishedRecovered())[0]
   if (unfinished || recovered) {
-    const entry = unfinished ?? recovered!
+    const entry = unfinished ?? recovered
     const locator = unfinished?.temp ?? recovered?.backup ?? entry.target
     throw new ExternalRecoveryRequired('installation or retained-byte recovery is unfinished', {
       kind: unfinished ? 'installation' : 'retained-byte',

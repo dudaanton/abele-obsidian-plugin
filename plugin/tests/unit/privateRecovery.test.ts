@@ -8,6 +8,72 @@ import { IDBFactory } from 'fake-indexeddb'
 import { recoverOrphanPrivateArtifacts } from '@/sync/external/pluginSafety'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { WriteJournal } from '@/sync/writeJournal'
+import { requireExternalEnrollmentSafety } from '@/sync/external/pluginSafety'
+import { HostSyncStorage } from '@/sync/hostSyncStorage'
+
+it.each(
+  [false, true].flatMap((cut) => [undefined, 'sample-owner'].map((owner) => ({ cut, owner })))
+)(
+  'finishes preserving mobile rename bytes across recovery ($cut/$owner)',
+  async ({ cut, owner }) => {
+    const backup =
+      (owner
+        ? '.abele-sync/connections/' + owner + '/writes'
+        : '.obsidian/plugins/abele/sync-staging') + '/.abele-sync-abcdefgh.old'
+    const app = buildFakeVault([
+      { path: backup, content: 'independent retained bytes' },
+      { path: 'Notes/renamed.md', content: 'current public bytes' },
+    ]) as unknown as App
+    const host = await HostSyncStorage.open(new IDBFactory(), 'sample-recovery', app)
+    const journal = new WriteJournal(app, undefined, owner)
+    const options = { journalOwner: owner, connectionId: owner }
+    await journal.persist(() => journal.preserve({ target: 'Notes/renamed.md', backup }))
+    if (cut) {
+      const rename = app.vault.adapter.rename.bind(app.vault.adapter)
+      vi.spyOn(app.vault.adapter, 'rename').mockImplementationOnce(async (from, to) => {
+        await rename(from, to)
+        throw new Error('sample archive move acknowledgment lost')
+      })
+      await expect(new ObsidianFileSystem(app, options).recover()).rejects.toThrow()
+    }
+    await new ObsidianFileSystem(app, options).recover()
+    await expect(requireExternalEnrollmentSafety(app)).resolves.toBeUndefined()
+    const kept = await journal.currentRecovered()
+    expect(kept).toHaveLength(1)
+    expect(kept[0]).toMatchObject({ archived: true })
+    expect(await app.vault.adapter.read(kept[0].backup)).toBe('independent retained bytes')
+    expect(await app.vault.adapter.read('Notes/renamed.md')).toBe('current public bytes')
+    await new ObsidianFileSystem(app, options).recover()
+    expect(await journal.currentRecovered()).toEqual(kept)
+    host.close()
+  }
+)
+
+it.each([false, true])(
+  'keeps missing or mismatching retained copies unresolved (mismatch=%s)',
+  async (mismatch) => {
+    const backup = '.obsidian/plugins/abele/sync-staging/.abele-sync-abcdefgh.old'
+    const destination = '.obsidian/plugins/abele/sync-recovery/.abele-sync-abcdefgh.old'
+    const app = buildFakeVault(
+      mismatch ? [{ path: destination, content: 'unrelated kept bytes' }] : []
+    ) as unknown as App
+    const journal = new WriteJournal(app)
+    await journal.persist(() => journal.preserve({ target: 'Notes/sample.md', backup }))
+    if (mismatch) {
+      const [entry] = await journal.currentRecovered()
+      await journal.replaceRecovered(entry, {
+        ...entry,
+        archive: { path: destination, sha: 'a'.repeat(64), size: 7 },
+      })
+    }
+    await expect(new ObsidianFileSystem(app).recover()).rejects.toThrow(
+      mismatch ? 'changed' : 'missing'
+    )
+    await expect(requireExternalEnrollmentSafety(app)).rejects.toThrow('recovery is unfinished')
+    expect((await journal.currentRecovered())[0].archived).toBeUndefined()
+    if (mismatch) expect(await app.vault.adapter.read(destination)).toBe('unrelated kept bytes')
+  }
+)
 
 it('keeps an interrupted target stage journal-owned across filesystem restart', async () => {
   const app = buildFakeVault([

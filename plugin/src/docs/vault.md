@@ -3859,6 +3859,12 @@ Its incoming bytes are moved into private recovery storage and reported through 
 recovery notice. The owned write-journal entry keeps the retained locator and a
 `server-deletion` retirement generation; this does not acknowledge the server version or
 publish the incoming bytes at a public path. Unresolved local backups still require recovery.
+Preserved legacy backups carry a durable archive plan (private destination, size and SHA-256)
+before they move into recovery storage. Startup and guarded test reset finish that same plan,
+verify the kept bytes and mark its journal record archived. Completed archives remain
+recorded and discoverable through the recovery notice, but do not block new connections.
+Missing bytes or a mismatching archive remain unresolved; this never restores a public file
+or deletes retained data.
 
 On desktop, a pending move may retain its source object's identity: device, inode and exact
 nanosecond birth time. The host checks it again on the captured object before applying a

@@ -36,6 +36,9 @@ export interface RecoveredWrite {
   target: string
   backup: string
   replacementSha?: string
+  /** Durable plan before a preservation move; completion never authorizes a public replay. */
+  archive?: { path: string; sha: string; size: number }
+  archived?: true
 }
 const sameEntry = (a: JournalEntry, b: JournalEntry): boolean =>
   a.owner === b.owner && a.target === b.target && a.temp === b.temp && a.backup === b.backup
@@ -158,9 +161,29 @@ export class WriteJournal {
       ? this.recovered(((await host.readValue(RECOVERED_WRITES_KEY)) as unknown[]) ?? [])
       : this.recovered()
   }
+  async currentUnfinishedRecovered(): Promise<RecoveredWrite[]> {
+    return (await this.currentRecovered()).filter((entry) => !entry.archived)
+  }
+  async replaceRecovered(before: RecoveredWrite, after: RecoveredWrite): Promise<void> {
+    const rows = await this.currentRecovered()
+    const same = (row: RecoveredWrite) => JSON.stringify(row) === JSON.stringify(before)
+    if (!rows.some(same)) throw new EngineError('conflict', 'Retained recovery record changed')
+    await this.persist(() => {
+      if (this.storage && durableHostOf(this.storage))
+        this.change(RECOVERED_WRITES_KEY, before, after)
+      else
+        this.save(
+          RECOVERED_WRITES_KEY,
+          this.read(RECOVERED_WRITES_KEY).map((row) =>
+            this.owns(row) && same(row as RecoveredWrite) ? after : row
+          )
+        )
+    })
+  }
   async currentVaultRecovered(): Promise<RecoveredWrite[]> {
     return (await this.currentRecovered()).filter(
-      (entry) => !entry.backup.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(entry.backup)
+      (entry) =>
+        !entry.archived && !entry.backup.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(entry.backup)
     )
   }
   async currentProtects(backup: string): Promise<boolean> {
@@ -191,7 +214,13 @@ export class WriteJournal {
           (typeof (value as RecoveredWrite).owner === 'string' &&
             (value as RecoveredWrite).owner.length > 0)) &&
         typeof (value as RecoveredWrite).target === 'string' &&
-        typeof (value as RecoveredWrite).backup === 'string'
+        typeof (value as RecoveredWrite).backup === 'string' &&
+        ((value as RecoveredWrite).archive === undefined ||
+          (typeof (value as RecoveredWrite).archive?.path === 'string' &&
+            identity((value as RecoveredWrite).archive))) &&
+        ((value as RecoveredWrite).archived === undefined ||
+          ((value as RecoveredWrite).archived === true &&
+            (value as RecoveredWrite).archive?.path === (value as RecoveredWrite).backup))
     )
     if (entries.length !== raw.length)
       throw new EngineError('io', 'the preserved-copy journal contains an unreadable entry')

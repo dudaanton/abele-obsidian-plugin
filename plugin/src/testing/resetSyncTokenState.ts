@@ -1,5 +1,5 @@
 import { assertDiscardableSyncLedger } from '../sync/privateRemovalFileSystem'
-import { preservePrivateArtifacts } from '../sync/privateRecovery'
+import { preservePrivateArtifacts, finishRetainedWrites } from '../sync/privateRecovery'
 import type { Plugin } from 'obsidian'
 import { sha256 } from '@abele/sync-sdk/core'
 import { TokenEngines } from '../sync/tokenEngines'
@@ -134,6 +134,24 @@ async function performResetSyncTokenState(
   const reviewsId: unknown = plugin.app.loadLocalStorage(REVIEW_ID)
   if (typeof reviewsId !== 'string' || !uuid.test(reviewsId))
     throw new Error('Device review identity requires recovery')
+  const restartHost = async () => {
+    const reviews = await openDeviceReviews(window.indexedDB, reviewsId, {
+      configRoots: [plugin.app.vault.configDir],
+      scriptsFolder: inputs.scriptsFolder,
+    })
+    ;(ui as unknown as { reviews: typeof reviews }).reviews = reviews
+    plugin.register(() => reviews.close())
+    await ui.refreshReviews()
+    owner.tokenEngines = new TokenEngines(
+      plugin.app,
+      ui,
+      inputs.key,
+      inputs.deps,
+      inputs.scriptsFolder,
+      inputs.ownSettings
+    )
+    owner.tokenEngines.start()
+  }
   await resetTokenPool(
     {
       vault: plugin.app.vault.getName(),
@@ -182,6 +200,12 @@ async function performResetSyncTokenState(
         await stage('preserving private artifacts', () =>
           preservePrivateArtifacts(plugin.app, paths)
         )
+        try {
+          await stage('finishing retained copies', () => finishRetainedWrites(plugin.app))
+        } catch (error) {
+          await restartHost()
+          throw error
+        }
       },
       removeDatabase: (name) =>
         stage('deleting database ' + name, () =>
@@ -239,6 +263,9 @@ async function performResetSyncTokenState(
             true
           )
         } catch (error) {
+          // A failed proof must leave a live host that can explain the recovery
+          // requirement, not callbacks bound forever to the closed old host.
+          await restartHost()
           const record =
             error instanceof ExternalRecoveryRequired ? error.recoveryRecord : undefined
           const locator = record
@@ -252,22 +279,7 @@ async function performResetSyncTokenState(
             { cause: error }
           )
         }
-        const reviews = await openDeviceReviews(window.indexedDB, reviewsId, {
-          configRoots: [plugin.app.vault.configDir],
-          scriptsFolder: inputs.scriptsFolder,
-        })
-        ;(ui as unknown as { reviews: typeof reviews }).reviews = reviews
-        plugin.register(() => reviews.close())
-        await ui.refreshReviews()
-        owner.tokenEngines = new TokenEngines(
-          plugin.app,
-          ui,
-          inputs.key,
-          inputs.deps,
-          inputs.scriptsFolder,
-          inputs.ownSettings
-        )
-        owner.tokenEngines.start()
+        await restartHost()
         plugin.app.saveLocalStorage(JOURNAL, null)
         Reflect.set(plugin, 'tokenPoolResetStage', 'complete')
       },

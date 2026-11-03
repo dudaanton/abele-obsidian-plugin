@@ -1,12 +1,84 @@
+import { WriteJournal } from './writeJournal'
+import { ExternalRecoveryRequired } from './external/recovery'
+import { pathCoordinatorOf } from './pathCoordinator'
 import { t } from '@/i18n'
-import { vaultDisk } from './vaultPathLinks'
-import { connectionPrivateArea, connectionJournalOwner, connectionHost } from './connectionPaths'
+import { vaultDisk, connectionInspectionApp } from './vaultPathLinks'
+import { connectionPrivateArea, connectionPrivateRoot, connectionJournalOwner, connectionHost } from './connectionPaths'
 import type { App } from 'obsidian'
 import { backgroundActivity } from './backgroundActivity'
 import { makeParents } from './vaultFolders'
 import { stagingDirectory } from './stagingDirectory'
 import { BoundedVaultIo } from './boundedVaultIo'
 import { z } from 'zod'
+
+/** Finish preserving bytes, never replay an interrupted rename onto its public target. */
+export async function finishRetainedWrites(
+  app: App,
+  owner?: string,
+  assertCurrent: () => void = () => {}
+): Promise<void> {
+  return pathCoordinatorOf(app.vault).run(
+    [''],
+    async () => {
+      const journal = new WriteJournal(app, assertCurrent, owner)
+      for (const original of await journal.currentUnfinishedRecovered()) {
+        assertCurrent()
+        let entry = original
+        const root = entry.owner ? connectionPrivateRoot(entry.owner) : undefined
+        const view = connectionInspectionApp(
+          app,
+          vaultDisk(app.vault),
+          '',
+          root && entry.backup.startsWith(root + '/writes/') ? root : undefined
+        )
+        const destination = privateRecoveryPath(view, entry.backup)
+        // Existing native/Follow archives retain their separate ownership and safety checks.
+        if (!destination && !entry.archive) continue
+        const refuse = (reason: string): never => {
+          throw new ExternalRecoveryRequired(reason, {
+            kind: 'retained-byte',
+            id: entry.backup.split('/').pop(),
+            path: entry.target,
+          })
+        }
+        if (!destination || !/^\.abele-sync-[a-z0-9]{8}\.old$/.test(entry.backup.split('/').pop()))
+          refuse('retained recovery locator is not an owned private backup')
+        const io = new BoundedVaultIo(
+          vaultDisk(view.vault),
+          assertCurrent,
+          undefined,
+          undefined,
+          app.vault.configDir
+        )
+        if (!entry.archive) {
+          if (!(await vaultDisk(view.vault).exists(entry.backup)))
+            refuse(
+              'retained recovery bytes are missing at ' +
+                entry.backup +
+                '; keep the connection and restore the recovery copy'
+            )
+          const proof = await io.fingerprint(entry.backup)
+          const planned = {
+            ...entry,
+            archive: { path: destination, sha: proof.sha, size: proof.size },
+          }
+          await journal.replaceRecovered(entry, planned)
+          entry = planned
+        }
+        if (entry.archive.path !== destination) refuse('retained recovery destination changed')
+        if (!(await privateArtifactRecovered(view, entry.backup)))
+          await preservePrivateArtifacts(view, [entry.backup], assertCurrent)
+        const have = await io.fingerprint(destination)
+        if (have.sha !== entry.archive.sha || have.size !== entry.archive.size)
+          refuse('retained recovery bytes changed; the recovery copy was kept')
+        assertCurrent()
+        await journal.replaceRecovered(entry, { ...entry, backup: destination, archived: true })
+        await showPrivateRecoveryNotice(view)
+      }
+    },
+    assertCurrent
+  )
+}
 
 const ORDINARY = 'abele-sync-ordinary-retained-v1'
 const ordinarySchema = z.record(
