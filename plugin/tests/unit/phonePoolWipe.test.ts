@@ -165,12 +165,21 @@ it('preserves recovery bytes and their durable owner during ordinary readiness e
   expect(owner.target).toBe('Notes/sample.md')
 })
 
-it.each([true, false])(
-  'wipes real adapters only with a plugin ledger schema (valid=%s)',
-  async (valid) => {
+it.each([
+  { valid: true, desktop: false },
+  { valid: false, desktop: false },
+  { valid: true, desktop: true },
+  { valid: false, desktop: true },
+])(
+  'wipes real adapters only with a plugin ledger schema ($valid/$desktop)',
+  async ({ valid, desktop }) => {
     const { IDBFactory } = await import('fake-indexeddb')
     const { HostSyncStorage } = await import('@/sync/hostSyncStorage')
-    const { wipePhonePool } = await import('@/testing/wipePhonePool')
+    const { wipePhonePool, wipePool } = await import('@/testing/wipePhonePool')
+    const wipe = desktop ? wipePool : wipePhonePool
+    const request = desktop
+      ? { ...expected, confirm: 'wipe-sync-pool', operation: 'syncWipePool' }
+      : expected
     const { buildFakeVault } = await import('../helpers/fakeVault')
     const { Platform } = await import('obsidian')
     const platform = Platform as { isMobile: boolean; isDesktop: boolean }
@@ -178,8 +187,8 @@ it.each([true, false])(
     const descriptor = Object.getOwnPropertyDescriptor(window, 'indexedDB')
     const factory = new IDBFactory()
     Object.defineProperty(window, 'indexedDB', { configurable: true, value: factory })
-    platform.isMobile = true
-    platform.isDesktop = false
+    platform.isMobile = !desktop
+    platform.isDesktop = desktop
     const base = buildFakeVault([
       { path: 'Notes/user.md', content: 'keep' },
       { path: '.abele-sync/private.bin', content: 'private' },
@@ -234,7 +243,7 @@ it.each([true, false])(
     })
     try {
       if (!valid) {
-        await expect(wipePhonePool({ app } as never, expected)).rejects.toThrow(
+        await expect(wipe({ app } as never, request)).rejects.toThrow(
           'not a recognized plugin ledger'
         )
         // Reopen only for inspection: the failed wipe must leave namespace rows intact.
@@ -245,7 +254,7 @@ it.each([true, false])(
         expect(await app.vault.adapter.exists('.abele-sync/private.bin')).toBe(true)
         return
       }
-      const result = await wipePhonePool({ app } as never, expected)
+      const result = await wipe({ app } as never, request)
       expect(result.databases).toEqual([own])
       expect(offloads.files()).toEqual([])
       const names = (await factory.databases()).map((db) => db.name)
@@ -286,4 +295,82 @@ it('performs zero effects when invoked on a desktop host', async () => {
     })
   ).rejects.toThrow('Real phone pool required')
   expect(effect).not.toHaveBeenCalled()
+})
+
+it('allows the explicit desktop operation with independent vault identity and exact confirmation', async () => {
+  const { executePoolWipe } = await import('@/testing/phonePoolWipe')
+  const calls: string[] = []
+  const result = await executePoolWipe(
+    { ...expected, confirm: 'wipe-sync-pool', operation: 'syncWipePool' } as typeof expected,
+    {
+      identity: () => ({ ...actual, phone: false }),
+      stop: async () => {
+        calls.push('stop')
+      },
+      snapshot: async () => ({ databases: [], rows: [], local: [] }),
+      erase: async (plan) => {
+        calls.push('erase')
+        expect(plan.paths).toEqual(['.abele-sync'])
+      },
+      reload: async () => {
+        calls.push('reload')
+      },
+      verify: async () => {
+        calls.push('verify')
+      },
+    }
+  )
+  expect(result.paths).toEqual(['.abele-sync'])
+  expect(calls).toEqual(['stop', 'erase', 'reload', 'verify'])
+})
+
+it.each(['vault', 'appId', 'confirm', 'operation'])(
+  'performs zero desktop effects for invalid %s',
+  async (key) => {
+    const { executePoolWipe } = await import('@/testing/phonePoolWipe')
+    const { vi } = await import('vitest')
+    const effect = vi.fn(async () => {
+      throw new Error('Unexpected effect')
+    })
+    await expect(
+      executePoolWipe(
+        {
+          ...expected,
+          confirm: 'wipe-sync-pool',
+          operation: 'syncWipePool',
+          [key]: 'wrong',
+        },
+        {
+          identity: () => ({ ...actual, phone: false }),
+          stop: effect,
+          snapshot: effect,
+          erase: effect,
+          reload: effect,
+          verify: effect,
+        }
+      )
+    ).rejects.toThrow()
+    expect(effect).not.toHaveBeenCalled()
+  }
+)
+
+it('pins the approved identity across awaited stop even if the caller edits its request', async () => {
+  const { executePoolWipe } = await import('@/testing/phonePoolWipe')
+  const { vi } = await import('vitest')
+  const request = { ...expected, confirm: 'wipe-sync-pool', operation: 'syncWipePool' }
+  const identity = { ...actual, phone: false }
+  const erase = vi.fn(async () => {})
+  await expect(
+    executePoolWipe(request, {
+      identity: () => identity,
+      stop: async () => {
+        identity.appId = request.appId = 'foreign-vault'
+      },
+      snapshot: async () => ({ databases: [], rows: [], local: [] }),
+      erase,
+      reload: async () => {},
+      verify: async () => {},
+    })
+  ).rejects.toThrow(/independently/)
+  expect(erase).not.toHaveBeenCalled()
 })

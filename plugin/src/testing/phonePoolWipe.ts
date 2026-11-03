@@ -2,6 +2,7 @@ export interface PhoneWipeIdentity {
   vault: string
   appId: string
   confirm: string
+  operation?: string
 }
 export interface PhoneWipeRow {
   database: string
@@ -18,13 +19,16 @@ export function phonePoolWipePlan(
   local: { namespace: string; key: string; value: unknown }[]
 ): { databases: string[]; rows: PhoneWipeRow[]; keys: string[]; paths: string[] } {
   if (
-    expected.confirm !== 'wipe-sync-phone-pool' ||
+    !(
+      expected.confirm === 'wipe-sync-phone-pool' ||
+      (expected.confirm === 'wipe-sync-pool' && expected.operation === 'syncWipePool')
+    ) ||
     !expected.vault ||
     !/^[A-Za-z0-9_-]{1,128}$/.test(expected.appId) ||
     expected.vault !== actual.vault ||
     expected.appId !== actual.appId
   )
-    throw new Error('Exact independently configured phone pool name and appId required')
+    throw new Error('Exact independently configured pool vault name and appId required')
   const uuid = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
   const allowed = new RegExp(
     '^(?:' +
@@ -141,10 +145,25 @@ export interface PhoneWipePorts {
   reload(): Promise<void>
   verify(): Promise<void>
 }
-export async function executePhonePoolWipe(expected: PhoneWipeIdentity, ports: PhoneWipePorts) {
+export function executePhonePoolWipe(expected: PhoneWipeIdentity, ports: PhoneWipePorts) {
+  if (!ports.identity().phone) return Promise.reject(new Error('Real phone pool required'))
+  if (expected.confirm !== 'wipe-sync-phone-pool')
+    return Promise.reject(
+      new Error('Exact independently configured pool vault confirmation required')
+    )
+  return executeWipe(expected, ports, true)
+}
+/** Test-only desktop/phone operation. No ordinary reset can authorize it. */
+export function executePoolWipe(expected: PhoneWipeIdentity, ports: PhoneWipePorts) {
+  if (expected.operation !== 'syncWipePool' || expected.confirm !== 'wipe-sync-pool')
+    return Promise.reject(new Error('Explicit syncWipePool operation and confirmation required'))
+  return executeWipe(expected, ports, false)
+}
+async function executeWipe(expected: PhoneWipeIdentity, ports: PhoneWipePorts, phoneOnly: boolean) {
+  expected = { ...expected }
   const check = () => {
     const actual = ports.identity()
-    if (!actual.phone) throw new Error('Real phone pool required')
+    if (phoneOnly && !actual.phone) throw new Error('Real phone pool required')
     phonePoolWipePlan(expected, actual, [], [], [])
     return actual
   }

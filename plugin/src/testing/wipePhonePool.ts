@@ -9,7 +9,12 @@ import {
 import { completion, wait } from '../sync/idbRequests'
 import { tokenOffloadsOf } from '../sync/tokenOffloadCoordinator'
 import { pathCoordinatorOf } from '../sync/pathCoordinator'
-import { executePhonePoolWipe, type PhoneWipeIdentity, type PhoneWipeRow } from './phonePoolWipe'
+import {
+  executePhonePoolWipe,
+  executePoolWipe,
+  type PhoneWipeIdentity,
+  type PhoneWipeRow,
+} from './phonePoolWipe'
 
 const shared = new Map([
   ['abele-sync-host-v1', ['host', 'host-records', 'host-records-v3']],
@@ -30,7 +35,13 @@ async function existing(factory: IDBFactory, name: string): Promise<IDBDatabase>
   })
 }
 /** Test build only. The manager supplies independently recorded pool identity and confirmation. */
-export async function wipePhonePool(plugin: Plugin, request: PhoneWipeIdentity) {
+export function wipePhonePool(plugin: Plugin, request: PhoneWipeIdentity) {
+  return wipePoolInternal(plugin, request, false)
+}
+export function wipePool(plugin: Plugin, request: PhoneWipeIdentity) {
+  return wipePoolInternal(plugin, request, true)
+}
+async function wipePoolInternal(plugin: Plugin, request: PhoneWipeIdentity, generic: boolean) {
   const app = plugin.app
   const factory = window.indexedDB
   const host = plugin as Plugin & {
@@ -48,7 +59,7 @@ export async function wipePhonePool(plugin: Plugin, request: PhoneWipeIdentity) 
       }
     }
   ).plugins
-  return executePhonePoolWipe(request, {
+  return (generic ? executePoolWipe : executePhonePoolWipe)(request, {
     identity: () => ({
       vault: app.vault.getName(),
       appId: (app as App & { appId: string }).appId,
@@ -75,7 +86,7 @@ export async function wipePhonePool(plugin: Plugin, request: PhoneWipeIdentity) 
           if (stores.some((store) => !allowed.includes(store)))
             throw new Error('Unknown shared database schema')
           const tx = db.transaction(stores, 'readonly')
-          const done = completion(tx, 'cannot inventory phone pool')
+          const done = completion(tx, 'cannot inventory pool vault')
           void done.catch(() => {})
           await Promise.all(
             stores.map(
@@ -162,7 +173,7 @@ export async function wipePhonePool(plugin: Plugin, request: PhoneWipeIdentity) 
         const db = await existing(factory, name)
         try {
           const tx = db.transaction([...new Set(selected.map((row) => row.store))], 'readwrite')
-          const done = completion(tx, 'cannot clear phone pool namespace')
+          const done = completion(tx, 'cannot clear pool vault namespace')
           try {
             await Promise.all(
               selected.map(async (row) => {
