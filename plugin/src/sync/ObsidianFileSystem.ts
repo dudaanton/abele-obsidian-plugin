@@ -2576,6 +2576,9 @@ export class ObsidianFileSystem implements FileSystem {
   private async retireSupersededPrivateSummaryIntents(): Promise<void> {
     if (!this.privateRemovalRoot) return
     const summary = this.privateRemovalRoot + '/retained-removals/summary.json'
+    // This local metadata is acknowledged by its validated successor, never a
+    // server-ledger entry. A conditional receipt still needs the same missing-stage
+    // and valid-summary proof here; ordinary conditional publications stay fenced.
     for (const entry of await this.journal.currentEntries()) {
       if (
         entry.target !== summary ||
@@ -2585,7 +2588,6 @@ export class ObsidianFileSystem implements FileSystem {
         !entry.replacementSha ||
         entry.backup ||
         entry.streaming ||
-        entry.conditionalReceipt ||
         entry.retiredGeneration
       )
         continue
@@ -2623,7 +2625,6 @@ export class ObsidianFileSystem implements FileSystem {
     for (const entry of await this.journal.currentForTargets([...byPath.keys()])) {
       if (
         entry.backup ||
-        entry.conditionalReceipt ||
         entry.retiredGeneration ||
         !entry.replacementSha ||
         byPath.get(entry.target) !== entry.replacementSha

@@ -108,58 +108,66 @@ it.each([false, true])(
       )
     ).toBe('[]')
     expect(await app.vault.adapter.exists('.abele-sync/retained-removals/summary.json')).toBe(false)
+    expect(
+      await new WriteJournal(app as never, undefined, 'sample-default-owner').currentEntries()
+    ).toEqual([])
   }
 )
 
-it('retires a stale private summary install intent after a newer valid summary was saved', async () => {
-  const owner = 'sample-owner'
-  const app = buildFakeVault([])
-  const target = `.abele-sync/connections/${owner}/retained-removals/summary.json`
-  const temp = `.abele-sync/connections/${owner}/writes/.abele-receipt-sample.tmp`
-  const id = 'sample-retained'
-  const victim = `.abele-sync/connections/${owner}/retained-removals/${id}/victim`
-  const summary = JSON.stringify([
-    {
-      id,
-      path: 'Notes/sample.md',
-      victim: `.abele-sync/retained-removals/${id}/victim`,
-      capturedAt: 1000,
-      expected: {
+it.each([undefined, 'sample-conditional'])(
+  'retires a stale private summary install intent after a newer valid summary was saved (%s)',
+  async (conditionalReceipt) => {
+    const owner = 'sample-owner'
+    const app = buildFakeVault([])
+    const target = `.abele-sync/connections/${owner}/retained-removals/summary.json`
+    const temp = `.abele-sync/connections/${owner}/writes/.abele-receipt-sample.tmp`
+    const id = 'sample-retained'
+    const victim = `.abele-sync/connections/${owner}/retained-removals/${id}/victim`
+    const summary = JSON.stringify([
+      {
+        id,
         path: 'Notes/sample.md',
-        wirePath: 'Notes/sample.md',
-        fileId: 'sample-file',
-        versionId: 'sample-version',
-        sha: 'b'.repeat(64),
-        size: 4,
-        mtime: 1000,
+        victim: `.abele-sync/retained-removals/${id}/victim`,
+        capturedAt: 1000,
+        expected: {
+          path: 'Notes/sample.md',
+          wirePath: 'Notes/sample.md',
+          fileId: 'sample-file',
+          versionId: 'sample-version',
+          sha: 'b'.repeat(64),
+          size: 4,
+          mtime: 1000,
+        },
+        phase: 'committed',
       },
-      phase: 'committed',
-    },
-  ])
-  const bytes = new TextEncoder().encode(summary)
-  for (const path of [
-    '.abele-sync',
-    '.abele-sync/connections',
-    `.abele-sync/connections/${owner}`,
-    `.abele-sync/connections/${owner}/retained-removals`,
-    `.abele-sync/connections/${owner}/retained-removals/${id}`,
-  ])
-    await app.vault.adapter.mkdir(path)
-  await app.vault.adapter.writeBinary(target, bytes.buffer as ArrayBuffer)
-  await app.vault.adapter.write(victim, 'kept')
-  const journal = new WriteJournal(app as never, undefined, owner)
-  await journal.persist(() => journal.add({ target, temp, replacementSha: 'a'.repeat(64) }))
-  const raw = new ObsidianFileSystem(app as never, {
-    journalOwner: owner,
-    ledger: { readCommittedEntries: async () => [] } as never,
-  })
+    ])
+    const bytes = new TextEncoder().encode(summary)
+    for (const path of [
+      '.abele-sync',
+      '.abele-sync/connections',
+      `.abele-sync/connections/${owner}`,
+      `.abele-sync/connections/${owner}/retained-removals`,
+      `.abele-sync/connections/${owner}/retained-removals/${id}`,
+    ])
+      await app.vault.adapter.mkdir(path)
+    await app.vault.adapter.writeBinary(target, bytes.buffer as ArrayBuffer)
+    await app.vault.adapter.write(victim, 'kept')
+    const journal = new WriteJournal(app as never, undefined, owner)
+    await journal.persist(() =>
+      journal.add({ target, temp, replacementSha: 'a'.repeat(64), conditionalReceipt })
+    )
+    const raw = new ObsidianFileSystem(app as never, {
+      journalOwner: owner,
+      ledger: { readCommittedEntries: async () => [] } as never,
+    })
 
-  await raw.recover()
+    await raw.recover()
 
-  expect(await journal.currentEntries()).toEqual([])
-  expect(await app.vault.adapter.read(target)).toBe(summary)
-  expect(await app.vault.adapter.read(victim)).toBe('kept')
-})
+    expect(await journal.currentEntries()).toEqual([])
+    expect(await app.vault.adapter.read(target)).toBe(summary)
+    expect(await app.vault.adapter.read(victim)).toBe('kept')
+  }
+)
 
 it('identifies the retained installation record in startup failure diagnostics', async () => {
   const app = buildFakeVault([])
@@ -180,35 +188,40 @@ it('identifies the retained installation record in startup failure diagnostics',
   })
 })
 
-it('keeps the install intent when the private summary cannot be validated', async () => {
-  const owner = 'sample-owner'
-  const app = buildFakeVault([])
-  const target = `.abele-sync/connections/${owner}/retained-removals/summary.json`
-  const temp = `.abele-sync/connections/${owner}/writes/.abele-receipt-sample.tmp`
-  for (const path of [
-    '.abele-sync',
-    '.abele-sync/connections',
-    `.abele-sync/connections/${owner}`,
-    `.abele-sync/connections/${owner}/retained-removals`,
-  ])
-    await app.vault.adapter.mkdir(path)
-  await app.vault.adapter.write(target, '{unreadable')
-  const journal = new WriteJournal(app as never, undefined, owner)
-  await journal.persist(() => journal.add({ target, temp, replacementSha: 'a'.repeat(64) }))
-  const raw = new ObsidianFileSystem(app as never, {
-    journalOwner: owner,
-    ledger: { readCommittedEntries: async () => [] } as never,
-  })
+it.each([undefined, 'sample-conditional'])(
+  'keeps the install intent when the private summary cannot be validated (%s)',
+  async (conditionalReceipt) => {
+    const owner = 'sample-owner'
+    const app = buildFakeVault([])
+    const target = `.abele-sync/connections/${owner}/retained-removals/summary.json`
+    const temp = `.abele-sync/connections/${owner}/writes/.abele-receipt-sample.tmp`
+    for (const path of [
+      '.abele-sync',
+      '.abele-sync/connections',
+      `.abele-sync/connections/${owner}`,
+      `.abele-sync/connections/${owner}/retained-removals`,
+    ])
+      await app.vault.adapter.mkdir(path)
+    await app.vault.adapter.write(target, '{unreadable')
+    const journal = new WriteJournal(app as never, undefined, owner)
+    await journal.persist(() =>
+      journal.add({ target, temp, replacementSha: 'a'.repeat(64), conditionalReceipt })
+    )
+    const raw = new ObsidianFileSystem(app as never, {
+      journalOwner: owner,
+      ledger: { readCommittedEntries: async () => [] } as never,
+    })
 
-  let failure: unknown
-  try {
-    await raw.recover()
-  } catch (error) {
-    failure = error
+    let failure: unknown
+    try {
+      await raw.recover()
+    } catch (error) {
+      failure = error
+    }
+    expect(failureDetails(failure)).toMatchObject({
+      recoveryRecord: { kind: 'installation', id: '.abele-receipt-sample.tmp', path: target },
+    })
+    expect(await journal.currentEntries()).toHaveLength(1)
+    expect(await app.vault.adapter.read(target)).toBe('{unreadable')
   }
-  expect(failureDetails(failure)).toMatchObject({
-    recoveryRecord: { kind: 'installation', id: '.abele-receipt-sample.tmp', path: target },
-  })
-  expect(await journal.currentEntries()).toHaveLength(1)
-  expect(await app.vault.adapter.read(target)).toBe('{unreadable')
-})
+)
