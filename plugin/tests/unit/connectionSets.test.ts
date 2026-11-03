@@ -19,6 +19,51 @@ import { deferred } from '../helpers/deferred'
 import { STARTUP_STOP } from '@/sync/startupSafety'
 
 const folder = (id: string, path: string): SetItem => ({ id, kind: 'folder', scopeId: id, path })
+
+it('protects only copies that exist after stopping a partial item download', async () => {
+  const { storage, data } = setup()
+  data.delete(TOKEN_REGISTRY_KEY)
+  const registry = TokenConnectionRegistry.open(storage),
+    id = registry.add()
+  const key = 'a'.repeat(43),
+    scope = { kind: 'folder' as const, id: 'root', path: '/' }
+  const secrets = { get: () => key, set: () => {}, remove: () => {} }
+  registry.attach(
+    id,
+    { v: 1, address: 'https://sync.example', key, scope },
+    { protocol: 2, token_id: 'owner', space_id: 'space', scope, status: 'active' },
+    secrets
+  )
+  const ui = new TokenUi(registry, secrets, async () => {
+    throw new Error('unused')
+  })
+  let stopped = false,
+    deleted = false
+  ui.stopRuntime = async () => {
+    stopped = true
+  }
+  ui.disconnectRuntime = async () => {}
+  ui.connectionsChanged = async () => {}
+  Reflect.set(ui, 'existingLocalCopies', async (_id: string, paths: string[]) => {
+    expect(stopped).toBe(true)
+    return paths.filter((path) => path === 'Shared/present.md')
+  })
+  vi.spyOn(ui, 'client').mockReturnValue({
+    manifest: async () => ({
+      items: deleted ? [] : [{ path: 'Shared/present.md' }, { path: 'Shared/not-downloaded.md' }],
+      next: null,
+    }),
+  } as never)
+  const finish = await ui.protectLocalFilesForItemDeletion(id, [], ['Shared'])
+  expect(
+    registry.storage(id).loadLocalStorage('abele-sync-token-state:local-only-pending')
+  ).toEqual(['Shared/present.md'])
+  deleted = true
+  await finish(true)
+  expect(registry.storage(id).loadLocalStorage('abele-sync-token-state:local-only')).toEqual([
+    'Shared/present.md',
+  ])
+})
 function setup() {
   const data = new Map<string, unknown>([['abele-sync-connections-v2', 'legacy registry']])
   const storage = {

@@ -394,6 +394,8 @@ export class TokenUi {
   forgetMissingKeptCopy: (path: string) => Promise<void> = async () => {}
   releaseLocalOnly: (id: string, paths: string[]) => Promise<void> = async () => {}
   fencePublicationJournal: (id: string, paths: string[]) => Promise<void> = async () => {}
+  existingLocalCopies: (id: string, paths: string[]) => Promise<string[]> = async (_id, paths) =>
+    paths
   connectionsChanged: (assertCurrent?: () => void) => Promise<void> = noConnectionHost
   disconnectRuntime: (id: string) => Promise<void> = async (id) => {
     await this.runtimes.get(id)?.disconnect()
@@ -1074,11 +1076,15 @@ export class TokenUi {
       await this.waitForDeletion(this.connectionChangeGuard(record.id), 'safety')
       assertCurrent(record.id)
       const storage = this.registry.storage(record.id)
-      const paths = (await inventory(record.id)).filter(
+      const candidates = (await inventory(record.id)).filter(
         (path) =>
           !affected ||
           affected.some((root) => root === '/' || path === root || path.startsWith(root + '/'))
       )
+      // The server manifest includes payloads a partial download never installed.
+      // Only copies observed after the writer drain become new kept-copy obligations.
+      // Earlier pending obligations remain fenced independently below.
+      const paths = await this.existingLocalCopies(record.id, candidates)
       assertCurrent(record.id)
       const pending = (storage.loadLocalStorage(pendingSlot) ?? []) as string[]
       inventories.set(record.id, [...new Set([...pending, ...paths])])

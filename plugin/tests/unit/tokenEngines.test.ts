@@ -589,6 +589,25 @@ import { deferred } from '../helpers/deferred'
 
 afterEach(() => vi.restoreAllMocks())
 
+it('inspects kept copies through the host only after the live download is drained', async () => {
+  const f = inspectionFixture(false, 'Notes')
+  try {
+    f.release()
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await vi.waitFor(() => expect(f.ui.runtimes.has(id)).toBe(true))
+    await expect(f.ui.existingLocalCopies(id, ['Notes/slow.txt'])).rejects.toThrow('drained')
+    await f.ui.stopRuntime(id)
+    expect(
+      await f.ui.existingLocalCopies(id, ['Notes/slow.txt', 'Notes/not-downloaded.md'])
+    ).toEqual(['Notes/slow.txt'])
+    expect(await f.app.vault.adapter.read('Notes/slow.txt')).toBe('ordinary note')
+  } finally {
+    f.release()
+    await f.host.close()
+  }
+})
+
 // The 1,147-file fixture hashes content and replays persisted state after a restart.
 // Allow scheduler contention across both runs while retaining the readiness checks.
 it('resumes a folder upload after a multipart interruption with already acknowledged siblings', async () => {

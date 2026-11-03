@@ -114,6 +114,20 @@ export class TokenEngines {
       }
     })
     this.localOnly = new LocalOnlyCopies(ui.registry)
+    ui.existingLocalCopies = async (id, paths) => {
+      const record = ui.registry.records().find((one) => one.id === id)
+      if (!record || !this.drained.has(id)) throw new Error('Connection must be drained first')
+      const found: string[] = [],
+        budget = new SyncTaskBudget()
+      for (const path of paths) {
+        if (this.closed) throw new Error('Connection host closed; recovery required')
+        const pause = budget.metadataRow()
+        if (pause !== undefined) await pause
+        if (await vaultDisk(this.app.vault).stat(this.localOnly.physical(record, path)))
+          found.push(path)
+      }
+      return found
+    }
     ui.forgetMissingKeptCopy = async (path) => {
       await this.localOnly.forgetMissing(
         path,

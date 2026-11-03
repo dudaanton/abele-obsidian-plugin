@@ -3571,6 +3571,10 @@ and offers a confirmed “Forget this kept copy” action. It checks that the pa
 retires only that path and its descendants, and retries stopped connections. Confirmation warns
 that an unknown moved copy may sync at its new location; a later file at the forgotten path is
 ordinary content. Missing destinations remain vault-wide blockers because their scope is unknown.
+Deleting an issued item during an incomplete download records new kept-copy obligations only
+for paths observed locally after its writers have stopped and drained. Server-only manifest
+entries are not missing local copies. Earlier pending obligations remain protected; a failed
+local inspection stops the deletion rather than guessing which copies exist.
 Retirement checks the exact saved path against the vault index after the delete event: deleting
 a case-distinct sibling or folder never retires an identity whose saved path still exists.
 Before fencing, a pending publication batch touching retained paths is quarantined intact in
