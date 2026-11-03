@@ -20,6 +20,7 @@ import { phoneRouteProbe, phoneRouteDetail, type PhoneRouteResult } from './phon
 import { waitFor } from './syncVault'
 import { syncFixtureRules } from './syncFixtureRules'
 import { restoreSyncActiveFile } from './syncActiveFile'
+import { settleSyncPeers } from './syncQuiescence'
 import { V2Client } from '../../../src/sync/v2/client'
 import { decodeAccessToken } from '@abele/sync-sdk/protocol'
 function cleanupReason(error: unknown, depth = 0): string {
@@ -180,12 +181,10 @@ export class TokenSyncLive {
     return id
   }
   async cycle(): Promise<void> {
-    await this.primary.syncNow()
-    if (this.peer) {
-      await this.peer.syncNow()
-      await this.primary.syncNow()
-      await this.peer.syncNow()
-    }
+    await settleSyncPeers(
+      async () => (await this.client().manifest(null)).cursor,
+      [() => this.primary.syncNow(), ...(this.peer ? [() => this.peer!.syncNow()] : [])]
+    )
   }
   async items(server = this.server): Promise<V2ManifestItem[]> {
     const result: V2ManifestItem[] = []

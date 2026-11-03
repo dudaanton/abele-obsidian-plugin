@@ -117,7 +117,11 @@ liveCase(
           `window.__sampleActivity=(${installSyncActivityProbe.toString()})(host.live.get(${JSON.stringify(id)}),{path:${JSON.stringify(folder + '/')},holdUploadAfter:100,maxHoldMs:15000});return true`
         )
         try {
-          await a.pause(id, false)
+          // Resume itself waits for the cycle. Awaiting it here would wait for
+          // the screenshot gates that this test releases only afterwards.
+          a.run(
+            `window.__sampleActivity.start(()=>svc.pause(${JSON.stringify(id)},false));return true`
+          )
           await a.long(
             'comparison visible',
             `await poll(()=>window.__sampleActivity.compareReached);const root=await openSyncTab();connectionRow(root,${JSON.stringify(id)}).click();await poll(()=>inWindows('.abele-sync-window')?.textContent.includes('Compar'));return true`
@@ -196,7 +200,10 @@ liveCase(
           )
           expect(scrolled.error).toBe('')
         } finally {
-          a.run(`window.__sampleActivity?.restore();delete window.__sampleActivity;return true`)
+          await a.long(
+            'release and join activity probe',
+            `const probe=window.__sampleActivity;if(probe){probe.restore();try{await probe.join()}finally{delete window.__sampleActivity}}return true`
+          )
           await a.waitIdle()
           closeSyncScreens(a)
         }

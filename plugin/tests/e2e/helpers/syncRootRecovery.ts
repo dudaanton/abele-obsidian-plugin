@@ -56,7 +56,7 @@ function capture(s: TokenSyncLive, state: string) {
 
 function stoppedRow(s: TokenSyncLive, id: string, reason: string) {
   return s.primary.run<{ line: string; disabled: boolean; state: string; lastSyncAt: number }>(
-    `await poll(()=>svc.rows.value.find(row=>row.id===${JSON.stringify(id)})?.rootIssue);const root=await openSyncTab();const row=connectionRow(root,${JSON.stringify(id)});row.scrollIntoView({block:'center'});await poll(()=>textOf(row).includes(${JSON.stringify(reason)}));const button=row.querySelector('svg.lucide-refresh-cw').closest('.abele-obsidian-icon');const status=host.live.get(${JSON.stringify(id)}).engine.status;return {line:textOf(row),disabled:button.classList.contains('abele-obsidian-icon_disabled'),state:status.state,lastSyncAt:status.lastSyncAt}`
+    `await poll(()=>svc.rows.value.find(row=>row.id===${JSON.stringify(id)})?.rootIssue,10000,'persisted stopped folder issue');const root=await openSyncTab();const row=connectionRow(root,${JSON.stringify(id)});row.scrollIntoView({block:'center'});await poll(()=>textOf(row).includes(${JSON.stringify(reason)}),10000,'visible stopped folder row');const button=row.querySelector('svg.lucide-refresh-cw').closest('.abele-obsidian-icon');const status=host.live.get(${JSON.stringify(id)}).engine.status;return {line:textOf(row),disabled:button.classList.contains('abele-obsidian-icon_disabled'),state:status.state,lastSyncAt:status.lastSyncAt}`
   )
 }
 
@@ -162,8 +162,13 @@ export async function serverRenamedRootRecovery(s: TokenSyncLive) {
   a.run(`try{await svc.sync(${JSON.stringify(id)})}catch{}return true`)
   const reason =
     'Shared folder renamed on the server: ' + folder + ' → ' + renamed + '; sync stopped'
-  const stopped = stoppedRow(s, id, reason)
+  // Item sets summarize a waiting item on the row; its connection window retains
+  // the full root-change reason and explicit recovery action.
+  const stopped = stoppedRow(s, id, '1 of 1 waiting')
   expect(stopped.disabled).toBe(true)
+  a.run(
+    `const root=await openSyncTab();connectionRow(root,${JSON.stringify(id)}).click();await poll(()=>inWindows('.abele-sync-window')?.textContent.includes(${JSON.stringify(reason)}),10000,'server rename reason in the connection window');inWindows('.abele-sync-window').closest('.modal').querySelector('.modal-close-button, .modal-header-button:has(svg.lucide-x)').click();return true`
+  )
   capture(s, 'server-renamed-row')
   expect(a.read(folder + '/sample.md')).toBe('root recovery content')
   expect(a.read(renamed + '/private.md')).toBe('unrelated local bytes')

@@ -5,6 +5,27 @@ import { TokenOffloadCoordinator } from '@/sync/tokenOffloadCoordinator'
 import { ExchangeTrace } from '@/sync/exchangeTrace'
 import { installSyncActivityProbe } from '../e2e/helpers/syncActivityProbe'
 
+it('starts an awaited Resume independently of the comparison screenshot gate and joins it on cleanup', async () => {
+  const runtime = { options: { fetch: vi.fn<typeof fetch>() }, trace: new ExchangeTrace() }
+  const probe = installSyncActivityProbe(runtime)
+  let finished = false
+  try {
+    Reflect.get(
+      probe,
+      'start'
+    )?.(async () => {
+      await runtime.trace.run('fs fingerprint Notes/sample.md', async () => 1)
+      finished = true
+    })
+    await vi.waitFor(() => expect(probe.compareReached).toBe(true))
+    expect(finished).toBe(false)
+  } finally {
+    probe.restore()
+    await Reflect.get(probe, 'join')?.()
+  }
+  expect(finished).toBe(true)
+})
+
 it('holds comparison through the real delegated filesystem without replacing its fingerprint', async () => {
   const fingerprint = vi.fn(async () => ({ sha: 'b'.repeat(64), size: 1 }))
   const base = Object.assign(new MemoryFileSystem(), { fingerprint })

@@ -29,6 +29,27 @@ afterEach(() => {
   vi.unstubAllEnvs()
   vi.mocked(onPhone).mockReturnValue(false)
 })
+
+it('waits for both peers to consume a directory commit queued after the child deletion', async () => {
+  const live = Object.create(TokenSyncLive.prototype) as TokenSyncLive
+  let head = 0,
+    primarySeen = -1,
+    peerCalls = 0
+  Reflect.set(live, 'primary', {
+    syncNow: async () => {
+      primarySeen = head
+    },
+  })
+  Reflect.set(live, 'peer', {
+    syncNow: async () => {
+      if (++peerCalls <= 2) head++
+    },
+  })
+  vi.spyOn(live, 'client').mockReturnValue({ manifest: async () => ({ cursor: head }) } as never)
+  await live.cycle()
+  expect(primarySeen).toBe(head)
+  expect(peerCalls).toBe(3)
+})
 it('revokes old polling jobs and refuses late completion without resurrecting them', () => {
   const jobs = { __abeleSyncJobold: null, __abeleSyncJobcurrent: null, unrelated: 'keep' }
   cancelSyncJobs(jobs, '__abeleSyncJobcurrent')

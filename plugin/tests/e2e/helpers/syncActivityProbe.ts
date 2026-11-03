@@ -11,6 +11,9 @@ export function installSyncActivityProbe(
   let comparisonTimer: ReturnType<typeof setTimeout> | undefined
   let uploadTimer: ReturnType<typeof setTimeout> | undefined
   let releaseComparison!: () => void, releaseUpload!: () => void
+  let running: Promise<void> | undefined
+  let runError: unknown
+  let runFailed = false
   const comparison = new Promise<void>((resolve) => {
     releaseComparison = resolve
   })
@@ -22,6 +25,24 @@ export function installSyncActivityProbe(
     uploadReached: false,
     puts: 0,
     autoReleased: false,
+    // Resume joins the engine's current cycle. Start it independently of the
+    // screenshot holds, then release and join before the fixture can be retired.
+    start: (work: () => Promise<unknown>): void => {
+      if (running) throw new Error('Activity probe action already started')
+      running = Promise.resolve()
+        .then(work)
+        .then(
+          () => {},
+          (error) => {
+            runFailed = true
+            runError = error
+          }
+        )
+    },
+    join: async (): Promise<void> => {
+      await running
+      if (runFailed) throw runError
+    },
     releaseComparison: () => {
       clearTimeout(comparisonTimer)
       releaseComparison()
