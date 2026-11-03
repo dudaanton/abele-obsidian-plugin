@@ -31,13 +31,29 @@ it('moves folders through the real chat pane source and tree rows', async () => 
   const row = view.get<HTMLElement>('.abele-chat-tree__folder[data-path="Sample"]')
   expect(row.attributes('draggable')).toBe('true')
   // Start from the visible row: the browser finds the draggable outer TreeItem.
-  await row.get(':scope > .tree-item-self').trigger('dragstart')
+  row
+    .get(':scope > .tree-item-self')
+    .element.dispatchEvent(new Event('dragstart', { bubbles: true }))
+  const target = view.get('.abele-chat-tree__folder[data-path="Target"]')
+  const over = new Event('dragover', { bubbles: true, cancelable: true })
+  target.get(':scope > .tree-item-self').element.dispatchEvent(over)
+  expect(over.defaultPrevented).toBe(true)
+  await flushPromises()
+  expect(target.classes()).toContain('is-being-dragged-over')
+  expect(view.get('.abele-chat-tree__list').classes()).not.toContain('is-being-dragged-over')
   await view.get('.abele-chat-tree__folder[data-path="Target"] > .tree-item-self').trigger('drop')
   await flushPromises()
   expect(service.folders.paths).toContain('Target/Sample')
   expect(view.find('.abele-chat-tree__folder[data-path="Target/Sample"]').exists()).toBe(true)
 
-  await view.get('[data-path="Target/Sample"] > .tree-item-self').trigger('dragstart')
+  view
+    .get('[data-path="Target/Sample"] > .tree-item-self')
+    .element.dispatchEvent(new Event('dragstart', { bubbles: true }))
+  view
+    .get('.abele-chat-tree__list')
+    .element.dispatchEvent(new Event('dragover', { bubbles: true, cancelable: true }))
+  await flushPromises()
+  expect(view.get('.abele-chat-tree__list').classes()).toContain('is-being-dragged-over')
   await view.get('.abele-chat-tree__list').trigger('drop')
   await flushPromises()
   expect(service.folders.paths).toContain('Sample')

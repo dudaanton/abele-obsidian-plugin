@@ -224,9 +224,14 @@ const flip = (path: string) => emit('flip', path)
 const accessCount = (folder: ChatTreeFolder) => Object.keys(folder.access ?? {}).length
 
 const dropOn = ref<string | null>(null)
-watch([dragged, draggedFolder], () => {
-  dropOn.value = null
-})
+// Clear the previous drag before its first dragover can establish a new highlight.
+watch(
+  [dragged, draggedFolder],
+  () => {
+    dropOn.value = null
+  },
+  { flush: 'sync' }
+)
 const startDrag = (event: DragEvent, path: string) => {
   if (phone || source.value.renaming?.value?.id === path) {
     event.preventDefault()

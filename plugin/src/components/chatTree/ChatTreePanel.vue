@@ -226,9 +226,13 @@ const newFolder = async (parent: string) => {
 }
 
 const dropTop = ref(false)
-watch([dragged, draggedFolder], () => {
-  dropTop.value = false
-})
+watch(
+  [dragged, draggedFolder],
+  () => {
+    dropTop.value = false
+  },
+  { flush: 'sync' }
+)
 const dropAtTop = () => {
   dropTop.value = false
   dropInto(source.value, '')
