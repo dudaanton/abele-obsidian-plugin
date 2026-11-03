@@ -245,6 +245,9 @@ it.each(resetCases)('owned reset ($retry/$durable/$orphan)', async ({ retry, dur
         ledgers: [{ databaseName: 'sample-unowned-ledger' }],
       })
       expect(local.get('abele-sync-test-pool-ledgers-v1')).toContain(record.ledgerId)
+      // A refused reset still has a visible UI. Snapshot/readiness readers must
+      // not be left pointing at the review database that reset already closed.
+      await expect(ui.refreshReviews()).resolves.toBeUndefined()
       return
     }
     if (retry === true) {

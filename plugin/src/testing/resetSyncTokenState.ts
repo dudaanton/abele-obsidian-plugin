@@ -146,7 +146,12 @@ async function performResetSyncTokenState(
         Reflect.set(plugin, 'tokenPoolResetStage', 'cancelling startup')
         old.cancelStartup()
         await stage('draining token host', () => old.close(false))
-        ui.reviews?.close()
+        const reviews = ui.reviews
+        // Readiness/snapshot callers may still ask the visible UI for reviews.
+        // Detach first, join queued readers, then close the old database handle.
+        ;(ui as { reviews?: typeof reviews }).reviews = undefined
+        await ui.refreshReviews()
+        reviews?.close()
         // Draining startup may finish activation; snapshot its ownership only now.
         clearMarkers = tokenPoolMarkers(plugin.app, ownedDatabases)
         // Native publication retains the incoming inode. Drain writers, then move
