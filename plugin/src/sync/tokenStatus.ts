@@ -8,7 +8,11 @@ import { transferText } from './transferProgress'
  * offline beats paused; conflict copies and what waits for a decision are counted across all.
  */
 export function tokenStatus(
-  ui: Pick<TokenUi, 'rows' | 'activity' | 'candidates' | 'questions'> | null | undefined
+  ui:
+    | (Pick<TokenUi, 'rows' | 'activity' | 'candidates' | 'questions'> &
+        Partial<Pick<TokenUi, 'connectionActivity'>>)
+    | null
+    | undefined
 ): SyncStatus {
   const rows = ui?.rows.value ?? []
   const status: SyncStatus = { ...DISCONNECTED_STATUS }
@@ -52,7 +56,7 @@ export function tokenStatus(
   status.review = ui.candidates.value.length + ui.questions.value.length
   status.lastError =
     rows
-      .map((one) => safetyStopReason(activity[one.id]) ?? activity[one.id]?.error)
+      .map((one) => safetyStopReason(activity[one.id]) ?? ui.connectionActivity?.(one.id)?.error ?? activity[one.id]?.error)
       .find(Boolean) ?? null
   const busy = rows.find(isBusy)
   if (busy) {

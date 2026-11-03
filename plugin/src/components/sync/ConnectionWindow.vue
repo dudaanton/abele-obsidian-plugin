@@ -233,7 +233,7 @@ async function toggleTrusted(): Promise<void> {
     trustError.value = t('sync.window.error')
   }
 }
-const liveActivity = computed(() => props.ui.activity.value[props.connectionId])
+const liveActivity = computed(() => props.ui.connectionActivity(props.connectionId))
 /**
  * What the window shows, at most a few times a second: a pull publishes progress for every
  * file, and redrawing the window that often costs the phone more than the file itself.

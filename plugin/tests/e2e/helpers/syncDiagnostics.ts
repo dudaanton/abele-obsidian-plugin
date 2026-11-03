@@ -37,10 +37,11 @@ const syncSnapshot = () => {
   externalFiles:window.__abeleTest?.externalFileOperations?.(),
   connectFailure:ui?.connectFailure||null,
   connections:(ui?.rows?.value||[]).map(row=>{
-   const activity=ui.activity?.value[row.id]||{}, status=host.live?.get(row.id)?.engine.status;
+   const activity=ui.connectionActivity(row.id)||{}, status=host.live?.get(row.id)?.engine.status;
    const startup=activity.startup, inspection=activity.inspection;
    const statusText=startup?startup.stage+'… '+startup.completed+'/'+startup.total+(startup.outcome==='failed'?' · Needs attention':''):inspection?'Checking the vault… '+inspection.completed+'/'+inspection.total:activity.transfer?transferText(activity.transfer):({idle: "Ready", syncing: "Syncing", paused: "Paused", offline: "Server unavailable", error: "Needs attention", joining: "Connecting", scope_updating: "Updating access", scope_unavailable: "Access unavailable"})[row.status]||row.status;
    return {id:row.id,status:row.status,statusText,transfer:activity.transfer||null,startup:startup||null,inspection:inspection||null,startupTimings:activity.startupTimings||[],paused:row.paused,lastError:activity.error||null,failure:activity.failure||null,reconciliation:activity.reconciliation||null,pending:activity.pending,holds:activity.heldDeletes,deferred:activity.deferred,
+    members:ui.registry.records().filter(one=>one.id===row.id||(ui.itemSets.store.get(row.id)?.items||[]).some(item=>item.recordId===one.id)).map(one=>({id:one.id,path:one.scope?.path,status:one.status,error:ui.activity.value[one.id]?.error,failure:ui.activity.value[one.id]?.failure,startup:ui.activity.value[one.id]?.startup,engine:host.live?.get(one.id)?.engine.status})),
     engine:status?{state:status.state,pending:status.pending,heldDeletes:status.heldDeletes,deferred:status.deferred,lastSyncAt:status.lastSyncAt,lastErrorCode:status.lastError?.code,exchange:host.live?.get(row.id)?.trace?.snapshot()}:null};
   }),
   candidates:(ui?.candidates?.value||[]).map(one=>({id:one.id,path:one.path,connectionId:one.source.id})),

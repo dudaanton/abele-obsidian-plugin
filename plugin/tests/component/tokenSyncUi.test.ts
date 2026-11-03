@@ -55,31 +55,45 @@ it('accepts approval before runtime registration and shows progress and errors b
   view.unmount()
 })
 
-it('keeps the red status and disconnect menu but hides sync now for a server-deleted connection', async () => {
-  const ui = tokenUiFixture(),
-    id = ui.rows.value[0].id
-  ui.registry.storage(id).saveLocalStorage('abele-sync-token-state:scope-deleted', true)
-  ui.registry.setStatus(id, 'scope_unavailable')
-  ui.publish(id, { error: SCOPE_DELETED })
-  const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
-  const view = mount(SyncSettings, { props: { model: ui } })
-  try {
-    const row = view.findAll('.abele-sync-row')[0]
-    expect(row.findAllComponents(Icon).map((one) => one.props('icon'))).not.toContain('refresh-cw')
-    expect(row.text()).toContain('Deleted on the server')
-    expect(row.find('.abele-status-dot_red').exists()).toBe(true)
-    await row
-      .findAllComponents(Icon)
-      .find((one) => one.props('icon') === 'more-horizontal')!
-      .trigger('click')
-    expect(show.mock.instances.at(-1)!.items.some((item) => item.title === 'Disconnect…')).toBe(
-      true
-    )
-  } finally {
-    view.unmount()
-    show.mockRestore()
+it.each([false, true])(
+  'keeps the red status and disconnect menu but hides sync now for a server-deleted connection (set=%s)',
+  async (set) => {
+    const ui = tokenUiFixture(),
+      id = ui.rows.value[0].id
+    ui.registry.storage(id).saveLocalStorage('abele-sync-token-state:scope-deleted', true)
+    ui.registry.setStatus(id, 'scope_unavailable')
+    if (set)
+      ui.itemSets.store.create(
+        id,
+        'Sample scope',
+        [{ id: 'sample-scope', kind: 'folder', scopeId: 'root', path: '/' }],
+        { 'sample-scope': id }
+      )
+    if (set) ui.itemSets.install()
+    ui.publish(id, { error: SCOPE_DELETED })
+    const show = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+    const view = mount(SyncSettings, { props: { model: ui } })
+    try {
+      const row = view.findAll('.abele-sync-row')[0]
+      expect(row.findAllComponents(Icon).map((one) => one.props('icon'))).not.toContain(
+        'refresh-cw'
+      )
+      expect(row.text()).toContain('Deleted on the server')
+      expect(row.find('.abele-status-dot_red').exists()).toBe(true)
+      await row
+        .findAllComponents(Icon)
+        .find((one) => one.props('icon') === 'more-horizontal')!
+        .trigger('click')
+      expect(show.mock.instances.at(-1)!.items.some((item) => item.title === 'Disconnect…')).toBe(
+        true
+      )
+    } finally {
+      view.unmount()
+      show.mockRestore()
+      if (set) ui.itemSets.uninstall()
+    }
   }
-})
+)
 
 it.each(['deleted', 'moved'] as const)(
   'offers one root recovery decision after a folder is %s',

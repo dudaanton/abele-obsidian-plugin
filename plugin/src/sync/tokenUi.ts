@@ -474,6 +474,20 @@ export class TokenUi {
       if (one.safetyStop) this.recordEvent(id, one.safetyStop)
     this.refresh()
   }
+  /** A visible set can fail in a member while its leader's engine is idle. */
+  connectionActivity(id: string): ConnectionActivity | undefined {
+    const own = this.activity.value[id]
+    if (own?.error) return own
+    const records = this.registry.records()
+    let missingReason = records.some((one) => one.id === id && one.status === 'error')
+    for (const item of this.itemSets.store.get(id)?.items ?? []) {
+      if (item.detached || item.paused || !item.recordId || item.recordId === id) continue
+      const member = this.activity.value[item.recordId]
+      if (member?.error) return { ...own, error: member.error, failure: member.failure }
+      missingReason ||= records.some((one) => one.id === item.recordId && one.status === 'error')
+    }
+    return missingReason ? { ...own, error: connectionError({}) } : own
+  }
   refresh(): void {
     this.itemSets.prune()
     this.rows.value = this.registry

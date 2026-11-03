@@ -215,7 +215,7 @@ const rowName = (row: TokenConnectionRecord) => {
 const RANK = ['faint', 'green', 'accent', 'orange', 'red']
 const tone = (row: TokenConnectionRecord) => {
   if (errors.value[row.id]) return 'red'
-  const own = connectionTone(row, activity.value[row.id])
+  const own = connectionTone(row, ui.value?.connectionActivity(row.id))
   const items = itemsOf(row)
   if (!items) return own
   if (items.length && items.every((item) => item.state.kind === 'detached')) return 'faint'
@@ -225,7 +225,10 @@ const tone = (row: TokenConnectionRecord) => {
 }
 const line = (row: TokenConnectionRecord) => {
   if (errors.value[row.id]) return errors.value[row.id]
-  const own = connectionLine(row, activity.value[row.id], settingsSyncText, settingsSyncWhen)
+  const current = ui.value?.connectionActivity(row.id)
+  const own = connectionLine(row, current, settingsSyncText, settingsSyncWhen)
+  // A terminal connection reason is more useful than its members' attention count.
+  if (current?.error === SCOPE_DELETED) return own
   const items = itemsOf(row)
   if (items?.[0]?.state.kind === 'detached')
     return setLine(

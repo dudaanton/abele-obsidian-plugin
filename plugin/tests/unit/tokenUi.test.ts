@@ -14,6 +14,39 @@ import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { deferred } from '../helpers/deferred'
 import { LocalPlacementError } from '@/sync/localFolderPlacement'
+import { tokenStatus } from '@/sync/tokenStatus'
+
+it('explains a failed member on its idle connection leader and clears the explanation after recovery', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  await ui.connect(secondToken)
+  const [leader, member] = registry.records()
+  ui.itemSets.store.create(
+    leader.id,
+    'Sample set',
+    [
+      { id: 'first', kind: 'folder', scopeId: 'first', path: 'First' },
+      { id: 'second', kind: 'folder', scopeId: 'second', path: 'Second' },
+    ],
+    { first: leader.id, second: member.id }
+  )
+  registry.setStatus(leader.id, 'idle')
+  registry.setStatus(member.id, 'error')
+  ui.refresh()
+  expect(ui.connectionActivity(leader.id)?.error).toBe(connectionError({}))
+  ui.publish(member.id, {
+    error: 'Sample recovery is required',
+    failure: { reason: 'sample owner' },
+  })
+  expect(ui.rows.value.find((row) => row.id === leader.id)?.status).toBe('error')
+  expect(ui.connectionActivity(leader.id)?.error).toBe('Sample recovery is required')
+  expect(ui.connectionActivity(leader.id)?.failure?.reason).toBe('sample owner')
+  expect(tokenStatus(ui).lastError).toBe('Sample recovery is required')
+  expect(ui.activity.value[leader.id]?.error).toBeUndefined()
+  registry.setStatus(member.id, 'idle')
+  ui.publish(member.id, { error: undefined, failure: undefined })
+  expect(ui.connectionActivity(leader.id)?.error).toBeUndefined()
+})
 
 it('drains a retry before inspecting disconnect safety without discarding local state', async () => {
   const { ui, registry } = setup()
