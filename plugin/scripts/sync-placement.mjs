@@ -512,7 +512,8 @@ export function syncPlacementPlugin() {
               plans.push({ path, sha: change.sha, size: change.size, mtime: change.mtime ?? 0 });
             } } catch { eligible = false; }
             if (!eligible) return split();
-            const notifications = [], refused = {};
+            // Preserve rollback identity through the host's placement/error boundary.
+            const notifications = [], refused = new Error('Native cohort requires ordinary placement');
             let result;
             try {
               result = await installBatch.call(this.fs, plans, async (view, flush) => {

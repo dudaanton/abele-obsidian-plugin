@@ -38,6 +38,7 @@ for (const fault of [
   'ordered-operations',
   'ledger-abort',
   'occupied-target',
+  'occupied-coordinated',
   'scoped',
   'coordinated',
   'live-recovery',
@@ -85,6 +86,7 @@ for (const fault of [
         'sealed-cache',
         'ledger-abort',
         'occupied-target',
+        'occupied-coordinated',
         'second-ledger-abort',
       ].includes(fault)
       const count = directoryCase
@@ -235,7 +237,11 @@ for (const fault of [
             armed = false
             throw new Error('sample sealed cache interrupted before publication')
           }
-          if (armed && fault === 'occupied-target' && ++publications === 4) {
+          if (
+            armed &&
+            (fault === 'occupied-target' || fault === 'occupied-coordinated') &&
+            ++publications === 4
+          ) {
             armed = false
             await disk.writeFile(to, 'sample independent edit')
           }
@@ -556,7 +562,7 @@ for (const fault of [
               },
             } as never,
             composed ??
-              (fault === 'coordinated'
+              (fault === 'coordinated' || fault === 'occupied-coordinated'
                 ? coordinatedFileSystem(
                     files,
                     new PathCoordinator(),
@@ -630,7 +636,7 @@ for (const fault of [
             expect(await sha256(await disk.readFile(join(root, item.path)))).toBe(item.sha)
           return
         }
-        if (fault === 'occupied-target') {
+        if (fault === 'occupied-target' || fault === 'occupied-coordinated') {
           const report = await run()
           expect(armed).toBe(false)
           expect(report.held).toHaveLength(1)
