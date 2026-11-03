@@ -1518,8 +1518,17 @@ export class TokenEngineRuntime
                 items: import('./nativeInstallBatch').InstallItem[],
                 work: (view: FileSystem, flush: () => Promise<void>) => Promise<unknown>
               ) =>
-                install.call(target, items, (view: FileSystem, flush: () => Promise<void>) =>
-                  work(new Proxy(view, runtimeFsHandler), flush)
+                this.trace.nativeBatch(
+                  items.map((item) => item.path),
+                  async (proof) =>
+                    install.call(target, items, (view: FileSystem, flush: () => Promise<void>) => {
+                      const read = Reflect.get(
+                        view,
+                        Symbol.for('abele.sync.install-batch-proof-v1')
+                      )
+                      if (typeof read === 'function') proof(() => read.call(view))
+                      return work(new Proxy(view, runtimeFsHandler), flush)
+                    })
                 )
             }
             if (name === Symbol.for('abele.sync.prepare-scan-upload-v1'))

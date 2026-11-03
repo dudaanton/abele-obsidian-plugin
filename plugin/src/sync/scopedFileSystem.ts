@@ -146,7 +146,8 @@ export function scopedFileSystem(
         key === Symbol.for('abele.sync.watch-epoch-v1') ||
         key === Symbol.for('abele.sync.verify-inventory-root-v1') ||
         key === Symbol.for('abele.sync.operation-pass-v1') ||
-        key === Symbol.for('abele.sync.retention-idle-v1')
+        key === Symbol.for('abele.sync.retention-idle-v1') ||
+        key === Symbol.for('abele.sync.install-batch-proof-v1')
       )
         return value.bind(target)
       if (

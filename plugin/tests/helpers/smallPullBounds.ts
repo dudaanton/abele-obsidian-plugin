@@ -28,7 +28,10 @@ export function assertPullEvidence(
   evidence: Pick<
     ReturnType<ExchangeTrace['snapshot']>['firstSync']['pulls'],
     'small' | 'large' | 'failed' | 'overlap' | 'contentRequests'
-  >,
+  > &
+    Partial<
+      Pick<ReturnType<ExchangeTrace['snapshot']>['firstSync']['pulls'], 'ordinarySmall' | 'native'>
+    >,
   expected: { small: number; large: number; requests: number }
 ): void {
   if (
@@ -41,9 +44,23 @@ export function assertPullEvidence(
     throw new Error(
       'Incomplete or repeated pull evidence: ' + JSON.stringify({ expected, evidence })
     )
-  if (expected.small) {
-    assertSmallPullBounds(evidence.small.min)
-    assertSmallPullBounds(evidence.small.max)
+  // Native cohorts share journal/barrier calls: do not invent per-file physical
+  // counts. Their provider proves every staged publication and retirement, while
+  // ordinary pulls retain the exact per-file bounds and global HTTP totals above.
+  const ordinary = evidence.ordinarySmall ?? evidence.small
+  const native = evidence.native
+  if (
+    native &&
+    (native.small !== evidence.small.count - ordinary.count ||
+      native.files !== native.staged ||
+      native.files !== native.publications ||
+      native.files !== native.retired ||
+      native.smallWrites > native.small)
+  )
+    throw new Error('Incomplete native installation evidence: ' + JSON.stringify(native))
+  if (ordinary.count) {
+    assertSmallPullBounds(ordinary.min)
+    assertSmallPullBounds(ordinary.max)
   }
 }
 

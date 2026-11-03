@@ -11,6 +11,15 @@ import type { WriteJournal, JournalEntry } from './writeJournal'
 import { reserveSourceStage, releaseSourceStage } from './vaultWrites'
 
 export const INSTALL_BATCH = Symbol.for('abele.sync.install-batch-v1')
+export const INSTALL_PROOF = Symbol.for('abele.sync.install-batch-proof-v1')
+export interface NativeInstallProof {
+  files: number
+  small: number
+  staged: number
+  publications: number
+  retired: number
+  smallWrites: number
+}
 export interface InstallItem {
   path: string
   size: number
@@ -58,6 +67,14 @@ export async function nativeInstallBatch<T>(
   work: (fs: FileSystem, flush: () => Promise<void>) => Promise<T>
 ): Promise<T | undefined> {
   const { native, journal, disk, io } = host
+  const proof: NativeInstallProof = {
+    files: items.length,
+    small: items.filter((item) => item.size <= 1024 * 1024).length,
+    staged: 0,
+    publications: 0,
+    retired: 0,
+    smallWrites: 0,
+  }
   if (
     !native.syncFile ||
     !native.syncPath ||
@@ -197,8 +214,10 @@ export async function nativeInstallBatch<T>(
         else journal.add(plan.entry)
       }
     })
+    proof.staged = plans.size
     const view = new Proxy(host.fs, {
       get(target, key) {
+        if (key === INSTALL_PROOF) return () => ({ ...proof })
         if (key === INSTALL_BATCH || key === 'conditionalFile') return undefined
         if (key === Symbol.for('abele.sync.replay-stage-v1')) return async () => false
         if (key === 'discardStage')
@@ -238,6 +257,7 @@ export async function nativeInstallBatch<T>(
                 if (plan.sealed || offset !== plan.offset || offset + bytes.length > plan.item.size)
                   throw new EngineError('conflict', 'invalid batch stage offset')
                 await io.append(id, offset, bytes, mtime, signal, 'deferred')
+                if (plan.item.size <= 1024 * 1024) proof.smallWrites++
                 plan.offset += bytes.length
               },
               seal: async (expected) => {
@@ -279,6 +299,7 @@ export async function nativeInstallBatch<T>(
                   throw error
                 }
                 plan.published = true
+                proof.publications++
                 await host.installed(plan.item)
               },
               discard: async () => {
@@ -315,6 +336,7 @@ export async function nativeInstallBatch<T>(
     const retired = [...plans.values()].filter((plan) => plan.discarded).map((plan) => plan.entry)
     const retire = () => {
       for (const entry of retired) journal.drop(entry)
+      proof.retired = retired.length
     }
     if (host.retire) host.retire(retire)
     else await journal.persist(retire)

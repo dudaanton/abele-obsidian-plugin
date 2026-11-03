@@ -1,6 +1,8 @@
 import { expect, it, vi } from 'vitest'
 import type { FileSystem } from '@abele/sync-sdk/core'
-import { nativeInstallBatch, type InstallBatchHost } from '@/sync/nativeInstallBatch'
+import { nativeInstallBatch, INSTALL_PROOF, type InstallBatchHost } from '@/sync/nativeInstallBatch'
+import { ExchangeTrace } from '@/sync/exchangeTrace'
+import { assertPullEvidence } from '../helpers/smallPullBounds'
 
 const items = [
   { path: 'Notes/First/sample-1.md', size: 4, sha: 'a'.repeat(64), mtime: 1 },
@@ -51,6 +53,41 @@ function host() {
   }
   return { host: value as unknown as InstallBatchHost, native, effects, parents: value.parents }
 }
+
+it('certifies batch placement only after every independent intent has retired', async () => {
+  const { host: batchHost } = host()
+  const trace = new ExchangeTrace()
+  await trace.nativeBatch(
+    items.map((item) => item.path),
+    async (proof) =>
+      nativeInstallBatch(batchHost, items, async (view, flush) => {
+        proof(Reflect.get(view, INSTALL_PROOF))
+        for (const item of items) {
+          const finish = trace.beginPull(item.size, item.path, 1)
+          const stage = await view.beginAtomicWrite!(item.path, item.mtime, null)
+          await stage.append(0, new Uint8Array(item.size))
+          await stage.seal({ sha: item.sha, size: item.size })
+          await stage.commit()
+          await view.discardStage!(stage.id)
+          finish(true)
+        }
+        await flush()
+        expect(Reflect.get(view, INSTALL_PROOF)().retired).toBe(0)
+        return true
+      })
+  )
+  for (let i = 0; i < items.length; i++)
+    trace.record(`GET /v2/files/sample-${i}/content`, Date.now(), 'complete')
+  const evidence = trace.snapshot().firstSync.pulls
+  expect(evidence.native).toMatchObject({
+    files: 2,
+    staged: 2,
+    publications: 2,
+    retired: 2,
+    smallWrites: 2,
+  })
+  expect(() => assertPullEvidence(evidence, { small: 2, large: 0, requests: 2 })).not.toThrow()
+})
 
 it('an interrupted batch that published nothing creates no vault folders and flushes nothing', async () => {
   const { host: batchHost, effects } = host()

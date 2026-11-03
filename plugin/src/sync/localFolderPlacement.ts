@@ -333,6 +333,7 @@ export class LocalFolderPlacement {
             Symbol.for('abele.sync.diagnostic-v1'),
             Symbol.for('abele.sync.replay-stage-v1'),
             Symbol.for('abele.sync.trace-pull-v1'),
+            Symbol.for('abele.sync.install-batch-proof-v1'),
           ].includes(key as symbol)
         )
           return value.bind(target)

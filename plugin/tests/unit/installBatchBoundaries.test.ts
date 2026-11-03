@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { MemoryFileSystem, type FileSystem } from '@abele/sync-sdk/core'
-import { INSTALL_BATCH, type InstallItem } from '@/sync/nativeInstallBatch'
+import { INSTALL_BATCH, INSTALL_PROOF, type InstallItem } from '@/sync/nativeInstallBatch'
 import { coordinatedFileSystem, PathCoordinator, PLACEMENT } from '@/sync/pathCoordinator'
 import { scopedFileSystem } from '@/sync/scopedFileSystem'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
@@ -11,6 +11,21 @@ import { serializeProjection } from '@/sync/external/projection'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { IDBFactory } from 'fake-indexeddb'
 
+it('forwards pathless native installation evidence without granting out-of-scope file access', async () => {
+  const raw = new MemoryFileSystem()
+  const proof = { files: 1, small: 1, staged: 1, publications: 1, retired: 1, smallWrites: 1 }
+  Reflect.set(raw, INSTALL_PROOF, () => proof)
+  const placed = new LocalFolderPlacement('Shared', 'Local').fileSystem(raw)
+  const view = scopedFileSystem(
+    placed,
+    (path) => {
+      if (!path.startsWith('Shared/')) throw new Error('outside scope')
+    },
+    (path) => path.startsWith('Shared/')
+  )
+  expect(Reflect.get(view, INSTALL_PROOF)()).toEqual(proof)
+  await expect(view.stat('Other/sample.md')).rejects.toThrow('outside scope')
+})
 it('declines existing destinations before preserving them as possible write sources', async () => {
   const source = new MemoryFileSystem(),
     preserve = vi.fn(async () => {})

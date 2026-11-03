@@ -3,6 +3,47 @@ import { ExchangeTrace } from '@/sync/exchangeTrace'
 import { assertPullEvidence } from '../helpers/smallPullBounds'
 import * as pullCounters from '@/sync/pullOperationCounts'
 
+it('attributes native cohort work once and requires a complete installation proof', async () => {
+  const trace = new ExchangeTrace()
+  await trace.nativeBatch(['Notes/a.md', 'Notes/b.md'], async (proof) => {
+    proof(() => ({ files: 2, small: 2, staged: 2, publications: 2, retired: 2, smallWrites: 2 }))
+    const a = trace.beginPull(3, 'Notes/a.md', 1)
+    const b = trace.beginPull(3, 'Notes/b.md', 1)
+    trace.record('journal save', Date.now(), 'complete')
+    a(true)
+    b(true)
+  })
+  trace.record('GET /v2/files/a/content', Date.now(), 'complete')
+  trace.record('GET /v2/files/b/content', Date.now(), 'complete')
+  const evidence = trace.snapshot().firstSync.pulls
+  expect(evidence.otherFileIo.journal).toBe(1)
+  expect(evidence.small.sum.journal).toBe(0)
+  expect(() => assertPullEvidence(evidence, { small: 2, large: 0, requests: 2 })).not.toThrow()
+  trace.record('GET /v2/files/a/content', Date.now(), 'complete')
+  expect(() =>
+    assertPullEvidence(trace.snapshot().firstSync.pulls, {
+      small: 2,
+      large: 0,
+      requests: 2,
+    })
+  ).toThrow()
+})
+it('refuses native cohort evidence with an unretired install intent', async () => {
+  const trace = new ExchangeTrace()
+  await trace.nativeBatch(['Notes/a.md'], async (proof) => {
+    proof(() => ({ files: 1, small: 1, staged: 1, publications: 1, retired: 0, smallWrites: 1 }))
+    trace.beginPull(3, 'Notes/a.md', 1)(true)
+  })
+  trace.record('GET /v2/files/a/content', Date.now(), 'complete')
+  expect(() =>
+    assertPullEvidence(trace.snapshot().firstSync.pulls, {
+      small: 1,
+      large: 0,
+      requests: 1,
+    })
+  ).toThrow()
+})
+
 it('reuses its counter pool for every file instead of allocating per-file counter objects', async () => {
   const factory = vi.spyOn(pullCounters, 'emptyPullCounts')
   try {

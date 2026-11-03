@@ -6,6 +6,7 @@ import {
   pullCountKeys,
 } from './pullOperationCounts'
 import { mobileReadSnapshot } from './mobileReadDiagnostics'
+import type { NativeInstallProof } from './nativeInstallBatch'
 
 interface PullScope {
   active: boolean
@@ -13,6 +14,7 @@ interface PullScope {
   size: number
   counts: ReturnType<typeof emptyPullCounts>
   finish: (complete: boolean) => void
+  native?: boolean
 }
 const noPull = (_complete: boolean): void => {}
 const httpPattern = /^(GET|POST|PUT|DELETE|HEAD) /
@@ -83,6 +85,42 @@ export class ExchangeTrace {
     overlap: false,
     contentRequests: 0,
     otherFileIo: emptyPullCounts(),
+    ordinarySmall: emptyPullSummary(),
+    native: { files: 0, small: 0, staged: 0, publications: 0, retired: 0, smallWrites: 0 },
+  }
+  private cohort?: { paths: Set<string>; completed: number }
+  async nativeBatch<T>(
+    paths: readonly string[],
+    work: (proof: (read: () => NativeInstallProof) => void) => Promise<T>
+  ): Promise<T> {
+    if (this.cohort) this.pulls.overlap = true
+    const previous = this.cohort
+    const cohort = { paths: new Set(paths), completed: 0 }
+    this.cohort = cohort
+    let read: (() => NativeInstallProof) | undefined
+    try {
+      const result = await work((value) => {
+        read = value
+      })
+      if (cohort.completed) {
+        const proof = read?.()
+        if (
+          !proof ||
+          proof.files !== cohort.completed ||
+          proof.staged !== proof.files ||
+          proof.publications !== proof.files ||
+          proof.retired !== proof.files ||
+          proof.smallWrites > proof.small
+        )
+          this.pulls.overlap = true
+        else
+          for (const key of Object.keys(this.pulls.native) as (keyof NativeInstallProof)[])
+            this.pulls.native[key] += proof[key]
+      }
+      return result
+    } finally {
+      this.cohort = previous
+    }
   }
   private sealed = false
   private total = 0
@@ -155,9 +193,12 @@ export class ExchangeTrace {
       this.pulls.failed++
       return noPull
     }
-    if (this.activeCount) this.pulls.overlap = true
+    const native = !!path && !!this.cohort?.paths.has(path)
+    if (this.activeCount && (!native || this.scopes.some((one) => one.active && !one.native)))
+      this.pulls.overlap = true
     this.activeCount++
     scope.active = true
+    scope.native = native
     scope.path = path
     scope.size = size
     for (const key of pullCountKeys) scope.counts[key] = 0
@@ -174,6 +215,9 @@ export class ExchangeTrace {
     if (complete)
       summarizePull(scope.size <= 1024 * 1024 ? this.pulls.small : this.pulls.large, scope.counts)
     else this.pulls.failed++
+    if (complete && scope.native && this.cohort) this.cohort.completed++
+    if (complete && !scope.native && scope.size <= 1024 * 1024)
+      summarizePull(this.pulls.ordinarySmall, scope.counts)
   }
 
   async pull<T>(size: number, work: () => Promise<T>, path?: string): Promise<T> {
@@ -265,22 +309,26 @@ export class ExchangeTrace {
     const content = contentPattern.test(operation)
     if (!this.sealed) {
       if (content) this.pulls.contentRequests++
-      for (const scope of this.scopes)
-        if (scope.active) {
-          let belongs = !scope.path || !paths?.length
-          if (scope.path && !belongs && paths)
-            for (const path of paths)
-              if (pullPathMatches(scope.path, path, operation)) {
-                belongs = true
-                break
-              }
-          countPullOperation(
-            belongs ? scope.counts : this.pulls.otherFileIo,
-            operation,
-            1,
-            belongs && this.preparation > 0
-          )
-        }
+      // A cohort shares its journal/durability work. Charge physical events once;
+      // its completed ownership/publication/retirement proof is accounted separately.
+      if (this.cohort) countPullOperation(this.pulls.otherFileIo, operation)
+      else
+        for (const scope of this.scopes)
+          if (scope.active) {
+            let belongs = !scope.path || !paths?.length
+            if (scope.path && !belongs && paths)
+              for (const path of paths)
+                if (pullPathMatches(scope.path, path, operation)) {
+                  belongs = true
+                  break
+                }
+            countPullOperation(
+              belongs ? scope.counts : this.pulls.otherFileIo,
+              operation,
+              1,
+              belongs && this.preparation > 0
+            )
+          }
     }
     const request = this.requests[this.requestNext]
     request.operation = operation
