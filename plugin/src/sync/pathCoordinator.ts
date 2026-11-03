@@ -31,11 +31,22 @@ export class PathCoordinator {
               assertHeld()
               resolve(await work())
             } catch (error) {
-              reject(
-                error instanceof Error
-                  ? error
-                  : new Error('Path placement failed', { cause: error })
-              )
+              if (error instanceof Error) reject(error)
+              else {
+                let detail = ''
+                try {
+                  if (error && typeof error === 'object') {
+                    const message = Reflect.get(error, 'message'),
+                      code = Reflect.get(error, 'code')
+                    if (typeof message === 'string') detail = ': ' + message
+                    if (typeof code === 'string' || typeof code === 'number')
+                      detail += ' (' + code + ')'
+                  } else detail = ': ' + String(error)
+                } catch {
+                  // A foreign error can have throwing accessors; still settle the lease.
+                }
+                reject(new Error('Path placement failed' + detail, { cause: error }))
+              }
             } finally {
               this.active.delete(request)
               this.dispatch()

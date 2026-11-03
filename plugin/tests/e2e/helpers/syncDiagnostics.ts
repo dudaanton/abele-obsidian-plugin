@@ -29,6 +29,7 @@ const syncSnapshot = () => {
   })),
   webViewLoad:{timeOrigin:performance.timeOrigin,loadId:window.__abelePhoneLoadIdentity?.loadId||null},
   tokenHostReady:!!host,
+  tokenPoolResetStage:app.plugins.plugins.abele?.tokenPoolResetStage||null,
   tokenHostStartup:app.plugins.plugins.abele?.tokenHostStartup||null,
   pluginStartup:{started:performance.getEntriesByName('abele:onload-start').at(-1)?.startTime??null,finished:performance.getEntriesByName('abele:onload-end').at(-1)?.startTime??null},
   attachmentStage:window.__abeleAttachmentStage||null,

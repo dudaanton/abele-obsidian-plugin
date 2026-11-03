@@ -52,7 +52,14 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('localized sync layouts',
             // Native phone dialogs may be inserted before the existing modal.
             // Observe the window this gesture mounted, independent of DOM order.
             const content = await until(() => [...document.querySelectorAll('.abele-sync-window')].find(one => !windows.has(one)))
-            if (!content) throw new Error('Connection window did not mount')
+            if (!content) throw new Error('Connection window did not mount: ' + JSON.stringify({
+              fixtureConnected: connections.isConnected, rowConnected: row.isConnected,
+              rowText: row.textContent, rowDocument: row.ownerDocument === document,
+              modals: [...document.querySelectorAll('.modal')].map(one => ({
+                title: one.querySelector('.modal-title')?.textContent,
+                settings: !!one.querySelector('.token-sync-settings'), window: !!one.querySelector('.abele-sync-window')
+              }))
+            }))
             await capture('connection', content.closest('.modal'))
             const last = content.closest('.modal').querySelector('.abele-modal__footer button:last-child')
             if (!last) throw new Error('Connection actions did not mount')

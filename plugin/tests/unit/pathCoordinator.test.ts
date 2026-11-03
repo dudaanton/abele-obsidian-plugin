@@ -148,3 +148,19 @@ it('checks runtime ownership after waiting, before any placement', async () => {
   await rejected
   expect(wrote).toBe(false)
 })
+
+it('keeps a nonlocal placement error message and code visible without losing its original cause', async () => {
+  const original = {
+    name: 'Error',
+    message: 'sample parent identity changed',
+    code: 'sample-parent',
+  }
+  const error = await new PathCoordinator()
+    .run(['Notes/sample.md'], async () => {
+      throw original
+    })
+    .catch((error) => error)
+  expect(error.message).toContain('sample parent identity changed')
+  expect(error.message).toContain('sample-parent')
+  expect(error.cause).toBe(original)
+})

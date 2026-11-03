@@ -4,6 +4,7 @@ import { IDBFactory } from 'fake-indexeddb'
 import { MemoryStateStore, sha256, type EngineStatus, type SyncReport } from '@abele/sync-sdk/core'
 import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { TokenEngines } from '@/sync/tokenEngines'
+import { TokenEngineRuntime } from '@/sync/tokenEngineRuntime'
 import { TokenUi, connectionError } from '@/sync/tokenUi'
 import { TokenConnectionRegistry, TOKEN_REGISTRY_KEY } from '@/sync/tokenConnectionRegistry'
 import { ExecutableReview } from '@/sync/executableReview'
@@ -3105,3 +3106,34 @@ it.each(['/', 'Notes'])(
     }
   }
 )
+
+it('starts runtime shutdown before waiting for an initial exchange to drain', async () => {
+  const f = inspectionFixture()
+  f.release()
+  const started = deferred<void>(),
+    stopped = deferred<void>()
+  const realClose = TokenEngineRuntime.prototype.close
+  vi.spyOn(TokenEngineRuntime.prototype, 'start').mockImplementation(async () => {
+    started.resolve()
+    await stopped.promise
+  })
+  const close = vi
+    .spyOn(TokenEngineRuntime.prototype, 'close')
+    .mockImplementation(async function () {
+      stopped.resolve()
+      await realClose.call(this)
+    })
+  let shutdown: Promise<void> | undefined
+  const connecting = f.ui.connect(f.encoded).catch(() => {})
+  try {
+    await started.promise
+    shutdown = f.host.close(false)
+    for (let i = 0; i < 20; i++) await Promise.resolve()
+    expect(close).toHaveBeenCalled()
+  } finally {
+    stopped.resolve()
+    await connecting
+    await shutdown
+    await f.host.close(false)
+  }
+})

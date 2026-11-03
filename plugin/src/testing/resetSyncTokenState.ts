@@ -106,6 +106,24 @@ async function performResetSyncTokenState(
   plugin: Plugin,
   request: TokenPoolResetRequest
 ): Promise<void> {
+  const stage = async <T>(name: string, work: () => Promise<T>): Promise<T> => {
+    Reflect.set(plugin, 'tokenPoolResetStage', name)
+    console.debug('[abele-sync test reset]', name, 'started')
+    try {
+      const result = await work()
+      console.debug('[abele-sync test reset]', name, 'complete')
+      return result
+    } catch (error) {
+      console.debug('[abele-sync test reset]', name, 'failed', error)
+      throw new Error(
+        'Pool reset failed at ' +
+          name +
+          ': ' +
+          (error instanceof Error ? error.message : String(error)),
+        { cause: error }
+      )
+    }
+  }
   const owner = plugin as unknown as { tokenEngines: TokenEngines }
   const old = owner.tokenEngines
   if (!old) throw new Error('Token host is not ready')
@@ -125,8 +143,9 @@ async function performResetSyncTokenState(
         return [...owned, 'abele-sync-reviews-' + reviewsId]
       },
       stop: async () => {
+        Reflect.set(plugin, 'tokenPoolResetStage', 'cancelling startup')
         old.cancelStartup()
-        await old.close(false)
+        await stage('draining token host', () => old.close(false))
         ui.reviews?.close()
         // Draining startup may finish activation; snapshot its ownership only now.
         clearMarkers = tokenPoolMarkers(plugin.app, ownedDatabases)
@@ -136,7 +155,9 @@ async function performResetSyncTokenState(
         const paths = new Set<string>()
         const directory = stagingDirectory(plugin.app.vault.configDir) + '/'
         for (const name of ownedDatabases) {
-          const found = await inspectExistingLedger(window.indexedDB, name)
+          const found = await stage('checking ledger ' + name, () =>
+            inspectExistingLedger(window.indexedDB, name)
+          )
           if (found) assertDiscardableSyncLedger(found.metadata)
           const raw = found?.metadata.get('plugin:' + EXTERNAL_STATE_KEY)
           if (raw == null) continue
@@ -153,9 +174,14 @@ async function performResetSyncTokenState(
               paths.add(artifact.path)
           }
         }
-        await preservePrivateArtifacts(plugin.app, paths)
+        await stage('preserving private artifacts', () =>
+          preservePrivateArtifacts(plugin.app, paths)
+        )
       },
-      removeDatabase: (name) => IndexedDbStateStore.delete(window.indexedDB, name),
+      removeDatabase: (name) =>
+        stage('deleting database ' + name, () =>
+          IndexedDbStateStore.delete(window.indexedDB, name)
+        ),
       forget: async () => {
         clearMarkers()
         await flushHostStorage(plugin.app)
@@ -163,7 +189,9 @@ async function performResetSyncTokenState(
           ui as unknown as { secrets: DeviceTokenSecrets & { remove(reference: string): void } }
         ).secrets
         for (const record of ui.registry.records()) ui.registry.beginForget(record.id)
-        await ui.registry.finishForgottenDurably(secrets)
+        await stage('forgetting credentials and connections', () =>
+          ui.registry.finishForgottenDurably(secrets)
+        )
         for (const connection of ui.itemSets.store.all()) ui.itemSets.store.forget(connection.id)
         await ui.registry.flush()
         // IDB owns these rows; the raw localStorage copy is compatibility state only.
@@ -176,7 +204,9 @@ async function performResetSyncTokenState(
             if (JSON.stringify(plugin.app.loadLocalStorage(key)) !== JSON.stringify(value))
               throw new Error('Pool connection cleanup was not stored')
           }
-        await recoverOrphanPrivateArtifacts(plugin.app, window.indexedDB)
+        await stage('recovering orphan private artifacts', () =>
+          recoverOrphanPrivateArtifacts(plugin.app, window.indexedDB)
+        )
         ui.runtimes.clear()
         ui.activity.value = {}
         ui.available.value = false
@@ -230,6 +260,7 @@ async function performResetSyncTokenState(
         )
         owner.tokenEngines.start()
         plugin.app.saveLocalStorage(JOURNAL, null)
+        Reflect.set(plugin, 'tokenPoolResetStage', 'complete')
       },
     },
     request

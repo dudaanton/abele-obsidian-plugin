@@ -9,11 +9,11 @@ const installMoveDiagnostics = (runtime, root) => {
  opts.fs=new Proxy(originalFs,{get(target,key){
   const fn=Reflect.get(target,key);
   if(typeof fn!=='function')return fn;
-  if(!['stat','fingerprint','move','remove','beginAtomicWrite','reopenStage'].includes(key))return fn.bind(target);
+  if(!['stat','fingerprint','move','remove','moveDirectory','removeDirectory','conditionalFile','beginAtomicWrite','reopenStage'].includes(key))return fn.bind(target);
   return async (...args)=>{
-   const relevant=typeof args[0]==='string'&&args[0].startsWith(root+'/');
-   try{const result=await fn.apply(target,args);if(relevant)record({method:key,path:args[0],destination:key==='move'?args[1]:undefined,result:['stat','fingerprint'].includes(key)?result:undefined});return result}
-   catch(error){if(relevant)record({method:key,path:args[0],error:String(error?.message||error),cause:String(error?.cause?.message||'')});throw error}
+   const path=typeof args[0]==='string'?args[0]:args[0]?.path;const relevant=typeof path==='string'&&path.startsWith(root+'/');
+   try{const result=await fn.apply(target,args);if(relevant)record({method:key,path,destination:key==='move'?args[1]:undefined,result:['stat','fingerprint'].includes(key)?result:undefined});return result}
+   catch(error){if(relevant)record({method:key,path,error:String(error?.message||error),cause:String(error?.cause?.message||'')});throw error}
   }
  }});
  engine.watch.ctx.fs=opts.fs;
@@ -33,7 +33,7 @@ const installMoveDiagnostics = (runtime, root) => {
     try{file.engineStat=await originalFs.stat(path);if(file.engineStat)file.fingerprint=await originalFs.fingerprint(path)}catch(error){file.error=String(error?.message||error);file.cause=String(error?.cause?.message||'')}
     files.push(file);
    }
-   return {files,lastReport,calls:[...calls],noticed:[...engine.watch.noticed],reported:[...engine.watch.reported]};
+   return {directoryRemovals:app.loadLocalStorage('abele-sync-empty-directory-removals-v1'),directoryIdentities:app.loadLocalStorage('abele-sync-local-directories-v1'),files,lastReport,calls:[...calls],noticed:[...engine.watch.noticed],reported:[...engine.watch.reported]};
   },
   close(){opts.fs=originalFs;opts.onSync=originalSync;context.log=originalLog;engine.watch.ctx.fs=watchFs}
  };

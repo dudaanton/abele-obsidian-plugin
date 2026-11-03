@@ -171,9 +171,7 @@ it.each(resetCases)('owned reset ($retry/$durable/$orphan)', async ({ retry, dur
     {
       path: staging,
       content:
-        retry === 'unresolved'
-          ? 'sample unique late edit'
-          : new TextDecoder().decode(markerBytes),
+        retry === 'unresolved' ? 'sample unique late edit' : new TextDecoder().decode(markerBytes),
     },
     {
       path: '.obsidian/plugins/abele/sync-staging/orphan.incoming',
@@ -268,6 +266,7 @@ it.each(resetCases)('owned reset ($retry/$durable/$orphan)', async ({ retry, dur
     expect(cancelStartup).toHaveBeenCalledTimes(retry === true ? 2 : 1)
     expect(close).toHaveBeenCalledTimes(retry === true ? 2 : 1)
     expect(close).toHaveBeenCalledWith(false)
+    expect(Reflect.get(plugin, 'tokenPoolResetStage')).toBe('complete')
     expect(ui.activity.value).toEqual({})
     expect(tokenOffloadsOf(vault, pathCoordinatorOf(vault))).toBe(manager)
     expect(manager.files()).toEqual([])
@@ -295,9 +294,9 @@ it.each(resetCases)('owned reset ($retry/$durable/$orphan)', async ({ retry, dur
     expect(await vault.adapter.exists('.obsidian/plugins/abele/sync-staging/unowned.bin')).toBe(
       false
     )
-    expect(
-      await vault.adapter.exists('.obsidian/plugins/abele/sync-staging/orphan.incoming')
-    ).toBe(false)
+    expect(await vault.adapter.exists('.obsidian/plugins/abele/sync-staging/orphan.incoming')).toBe(
+      false
+    )
     if (retry === 'unresolved')
       expect(await vault.adapter.read(staging.replace('/sync-staging/', '/sync-recovery/'))).toBe(
         'sample unique late edit'
