@@ -268,9 +268,9 @@ it.skipIf(onPhone())(
       expect(items.some((one) => one.path.startsWith(folder + '/'))).toBe(false)
       expect(items.some((one) => one.path === sibling)).toBe(true)
       // Deleting one issued folder leaves the issuer connection available for its other files.
-      expect(
-        a.run(`return app.plugins.plugins.abele.tokenEngines.live.has(${JSON.stringify(id)})`)
-      ).toBe(true)
+      // An item-set's public ID is not a member runtime's key. Exercise the
+      // retained issuer instead of asserting that implementation-map key.
+      await a.syncNow(id)
     } finally {
       closeSyncScreens(a)
     }
@@ -349,8 +349,11 @@ for (const layout of onPhone() ? ['phone'] : ['desktop', 'emulated-phone'])
         a.run(`
         svc.runtimeStopLimitMs=window.__deletionStop.limit;
         window.__deletionStop.release();
-        const entries=app.loadLocalStorage('abele-sync-writes')||[];
-        app.saveLocalStorage('abele-sync-writes',[...entries,{owner:${JSON.stringify(id)},target:${JSON.stringify(path)},temp:window.__deletionStop.temp}]);
+        const held=window.__deletionStop;
+        const owner=svc.itemSets.store.get(held.id)?.items.find(one=>one.recordId)?.recordId||held.id;
+        held.journal=new window.__abeleTest.WriteJournal(app,undefined,owner);
+        held.entry={target:${JSON.stringify(path)},temp:held.temp};
+        await held.journal.persist(()=>held.journal.add(held.entry));
         await press(${dialog},'Try again');
         await poll(()=>textOf((${dialog})?.querySelector('[role="alert"]')).includes('installation or retained-byte recovery is unfinished'));
         return true
@@ -359,8 +362,8 @@ for (const layout of onPhone() ? ['phone'] : ['desktop', 'emulated-phone'])
         expect(a.read(path)).toBe('Retained while stopping')
         await shot(a, 'local-refusal-' + layout, factsSelector)
         a.run(`
-        const held=window.__deletionStop,entries=app.loadLocalStorage('abele-sync-writes')||[];
-        app.saveLocalStorage('abele-sync-writes',entries.filter(one=>!(one.owner===held.id&&one.temp===held.temp)));
+        const held=window.__deletionStop;
+        await held.journal.persist(()=>held.journal.drop(held.entry));
         await press(${dialog},'Try again');
         await poll(()=>!svc.registry.records().some(one=>one.id===${JSON.stringify(id)})&&!(${dialog}));
         return true
@@ -370,7 +373,7 @@ for (const layout of onPhone() ? ['phone'] : ['desktop', 'emulated-phone'])
         await shot(a, 'retry-done-' + layout, '.token-sync-settings')
       } finally {
         a.run(
-          `const held=window.__deletionStop;if(held){held.release?.();const entries=app.loadLocalStorage('abele-sync-writes')||[];app.saveLocalStorage('abele-sync-writes',entries.filter(one=>!(one.owner===held.id&&one.temp===held.temp)));svc.stopRuntime=held.original;svc.runtimeStopLimitMs=held.limit;delete window.__deletionStop}return true`
+          `const held=window.__deletionStop;if(held){held.release?.();if(held.journal&&held.entry)await held.journal.persist(()=>held.journal.drop(held.entry));svc.stopRuntime=held.original;svc.runtimeStopLimitMs=held.limit;delete window.__deletionStop}return true`
         )
         closeSyncScreens(a)
         if (layout === 'emulated-phone') {
@@ -402,7 +405,7 @@ it('shows another device stopped by scope_deleted after the owner deletes the sa
     await a.syncNow(id).catch(() => {})
     await a.long(
       'other device permanently stops',
-      `await openSyncTab();await poll(()=>!!svc.registry.records().find(one=>one.id===${JSON.stringify(id)})?.state['abele-sync-token-state:scope-deleted']);await poll(()=>textOf(connectionRow(app.setting.activeTab.containerEl,${JSON.stringify(id)})).includes('Deleted on the server'));return true`
+      `await openSyncTab();await poll(()=>svc.registry.records().some(one=>(svc.itemSets.store.get(${JSON.stringify(id)})?.items.map(item=>item.recordId)||[${JSON.stringify(id)}]).includes(one.id)&&one.state['abele-sync-token-state:scope-deleted']));await poll(()=>textOf(connectionRow(app.setting.activeTab.containerEl,${JSON.stringify(id)})).includes('Deleted on the server'));return true`
     )
     expect(a.read(path)).toBe(content)
     expect(

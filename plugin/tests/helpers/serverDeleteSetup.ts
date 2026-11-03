@@ -9,7 +9,7 @@ export async function issueDeletionDevice(
   transport: typeof fetch
 ) {
   const client = AccessClient.fromToken(encoded, { fetch: transport })
-  const { kind, id } = client.token.scope
+  const { kind, id } = (await client.connection()).scope
   return client.issue({ scope: { kind, id }, label, read_only: readOnly })
 }
 

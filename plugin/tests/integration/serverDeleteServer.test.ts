@@ -66,6 +66,14 @@ it('rejects an actual in-flight deletion when its frozen server crashes', async 
   const server = await spawnSyncServer(directory)
   let pending: Promise<unknown> | undefined
   try {
+    // CLI-issued owner tokens need not carry an embedded labelled scope.
+    const issued = await issueDeletionDevice(
+      server.rootToken,
+      'Sample crash device',
+      false,
+      network
+    )
+    expect(issued.token).toBeTruthy()
     const client = new V2Client(
       AccessClient.fromToken(server.rootToken, { fetch: network }).token,
       network

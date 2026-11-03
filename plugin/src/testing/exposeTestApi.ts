@@ -156,6 +156,7 @@ import { transportOf } from '@/sync/environment'
 import { desktopTransport as syncDesktopTransport } from '@/sync/desktopTransport'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
+import { WriteJournal } from '@/sync/writeJournal'
 import { resetSyncTokenState, captureSyncTokenOwnership } from './resetSyncTokenState'
 import type { TokenPoolResetRequest } from './resetTokenPool'
 import { wipePhonePool, wipePool, verifyPoolWipe } from './wipePhonePool'
@@ -286,6 +287,7 @@ interface AbeleTestApi {
   /** Sync's fetch-shaped native transport; network.desktopTransport has a different contract. */
   desktopTransport: typeof syncDesktopTransport
   ObsidianFileSystem: typeof ObsidianFileSystem
+  WriteJournal: typeof WriteJournal
   ExternalFileHost: typeof ExternalFileHost
   BoundedVaultIo: typeof BoundedVaultIo
   AttachmentStore: typeof AttachmentStore
@@ -957,6 +959,7 @@ export function exposeTestApi(plugin: Plugin): void {
 
     desktopTransport: syncDesktopTransport,
     ObsidianFileSystem,
+    WriteJournal,
     externalState: { IndexedDbStateStore, ExternalState },
     ExternalFileHost,
     BoundedVaultIo,
