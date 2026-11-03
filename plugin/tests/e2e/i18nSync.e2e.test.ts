@@ -29,26 +29,29 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('localized sync layouts',
             }
             fs.writeFileSync(${JSON.stringify(shots + '/' + locale + (phone ? '-phone-' : '-desktop-'))} + name + '.png', (await win.webContents.capturePage()).toPNG())
           }
-          const close = async () => {
-            const modal = [...document.querySelectorAll('.modal.abele-modal')].at(-1)
+          const close = async (modal = [...document.querySelectorAll('.modal.abele-modal')].at(-1)) => {
             modal?.closest('.modal-container')?.querySelector('.modal-close-button, .modal-header-button:has(svg.lucide-x)')?.click()
             if (modal && !await until(() => !modal.isConnected)) throw new Error('Sync fixture did not close')
           }
           try {
+            const previous = new Set(document.querySelectorAll('.modal.abele-modal'))
             api.openDialog('sync-connect')
-            const connect = await until(() => [...document.querySelectorAll('.modal.abele-modal')].at(-1))
+            const connect = await until(() => [...document.querySelectorAll('.modal.abele-modal')].find(one => !previous.has(one)))
             if (!connect) throw new Error('Connect dialog did not mount')
             await capture('qr', connect)
             const instructions = [...connect.querySelectorAll('.setting-item-name')].map(el => el.textContent.trim())
             if (!instructions.some(text => text.includes(${JSON.stringify(locale === 'ru' ? 'Считать QR-код' : 'ɊŔ')})))
               throw new Error('Localized QR instructions are missing: ' + instructions.join('; '))
-            await close()
+            await close(connect)
             api.openDialog('sync-connections')
-            const connections = await until(() => [...document.querySelectorAll('.modal.abele-modal')].at(-1))
+            const connections = await until(() => [...document.querySelectorAll('.modal.abele-modal')].find(one => !previous.has(one)))
             const row = await until(() => connections?.querySelector('.abele-sync-row'))
             if (!row) throw new Error('Connection row did not mount')
+            const windows = new Set(document.querySelectorAll('.abele-sync-window'))
             row.click()
-            const content = await until(() => [...document.querySelectorAll('.modal.abele-modal')].at(-1)?.querySelector('.abele-sync-window'))
+            // Native phone dialogs may be inserted before the existing modal.
+            // Observe the window this gesture mounted, independent of DOM order.
+            const content = await until(() => [...document.querySelectorAll('.abele-sync-window')].find(one => !windows.has(one)))
             if (!content) throw new Error('Connection window did not mount')
             await capture('connection', content.closest('.modal'))
             const last = content.closest('.modal').querySelector('.abele-modal__footer button:last-child')
