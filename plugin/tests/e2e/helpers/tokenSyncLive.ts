@@ -233,13 +233,16 @@ export class TokenSyncLive {
     const failures: unknown[] = []
     for (const device of this.saved.keys()) device.retire()
     for (const [device, saved] of [...this.saved].reverse()) {
+      let reset = false
       try {
         await device.resetTokenState()
         device.assertTokenStateReset()
+        reset = true
       } catch (error) {
         try {
           await device.forceResetTokenState()
           device.assertTokenStateReset()
+          reset = true
           console.warn(
             'Live sync polite cleanup failed; guarded pool reset succeeded:',
             cleanupReason(error)
@@ -255,7 +258,9 @@ export class TokenSyncLive {
       }
       try {
         // Fixture files are the only notes this case owns. Reset itself never touches files.
-        await device.removeTree([this.root], true)
+        // A failed reset can still own writers or retained recovery bytes. Removing
+        // their source tree would create more destructive intent on the next run.
+        if (reset) await device.removeTree([this.root], true)
       } catch (error) {
         failures.push(error)
       }

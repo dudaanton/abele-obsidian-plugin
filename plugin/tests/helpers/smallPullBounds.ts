@@ -10,7 +10,9 @@ export function firstFolderExpectedPulls(
   return {
     small,
     large: ordinary.length - small,
-    requests: files.reduce((total, file) => total + Math.ceil(file.size / (1024 * 1024)), 0),
+    // Streamed pulls fetch one suffix response per file, including the executable
+    // downloaded for review. Chunk count is no longer HTTP request count.
+    requests: files.length,
   }
 }
 /** Shared by live diagnostics and the pinned-code integration benchmark. No timing assumptions. */

@@ -195,7 +195,8 @@ it('reports both cleanup failures while still restoring the lease', async () => 
   ).saved
   saved.set(live.primary, { ignore: 'original ignore', file: null })
   await expect(live.close()).rejects.toThrow('polite blocked; guarded recovery required')
-  expect(remove).toHaveBeenCalledWith([live.root], true)
+  // An unretired connection must keep its source bytes; lease restoration still runs.
+  expect(remove).not.toHaveBeenCalled()
   expect(restore.mock.calls.some(([body]) => body.includes('original ignore'))).toBe(true)
 })
 
@@ -242,6 +243,24 @@ it('reports retained records after the fallback while still restoring the lease'
   })
   const remove = vi.spyOn(live.primary, 'removeTree').mockResolvedValue(undefined)
   await expect(live.close()).rejects.toThrow('Token pool reset left connection records')
-  expect(remove).toHaveBeenCalledWith([live.root], true)
+  // An unretired connection must keep its source bytes; lease restoration still runs.
+  expect(remove).not.toHaveBeenCalled()
   expect(run.mock.calls.some(([body]) => body.includes('sample original ignore'))).toBe(true)
+})
+
+it('keeps fixture bytes when neither reset can prove its connection retired', async () => {
+  vi.stubEnv('OBSIDIAN_TEST_VAULT', 'primary-pool')
+  const live = new TokenSyncLive(false)
+  ;(live as unknown as { saved: Map<typeof live.primary, { ignore: null; file: null }> }).saved.set(
+    live.primary,
+    { ignore: null, file: null }
+  )
+  vi.spyOn(live.primary, 'resetTokenState').mockRejectedValue(new Error('sample drain failed'))
+  vi.spyOn(live.primary, 'forceResetTokenState').mockRejectedValue(
+    new Error('sample recovery pending')
+  )
+  vi.spyOn(live.primary, 'run').mockReturnValue(true)
+  const remove = vi.spyOn(live.primary, 'removeTree').mockResolvedValue()
+  await expect(live.close()).rejects.toThrow('sample recovery pending')
+  expect(remove).not.toHaveBeenCalled()
 })

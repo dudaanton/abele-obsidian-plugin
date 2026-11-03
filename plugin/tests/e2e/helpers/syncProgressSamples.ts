@@ -4,9 +4,11 @@ export function syncProgressSamples(documents: Document[]) {
   for (const doc of new Set(documents))
     for (const bar of Array.from(doc.querySelectorAll('.abele-sync-window progress'))) {
       const label = bar.getAttribute('aria-label')
-      if (bar.getBoundingClientRect().width > 0 && /^\d+ of \d+$/.test(label ?? ''))
+      const determinate = bar.hasAttribute('value') && bar.hasAttribute('max')
+      if (bar.getBoundingClientRect().width > 0 && determinate && label)
         samples.push({
-          label: label!,
+          // The accessible label describes the transfer; numeric attributes own progress.
+          label: `${bar.getAttribute('value')} of ${bar.getAttribute('max')}`,
           value: Number(bar.getAttribute('value')),
           total: Number(bar.getAttribute('max')),
           text:

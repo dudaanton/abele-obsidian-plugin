@@ -23,15 +23,15 @@ it('counts reviewed attachment-kind executable requests separately from ordinary
       { path: 'Notes/sample.js', size: 20, kind: 'attachment' },
       { path: 'Media/sample.bin', size: 1024 * 1024 + 1, kind: 'attachment' },
     ])
-  ).toEqual({ small: 1, large: 1, requests: 4 })
+  ).toEqual({ small: 1, large: 1, requests: 3 })
 })
 
-it('requires exactly the fixture streams including the reviewed executable and two large-file chunks', () => {
+it('requires exactly the fixture streams including the reviewed executable and one continuous large-file response', () => {
   expect(
     firstFolderExpectedPulls(
       firstFolderFixture().files.map((file) => ({ path: file.path, size: file.bytes.length }))
     )
-  ).toEqual({ small: 1022, large: 1, requests: 1025 })
+  ).toEqual({ small: 1022, large: 1, requests: 1024 })
 })
 
 it('accepts one bounded atomic write and rejects extra work or incomplete evidence', () => {
@@ -72,4 +72,12 @@ it('rejects hidden per-file overhead, missing counters, repeated pulls and extra
     { overlap: true },
   ])
     expect(() => assertPullEvidence({ ...evidence, ...change }, expected)).toThrow()
+})
+
+it('counts a continuous large-file response once rather than once per MiB', () => {
+  expect(firstFolderExpectedPulls([{ path: 'Media/sample.bin', size: 4 * 1024 * 1024 }])).toEqual({
+    small: 0,
+    large: 1,
+    requests: 1,
+  })
 })

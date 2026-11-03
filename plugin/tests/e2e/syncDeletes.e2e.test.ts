@@ -42,6 +42,12 @@ liveCase(
   'bulk deletions stay held until Put them back restores every file',
   [56, 103],
   async () => {
+    const s0 = fixture()
+    // The host's error history spans files. Keep reporting new plugin errors,
+    // while excluding deliberately injected diagnostics from preceding cases.
+    const baseline = new Map(
+      [s0.primary, s0.peer!].map((device) => [device, device.vault().run(['dev:errors'], 20000)])
+    )
     const { s, a, b, paths } = await heldFixture()
     expect((await s.items()).filter((one) => paths.includes(one.path))).toHaveLength(60)
     a.run(
@@ -52,9 +58,12 @@ liveCase(
     expect(b.filesUnder(s.root + '/bulk')).toHaveLength(60)
     expect((await s.client().trash()).filter((one) => paths.includes(one.path))).toHaveLength(0)
     for (const device of [a, b])
-      expect(device.vault().run(['dev:errors'], 20000)).not.toMatch(
-        /plugin:abele|\/plugins\/abele\//
-      )
+      expect(
+        device
+          .vault()
+          .run(['dev:errors'], 20000)
+          .replace(baseline.get(device) ?? '', '')
+      ).not.toMatch(/plugin:abele|\/plugins\/abele\//)
   },
   fixture
 )
@@ -235,6 +244,7 @@ liveCase(
       expect(a.read(s.root + '/to/sample.md')).toBe('sample')
       b.remove([s.root + '/to'])
       await s.cycle()
+      diagnostic('after peer directory deletion cycle')
       expect(a.exists(s.root + '/to')).toBe(false)
     } finally {
       a.run('window.__abeleMoveProbe?.close();delete window.__abeleMoveProbe;return true', true)

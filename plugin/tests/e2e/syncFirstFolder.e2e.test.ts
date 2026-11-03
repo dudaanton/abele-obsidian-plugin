@@ -74,7 +74,7 @@ liveCase(
     // Observe the rendered connection window during Connect, not an internal progress signal.
     b.run(`${syncProgressShotsPrelude(shotDir('abele-sync-progress'))}
       const samples=[], before=new Set(svc.rows.value.map(row=>row.id));let opened=false;window.__firstFolderSamples=samples;
-      window.__firstFolderTimer=setInterval(()=>{const root=app.setting.activeTab?.containerEl, added=svc.rows.value.find(row=>!before.has(row.id));if(!opened&&added&&!modal('Connect to a server')&&root){opened=true;connectionRow(root,added.id).click()}
+      window.__firstFolderTimer=setInterval(()=>{const root=app.setting.activeTab?.containerEl, added=svc.rows.value.find(row=>!before.has(row.id));if(!opened&&added&&!modal('Connect to a server')&&root){const index=svc.rows.value.findIndex(row=>row.id===added.id),row=root.querySelectorAll('.abele-sync-row')[index];if(row){row.click();opened=true}}
       const current=(${syncProgressSamples.toString()})([document,settingsDoc()]);samples.push(...current);progressShots.sample(current)},50);return true`)
     let samples: { label: string; value: number; total: number }[] = []
     const started = Date.now()
@@ -104,6 +104,9 @@ liveCase(
     const evidence = b.run<ReturnType<ExchangeTrace['snapshot']>['firstSync']['pulls']>(
       `return app.plugins.plugins.abele.tokenEngines.live.get(${JSON.stringify(connection!)}).trace.snapshot().firstSync.pulls`
     )
+    // Verify installed bytes before inspecting cost evidence; a diagnostic failure
+    // must not leave file integrity unmeasured.
+    await verifyBytes(b, folder, false)
     assertPullEvidence(
       evidence,
       firstFolderExpectedPulls(
@@ -113,7 +116,6 @@ liveCase(
     // Every version must already be installed before any later cycle can repair an omission.
     // Together with exact pull/request totals this rejects duplicate files or chunks without
     // retaining a growing set of file IDs in runtime diagnostics.
-    await verifyBytes(b, folder, false)
     console.log('[first folder operation bounds]', JSON.stringify(evidence))
     expect(samples.some((sample) => sample.total > 0 && sample.value < sample.total)).toBe(true)
     expect(
