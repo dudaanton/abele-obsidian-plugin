@@ -385,3 +385,25 @@ it('retains the physical fallback for a certified folder missing from the curren
     await one.close()
   }
 })
+
+it('refreshes a folder candidate after an indexed delete and recreation in the same pass', async () => {
+  const one = await fixture()
+  try {
+    const pass = Reflect.get(one.files, Symbol.for('abele.sync.inventory-pass-v1')) as <T>(
+      work: () => Promise<T>
+    ) => Promise<T>
+    await pass.call(one.files, async () => {
+      const before = await one.files.trustedPathCandidates!.lookup('Notes', 'Folder')
+      const folder = one.app.vault.getAbstractFileByPath('Notes/Folder')!
+      await disk.rename(join(one.root, 'Notes/Folder'), join(one.root, 'Retained'))
+      one.app.emit('vault', 'delete', folder)
+      await disk.mkdir(join(one.root, 'Notes/Folder'))
+      one.app.emit('vault', 'create', folder)
+      const after = await one.files.trustedPathCandidates!.lookup('Notes', 'Folder')
+      expect(after?.[0]?.identity).not.toBe(before?.[0]?.identity)
+      await expect(LocalPaths.forPath(one.files, 'Notes/Folder/Restored.md')).resolves.toBeDefined()
+    })
+  } finally {
+    await one.close()
+  }
+})

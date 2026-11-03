@@ -323,7 +323,22 @@ export class ObsidianFileSystem implements FileSystem {
   get trustedIndexIdentities(): true | undefined {
     return this.prepareStartupInventory ? true : undefined
   }
-  private candidateDirectories = new WeakMap<object, { path: string; identity: Promise<string> }>()
+  private candidateDirectories = new WeakMap<
+    object,
+    {
+      path: string
+      revision: number
+      identity: Promise<string>
+    }
+  >()
+  private readonly changedCandidateDirectories = new Map<string, number>()
+  private candidateDirectoryClock = 0
+  private candidateDirectoryRevision(path: string): number {
+    let revision = 0
+    for (let parent = path; parent; parent = folderOf(parent).replace(/\/$/, ''))
+      revision = Math.max(revision, this.changedCandidateDirectories.get(parent) ?? 0)
+    return revision
+  }
   get trustedPathCandidates(): FileSystem['trustedPathCandidates'] {
     const native = this.native
     if (
@@ -373,11 +388,13 @@ export class ObsidianFileSystem implements FileSystem {
           else if (row.kind === 'file') result.push({ path: row.path, kind: row.kind })
           else {
             let saved = this.candidateDirectories.get(row.node)
-            if (!saved || saved.path !== row.path) {
+            const revision = this.candidateDirectoryRevision(row.path)
+            if (!saved || saved.path !== row.path || saved.revision !== revision) {
               saved = {
                 path: row.path,
+                revision,
                 identity: Promise.resolve(
-                  this.directories.knownIdentity(row.path) ??
+                  (!revision ? this.directories.knownIdentity(row.path) : undefined) ??
                     this.directories.identity(row.path, true)
                 ),
               }
@@ -803,6 +820,7 @@ export class ObsidianFileSystem implements FileSystem {
     if (this.inventoryDepth === 0) {
       invalidateIndexedPathCandidates(this.app.vault)
       this.candidateDirectories = new WeakMap()
+      this.changedCandidateDirectories.clear()
       await this.waitForStartupIndex()
       this.indexFallback = false
       this.indexReady()
@@ -821,7 +839,14 @@ export class ObsidianFileSystem implements FileSystem {
     ) => {
       invalidateMetadataInventory(this.app.vault)
       // File membership changes do not change a directory birth/identity.
-      if (file.children) this.directories.invalidateInventory()
+      if (file.children) {
+        this.directories.invalidateInventory()
+        // A host folder object can survive delete/recreate reconciliation. Its
+        // prior physical identity must not poison restores in this same pass.
+        const revision = ++this.candidateDirectoryClock
+        this.changedCandidateDirectories.set(file.path, revision)
+        if (previous) this.changedCandidateDirectories.set(previous, revision)
+      }
       this.invalidateRootChain([file.path, ...(previous ? [previous] : [])])
       if (!inventory) return
       for (const path of [file.path, ...(previous ? [previous] : [])]) {
