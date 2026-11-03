@@ -58,6 +58,7 @@ await tokenHostReady(()=>app.plugins.plugins.abele?.tokenEngines, window.__abele
  const started=performance.getEntriesByName('abele:onload-start').at(-1), ended=performance.getEntriesByName('abele:onload-end').at(-1);
  return !!started && !!ended && ended.startTime>=started.startTime;
 }, ()=>{const startup=app.plugins.plugins.abele?.tokenHostStartup;return startup?.state==='failed'?(startup.error||'Unknown startup error'):undefined});
+window.__abeleSyncWaiting='running sync action';
 ${SYNC_PRELUDE}`
 
 export class SyncDriver {

@@ -21,15 +21,18 @@ it('waits for delayed host initialization before invoking the reset once', async
       'window',
       `return (async()=>{${ASYNC_SYNC_PRELUDE};return host})()`
     )
-    const job = run({ plugins: { plugins: { abele: plugin } } }, {}).then(
+    const page: { __abeleSyncWaiting?: string } = {}
+    const job = run({ plugins: { plugins: { abele: plugin } } }, page).then(
       (ready: { reset(): void }) => ready.reset()
     )
     await vi.advanceTimersByTimeAsync(5000)
     expect(reset).not.toHaveBeenCalled()
+    expect(page.__abeleSyncWaiting).toBe('token host startup')
     host = { reset }
     await vi.advanceTimersByTimeAsync(100)
     await job
     expect(reset).toHaveBeenCalledTimes(1)
+    expect(page.__abeleSyncWaiting).toBe('running sync action')
   } finally {
     vi.useRealTimers()
   }
