@@ -6,6 +6,7 @@ import { onPhone } from './target'
 import { TOKEN_HOST_READY } from './tokenHostReady'
 import { SHARE_SET_PICKER } from './shareSetPicker'
 import { syncModalClosed } from './syncModal'
+import { cancelSyncJobs, assertSyncJob, finishSyncJob } from './syncJobs'
 export const SYNC_PRELUDE = `
  ${SYNC_SNAPSHOT}
  const syncModalClosed = ${syncModalClosed.toString()}
@@ -17,7 +18,7 @@ export const SYNC_PRELUDE = `
  const actionDeadline = Date.now() + actionTimeoutMs
  const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
  const textOf = el => el?.textContent?.trim() || ''
- const poll = async (fn, ms = actionTimeoutMs, label = 'expected live state') => { const until=Math.min(actionDeadline,Date.now()+ms);window.__abeleSyncWaiting=label;console.debug('[sync wait]',label,{timeoutMs:Math.max(0,until-Date.now())}); while(Date.now()<until) { if(await fn()) return true; await sleep(100) } throw new Error('Live sync condition did not complete: '+label+'; observed '+JSON.stringify(syncSnapshot())) }
+ const poll = async (fn, ms = actionTimeoutMs, label = 'expected live state') => { const until=Math.min(actionDeadline,Date.now()+ms);window.__abeleSyncWaiting=label;console.debug('[sync wait]',label,{timeoutMs:Math.max(0,until-Date.now())}); while(Date.now()<until) { (${assertSyncJob.toString()})(window,typeof jobKey==='undefined'?undefined:jobKey); if(await fn()) return true; await sleep(100) } throw new Error('Live sync condition did not complete: '+label+'; observed '+JSON.stringify(syncSnapshot())) }
  const buttonIn = (root,text) => [...root.querySelectorAll('button')].find(el=>textOf(el)===text)
  const press = async (root,text) => { let button; await poll(()=> {const container=typeof root==='function'?root():root;button=container&&buttonIn(container,text); return button&&!button.disabled},actionTimeoutMs,'enabled '+text+' button'); button.click(); await sleep(100) }
  const typeInto = (input,text) => { if(!input) throw new Error('Input unavailable'); input.value=text; input.dispatchEvent(new input.ownerDocument.defaultView.Event('input',{bubbles:true})) }
@@ -121,7 +122,7 @@ export class SyncDriver {
       // The job is started and, for up to FIRST_ANSWER_MS, waited for inside the same call: most
       // actions finish well within it and cost one round trip. A longer one is polled as before.
       answer = evaluate(
-        `(async()=>{window[${JSON.stringify(key)}]=null;const job=(async()=>{const jobKey=${JSON.stringify(key)};window.__abeleSyncActionTimeoutMs=${timeoutMs};window.__abeleSyncWaiting='starting action';${ASYNC_SYNC_PRELUDE}\n${body}})().then(value=>window[${JSON.stringify(key)}]={ok:true,value:value===undefined?null:value},error=>window[${JSON.stringify(key)}]={ok:false,error:String(error?.message||error),waiting:window.__abeleSyncWaiting});await Promise.race([job,new Promise(resolve=>setTimeout(resolve,${FIRST_ANSWER_MS}))]);const result=window[${JSON.stringify(key)}];if(result)delete window[${JSON.stringify(key)}];return result||null})()`,
+        `(async()=>{window[${JSON.stringify(key)}]=null;const job=(async()=>{const jobKey=${JSON.stringify(key)};window.__abeleSyncActionTimeoutMs=${timeoutMs};window.__abeleSyncWaiting='starting action';${ASYNC_SYNC_PRELUDE}\n${body}})().then(value=>(${finishSyncJob.toString()})(window,${JSON.stringify(key)},{ok:true,value:value===undefined?null:value}),error=>(${finishSyncJob.toString()})(window,${JSON.stringify(key)},{ok:false,error:String(error?.message||error),waiting:window.__abeleSyncWaiting}));await Promise.race([job,new Promise(resolve=>setTimeout(resolve,${FIRST_ANSWER_MS}))]);const result=window[${JSON.stringify(key)}];if(result)delete window[${JSON.stringify(key)}];return result||null})()`,
         FIRST_ANSWER_MS + 15_000
       )
       const check = () => {
@@ -295,7 +296,7 @@ export class SyncDriver {
   async resetTokenState(): Promise<void> {
     await this.long(
       'reset leased pool token state',
-      `await poll(()=>Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey).every(key=>window[key]!==null),10000,'previous sync UI jobs to settle');for(const key of Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey))delete window[key];for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button, .modal-header-button:has(svg.lucide-x)')].reverse())button.click();await window.__abeleTest.resetSyncTokenState({vault:app.vault.getName(),confirm:'reset-sync-token-state'});return true`,
+      `(${cancelSyncJobs.toString()})(window,jobKey);for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button, .modal-header-button:has(svg.lucide-x)')].reverse())button.click();await window.__abeleTest.resetSyncTokenState({vault:app.vault.getName(),confirm:'reset-sync-token-state'});return true`,
       false,
       20000,
       true
@@ -315,7 +316,7 @@ export class SyncDriver {
     // skip it: the port itself drains engines before any database is removed.
     await this.long(
       'guarded pool reset after polite cleanup failed',
-      `await window.__abeleTest.resetSyncTokenState({vault:app.vault.getName(),confirm:'reset-sync-token-state'});for(const key of Object.keys(window).filter(key=>key.startsWith('__abeleSyncJob')&&key!==jobKey))delete window[key];for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button, .modal-header-button:has(svg.lucide-x)')].reverse())button.click();return true`,
+      `(${cancelSyncJobs.toString()})(window,jobKey);await window.__abeleTest.resetSyncTokenState({vault:app.vault.getName(),confirm:'reset-sync-token-state'});for(const doc of new Set([document,settingsDoc()]))for(const button of [...doc.querySelectorAll('.modal-close-button, .modal-header-button:has(svg.lucide-x)')].reverse())button.click();return true`,
       false,
       60000,
       true

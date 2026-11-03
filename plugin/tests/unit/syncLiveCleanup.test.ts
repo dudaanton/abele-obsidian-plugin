@@ -4,6 +4,8 @@ import { TokenSyncLive } from '../e2e/helpers/tokenSyncLive'
 import { spawnSyncServer } from '../e2e/helpers/syncServer'
 import { exposeToPhone, phoneReverseStatus } from '../e2e/helpers/phone'
 import { onPhone } from '../e2e/helpers/target'
+import { SyncDriver } from '../e2e/helpers/syncDriver'
+import { cancelSyncJobs, assertSyncJob, finishSyncJob } from '../e2e/helpers/syncJobs'
 import { mkdtempSync, mkdirSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 vi.mock('../e2e/helpers/syncVault', () => ({ waitFor: vi.fn() }))
@@ -26,6 +28,41 @@ vi.mock('../e2e/helpers/target', () => ({ onPhone: vi.fn(() => false) }))
 afterEach(() => {
   vi.unstubAllEnvs()
   vi.mocked(onPhone).mockReturnValue(false)
+})
+it('revokes old polling jobs and refuses late completion without resurrecting them', () => {
+  const jobs = { __abeleSyncJobold: null, __abeleSyncJobcurrent: null, unrelated: 'keep' }
+  cancelSyncJobs(jobs, '__abeleSyncJobcurrent')
+  expect(() => assertSyncJob(jobs, '__abeleSyncJobold')).toThrow('cancelled')
+  finishSyncJob(jobs, '__abeleSyncJobold', { ok: true })
+  expect(jobs).toEqual({ __abeleSyncJobcurrent: null, unrelated: 'keep' })
+})
+
+it('lets guarded reset cancel the host before waiting on orphan UI jobs', async () => {
+  const device = new SyncDriver({} as never)
+  const fakeWindow: Record<string, unknown> = { __abeleSyncJobold: null }
+  let reset = false
+  const doc = { querySelectorAll: () => [] }
+  fakeWindow.__abeleTest = {
+    resetSyncTokenState: async () => {
+      reset = true
+    },
+  }
+  vi.spyOn(device, 'long').mockImplementation(async (_what, body) => {
+    const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor
+    return new AsyncFunction('window', 'document', 'settingsDoc', 'app', 'jobKey', 'poll', body)(
+      fakeWindow,
+      doc,
+      () => doc,
+      { vault: { getName: () => 'sample-pool' } },
+      'current',
+      async (fn: () => boolean) => {
+        if (!fn()) throw new Error('old UI job prevents host cancellation')
+      }
+    )
+  })
+  await device.resetTokenState()
+  expect(reset).toBe(true)
+  expect(fakeWindow).not.toHaveProperty('__abeleSyncJobold')
 })
 
 it('retains every phone reverse through the case and checks WebSockets on the device', async () => {
