@@ -3,6 +3,7 @@ import { targets, onPhone } from './helpers/target'
 import { PHONE_VAULT } from './helpers/phone'
 import { SyncDriver } from './helpers/syncDriver'
 import { vaultCli } from './helpers/obsidianCli'
+import { validPoolAppId } from '../../src/testing/phonePoolWipe'
 
 targets('desktop', 'phone')
 it.skipIf(
@@ -32,7 +33,7 @@ it.skipIf(
     // Validate the whole pair before the first effect.
     const selected = names.map((vault) => {
       const appId: unknown = Reflect.get(identities, vault!)
-      if (typeof appId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(appId))
+      if (!validPoolAppId(appId, phone))
         throw new Error('Independent registered vault identity required')
       return { vault: vault!, appId, confirm: 'wipe-sync-pool', operation: 'syncWipePool' }
     })

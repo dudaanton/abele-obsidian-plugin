@@ -11,9 +11,17 @@ export interface PhoneWipeRow {
   namespace: string
   value: unknown
 }
+/** Opaque namespace, never a filesystem path. Mobile additionally uses a container-relative id. */
+export function validPoolAppId(appId: unknown, phone: boolean): appId is string {
+  return (
+    typeof appId === 'string' &&
+    appId.length <= 128 &&
+    (/^[A-Za-z0-9_-]+$/.test(appId) || (phone && /^documents\/[A-Za-z0-9_-]+$/.test(appId)))
+  )
+}
 export function phonePoolWipePlan(
   expected: PhoneWipeIdentity,
-  actual: { vault: string; appId: string },
+  actual: { vault: string; appId: string; phone?: boolean },
   databases: string[],
   rows: PhoneWipeRow[],
   local: { namespace: string; key: string; value: unknown }[]
@@ -24,7 +32,7 @@ export function phonePoolWipePlan(
       (expected.confirm === 'wipe-sync-pool' && expected.operation === 'syncWipePool')
     ) ||
     !expected.vault ||
-    !/^[A-Za-z0-9_-]{1,128}$/.test(expected.appId) ||
+    !validPoolAppId(expected.appId, actual.phone === true) ||
     expected.vault !== actual.vault ||
     expected.appId !== actual.appId
   )

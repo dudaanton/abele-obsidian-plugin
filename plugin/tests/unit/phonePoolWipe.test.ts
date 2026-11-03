@@ -5,12 +5,95 @@ const own = '11111111-1111-4111-8111-111111111111'
 const foreign = '22222222-2222-4222-8222-222222222222'
 const expected = { vault: 'sample-pool', appId: 'sample-vault', confirm: 'wipe-sync-phone-pool' }
 const actual = { vault: expected.vault, appId: expected.appId }
+it('accepts the mobile documents namespace only on a phone', async () => {
+  const { validPoolAppId } = await import('@/testing/phonePoolWipe')
+  expect(validPoolAppId('documents/sample-pool', true)).toBe(true)
+  expect(validPoolAppId('documents/sample-pool', false)).toBe(false)
+  expect(validPoolAppId('sample-vault', false)).toBe(true)
+})
+it.each([
+  'documents/../sample',
+  'documents//sample',
+  '/documents/sample',
+  'documents/sample/',
+  'documents/sample/nested',
+  'documents/.',
+  'documents/..',
+  'documents/',
+  'other/sample',
+  'documents/sample.name',
+  'documents/' + 'x'.repeat(128),
+])('rejects malformed mobile identity %s without effects', async (appId) => {
+  const { executePoolWipe } = await import('@/testing/phonePoolWipe')
+  const { vi } = await import('vitest')
+  const effect = vi.fn(async () => {
+    throw new Error('Unexpected effect')
+  })
+  await expect(
+    executePoolWipe(
+      { ...expected, appId, confirm: 'wipe-sync-pool', operation: 'syncWipePool' },
+      {
+        identity: () => ({ ...actual, appId, phone: true }),
+        stop: effect,
+        snapshot: effect,
+        erase: effect,
+        reload: effect,
+        verify: effect,
+      }
+    )
+  ).rejects.toThrow()
+  expect(effect).not.toHaveBeenCalled()
+})
+it('refuses a different loaded mobile namespace with zero effects', async () => {
+  const { executePoolWipe } = await import('@/testing/phonePoolWipe')
+  const { vi } = await import('vitest')
+  const effect = vi.fn(async () => {
+    throw new Error('Unexpected effect')
+  })
+  await expect(
+    executePoolWipe(
+      {
+        ...expected,
+        appId: 'documents/sample-pool',
+        confirm: 'wipe-sync-pool',
+        operation: 'syncWipePool',
+      },
+      {
+        identity: () => ({ ...actual, appId: 'documents/other-pool', phone: true }),
+        stop: effect,
+        snapshot: effect,
+        erase: effect,
+        reload: effect,
+        verify: effect,
+      }
+    )
+  ).rejects.toThrow()
+  expect(effect).not.toHaveBeenCalled()
+})
 const row = (namespace: string, ledgerId: string): PhoneWipeRow => ({
   database: 'abele-sync-host-v1',
   store: 'host',
   key: [namespace, 'abele-sync-connections-v2'],
   namespace,
   value: { records: [{ ledgerId }] },
+})
+it('selects only the exact mobile namespace, including local keys', () => {
+  const appId = 'documents/sample-pool'
+  const adjacent = appId + '-other'
+  const rows = [row(appId, own), row(adjacent, foreign)]
+  const plan = phonePoolWipePlan(
+    { ...expected, appId, confirm: 'wipe-sync-pool', operation: 'syncWipePool' },
+    { ...actual, appId, phone: true },
+    [own, foreign],
+    rows,
+    [
+      { namespace: appId, key: 'abele-sync-test-pool-ledgers-v1', value: [own] },
+      { namespace: adjacent, key: 'abele-sync-test-pool-ledgers-v1', value: [foreign] },
+    ]
+  )
+  expect(plan.databases).toEqual([own])
+  expect(plan.rows).toEqual([rows[0]])
+  expect(plan.keys).toEqual(['abele-sync-test-pool-ledgers-v1'])
 })
 it('selects only exact namespace rows and explicitly referenced ledger databases', () => {
   const rows = [row(actual.appId, own), row('other-vault', foreign)]
@@ -175,13 +258,14 @@ it.each([
 ])(
   'wipes real adapters only with a plugin ledger schema ($valid/$desktop/$partial)',
   async ({ valid, desktop, partial }) => {
+    const identity = { ...actual, appId: desktop ? actual.appId : 'documents/sample-pool' }
     const { IDBFactory } = await import('fake-indexeddb')
     const { HostSyncStorage } = await import('@/sync/hostSyncStorage')
     const { wipePhonePool, wipePool } = await import('@/testing/wipePhonePool')
     const wipe = desktop ? wipePool : wipePhonePool
     const request = desktop
       ? { ...expected, confirm: 'wipe-sync-pool', operation: 'syncWipePool' }
-      : expected
+      : { ...expected, appId: identity.appId }
     const { buildFakeVault } = await import('../helpers/fakeVault')
     const { Platform } = await import('obsidian')
     const platform = Platform as { isMobile: boolean; isDesktop: boolean }
@@ -206,10 +290,10 @@ it.each([
     const { pathCoordinatorOf } = await import('@/sync/pathCoordinator')
     const offloads = tokenOffloadsOf(base.vault, pathCoordinatorOf(base.vault))
     offloads.remember('sample-retired', [{ path: 'Media/sample.bin', size: 4, mtime: 1 }], [])
-    const local = storage(actual.appId)
-    const app = Object.assign(base, local, { appId: actual.appId })
-    app.vault.getName = () => actual.vault
-    let ownHost = await HostSyncStorage.open(factory, actual.appId, app)
+    const local = storage(identity.appId)
+    const app = Object.assign(base, local, { appId: identity.appId })
+    app.vault.getName = () => identity.vault
+    let ownHost = await HostSyncStorage.open(factory, identity.appId, app)
     const other = await HostSyncStorage.open(factory, 'other-vault', storage('other-vault'))
     ownHost.saveLocalStorage('abele-sync-connections-v2', {
       records: [{ id: 'sample-own', ledgerId: own }],
@@ -244,7 +328,7 @@ it.each([
         enablePlugin: async () => {
           await (await import('vitest')).vi.resetModules()
           const fresh = await import('@/sync/hostSyncStorage')
-          ownHost = await fresh.HostSyncStorage.open(factory, actual.appId, app)
+          ownHost = await fresh.HostSyncStorage.open(factory, identity.appId, app)
           const verification = await import('@/testing/wipePhonePool')
           Object.assign(window, {
             __abeleTest: { verifyPoolWipe: () => verification.verifyPoolWipe(app as never) },
@@ -258,7 +342,7 @@ it.each([
           'not a recognized plugin ledger'
         )
         // Reopen only for inspection: the failed wipe must leave namespace rows intact.
-        ownHost = await HostSyncStorage.open(factory, actual.appId, app)
+        ownHost = await HostSyncStorage.open(factory, identity.appId, app)
         expect(await ownHost.readValue('abele-sync-connections-v2')).toMatchObject({
           records: [{ ledgerId: own }],
         })
@@ -310,7 +394,7 @@ it.each([
       if (descriptor) Object.defineProperty(window, 'indexedDB', descriptor)
       else Reflect.deleteProperty(window, 'indexedDB')
       for (const key of Object.keys(window.localStorage))
-        if (key.startsWith(actual.appId + '-') || key.startsWith('other-vault-'))
+        if (key.startsWith(identity.appId + '-') || key.startsWith('other-vault-'))
           window.localStorage.removeItem(key)
     }
   }
