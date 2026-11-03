@@ -1,5 +1,14 @@
 import { expect, it } from 'vitest'
-import { poolVaultRegistry } from '../e2e/helpers/poolVaultRegistry'
+import { loadedVaultIdentity, poolVaultRegistry } from '../e2e/helpers/poolVaultRegistry'
+it('labels the loaded vault identity as non-independent without making it registry evidence', () => {
+  const host = { appId: 'sample-loaded-id', vault: { getName: () => 'Sample pool' } }
+  expect(loadedVaultIdentity(host)).toEqual({
+    name: 'Sample pool',
+    appId: 'sample-loaded-id',
+    independent: false,
+  })
+  expect(poolVaultRegistry(host).available).toBe(false)
+})
 it('reads a host registry separately from the current app identity', () => {
   expect(
     poolVaultRegistry({

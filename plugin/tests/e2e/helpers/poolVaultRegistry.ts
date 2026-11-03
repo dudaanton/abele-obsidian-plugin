@@ -1,3 +1,8 @@
+/** Loaded page identity only; not an independent vault registry observation. */
+export function loadedVaultIdentity(host: { appId: string; vault: { getName(): string } }) {
+  return { name: host.vault.getName(), appId: host.appId, independent: false as const }
+}
+
 /** Read-only discovery: no bridge methods/getters or current-vault identity fallback. */
 export function poolVaultRegistry(host: object) {
   const fields = Object.getOwnPropertyDescriptors(host)
