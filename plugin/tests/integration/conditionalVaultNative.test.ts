@@ -5,7 +5,9 @@ import { CONDITIONAL_RETENTION_MS, type ConditionalFileHost } from '@/sync/condi
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { sha256 } from '@abele/sync-sdk/core'
+import { sha256, retainRemoval } from '@abele/sync-sdk/core'
+import { PRIVATE_REMOVAL_FILES } from '@/sync/privateRemovalFileSystem'
+import { requireExternalEnrollmentSafety } from '@/sync/external/pluginSafety'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { connectionAdapter, nativeOf } from '@/sync/vaultPathLinks'
@@ -16,6 +18,78 @@ import { WriteJournal, JOURNAL_KEY } from '@/sync/writeJournal'
 import { deferred } from '../helpers/deferred'
 
 const roots: string[] = []
+it('finishes private summary receipts after delete everywhere, bulk restore and close', async () => {
+  const { root, app } = await setup()
+  const owner = 'sample-removal-owner'
+  const raw = new ObsidianFileSystem(app as never, {
+    journalOwner: owner,
+    connectionId: owner,
+    ledger: { readCommittedEntries: async () => [] } as never,
+  })
+  const retained = raw[PRIVATE_REMOVAL_FILES]()
+  const bytes = new TextEncoder().encode('sample restored bytes')
+  const sha = await sha256(bytes)
+  for (const path of ['a.md', 'b.md']) {
+    await fs.writeFile(join(root, path), bytes)
+    const info = await raw.stat(path)
+    expect(
+      await retainRemoval(retained, {
+        path,
+        expected: { size: bytes.length, mtime: info!.mtime, sha },
+        effect: { kind: 'remove' },
+      })
+    ).toBe(true)
+    expect(await raw.stat(path)).toBeNull()
+  }
+  // A server bulk restore installs the public versions; only those versions have
+  // SDK ledger rows. Private summary publications never receive such an ACK.
+  for (const path of ['a.md', 'b.md']) {
+    await raw.writeAtomic(path, bytes, 1000)
+    await raw.acknowledgeWrites([{ path, sha }] as never)
+  }
+  Object.assign(window, {
+    setTimeout: globalThis.setTimeout.bind(globalThis),
+    clearTimeout: globalThis.clearTimeout.bind(globalThis),
+    setInterval: globalThis.setInterval.bind(globalThis),
+    clearInterval: globalThis.clearInterval.bind(globalThis),
+  })
+  const unwatch = raw.watch(() => {})
+  unwatch()
+  expect(await new WriteJournal(app as never, undefined, owner).currentEntries()).toEqual([])
+  await expect(requireExternalEnrollmentSafety(app as never)).resolves.toBeUndefined()
+  for (const path of ['a.md', 'b.md'])
+    expect(await fs.readFile(join(root, path))).toEqual(Buffer.from(bytes))
+})
+
+it('recovers a private summary publication cut without leaving an enrollment-blocking receipt', async () => {
+  let cut = false
+  const { app } = await setup({
+    link: async (from, to) => {
+      await fs.link(from, to)
+      if (!cut && String(to).endsWith('/retained-removals/summary.json')) {
+        cut = true
+        throw new Error('sample summary publication interrupted')
+      }
+    },
+  })
+  const options = {
+    journalOwner: 'sample-cut-owner',
+    connectionId: 'sample-cut-owner',
+    ledger: { readCommittedEntries: async () => [] } as never,
+  }
+  const raw = new ObsidianFileSystem(app as never, options)
+  await raw[PRIVATE_REMOVAL_FILES]()
+    .writeAtomic('.abele-sync/retained-removals/summary.json', new TextEncoder().encode('[]'), 1000)
+    .catch(() => {})
+  expect(cut).toBe(true)
+  // Relaunch with the durable journals intact, rather than deleting private bytes.
+  const reopened = new ObsidianFileSystem(app as never, options)
+  await reopened.recover()
+  expect(
+    await new WriteJournal(app as never, undefined, options.journalOwner).currentEntries()
+  ).toEqual([])
+  await expect(requireExternalEnrollmentSafety(app as never)).resolves.toBeUndefined()
+})
 it('restores a substituted object when identity changes at native capture', async () => {
   const { root, disk } = await setup()
   await fs.writeFile(join(root, 'identity.bin'), 'same bytes')

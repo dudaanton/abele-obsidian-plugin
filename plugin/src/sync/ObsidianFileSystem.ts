@@ -1907,7 +1907,16 @@ export class ObsidianFileSystem implements FileSystem {
         operation.effect.bytes.length > MOBILE_WHOLE_READ_MAX
       )
         return false
-      if (operation.expected === null && operation.effect.kind === 'write' && storageOf(this.app)) {
+      // Private retention metadata has no server row to ACK an anonymous install.
+      // Keep it on the self-settling conditional journal, including first creation.
+      const privateSummary =
+        (this.privateRemovalRoot ?? '.abele-sync') + '/retained-removals/summary.json'
+      if (
+        operation.expected === null &&
+        operation.effect.kind === 'write' &&
+        operation.path !== privateSummary &&
+        storageOf(this.app)
+      ) {
         this.runtimeFence?.assertReady()
         this.validateConditionalPath(operation.path)
         const { bytes, mtime, receipt } = operation.effect
