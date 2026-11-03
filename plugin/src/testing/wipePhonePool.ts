@@ -1,6 +1,7 @@
 import type { App, Plugin } from 'obsidian'
 import { Platform } from 'obsidian'
 import { durableHostOf, flushHostStorage } from '../sync/hostSyncStorage'
+import { pendingTeardown } from '../sync/teardownBarrier'
 import { IndexedDbStateStore } from '../sync/IndexedDbStateStore'
 import {
   requireExternalEnrollmentSafety,
@@ -25,7 +26,7 @@ async function existing(factory: IDBFactory, name: string): Promise<IDBDatabase>
     const request = factory.open(name)
     request.onupgradeneeded = () => {
       request.transaction?.abort()
-      reject(new Error('Database inventory changed'))
+      reject(new Error('Database inventory changed: ' + name))
     }
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
@@ -44,6 +45,11 @@ export function wipePool(plugin: Plugin, request: PhoneWipeIdentity) {
 async function wipePoolInternal(plugin: Plugin, request: PhoneWipeIdentity, generic: boolean) {
   const app = plugin.app
   const factory = window.indexedDB
+  let databaseInventory = ''
+  const inventory = async () =>
+    (await factory.databases())
+      .map(({ name, version }) => [name, version] as const)
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
   const host = plugin as Plugin & {
     tokenEngines?: { close(flush: boolean): Promise<void>; ui: { reviews?: { close(): void } } }
   }
@@ -70,12 +76,15 @@ async function wipePoolInternal(plugin: Plugin, request: PhoneWipeIdentity, gene
       host.tokenEngines?.ui.reviews?.close()
       if (!durableHostOf(app)?.isClosed) await flushHostStorage(app)
       await plugins.disablePlugin('abele')
+      await pendingTeardown(app)
       durableHostOf(app)?.close()
     },
     snapshot: async () => {
       if (typeof factory.databases !== 'function') throw new Error('Database enumeration required')
-      const databases = (await factory.databases())
-        .map((db) => db.name)
+      const observed = await inventory()
+      databaseInventory = JSON.stringify(observed)
+      const databases = observed
+        .map(([name]) => name)
         .filter((name): name is string => typeof name === 'string')
       const rows: PhoneWipeRow[] = []
       for (const [name, allowed] of shared) {
@@ -141,6 +150,8 @@ async function wipePoolInternal(plugin: Plugin, request: PhoneWipeIdentity, gene
       return { databases, rows, local }
     },
     erase: async (plan) => {
+      if (JSON.stringify(await inventory()) !== databaseInventory)
+        throw new Error('Database inventory changed after stopped snapshot')
       // A UUID reference alone is not permission to remove an unrelated database.
       // Inspect every candidate before any destructive namespace/file operation.
       for (const name of plan.databases) {

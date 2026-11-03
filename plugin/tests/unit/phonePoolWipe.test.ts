@@ -253,11 +253,12 @@ it.each([
   { valid: true, desktop: false, partial: true },
   { valid: false, desktop: false },
   { valid: true, desktop: true, partial: false },
+  { valid: true, desktop: true, concurrent: true },
   { valid: true, desktop: true, partial: true },
   { valid: false, desktop: true },
 ])(
   'wipes real adapters only with a plugin ledger schema ($valid/$desktop/$partial)',
-  async ({ valid, desktop, partial }) => {
+  async ({ valid, desktop, partial, concurrent }) => {
     const identity = { ...actual, appId: desktop ? actual.appId : 'documents/sample-pool' }
     const { IDBFactory } = await import('fake-indexeddb')
     const { HostSyncStorage } = await import('@/sync/hostSyncStorage')
@@ -273,6 +274,23 @@ it.each([
     const apiDescriptor = Object.getOwnPropertyDescriptor(window, '__abeleTest')
     const descriptor = Object.getOwnPropertyDescriptor(window, 'indexedDB')
     const factory = new IDBFactory()
+    let shutdownPending = false
+    const enumerate = factory.databases.bind(factory)
+    factory.databases = async () => {
+      if (shutdownPending) throw new Error('Database inventory changed during shutdown')
+      const inventory = await enumerate()
+      if (concurrent && !inventory.some((db) => db.name === 'sample-concurrent')) {
+        await new Promise<void>((resolve, reject) => {
+          const open = factory.open('sample-concurrent')
+          open.onerror = () => reject(open.error)
+          open.onsuccess = () => {
+            open.result.close()
+            resolve()
+          }
+        })
+      }
+      return inventory
+    }
     Object.defineProperty(window, 'indexedDB', { configurable: true, value: factory })
     platform.isMobile = !desktop
     platform.isDesktop = desktop
@@ -308,7 +326,7 @@ it.each([
       const ledger = await IndexedDbStateStore.open(factory, own)
       ledger.close()
     }
-    for (const name of [...(valid ? [] : [own]), foreign, 'obsidian']) {
+    for (const name of [...(valid ? [] : [own]), foreign, 'obsidian', 'sample-shutdown-database']) {
       await new Promise<void>((resolve, reject) => {
         const open = factory.open(name, 1)
         open.onupgradeneeded = () => open.result.createObjectStore('sample')
@@ -324,6 +342,27 @@ it.each([
         plugins: { abele: { tokenHostStartup: { state: 'ready' }, tokenEngines: {} } },
         disablePlugin: async () => {
           ownHost.close()
+          shutdownPending = true
+          const { recordTeardown } = await import('@/sync/teardownBarrier')
+          recordTeardown(
+            app,
+            new Promise<void>((resolve, reject) => {
+              setTimeout(() => {
+                // Model a late shutdown task recreating a private database.
+                const remove = factory.deleteDatabase('sample-shutdown-database')
+                remove.onerror = () => reject(remove.error)
+                remove.onsuccess = () => {
+                  const open = factory.open('sample-shutdown-database')
+                  open.onerror = () => reject(open.error)
+                  open.onsuccess = () => {
+                    open.result.close()
+                    shutdownPending = false
+                    resolve()
+                  }
+                }
+              }, 5)
+            })
+          )
         },
         enablePlugin: async () => {
           await (await import('vitest')).vi.resetModules()
@@ -337,6 +376,12 @@ it.each([
       },
     })
     try {
+      if (concurrent) {
+        await expect(wipe({ app } as never, request)).rejects.toThrow('Database inventory changed')
+        expect((await enumerate()).some((db) => db.name === own)).toBe(true)
+        expect(await app.vault.adapter.exists('.abele-sync/private.bin')).toBe(true)
+        return
+      }
       if (!valid) {
         await expect(wipe({ app } as never, request)).rejects.toThrow(
           'not a recognized plugin ledger'
