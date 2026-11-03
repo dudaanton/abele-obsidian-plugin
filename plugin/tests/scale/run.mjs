@@ -57,7 +57,8 @@ import { visibilityPayloadProgress, largeFileThroughput } from './payload-progre
 import { settleRestartDevices, controlTiming, strictWindowEvidence } from './restart.mjs'
 import { triggerComparisonAtRestart } from './restart-trigger.mjs'
 import { enablePluginWhenReady } from './startup-enable.mjs'
-import { validateBuildReceipt, buildArtifactPath } from './build.mjs'
+import { validateBuildReceipt, validateQualificationArtifact, buildArtifactPath } from './build.mjs'
+import { qualificationScenario, instrumentationOf } from './qualification-config.mjs'
 import { applyCombinedChanges } from './combined.mjs'
 import { planOfflineChanges, updateExpectedOfflineChanges } from './qualification-offline.mjs'
 import { verifyDirectoryChanges } from './directory-oracle.mjs'
@@ -458,9 +459,7 @@ export async function setupVault(config, root, device) {
       metadataCache: join(observer, 'metadata-cache.cjs'),
       indexWaitCapture: join(observer, 'index-wait-capture.cjs'),
       profileDirectory: join(config.output, 'profiles'),
-      continuousCpu: config.continuousCpu === true,
-      heapDiagnostics: config.heapDiagnostics === true,
-      preciseHashCoverage: config.preciseHashCoverage !== false,
+      ...instrumentationOf(config),
       javascriptHashBoundary: hashTracepointBoundary(
         await readFile(join(config.buildDir, 'main.js'), 'utf8')
       ),
@@ -477,6 +476,7 @@ export async function setupVault(config, root, device) {
 }
 
 export async function run(config) {
+  config = qualificationScenario(config.targeted ? 'targeted' : 'full', config)
   failureDiagnostics = undefined
   observeDiagnosticErrors = undefined
   preservedDiagnosticFailure = false
@@ -815,6 +815,9 @@ export async function run(config) {
     if (config.buildReceipt) {
       report.buildReceipt = JSON.parse(await readFile(config.buildReceipt, 'utf8'))
       validateBuildReceipt(report.buildReceipt, artifact, config.build, config.sdkTarball)
+      validateQualificationArtifact(report.buildReceipt,
+        await readFile(join(config.buildDir, 'main.js')),
+        await readFile(buildArtifactPath(config, 'qualification-main.js.map')))
     }
     if (artifact.provenance?.git?.revision !== config.build)
       throw new Error('Selected build does not match artifact revision')

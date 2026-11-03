@@ -5,6 +5,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { readFile, writeFile, mkdir, readdir, realpath, lstat, readlink, unlink, rmdir } from 'node:fs/promises'
 import { join, resolve, dirname, relative } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { qualificationBuildConfig, instrumentationOf } from './qualification-config.mjs'
 
 const exec = promisify(execFile)
 const digest = (bytes, algorithm = 'sha256', encoding = 'hex') =>
@@ -220,7 +221,23 @@ export function validateBuildReceipt(receipt, artifact, revision, sdkTarball) {
     throw new Error('Selected build SDK tarball mismatch')
 }
 
+export function validateQualificationArtifact(receipt, main, mapBytes) {
+  if (receipt.qualificationEntryBridge !== true)
+    throw new Error('Qualification entry bridge missing')
+  if (receipt.sourceChanges?.length !== 0)
+    throw new Error('Qualification source changes refused')
+  const bundleSha256 = digest(main)
+  if (receipt.artifact?.files?.['main.js'] !== bundleSha256 ||
+      receipt.qualificationMap?.bundleSha256 !== bundleSha256)
+    throw new Error('Qualification bundle mismatch')
+  const map = JSON.parse(mapBytes.toString())
+  if (digest(mapBytes) !== receipt.qualificationMap?.sha256 || map.version !== 3 ||
+      !map.sources?.length || !map.mappings)
+    throw new Error('Qualification source map mismatch')
+}
+
 export async function buildCandidate(config, execute = loggedExec) {
+  config = qualificationBuildConfig(config)
   if (!/^[a-f0-9]{40}$/.test(config.build ?? ''))
     throw new Error('A resolved plugin commit is required')
   const root = await realpath(config.pluginRoot)
@@ -327,6 +344,9 @@ export async function buildCandidate(config, execute = loggedExec) {
     await writeFile(join(config.output, 'qualification-main.js.map'), qualificationSourceMap)
   }
   receipt.sourceChanges = changes ? changes.split('\n') : []
+  receipt.instrumentation = instrumentationOf(config.scenarioConfig)
+  validateQualificationArtifact(receipt, await readFile(join(root, 'build/main.js')),
+    qualificationSourceMap)
   await writeFile(join(config.output, 'build-receipt.json'), JSON.stringify(receipt, null, 2))
   return receipt
 }

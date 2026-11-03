@@ -13,16 +13,26 @@ checks its liveness; this file is a contract with the supervisor, not a security
 
 ## Targeted two-device probe
 
-Set `targeted: true`, `shape: "smoke"`, `reindex: false`, `heapDiagnostics: false`,
-`continuousCpu: true`, `seed: 42`, and
-`parameters: {"files":5000,"bytes":1789569706,"wideFolderFiles":512}` in the supervised
-runner configuration. Run `node tests/scale/run.mjs /test-run/config.json` under the
+Build the scenario with `qualificationScenario('targeted')` from
+`qualification-config.mjs`; use `qualificationScenario('full')` for qualification.
+`qualificationBuildConfig` applies that same policy to build preparation, and the
+runner applies it again to the supervisor's final configuration. Instrumentation
+is defined once: continuous CPU capture, the entry ledger, failure capture and
+strict long-task enforcement are enabled; precise hash breakpoints and optional
+deep heap diagnostics are disabled. Phase overrides cannot replace those flags.
+The full profile retains reindex and interruption phases; only fixture and phase
+settings differ. Strict-restart setup suppression remains a per-launch setting in
+the shared runner for both profiles, with the same interruption oracle.
+
+The targeted defaults are `seed: 42` and
+`parameters: {"files":5000,"bytes":1789569707,"wideFolderFiles":512}`.
+Run `node tests/scale/run.mjs /test-run/config.json` under the
 same exclusive desktop guardian. This is a separate phase gate, not a scale qualification.
-It uploads and pulls, measures three 180-second foreground/minimized/foreground segments,
+It uploads and pulls, measures three 30-second foreground/minimized/foreground segments,
 restarts both devices, performs six offline mutations with Sync now during host indexing,
 kills the app after an edit commit is applied but before acknowledgement, and verifies
-every expected byte on both devices and the server. Content GETs alone are paced at
-140 ms aggregate spacing during the visibility experiment. `visibilityDurationMs` and
+every expected byte on both devices and the server. Content GETs are unpaced by
+default during the visibility experiment. `visibilityDurationMs` and
 `contentSpacingMs` are explicit experiment parameters, never implied product behavior.
 
 `report.json` contains strict A–E budgets, per-device restart timing/read coverage,
