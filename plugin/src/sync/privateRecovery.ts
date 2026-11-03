@@ -28,11 +28,7 @@ export async function finishRetainedWrites(
       for (const entry of await journal.currentEntries()) {
         if (entry.retiredGeneration !== 'server-deletion' || !entry.conditionalReceipt) continue
         assertCurrent()
-        const root = entry.owner ? connectionPrivateRoot(entry.owner) : undefined
-        const view = connectionInspectionApp(app, vaultDisk(app.vault), '', root)
-        const recovery = recoveryDirectory(view)
         const name = '.abele-receipt-' + entry.conditionalReceipt + '.tmp'
-        const disk = vaultDisk(view.vault)
         const refuse = (reason: string): never => {
           throw new ExternalRecoveryRequired(reason, {
             kind: 'installation',
@@ -40,6 +36,17 @@ export async function finishRetainedWrites(
             path: entry.target,
           })
         }
+        // Whole-vault runtimes have an owner but use the legacy plugin private
+        // area. Ownership alone does not imply a namespaced connection root.
+        const legacy =
+          entry.temp === stagingDirectory(app.vault.configDir) + '/' + name ||
+          entry.temp === privateRecoveryDirectory(app.vault.configDir) + '/' + name
+        if (legacy && connectionPrivateArea(app))
+          refuse('retired installation is outside this connection')
+        const root = !legacy && entry.owner ? connectionPrivateRoot(entry.owner) : undefined
+        const view = connectionInspectionApp(app, vaultDisk(app.vault), '', root)
+        const recovery = recoveryDirectory(view)
+        const disk = vaultDisk(view.vault)
         if (
           entry.streaming ||
           entry.backup ||

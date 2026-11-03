@@ -3866,6 +3866,9 @@ with its private destination, size and SHA-256 before dropping the active instal
 receipt. Startup and guarded reset finish that conversion after an interruption. This never
 acknowledges a server version or publishes incoming bytes at a public path. Unresolved local
 backups still require recovery.
+Whole-vault receipts retain their legacy plugin-private recovery locator; scoped receipts
+retain their connection-private locator. A journal owner does not change the storage area,
+and a scoped connection cannot settle evidence outside its private area.
 Preserved legacy backups carry a durable archive plan (private destination, size and SHA-256)
 before they move into recovery storage. Startup and guarded test reset finish that same plan,
 verify the kept bytes and mark its journal record archived. Completed archives remain

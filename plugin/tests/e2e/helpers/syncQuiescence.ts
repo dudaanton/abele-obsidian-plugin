@@ -5,10 +5,16 @@ export async function settleSyncPeers(
   peers: readonly (() => Promise<unknown>)[],
   limit = 8
 ): Promise<void> {
-  let before = await head()
+  const readHead = async () => {
+    const value = await head()
+    if (!Number.isSafeInteger(value) || value < 0)
+      throw new Error('Sync fixture received an invalid server head: ' + String(value))
+    return value
+  }
+  let before = await readHead()
   for (let round = 0; round < limit; round++) {
     for (const sync of peers) await sync()
-    const after = await head()
+    const after = await readHead()
     if (after === before) return
     before = after
   }

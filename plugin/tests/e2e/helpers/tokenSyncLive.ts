@@ -182,7 +182,7 @@ export class TokenSyncLive {
   }
   async cycle(): Promise<void> {
     await settleSyncPeers(
-      async () => (await this.client().manifest(null)).cursor,
+      async () => (await this.client().manifest(null)).head_seq,
       [() => this.primary.syncNow(), ...(this.peer ? [() => this.peer!.syncNow()] : [])]
     )
   }

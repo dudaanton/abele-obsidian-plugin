@@ -45,7 +45,8 @@ it('waits for both peers to consume a directory commit queued after the child de
       if (++peerCalls <= 2) head++
     },
   })
-  vi.spyOn(live, 'client').mockReturnValue({ manifest: async () => ({ cursor: head }) } as never)
+  // The engine client exposes head_seq; cursor belongs to the raw wire response.
+  vi.spyOn(live, 'client').mockReturnValue({ manifest: async () => ({ head_seq: head }) } as never)
   await live.cycle()
   expect(primarySeen).toBe(head)
   expect(peerCalls).toBe(3)

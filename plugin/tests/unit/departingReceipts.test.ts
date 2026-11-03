@@ -15,55 +15,135 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import { IDBFactory } from 'fake-indexeddb'
 import { HostSyncStorage } from '@/sync/hostSyncStorage'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { stagingDirectory } from '@/sync/stagingDirectory'
+import { makeParents } from '@/sync/vaultFolders'
 
 afterEach(() => vi.restoreAllMocks())
 
-it('settles a real scoped first-download receipt after publication is interrupted by departure', async () => {
+it('does not grant a scoped view access to a legacy retained receipt', async () => {
   const app = buildFakeVault([]),
-    owner = 'sample-interrupted',
+    owner = 'sample-scoped',
     root = connectionPrivateRoot(owner)
   const view = connectionInspectionApp(
     connectionJournalApp(app as never, owner),
-    connectionAdapter(app.vault.adapter, 'Shared', root),
+    app.vault.adapter,
     'Shared',
     root
   )
-  const fs = new ObsidianFileSystem(view, { connectionId: owner, journalOwner: owner })
-  const rename = app.vault.adapter.rename.bind(app.vault.adapter)
-  const stopped = new Error('sample stopped before publication')
-  const hook = vi.spyOn(app.vault.adapter, 'rename').mockImplementation(async (from, to) => {
-    if (to === 'Shared/sample.md') throw stopped
-    await rename(from, to)
-  })
-  await expect(
-    fs.conditionalFile({
-      path: 'Shared/sample.md',
-      expected: null,
-      effect: {
-        kind: 'write',
-        bytes: new TextEncoder().encode('incoming server bytes'),
-        mtime: 1000,
-        receipt: 'sample-download',
-      },
-    })
-  ).rejects.toThrow('sample stopped before publication')
-  hook.mockRestore()
+  const temp =
+    app.vault.configDir + '/plugins/abele/sync-recovery/.abele-receipt-sample-foreign.tmp'
+  await makeParents(app.vault.adapter, temp)
+  await app.vault.adapter.write(temp, 'kept private bytes')
   const journal = new WriteJournal(view, undefined, owner)
-  expect(await journal.currentEntries()).toEqual([
-    expect.objectContaining({
-      conditionalReceipt: 'sample-download',
+  await journal.persist(() =>
+    journal.add({
       target: 'Shared/sample.md',
-    }),
-  ])
-  await settleStoppedInstallationsForDeletion(view, () => {})
-  await new ObsidianFileSystem(view, { connectionId: owner, journalOwner: owner }).recover()
-  await expect(requireExternalEnrollmentSafety(app as never)).resolves.toBeUndefined()
-  expect(await journal.currentEntries()).toEqual([])
-  const [saved] = await journal.currentRecovered()
-  expect(saved.archived).toBe(true)
-  expect(await app.vault.adapter.read(saved.backup)).toBe('incoming server bytes')
-  expect(await app.vault.adapter.exists('Shared/sample.md')).toBe(false)
+      temp,
+      conditionalReceipt: 'sample-foreign',
+      retiredGeneration: 'server-deletion',
+    })
+  )
+  await expect(finishRetainedWrites(view, owner)).rejects.toThrow('outside this connection')
+  expect(await journal.currentEntries()).toHaveLength(1)
+  expect(await app.vault.adapter.read(temp)).toBe('kept private bytes')
 })
+
+it.each([false, true])(
+  'finishes whole-vault legacy receipts after retirement cut=%s',
+  async (cut) => {
+    const app = buildFakeVault([]),
+      owner = 'sample-whole-vault'
+    const view = connectionJournalApp(app as never, owner)
+    const temp = stagingDirectory(app.vault.configDir) + '/.abele-receipt-sample-whole.tmp'
+    await makeParents(app.vault.adapter, temp)
+    await app.vault.adapter.write(temp, 'incoming whole-vault bytes')
+    const journal = new WriteJournal(view, undefined, owner)
+    await journal.persist(() =>
+      journal.add({
+        target: 'Shared/sample.md',
+        temp,
+        conditionalReceipt: 'sample-whole',
+        replacementSha: 'a'.repeat(64),
+      })
+    )
+    if (cut) {
+      const replace = WriteJournal.prototype.replace
+      const failure = new Error('sample cut after retirement marker')
+      const hook = vi.spyOn(WriteJournal.prototype, 'replace').mockImplementationOnce(function (
+        this: WriteJournal,
+        before,
+        after
+      ) {
+        replace.call(this, before, after)
+        throw failure
+      })
+      await expect(settleStoppedInstallationsForDeletion(view, () => {})).rejects.toBe(failure)
+      hook.mockRestore()
+    } else await settleStoppedInstallationsForDeletion(view, () => {})
+    await finishRetainedWrites(app as never)
+    expect(await journal.currentEntries()).toEqual([])
+    const [kept] = await journal.currentRecovered()
+    expect(kept.backup).toBe(
+      app.vault.configDir + '/plugins/abele/sync-recovery/.abele-receipt-sample-whole.tmp'
+    )
+    expect(kept.archived).toBe(true)
+    expect(await app.vault.adapter.read(kept.backup)).toBe('incoming whole-vault bytes')
+    await expect(requireExternalEnrollmentSafety(app as never)).resolves.toBeUndefined()
+  }
+)
+
+it.each([false, true])(
+  'settles a real first-download receipt interrupted by departure (scoped=%s)',
+  async (scoped) => {
+    const app = buildFakeVault([]),
+      owner = 'sample-interrupted',
+      root = connectionPrivateRoot(owner)
+    const view = scoped
+      ? connectionInspectionApp(
+          connectionJournalApp(app as never, owner),
+          connectionAdapter(app.vault.adapter, 'Shared', root),
+          'Shared',
+          root
+        )
+      : connectionJournalApp(app as never, owner)
+    const options = { connectionId: scoped ? owner : undefined, journalOwner: owner }
+    const fs = new ObsidianFileSystem(view, options)
+    const rename = app.vault.adapter.rename.bind(app.vault.adapter)
+    const stopped = new Error('sample stopped before publication')
+    const hook = vi.spyOn(app.vault.adapter, 'rename').mockImplementation(async (from, to) => {
+      if (to === 'Shared/sample.md') throw stopped
+      await rename(from, to)
+    })
+    await expect(
+      fs.conditionalFile({
+        path: 'Shared/sample.md',
+        expected: null,
+        effect: {
+          kind: 'write',
+          bytes: new TextEncoder().encode('incoming server bytes'),
+          mtime: 1000,
+          receipt: 'sample-download',
+        },
+      })
+    ).rejects.toThrow('sample stopped before publication')
+    hook.mockRestore()
+    const journal = new WriteJournal(view, undefined, owner)
+    expect(await journal.currentEntries()).toEqual([
+      expect.objectContaining({
+        conditionalReceipt: 'sample-download',
+        target: 'Shared/sample.md',
+      }),
+    ])
+    await settleStoppedInstallationsForDeletion(view, () => {})
+    await new ObsidianFileSystem(view, options).recover()
+    await expect(requireExternalEnrollmentSafety(app as never)).resolves.toBeUndefined()
+    expect(await journal.currentEntries()).toEqual([])
+    const [saved] = await journal.currentRecovered()
+    expect(saved.archived).toBe(true)
+    expect(await app.vault.adapter.read(saved.backup)).toBe('incoming server bytes')
+    expect(await app.vault.adapter.exists('Shared/sample.md')).toBe(false)
+  }
+)
 
 it.each([
   { lost: false, published: false },
