@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { phonePoolWipePlan, type PhoneWipeRow } from '@/testing/phonePoolWipe'
 import { readFileSync } from 'node:fs'
 const own = '11111111-1111-4111-8111-111111111111'
@@ -251,14 +251,16 @@ it('preserves recovery bytes and their durable owner during ordinary readiness e
 it.each([
   { valid: true, desktop: false, partial: false },
   { valid: true, desktop: false, partial: true },
+  { valid: true, desktop: false, stale: true },
+  { valid: true, desktop: false, stale: true, recreate: true },
   { valid: false, desktop: false },
   { valid: true, desktop: true, partial: false },
   { valid: true, desktop: true, concurrent: true },
   { valid: true, desktop: true, partial: true },
   { valid: false, desktop: true },
 ])(
-  'wipes real adapters only with a plugin ledger schema ($valid/$desktop/$partial)',
-  async ({ valid, desktop, partial, concurrent }) => {
+  'wipes real adapters only with a plugin ledger schema ($valid/$desktop/$partial/$stale/$recreate)',
+  async ({ valid, desktop, partial, concurrent, stale, recreate }) => {
     const identity = { ...actual, appId: desktop ? actual.appId : 'documents/sample-pool' }
     const { IDBFactory } = await import('fake-indexeddb')
     const { HostSyncStorage } = await import('@/sync/hostSyncStorage')
@@ -275,10 +277,34 @@ it.each([
     const descriptor = Object.getOwnPropertyDescriptor(window, 'indexedDB')
     const factory = new IDBFactory()
     let shutdownPending = false
+    let recreateAfterProbe = false
+    const openDatabase = factory.open.bind(factory)
+    factory.open = (name, version) => {
+      const request = openDatabase(name, version)
+      request.addEventListener('error', () => {
+        if (name !== own || !recreateAfterProbe) return
+        recreateAfterProbe = false
+        // Another writer creates the very name just proven absent. It must not
+        // inherit the old ledger's deletion authorization, even with a stale catalog.
+        const replacement = openDatabase(own, 3)
+        replacement.onsuccess = () => replacement.result.close()
+      })
+      return request
+    }
+    const removed: string[] = []
+    const deleteDatabase = factory.deleteDatabase.bind(factory)
+    factory.deleteDatabase = (name) => {
+      if (!shutdownPending) removed.push(name)
+      return deleteDatabase(name)
+    }
     const enumerate = factory.databases.bind(factory)
     factory.databases = async () => {
       if (shutdownPending) throw new Error('Database inventory changed during shutdown')
       const inventory = await enumerate()
+      // A catalog entry is not proof that open() will find a committed database.
+      // Model a stale WebKit catalog row after the owned ledger has disappeared.
+      if (stale && !inventory.some((db) => db.name === own))
+        inventory.push({ name: own, version: 3 })
       if (concurrent && !inventory.some((db) => db.name === 'sample-concurrent')) {
         await new Promise<void>((resolve, reject) => {
           const open = factory.open('sample-concurrent')
@@ -356,8 +382,18 @@ it.each([
                   open.onerror = () => reject(open.error)
                   open.onsuccess = () => {
                     open.result.close()
-                    shutdownPending = false
-                    resolve()
+                    if (stale) {
+                      const missing = factory.deleteDatabase(own)
+                      missing.onerror = () => reject(missing.error)
+                      missing.onsuccess = () => {
+                        shutdownPending = false
+                        recreateAfterProbe = !!recreate
+                        resolve()
+                      }
+                    } else {
+                      shutdownPending = false
+                      resolve()
+                    }
                   }
                 }
               }, 5)
@@ -375,9 +411,21 @@ it.each([
         },
       },
     })
+    const logs = vi.spyOn(console, 'debug')
     try {
+      if (recreate) {
+        await expect(wipe({ app } as never, request)).rejects.toThrow(
+          'Database appeared during wipe: ' + own
+        )
+        expect(removed).not.toContain(own)
+        expect((await enumerate()).some((db) => db.name === own)).toBe(true)
+        expect(await app.vault.adapter.exists('.abele-sync/private.bin')).toBe(true)
+        return
+      }
       if (concurrent) {
-        await expect(wipe({ app } as never, request)).rejects.toThrow('Database inventory changed')
+        const attempt = wipe({ app } as never, request)
+        await expect(attempt).rejects.toThrow('Database inventory changed')
+        await expect(attempt).rejects.toThrow(/database inventories snapshot=\[.* erase=\[/)
         expect((await enumerate()).some((db) => db.name === own)).toBe(true)
         expect(await app.vault.adapter.exists('.abele-sync/private.bin')).toBe(true)
         return
@@ -419,8 +467,19 @@ it.each([
       }
       const result = await wipe({ app } as never, request)
       expect(result.databases).toEqual(partial ? [] : [own])
+      expect(logs).toHaveBeenCalledWith(
+        '[e2e sync wipe] database inventory',
+        'snapshot',
+        expect.arrayContaining(['obsidian'])
+      )
+      expect(logs).toHaveBeenCalledWith(
+        '[e2e sync wipe] database inventory',
+        'erase',
+        expect.arrayContaining(['obsidian'])
+      )
+      if (stale) expect(removed).not.toContain(own)
       expect(offloads.files()).toEqual([])
-      const names = (await factory.databases()).map((db) => db.name)
+      const names = (await enumerate()).map((db) => db.name)
       expect(names).toContain(foreign)
       expect(names).toContain('obsidian')
       expect(names).toContain('abele-sync-host-v1')
@@ -431,6 +490,7 @@ it.each([
       const repeated = await wipe({ app } as never, request)
       expect(repeated.databases).toEqual([])
     } finally {
+      logs.mockRestore()
       ownHost.close()
       other.close()
       if (apiDescriptor) Object.defineProperty(window, '__abeleTest', apiDescriptor)

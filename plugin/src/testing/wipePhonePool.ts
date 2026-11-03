@@ -21,19 +21,34 @@ const shared = new Map([
   ['abele-sync-host-v1', ['host', 'host-records', 'host-records-v3']],
   ['abele-sync-device-credentials-v1', ['credentials']],
 ])
-async function existing(factory: IDBFactory, name: string): Promise<IDBDatabase> {
+async function inspect(factory: IDBFactory, name: string): Promise<IDBDatabase | null> {
   return new Promise((resolve, reject) => {
     const request = factory.open(name)
-    request.onupgradeneeded = () => {
+    let absent = false
+    let upgrade: number | undefined
+    request.onupgradeneeded = (event) => {
+      upgrade = event.oldVersion
+      absent = event.oldVersion === 0
+      console.debug('[e2e sync wipe] database open upgrade refused', name, event.oldVersion)
       request.transaction?.abort()
-      reject(new Error('Database inventory changed: ' + name))
     }
-    request.onerror = () => reject(request.error)
+    // Wait for the abort to finish: never leave an empty replacement database behind.
+    request.onerror = () => {
+      if (absent) resolve(null)
+      else if (upgrade !== undefined)
+        reject(new Error('Database inventory changed: ' + name + ' (upgrade from ' + upgrade + ')'))
+      else reject(request.error ?? new Error('Cannot inspect database: ' + name))
+    }
     request.onsuccess = () => {
       request.result.onversionchange = () => request.result.close()
       resolve(request.result)
     }
   })
+}
+async function existing(factory: IDBFactory, name: string): Promise<IDBDatabase> {
+  const db = await inspect(factory, name)
+  if (!db) throw new Error('Required shared database is absent: ' + name)
+  return db
 }
 /** Test build only. The manager supplies independently recorded pool identity and confirmation. */
 export function wipePhonePool(plugin: Plugin, request: PhoneWipeIdentity) {
@@ -46,6 +61,8 @@ async function wipePoolInternal(plugin: Plugin, request: PhoneWipeIdentity, gene
   const app = plugin.app
   const factory = window.indexedDB
   let databaseInventory = ''
+  let snapshotNames: (string | undefined)[] = []
+  let eraseNames: (string | undefined)[] = []
   const inventory = async () =>
     (await factory.databases())
       .map(({ name, version }) => [name, version] as const)
@@ -82,6 +99,8 @@ async function wipePoolInternal(plugin: Plugin, request: PhoneWipeIdentity, gene
     snapshot: async () => {
       if (typeof factory.databases !== 'function') throw new Error('Database enumeration required')
       const observed = await inventory()
+      snapshotNames = observed.map(([name]) => name)
+      console.debug('[e2e sync wipe] database inventory', 'snapshot', snapshotNames)
       databaseInventory = JSON.stringify(observed)
       const databases = observed
         .map(([name]) => name)
@@ -150,12 +169,24 @@ async function wipePoolInternal(plugin: Plugin, request: PhoneWipeIdentity, gene
       return { databases, rows, local }
     },
     erase: async (plan) => {
-      if (JSON.stringify(await inventory()) !== databaseInventory)
+      const observed = await inventory()
+      eraseNames = observed.map(([name]) => name)
+      console.debug('[e2e sync wipe] database inventory', 'erase', eraseNames)
+      if (JSON.stringify(observed) !== databaseInventory)
         throw new Error('Database inventory changed after stopped snapshot')
       // A UUID reference alone is not permission to remove an unrelated database.
       // Inspect every candidate before any destructive namespace/file operation.
+      const present: string[] = []
+      const absent: string[] = []
       for (const name of plan.databases) {
-        const db = await existing(factory, name)
+        const db = await inspect(factory, name)
+        if (!db) {
+          // Enumeration is not an existence check. Only explicitly owned ledger
+          // names may be absent; shared stores above must remain available.
+          console.debug('[e2e sync wipe] owned database already absent', name)
+          absent.push(name)
+          continue
+        }
         try {
           const stores = Array.from(db.objectStoreNames)
           if (
@@ -172,12 +203,21 @@ async function wipePoolInternal(plugin: Plugin, request: PhoneWipeIdentity, gene
           await done
           if (typeof identity?.value !== 'string' || !identity.value)
             throw new Error('Referenced plugin ledger identity is unavailable')
+          present.push(name)
         } finally {
           db.close()
         }
       }
+      // A recreated database must not inherit permission from an absence probe.
+      for (const name of absent) {
+        const db = await inspect(factory, name)
+        if (db) {
+          db.close()
+          throw new Error('Database appeared during wipe: ' + name)
+        }
+      }
       tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault)).clearDrainedState()
-      for (const name of plan.databases) {
+      for (const name of present) {
         console.debug('[e2e sync wipe] deleting owned database', name)
         await IndexedDbStateStore.delete(factory, name)
       }
@@ -236,6 +276,22 @@ async function wipePoolInternal(plugin: Plugin, request: PhoneWipeIdentity, gene
         window as unknown as { __abeleTest: { verifyPoolWipe(): Promise<void> } }
       ).__abeleTest.verifyPoolWipe()
     },
+  }).catch((cause: unknown) => {
+    // Phone action failures retain the message even when browser console output
+    // is unavailable. Include names only, never namespace rows or credentials.
+    const message = (cause as { message?: unknown } | null)?.message
+    throw new Error(
+      (typeof message === 'string'
+        ? message
+        : typeof cause === 'string'
+          ? cause
+          : 'Unknown pool wipe error') +
+        '; database inventories snapshot=' +
+        JSON.stringify(snapshotNames) +
+        ' erase=' +
+        JSON.stringify(eraseNames),
+      { cause }
+    )
   })
 }
 
