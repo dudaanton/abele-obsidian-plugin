@@ -31,7 +31,7 @@ module.exports = class extends Plugin {
       const ledgerIpc = require('electron').ipcRenderer
       const ledgerFile = path.join(config.profileDirectory, `entry-${config.device}-${Date.now()}.jsonl`)
       const ledgerChannel = ledgerRemote.require(config.diagnostics).openEvidencePort(
-        ledgerRemote.getCurrentWebContents().id, JSON.stringify({ evidence: ledgerFile }))
+        ledgerRemote.getCurrentWebContents().id, JSON.stringify({ evidence: ledgerFile, evidenceWriter: config.evidenceWriter }))
       entryLedger = createEntryLedger({
         write: text => ledgerIpc.send(ledgerChannel, text),
         device: config.device, pluginAbsent: !this.app.plugins?.plugins?.abele,
@@ -43,7 +43,7 @@ module.exports = class extends Plugin {
       entryLedger.markPartial('Native async callbacks require CPU attribution')
       const restore = installEntryLedger({ ledger: entryLedger, target: globalThis, Events,
         Component, Workspace, Plugin: ProductPlugin, ItemView, FileView, View, MarkdownRenderChild,
-        EditorSuggest, PluginSettingTab, codeMirror, EventEmitter })
+        EditorSuggest, PluginSettingTab, codeMirror, EventEmitter, modulePaths: config })
       globalThis.__scaleWrapProductExport = value => wrapProductExport(value, entryLedger)
       globalThis.__scaleEntryLedgerRequired = true
       const mark = performance.mark.bind(performance)
@@ -299,7 +299,7 @@ module.exports = class extends Plugin {
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Read-only disposable diagnostics.
       const receiptCapture = require(config.receiptCapture)
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Shared disposable cut/exit export protocol.
-      const { saveInterruptionBoundary } = require('./interruption-boundary.cjs')
+      const { saveInterruptionBoundary } = require(config.interruptionBoundary)
       globalThis.__scaleSaveInterruptionBoundary = id => saveInterruptionBoundary({
         id, emit, stopProfiles: globalThis.__scaleStopProfiles,
         flushEvidence: globalThis.__scaleFlushEvidence,
@@ -375,7 +375,9 @@ module.exports = class extends Plugin {
       reindexObserver.observeHashes(nativeCrypto, globalThis.crypto?.subtle, emit, classifyHash)
     )
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- The host loader needs the fixture's absolute module path.
-    const { observeWrites, observeReads } = require(config.writeObserver)
+    const writes = require(config.writeObserver)
+    writes.configureModules(config)
+    const { observeWrites, observeReads } = writes
     const undoWrites = observeWrites(this.app.vault.adapter, emit, fs.promises ? [fs.promises] : [])
     globalThis.__scaleWriteState = () => undoWrites.snapshot()
     const undoReads =

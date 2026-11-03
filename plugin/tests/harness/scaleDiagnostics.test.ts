@@ -264,12 +264,12 @@ it('keeps a running profiler across a reload in the same renderer', async () => 
     clearInterval() {}, require: (name: string) => {
       if (name === 'electron') return { webContents: { fromId: () => wc }, ipcMain: new EventEmitter() }
       if (name === 'node:crypto') return { randomUUID: () => 'sample' }
-      if (name === './evidence-writer.cjs') return { writerFor: () => ({ enqueue() {}, async flush() {} }) }
+      if (name === '/sample/evidence-writer.cjs') return { writerFor: () => ({ enqueue() {}, async flush() {} }) }
       if (name === 'node:fs') return { mkdirSync() {}, writeFileSync() {} }
       throw Error(name)
     } })
   const api = module.exports as any
-  const config = JSON.stringify({ evidence: 'sample', device: '0', continuousCpu: true,
+  const config = JSON.stringify({ evidence: 'sample', evidenceWriter: '/sample/evidence-writer.cjs', device: '0', continuousCpu: true,
     javascriptHashTracepoints: [], profileDirectory: '/sample' })
   const first = await api.watch(7, config)
   const second = await api.watch(7, config)
@@ -475,7 +475,7 @@ it.each([true, false])(
     })
     const config = {
       device: '0',
-      evidence: 'sample',
+      evidence: 'sample', evidenceWriter: '/sample/evidence-writer.cjs',
       observeContentReads,
       writeObserver: '/sample/writes.cjs',
       reindexObserver: '/sample/reindex.cjs',
@@ -523,7 +523,7 @@ it.each([true, false])(
           return { observeRebuild: () => {}, observeHashes: () => () => {} }
         if (name === config.writeObserver)
           return {
-            observeWrites: () => () => events.push({ event: 'cleanup-write' }),
+            configureModules() {}, observeWrites: () => () => events.push({ event: 'cleanup-write' }),
             observeReads: () => () => events.push({ event: 'cleanup-read' }),
           }
         if (name === config.diagnostics) return diagnostics
@@ -666,7 +666,7 @@ it('replaces only its own debugger watch across a renderer reload', async () => 
     require: (name) => {
       if (name === 'electron') return { webContents: { fromId: () => wc }, ipcMain }
       if (name === 'node:crypto') return { randomUUID: () => String(++sequence) }
-      if (name === './evidence-writer.cjs')
+      if (name === '/sample/evidence-writer.cjs')
         return { writerFor: () => ({ enqueue: (line) => rows.push(JSON.parse(line)), async flush() {} }) }
       if (name === 'node:fs')
         return {
@@ -678,7 +678,7 @@ it('replaces only its own debugger watch across a renderer reload', async () => 
     },
   })
   const api = module.exports as any,
-    config = JSON.stringify({ evidence: 'sample', device: '0' })
+    config = JSON.stringify({ evidence: 'sample', evidenceWriter: '/sample/evidence-writer.cjs', device: '0' })
   const first = await api.watch(7, config)
   expect(await api.beginReindexCoverage(first, 'sample')).toBe(true)
   const second = await api.watch(7, config)

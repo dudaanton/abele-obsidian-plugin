@@ -282,7 +282,7 @@ exports.openEvidencePort = function (id, serializedConfig) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- Evidence queues survive renderer navigation in the host.
   const { ipcMain, app } = require('electron')
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- Shared serialized evidence appends.
-  const writerModule = require('./evidence-writer.cjs')
+  const writerModule = require(JSON.parse(serializedConfig).evidenceWriter)
   const writer = writerModule.writerFor(JSON.parse(serializedConfig).evidence)
   writerModule.drainOnQuit(app, writer)
   const key = `${id}:${JSON.parse(serializedConfig).evidence}`
@@ -332,7 +332,7 @@ exports.watch = async function (id, serializedConfig) {
     return existing.channel
   }
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- The renderer and profiler share one host-owned append queue.
-  const evidence = require('./evidence-writer.cjs').writerFor(config.evidence)
+  const evidence = require(config.evidenceWriter).writerFor(config.evidence)
   const emit = (e) =>
     evidence.enqueue(JSON.stringify({ at: Date.now(), device: config.device, ...e }) + '\n')
   await ownedContents.get(id)?.()
@@ -356,7 +356,7 @@ exports.watch = async function (id, serializedConfig) {
   const probe = async (request) => {
     if (probeBusy) return
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Independent host-side diagnostic probes.
-    const { probeRenderer } = require('./heap.cjs')
+    const { probeRenderer } = require(config.heapProbe)
     probeBusy = true
     try {
       await probeRenderer({
@@ -387,7 +387,7 @@ exports.watch = async function (id, serializedConfig) {
     try {
       // Snapshot chunks are written immediately so the observer never retains a second heap-sized string.
       // eslint-disable-next-line @typescript-eslint/no-require-imports -- Bounded snapshot streaming in the host.
-      await require('./heap.cjs').streamSnapshot(transport, (chunk) => {
+      await require(config.heapProbe).streamSnapshot(transport, (chunk) => {
         bytes += fs.writeSync(fd, chunk)
       })
       emit({ event: 'heap-snapshot-end', request, file, bytes, complete: true })
@@ -413,7 +413,7 @@ exports.watch = async function (id, serializedConfig) {
         .then(JSON.parse)
         .then((request) => {
           // eslint-disable-next-line @typescript-eslint/no-require-imports -- Ignore requests belonging to the previous renderer generation.
-          if (!require('./heap.cjs').freshRequest(request, watchStartedAt)) return
+          if (!require(config.heapProbe).freshRequest(request, watchStartedAt)) return
           if (request.id === requestId) return
           requestId = request.id
           if (request.kind === 'snapshot') void takeHeap(request).catch(() => {})

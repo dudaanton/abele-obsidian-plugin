@@ -546,7 +546,7 @@ export async function run(config) {
   }
   const fatalCapture = async (device, label) => {
     const output = join(config.output, 'state', label)
-    await device.evaluate(`window.__scaleFatalCapture={done:false};void require(${JSON.stringify(join(here,'diag-capture.cjs'))}).capture(app,${JSON.stringify(output)},indexedDB).then(result=>{window.__scaleFatalCapture={done:true,result}},error=>{window.__scaleFatalCapture={done:true,error:{message:error.message,stack:error.stack}}});return true`)
+    await device.evaluate(`window.__scaleFatalCapture={done:false};void require(${JSON.stringify(join(here,'diag-capture.cjs'))}).capture(app,${JSON.stringify(output)},indexedDB,${JSON.stringify({databaseExport:join(here,'indexeddb.cjs')})}).then(result=>{window.__scaleFatalCapture={done:true,result}},error=>{window.__scaleFatalCapture={done:true,error:{message:error.message,stack:error.stack}}});return true`)
     const value=await wait('fatal state export',async()=>{const state=await device.evaluate('return window.__scaleFatalCapture');return state?.done?state:false},60000)
     ;(report.diagnosticCaptures??=[]).push({label,...value});checkpoint(true)
   }

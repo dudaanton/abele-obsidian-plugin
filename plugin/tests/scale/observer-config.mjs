@@ -6,6 +6,10 @@ export function observerDeploymentConfig(config, observer, device, bundle) {
   return {
     evidence: join(config.output, 'renderer.jsonl'),
     device,
+    interruptionBoundary: join(observer, 'interruption-boundary.cjs'),
+    hostEntries: join(observer, 'host-entries.cjs'),
+    evidenceWriter: join(observer, 'evidence-writer.cjs'),
+    heapProbe: join(observer, 'heap.cjs'),
     controlError: join(observer, 'control-error.cjs'),
     ...(config.failureDiagnosticEnabled
       ? {

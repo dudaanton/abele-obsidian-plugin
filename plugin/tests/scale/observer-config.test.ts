@@ -2,12 +2,17 @@
 import { expect, it } from 'vitest'
 import { mkdtemp, mkdir, copyFile, readFile, rm, stat } from 'node:fs/promises'
 import * as fs from 'node:fs'
-import { join } from 'node:path'
+import { join, isAbsolute } from 'node:path'
 import { runInNewContext } from 'node:vm'
+import { createRequire } from 'node:module'
 import { qualificationScenario, qualificationInstrumentation } from './qualification-config.mjs'
 import { observerDeploymentConfig } from './observer-config.mjs'
 
 const modules = {
+  interruptionBoundary: 'interruption-boundary.cjs',
+  hostEntries: 'host-entries.cjs',
+  evidenceWriter: 'evidence-writer.cjs',
+  heapProbe: 'heap.cjs',
   controlError: 'control-error.cjs',
   failureDiagnostic: 'failure-diagnostic.cjs',
   writeObserver: 'writes.cjs',
@@ -22,6 +27,20 @@ const modules = {
   metadataCache: 'metadata-cache.cjs',
   indexWaitCapture: 'index-wait-capture.cjs',
 }
+
+it('renderer-loaded harness modules never require a relative local specifier', async () => {
+  const files = new Set([
+    'observer.cjs',
+    ...Object.values(modules),
+    'host-entries.cjs',
+    'diag-capture.cjs',
+    'indexeddb.cjs',
+  ])
+  for (const file of files) {
+    const source = await readFile(new URL(file, import.meta.url), 'utf8')
+    expect(source, file).not.toMatch(/\brequire\s*\(\s*['"]\.{1,2}\//)
+  }
+})
 
 async function deployed(mode: string, check: (config: any, root: string) => Promise<void>) {
   await mkdir('.scratch', { recursive: true })
@@ -49,6 +68,7 @@ it.each(['targeted', 'full'])(
     await deployed(mode, async (config) => {
       for (const [key, name] of Object.entries(modules)) {
         expect(typeof config[key], key).toBe('string')
+        expect(isAbsolute(config[key]), key).toBe(true)
         expect(config[key].endsWith('/' + name)).toBe(true)
         expect((await stat(config[key])).isFile()).toBe(true)
       }
@@ -59,17 +79,21 @@ it.each(['targeted', 'full'])(
 )
 
 it.each(['targeted', 'full'])(
-  '%s actual observer reaches profiler startup with deployed options',
+  '%s actual observer loads deployed helpers with relative specifiers refused',
   async (mode) => {
     await deployed(mode, async (config, root) => {
       let reached = false,
+        loadedBoundary = false,
         failure: unknown
+      const controlledEnd = new Error('Controlled post-helper boundary')
+      const nativeRequire = createRequire(import.meta.url)
       const diagnostic = {
         openEvidencePort: () => 'sample-channel',
         watch: () => {
           reached = true
-          return new Promise(() => {})
+          return Promise.resolve('sample-channel')
         },
+        profileReady: () => true,
       }
       const ledger = { markPartial() {}, flush() {}, teardown() {} }
       const callbacks: Array<() => void> = []
@@ -83,6 +107,7 @@ it.each(['targeted', 'full'])(
         clearInterval() {},
         require(name: string) {
           if (typeof name !== 'string') throw new TypeError('Module path must be a string')
+          if (/^\.{1,2}\//.test(name)) throw new Error('Relative specifier refused')
           if (name === 'obsidian')
             return {
               Plugin: class {
@@ -107,26 +132,33 @@ it.each(['targeted', 'full'])(
               installEntryLedger: () => () => {},
               wrapProductExport: (value: unknown) => value,
             }
-          if (name === config.failureDiagnostic)
+          if (name === config.failureDiagnostic) {
+            if (loadedBoundary) throw controlledEnd
             return {
               shouldWrapFingerprints: () => false,
               captureFailures: () => ({ poll() {}, close() {} }),
             }
+          }
           if (name === config.receiptCapture) return { scheduleHashWarmup() {} }
+          if (name === config.interruptionBoundary) {
+            loadedBoundary = true
+            return nativeRequire(name)
+          }
           throw new Error('Unexpected fixture dependency')
         },
       }
       runInNewContext(await readFile(new URL('./observer.cjs', import.meta.url), 'utf8'), context)
       const observer = new context.module.exports()
       observer.app = { vault: { adapter: { getBasePath: () => root } } }
-      // Pause at the real profiler boundary: no host, inspector or app is started.
+      // Stop after the actual post-profiler helper imports; no app is started.
       void observer.onload().catch((error: unknown) => {
         failure = error
       })
       await new Promise((resolve) => setImmediate(resolve))
       for (const close of callbacks) close()
-      expect(failure).toBeUndefined()
+      expect(failure).toBe(controlledEnd)
       expect(reached).toBe(true)
+      expect(loadedBoundary).toBe(true)
     })
   }
 )

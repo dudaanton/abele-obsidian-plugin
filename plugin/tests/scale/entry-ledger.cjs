@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Disposable renderer instrumentation only. */
 const fs = require('node:fs')
+const path = require('node:path')
 const { randomUUID } = require('node:crypto')
 /* eslint-enable @typescript-eslint/no-require-imports -- Host-only imports end here. */
 
@@ -155,7 +156,8 @@ exports.wrapProductExport = function (value, ledger) {
 
 exports.installEntryLedger = function ({ ledger, target = globalThis, Events, Component, Workspace, Plugin,
   ItemView, FileView, View, MarkdownRenderChild, EditorSuggest, PluginSettingTab, codeMirror,
-  EventEmitter, asyncHooks, asyncCapacity = 262144, isPluginCaller = () => false }) {
+  EventEmitter, asyncHooks, asyncCapacity = 262144, isPluginCaller = () => false,
+  modulePaths = { hostEntries: path.join(__dirname, 'host-entries.cjs') } }) {
   // Evaluation/load are explicit roots; ownership propagates from those roots
   // through registered callbacks and native async jobs, without per-call stacks.
   const undo = [], wrappers = new WeakMap()
@@ -261,7 +263,7 @@ exports.installEntryLedger = function ({ ledger, target = globalThis, Events, Co
     }
   })
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- Qualification-only registration adapters.
-  require('./host-entries.cjs').installHostEntries({ ledger, wrap, owned, patch, Plugin, Component,
+  require(modulePaths.hostEntries).installHostEntries({ ledger, wrap, owned, patch, Plugin, Component,
     ItemView, FileView, View, MarkdownRenderChild, EditorSuggest, PluginSettingTab, codeMirror })
   // Native async/await bypasses Promise.prototype.then. V8 promise hooks exposed
   // by Node cover those continuations, and native completion callbacks as well.

@@ -1,11 +1,14 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Disposable host observer. */
 const path = require('node:path')
 const { constants } = require('node:fs')
-const { classifyOrigin } = require('./diagnostics.cjs')
+const nodeModules = { diagnostics: path.join(__dirname, 'diagnostics.cjs') }
+let classifyOrigin
+exports.configureModules = config => { classifyOrigin = require(config.diagnostics).classifyOrigin }
 /* eslint-enable @typescript-eslint/no-require-imports -- Host imports end here. */
 
 exports.writeOrigin = (stack) =>
-  classifyOrigin(
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Cache the absolute native-Node default for standalone callers.
+  (classifyOrigin ??= require(nodeModules.diagnostics).classifyOrigin)(
     typeof stack === 'string'
       ? stack.replace(/^\s+at new Promise \(<anonymous>\)\s*$/gm, '')
       : stack

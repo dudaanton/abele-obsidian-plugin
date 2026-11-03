@@ -3,7 +3,6 @@ const fs = require('node:fs')
 const fsp = fs.promises
 const path = require('node:path')
 const crypto = require('node:crypto')
-const { exportDatabase } = require('./indexeddb.cjs')
 /* eslint-enable @typescript-eslint/no-require-imports -- CommonJS imports end here. */
 function encode(_key, value) {
   if (typeof value === 'bigint') return { $bigint: String(value) }
@@ -32,7 +31,9 @@ async function copyFiles(root, output) {
   await fsp.writeFile(path.join(output,'files.json'),JSON.stringify(files,null,2))
   return files
 }
-async function capture(app, output, factory) {
+async function capture(app, output, factory, modulePaths = { databaseExport: path.join(__dirname, 'indexeddb.cjs') }) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Absolute deployed diagnostic dependency.
+  const { exportDatabase } = require(modulePaths.databaseExport)
   const startedAt=Date.now();await fsp.mkdir(output,{recursive:true})
   const host=app.plugins.plugins.abele.tokenEngines,ui=host.ui
   const records=JSON.parse(JSON.stringify(ui.registry.records()))

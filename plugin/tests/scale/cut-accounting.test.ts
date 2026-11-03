@@ -85,7 +85,7 @@ it('restarts and acknowledges CPU capture for a navigated webContents before reu
       if (name === 'electron')
         return { webContents: { fromId: () => wc }, ipcMain: new EventEmitter() }
       if (name === 'node:crypto') return { randomUUID: () => String(++sequence) }
-      if (name === './evidence-writer.cjs')
+      if (name === '/sample/evidence-writer.cjs')
         return {
           writerFor: () => ({
             enqueue(line: string) {
@@ -100,7 +100,7 @@ it('restarts and acknowledges CPU capture for a navigated webContents before reu
   })
   const api: any = module.exports
   const config = JSON.stringify({
-    evidence: 'sample',
+    evidence: 'sample', evidenceWriter: '/sample/evidence-writer.cjs',
     device: '0',
     continuousCpu: true,
     javascriptHashTracepoints: [],

@@ -201,7 +201,7 @@ describe('scale harness independent guarantees', () => {
                     },
                   }
                 : name === '/sample/absolute-writes.cjs'
-                  ? { observeWrites: () => () => {} }
+                  ? { configureModules() {}, observeWrites: () => () => {} }
                   : name === 'fs'
                     ? {
                         existsSync: () => false,
@@ -328,7 +328,7 @@ describe('scale harness independent guarantees', () => {
                     },
                   }
                 : name === '/sample/absolute-writes.cjs'
-                  ? { observeWrites: () => () => {} }
+                  ? { configureModules() {}, observeWrites: () => () => {} }
                   : name === 'fs'
                     ? {
                         existsSync: () => false,
