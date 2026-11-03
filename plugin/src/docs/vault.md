@@ -3860,9 +3860,12 @@ ordinary watcher checks; initial and reconnected pulls never enter upload pacing
 
 Explicit server deletion can retire an unpublished receipt after its writer has drained.
 Its incoming bytes are moved into private recovery storage and reported through the existing
-recovery notice. The owned write-journal entry keeps the retained locator and a
-`server-deletion` retirement generation; this does not acknowledge the server version or
-publish the incoming bytes at a public path. Unresolved local backups still require recovery.
+recovery notice. The owned write-journal entry first keeps the retained locator and a
+`server-deletion` retirement generation. Departure then records the completed retained copy
+with its private destination, size and SHA-256 before dropping the active installation
+receipt. Startup and guarded reset finish that conversion after an interruption. This never
+acknowledges a server version or publishes incoming bytes at a public path. Unresolved local
+backups still require recovery.
 Preserved legacy backups carry a durable archive plan (private destination, size and SHA-256)
 before they move into recovery storage. Startup and guarded test reset finish that same plan,
 verify the kept bytes and mark its journal record archived. Completed archives remain

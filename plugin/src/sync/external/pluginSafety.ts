@@ -17,6 +17,7 @@ import {
   privateRecoveryDirectory,
   privateRecoveryPath,
   showPrivateRecoveryNotice,
+  finishRetainedWrites,
 } from '../privateRecovery'
 import { sha256 } from './hash'
 import type { App } from 'obsidian'
@@ -1013,6 +1014,9 @@ export async function settleStoppedInstallationsForDeletion(
     },
     assertCurrent
   )
+  // Keep the active intent until its retained-copy owner is durable. Startup
+  // repeats this finalization if departure is interrupted between the commits.
+  await finishRetainedWrites(app, owner, assertCurrent)
 }
 
 export async function requireExternalLifecycleSafety(

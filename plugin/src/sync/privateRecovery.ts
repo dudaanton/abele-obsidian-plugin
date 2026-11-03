@@ -21,6 +21,68 @@ export async function finishRetainedWrites(
     [''],
     async () => {
       const journal = new WriteJournal(app, assertCurrent, owner)
+      // Departure already fenced the writer and preserved its private bytes. A
+      // retired installation is evidence, not an installation that may be replayed.
+      // Complete this conversion before inspecting unfinished recovered rows: a
+      // process cut may leave both the old intent and its new archive owner.
+      for (const entry of await journal.currentEntries()) {
+        if (entry.retiredGeneration !== 'server-deletion' || !entry.conditionalReceipt) continue
+        assertCurrent()
+        const root = entry.owner ? connectionPrivateRoot(entry.owner) : undefined
+        const view = connectionInspectionApp(app, vaultDisk(app.vault), '', root)
+        const recovery = recoveryDirectory(view)
+        const name = '.abele-receipt-' + entry.conditionalReceipt + '.tmp'
+        const disk = vaultDisk(view.vault)
+        const refuse = (reason: string): never => {
+          throw new ExternalRecoveryRequired(reason, {
+            kind: 'installation',
+            id: name,
+            path: entry.target,
+          })
+        }
+        if (
+          entry.streaming ||
+          entry.backup ||
+          !entry.temp ||
+          (entry.temp !== recovery + '/' + name &&
+            privateRecoveryPath(view, entry.temp ?? '') !== recovery + '/' + name)
+        )
+          refuse('retired installation locator changed')
+        if (entry.temp === recovery + '/' + name) {
+          // Do not discard the only locator if a user removed the retained copy.
+          if (!(await disk.exists(entry.temp))) refuse('retained installation bytes are missing')
+          const io = new BoundedVaultIo(
+            disk,
+            assertCurrent,
+            undefined,
+            undefined,
+            app.vault.configDir
+          )
+          const proof = await io.fingerprint(entry.temp)
+          if (!(await journal.currentRecovered()).some((row) => row.backup === entry.temp))
+            await journal.persist(() => journal.preserve({ ...entry, backup: entry.temp }))
+          const saved = (await journal.currentRecovered()).find((row) => row.backup === entry.temp)
+          if (
+            !saved ||
+            saved.target !== entry.target ||
+            (saved.archive &&
+              (saved.archive.path !== entry.temp ||
+                saved.archive.sha !== proof.sha ||
+                saved.archive.size !== proof.size))
+          )
+            refuse('retained installation archive changed')
+          await journal.replaceRecovered(saved, {
+            ...saved,
+            archive: { path: entry.temp, sha: proof.sha, size: proof.size },
+            archived: true,
+          })
+        } else if (await disk.exists(entry.temp)) {
+          refuse('retired installation still has active bytes')
+        }
+        assertCurrent()
+        await journal.persist(() => journal.drop(entry))
+        console.debug('[abele-sync] finished departed installation receipt', entry.target)
+      }
       for (const original of await journal.currentUnfinishedRecovered()) {
         assertCurrent()
         let entry = original
