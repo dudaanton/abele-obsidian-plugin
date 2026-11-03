@@ -693,7 +693,13 @@ export class TokenEngineRuntime
               signal: request.signal,
             })
             successful = response.ok
+            if (response.status >= 500) this.serverAvailable = false
           } catch (error) {
+            // A local scan/installation cancellation can also put the engine in
+            // its offline state. Only an actual un-aborted transport failure
+            // establishes that server attachments are unavailable.
+            if (!request.signal.aborted && !(error instanceof SyncCancelled))
+              this.serverAvailable = false
             if (this.reviewYield && request.signal.aborted) throw this.reviewYielded
             const native = nativeSyncFailure(error)
             if (native) {
@@ -1940,7 +1946,6 @@ export class TokenEngineRuntime
         running = false
         this.clearActivity()
       }
-      if (status.state === 'offline') this.serverAvailable = false
       if (status.state === 'syncing') this.trace.beginPullCycle()
       options.changed(status)
     })

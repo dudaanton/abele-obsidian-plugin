@@ -1595,6 +1595,25 @@ it.each([
   }
 )
 
+it('keeps server attachments available when a local comparison is deliberately cancelled', async () => {
+  const wire = await server('Notes/sample.md', 'note')
+  const fs = new MemoryFileSystem()
+  const one = runtime(wire, fs)
+  try {
+    await one.runtime.sync()
+    expect(one.runtime.available).toBe(true)
+    const list = vi.spyOn(fs, 'list').mockImplementationOnce(async function* () {
+      yield* []
+      throw new SyncCancelled()
+    })
+    await one.runtime.sync().catch(() => {})
+    expect(list).toHaveBeenCalled()
+    expect(one.runtime.available).toBe(true)
+  } finally {
+    await one.runtime.disconnect()
+  }
+})
+
 it('keeps attachments offline while a reconnect is in flight and restores availability after success', async () => {
   const wire = await server('Notes/sample.md', 'note')
   const send = wire.fetch.getMockImplementation()!
