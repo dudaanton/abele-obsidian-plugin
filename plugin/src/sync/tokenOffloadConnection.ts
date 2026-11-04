@@ -43,6 +43,8 @@ export async function tokenOffloadConnection(input: {
   scriptsFolder(): string
   client(): V2EngineClient
   sync(): Promise<void>
+  /** Share effect phases with the engine's ordinary ledger transaction queue. */
+  exclusive?<T>(work: () => Promise<T>): Promise<T>
   includes(path: string): boolean
   available?(): boolean
   capture(
@@ -81,7 +83,7 @@ export async function tokenOffloadConnection(input: {
   const stagingMtimes = new Map<string, number>()
   let serial = Promise.resolve()
   const run = <T>(work: () => Promise<T>): Promise<T> => {
-    const next = serial.then(work)
+    const next = serial.then(() => (input.exclusive ? input.exclusive(work) : work()))
     serial = next.then(
       () => {},
       () => {}
@@ -217,7 +219,7 @@ export async function tokenOffloadConnection(input: {
         }
       ),
   })
-  const store = async () => {
+  const openStore = async () => {
     fence.assertReady()
     if (!external) {
       external = await activateExternalFiles(
@@ -272,6 +274,12 @@ export async function tokenOffloadConnection(input: {
         refreshed: refresh,
       })
     return attachments
+  }
+  // Reentrant inspections during hydration already have a store; only activation
+  // and effect phases need the shared scheduler, never the surrounding network work.
+  const store = () => {
+    fence.assertReady()
+    return attachments ? Promise.resolve(attachments) : run(openStore)
   }
   const head = async (path: string): Promise<StateEntry> => {
     fence.assertReady()

@@ -103,6 +103,23 @@ async function idb() {
     readCursor: () => port.getCursor(),
   }
 }
+it('reads only committed external state while an unrelated engine overlay is open', async () => {
+  const host = await idb()
+  const state = await ExternalState.open(host.port, 'sample-ledger', binding)
+  const before = await state.snapshot()
+  await host.outer(async () => {
+    expect(await state.snapshot()).toEqual(before)
+    // Reading is safe; returning an effect receipt from inside this overlay is not.
+    await expect(
+      state.commit({
+        expectedRevision: before.revision,
+        files: [{ expectedRevision: null, next: record() }],
+      })
+    ).rejects.toMatchObject({ reason: 'nested-transaction' })
+  })
+  expect(await state.snapshot()).toEqual(before)
+})
+
 async function sqlite() {
   const scratch = resolve(import.meta.dirname, '../../../.scratch')
   mkdirSync(scratch, { recursive: true })

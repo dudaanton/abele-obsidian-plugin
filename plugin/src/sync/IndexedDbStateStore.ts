@@ -826,9 +826,10 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   /** Read committed external state only: an ordinary overlay is never a durable phase. */
   async getExternalState(): Promise<string | null> {
     this.assertRecovery()
-    if (this.transactionPending || this.externalPhasePending)
-      throw new ExternalStateError('nested-transaction')
-    return this.getMeta(EXTERNAL_STATE_KEY)
+    // A root read never sees an ordinary transaction's overlay. IDB serializes
+    // this read with durable phase commits; only an effect receipt must reject
+    // nesting. UI inspection may read while the engine is updating its ledger.
+    return this.readMeta(EXTERNAL_STATE_KEY)
   }
 
   /** Data-only CAS over the existing ledger stores. Never joins an overlay or retries a write. */

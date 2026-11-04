@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import { MemoryStateStore, sha256 } from '@abele/sync-sdk/core'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
@@ -21,6 +21,45 @@ it('offloads bytes another connection has not received yet after preserving them
   const factory = new IDBFactory(),
     ledgerId = crypto.randomUUID()
   const state = await IndexedDbStateStore.open(factory, ledgerId)
+  let exclusive = false
+  let engineTail = Promise.resolve()
+  let attempted: (() => void) | undefined
+  const readExternal = state.getExternalState.bind(state)
+  vi.spyOn(state, 'getExternalState').mockImplementation(() => {
+    attempted?.()
+    return readExternal()
+  })
+  const duringEngineWrite = async <T>(work: () => Promise<T>): Promise<T> => {
+    let release!: () => void
+    let entered!: () => void
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const started = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const reached = new Promise<void>((resolve) => {
+      attempted = resolve
+    })
+    engineTail = state.transaction(async () => {
+      entered()
+      await held
+    })
+    await started
+    const pending = work()
+    try {
+      await Promise.race([reached, pending])
+    } finally {
+      attempted = undefined
+      release()
+    }
+    return pending
+  }
+  const commit = state.commitExternalPhase.bind(state)
+  vi.spyOn(state, 'commitExternalPhase').mockImplementation(async (batch) => {
+    expect(exclusive, 'external effect phases share the engine scheduler').toBe(true)
+    return commit(batch)
+  })
   const fence = new RuntimeFence(app, ledgerId, () => true)
   fence.activate()
   const binding = {
@@ -83,20 +122,36 @@ it('offloads bytes another connection has not received yet after preserving them
         },
       }) as never,
     sync: async () => {},
+    exclusive: (work) => {
+      attempted?.()
+      const next = engineTail.then(async () => {
+        exclusive = true
+        try {
+          return await work()
+        } finally {
+          exclusive = false
+        }
+      })
+      engineTail = next.then(
+        () => {},
+        () => {}
+      )
+      return next
+    },
     includes: () => true,
     capture: (paths) => copies.capture(fs, paths),
     rememberIdentity: () => {},
     hydratedIdentity: () => {},
   })
   try {
-    expect((await port.inspect(path)).pinned).toBe(false)
+    expect((await duringEngineWrite(() => port.inspect(path))).pinned).toBe(false)
     expect((await port.setPinned(path, true)).status).toBe('complete')
     expect((await port.inspect(path)).pinned).toBe(true)
     expect((await port.evict(path)).status).toBe('pinned')
     expect(await app.vault.adapter.exists(path)).toBe(true)
     expect((await port.setPinned(path, false)).status).toBe('complete')
     expect((await port.evict(path, 'stale-version')).status).toBe('version-changed')
-    expect((await port.evict(path)).status).toBe('complete')
+    expect((await duringEngineWrite(() => port.evict(path))).status).toBe('complete')
     expect(await app.vault.adapter.exists(path)).toBe(false)
     const kept = await copies.list(behind)
     expect(kept.map((one) => [one.path, one.sha])).toEqual([[path, head.sha]])
