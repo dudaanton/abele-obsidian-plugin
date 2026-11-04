@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import { sha256 } from '@abele/sync-sdk/core'
+import { MemoryStateStore, sha256 } from '@abele/sync-sdk/core'
 import { VaultWriter, type WriterDeps } from '@/sync/vaultWrites'
 import { WriteJournal, JOURNAL_KEY, type JournalEntry } from '@/sync/writeJournal'
 import { HostSyncStorage } from '@/sync/hostSyncStorage'
@@ -11,6 +11,31 @@ import { buildFakeVault, type FakeApp } from '../helpers/fakeVault'
 
 const payload = new TextEncoder().encode('sample incoming bytes')
 const target = 'sample.bin'
+it('leaves SDK-owned installation receipts for explicit retirement after ledger acknowledgement', async () => {
+  const app = buildFakeVault([]),
+    storage = local(),
+    ledger = new MemoryStateStore(),
+    receipt = 'sample',
+    temp = '.obsidian/plugins/abele/sync-staging/.abele-receipt-sample.tmp',
+    replacementSha = await sha256(payload),
+    journal = new WriteJournal(storage),
+    entry = { target, temp, conditionalReceipt: receipt, replacementSha }
+  // A portable publication consumed its stage by rename. Its SDK receipt still
+  // owns settlement; a matching ledger row is not permission to retire it early.
+  await app.vault.adapter.writeBinary(target, payload.buffer)
+  await journal.persist(() => journal.add(entry))
+  const port = new ObsidianFileSystem(app as never, { storage, ledger })
+  const stat = vi.spyOn(app.vault.adapter, 'stat')
+  await port.acknowledgeWrites([
+    { path: target, sha: replacementSha, size: payload.length, mtime: 1000 },
+  ])
+  expect(await journal.currentEntries()).toEqual([entry])
+  expect(stat).not.toHaveBeenCalled()
+  await port.discardInstallation(receipt)
+  expect(await journal.currentEntries()).toEqual([])
+  expect(new Uint8Array(await app.vault.adapter.readBinary(target))).toEqual(payload)
+})
+
 it.each([true, false])(
   'preserves unproven equal-byte anonymous occupants (native=%s)',
   async (native) => {

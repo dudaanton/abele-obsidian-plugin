@@ -2702,6 +2702,9 @@ export class ObsidianFileSystem implements FileSystem {
     for (const entry of await this.journal.currentForTargets([...byPath.keys()])) {
       if (
         entry.backup ||
+        // SDK receipts retire through discardInstallation, after their own
+        // settlement boundary. Ledger ACKs retire only anonymous publications.
+        entry.conditionalReceipt ||
         entry.retiredGeneration ||
         !entry.replacementSha ||
         byPath.get(entry.target) !== entry.replacementSha
