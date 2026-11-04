@@ -5,7 +5,31 @@ const pending = {
   syscall: new Map<string, Map<number, number>>(),
 }
 let nextCall = 0
-const syscallPorts = new WeakMap<object, object>()
+const syscallPorts = new WeakMap<object, Map<string, object>>()
+const measuredPorts = new WeakSet<object>()
+type LstatRecord = {
+  id: number
+  path: string | null
+  source: 'host-fs.promises' | 'host-original-fs.promises' | 'adapter'
+  site: string
+  startedAt: number
+  returnedAt: number | null
+  settledAt: number | null
+  outcome: 'pending' | 'fulfilled' | 'rejected' | 'threw'
+}
+const lstats = new Map<number, LstatRecord>()
+const recentLstats: LstatRecord[] = []
+const slowLstats: LstatRecord[] = []
+
+/** Bounded evidence at the promise API boundary; no file bytes or extra I/O. */
+export function nativeLstatSnapshot() {
+  return {
+    pendingCount: lstats.size,
+    pending: [...lstats.values()].slice(0, 16).map((row) => ({ ...row })),
+    recent: recentLstats.map((row) => ({ ...row })),
+    slow: slowLstats.map((row) => ({ ...row })),
+  }
+}
 
 /** Counts our calls, not the host's entire libuv queue. Layers must never be summed:
  * a guarded call may be awaiting one of the separately measured syscall calls. */
@@ -33,12 +57,25 @@ export function nativeIoSnapshot() {
 }
 
 /** Observe the Node promise API and its returned handles without patching shared modules. */
-export function nativeSyscalls<T extends object>(host: T): T {
-  const cached = syscallPorts.get(host)
+export function nativeSyscalls<T extends object>(host: T, site = 'unspecified'): T {
+  if (measuredPorts.has(host)) return host
+  let ports = syscallPorts.get(host)
+  if (!ports) syscallPorts.set(host, (ports = new Map()))
+  const cached = ports.get(site)
   if (cached) return cached as T
-  const wrapped = nativeDiagnostics(host, () => {}, 'syscall')
-  syscallPorts.set(host, wrapped)
-  syscallPorts.set(wrapped, wrapped)
+  let source: LstatRecord['source'] = 'adapter'
+  try {
+    // Identity evidence only: this neither probes nor changes the host API.
+    if (typeof window !== 'undefined') {
+      if (window.require('fs').promises === host) source = 'host-fs.promises'
+      else if (window.require('original-fs').promises === host) source = 'host-original-fs.promises'
+    }
+  } catch {
+    /* Portable and synthetic ports have no desktop module. */
+  }
+  const wrapped = nativeDiagnostics(host, () => {}, 'syscall', { source, site })
+  ports.set(site, wrapped)
+  measuredPorts.add(wrapped)
   return wrapped
 }
 
@@ -55,7 +92,8 @@ export function nativeDiagnostics<T extends object>(
     outcome: string,
     paths?: readonly string[]
   ) => void,
-  layer: NativeLayer = 'guarded'
+  layer: NativeLayer = 'guarded',
+  boundary?: Pick<LstatRecord, 'source' | 'site'>
 ): T {
   const wrap = <O extends object>(object: O, ownedPaths?: readonly string[]): O => {
     const proxy = new Proxy(object, {
@@ -69,14 +107,44 @@ export function nativeDiagnostics<T extends object>(
           pending[layer].set(kind, active)
           const id = ++nextCall
           active.set(id, started)
+          const trace: LstatRecord | undefined =
+            key === 'lstat' && boundary
+              ? {
+                  id,
+                  path: typeof args[0] === 'string' ? args[0] : null,
+                  ...boundary,
+                  startedAt: started,
+                  returnedAt: null,
+                  settledAt: null,
+                  outcome: 'pending',
+                }
+              : undefined
+          if (trace) lstats.set(id, trace)
           let outcome = 'failed'
           try {
-            const result = await value.apply(target, args)
+            // No await, queue, lock or cancellation between entry and invoking the host.
+            const request = value.apply(target, args)
+            if (trace) trace.returnedAt = Date.now()
+            const result = await request
+            if (trace) trace.outcome = 'fulfilled'
             outcome = 'complete'
             return key === 'open' && result
               ? wrap(result, typeof args[0] === 'string' ? [args[0]] : undefined)
               : result
           } finally {
+            if (trace) {
+              trace.settledAt = Date.now()
+              if (trace.outcome === 'pending')
+                trace.outcome = trace.returnedAt === null ? 'threw' : 'rejected'
+              lstats.delete(id)
+              recentLstats.push(trace)
+              if (recentLstats.length > 16) recentLstats.shift()
+              // Preserve late completion even after subsequent fast polls replace recent rows.
+              if (trace.settledAt - trace.startedAt >= 5000) {
+                slowLstats.push(trace)
+                if (slowLstats.length > 8) slowLstats.shift()
+              }
+            }
             active.delete(id)
             if (!active.size) pending[layer].delete(kind)
             record(

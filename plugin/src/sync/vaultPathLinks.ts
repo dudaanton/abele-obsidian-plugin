@@ -220,7 +220,7 @@ function rootAccess(adapter: DataAdapter & LinkAdapter) {
   const native = (port && (nativeOrigins.get(port) ?? port)) as LinkAdapter['fsPromises']
   const full = origin.getFullPath?.bind(origin)
   return {
-    native: native && nativeSyscalls(native),
+    native: native && nativeSyscalls(native, 'path-validation'),
     full,
     // Keep ownership/cache identity on the original port, not the diagnostic wrapper.
     pin: native && full ? pinnedRoot(native, full('')) : undefined,
@@ -787,7 +787,9 @@ export function desktopNodeFs(): typeof import('node:fs') {
   if (!measured) {
     measured = new Proxy(module, {
       get(target, key) {
-        return key === 'promises' ? nativeSyscalls(target.promises) : Reflect.get(target, key)
+        return key === 'promises'
+          ? nativeSyscalls(target.promises, 'no-follow-open')
+          : Reflect.get(target, key)
       },
     })
     measuredDesktopModules.set(module, measured)
@@ -1604,7 +1606,7 @@ export async function guardedNativeMutation<T>(
 }
 const rootPins = new WeakMap<object, Map<string, RootPin>>()
 function pinnedRoot(native: object, logical: string): RootPin | undefined {
-  const io = nativeSyscalls(native as typeof import('node:fs/promises'))
+  const io = nativeSyscalls(native as typeof import('node:fs/promises'), 'root-pin')
   if (!io.realpath || !io.lstat || !io.open) return undefined
   let roots = rootPins.get(native)
   if (!roots) rootPins.set(native, (roots = new Map()))

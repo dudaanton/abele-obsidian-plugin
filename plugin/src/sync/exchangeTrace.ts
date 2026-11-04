@@ -6,7 +6,7 @@ import {
   pullCountKeys,
 } from './pullOperationCounts'
 import { mobileReadSnapshot } from './mobileReadDiagnostics'
-import { nativeIoSnapshot } from './nativeDiagnostics'
+import { nativeIoSnapshot, nativeLstatSnapshot } from './nativeDiagnostics'
 import { mobileLargeFileGate } from './mobileLargeFileGate'
 import type { NativeInstallProof } from './nativeInstallBatch'
 
@@ -427,6 +427,7 @@ export class ExchangeTrace {
         })),
       },
       nativeIo: nativeIoSnapshot(),
+      nativeLstat: nativeLstatSnapshot(),
       localReads: mobileReadSnapshot(),
       largeTransfer: mobileLargeFileGate.snapshot(),
       lastPull: this.lastPull ? { ...this.lastPull, paths: [...this.lastPull.paths] } : null,

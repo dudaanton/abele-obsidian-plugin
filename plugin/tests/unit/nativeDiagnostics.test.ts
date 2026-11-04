@@ -3,6 +3,95 @@ import { nativeDiagnostics, nativeIoSnapshot, nativeSyscalls } from '@/sync/nati
 import { ExchangeTrace } from '@/sync/exchangeTrace'
 import { deferred } from '../helpers/deferred'
 
+it('identifies the original filesystem promise port separately from the desktop module wrapper', async () => {
+  const original = { lstat: async () => ({ size: 3 }) }
+  vi.stubGlobal('window', {
+    require: (name: string) => ({ promises: name === 'original-fs' ? original : {} }),
+  })
+  try {
+    await nativeSyscalls(original, 'path-validation').lstat()
+    const snapshot = Reflect.get(new ExchangeTrace().snapshot(), 'nativeLstat')
+    expect(snapshot.recent).toContainEqual(
+      expect.objectContaining({
+        source: 'host-original-fs.promises',
+        site: 'path-validation',
+        outcome: 'fulfilled',
+      })
+    )
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})
+
+it('distinguishes an issued lstat promise from its eventual rejection without losing settlement', async () => {
+  const now = vi.spyOn(Date, 'now').mockReturnValue(1000)
+  const release = deferred<never>()
+  const host = { lstat: vi.fn(() => release.promise) }
+  const port = nativeSyscalls(host)
+  const work = port.lstat()
+  const rejected = expect(work).rejects.toThrow('sample failure')
+  const snapshot = () => Reflect.get(new ExchangeTrace().snapshot(), 'nativeLstat')
+  try {
+    now.mockReturnValue(112000)
+    expect(snapshot()).toMatchObject({
+      pending: [
+        {
+          source: 'adapter',
+          startedAt: 1000,
+          returnedAt: 1000,
+          settledAt: null,
+          outcome: 'pending',
+        },
+      ],
+    })
+    expect(host.lstat).toHaveBeenCalledOnce()
+  } finally {
+    release.reject(new Error('sample failure'))
+    await rejected
+    now.mockRestore()
+  }
+  expect(snapshot().pending).toEqual([])
+  expect(snapshot().recent).toContainEqual(
+    expect.objectContaining({
+      startedAt: 1000,
+      returnedAt: 1000,
+      settledAt: 112000,
+      outcome: 'rejected',
+    })
+  )
+})
+
+it('records synchronous lstat throws without inventing a returned promise', async () => {
+  const port = nativeSyscalls({
+    lstat() {
+      throw new Error('sample synchronous failure')
+    },
+  })
+  await expect(port.lstat()).rejects.toThrow('sample synchronous failure')
+  const snapshot = Reflect.get(new ExchangeTrace().snapshot(), 'nativeLstat')
+  expect(snapshot.pending).toEqual([])
+  expect(snapshot.recent).toContainEqual(
+    expect.objectContaining({
+      returnedAt: null,
+      settledAt: expect.any(Number),
+      outcome: 'threw',
+    })
+  )
+})
+
+it('bounds completed lstat evidence and keeps snapshots detached from later completion', async () => {
+  const port = nativeSyscalls({ lstat: async () => ({ size: 3 }) })
+  const snapshot = Reflect.get(new ExchangeTrace().snapshot(), 'nativeLstat')
+  const saved = JSON.stringify(snapshot)
+  for (let n = 0; n < 100; n++) await port.lstat()
+  const after = Reflect.get(new ExchangeTrace().snapshot(), 'nativeLstat')
+  expect(after.pending).toEqual([])
+  expect(after.recent).toHaveLength(16)
+  expect(after.slow.length).toBeLessThanOrEqual(8)
+  expect(after.recent).not.toBe(snapshot.recent)
+  expect(JSON.stringify(snapshot)).toBe(saved)
+})
+
 it('reports four long pending native sync calls by kind in a live exchange snapshot', async () => {
   const now = vi.spyOn(Date, 'now').mockReturnValue(1000)
   const release = deferred()
