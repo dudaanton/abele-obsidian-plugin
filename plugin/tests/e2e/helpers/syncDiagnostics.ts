@@ -79,6 +79,25 @@ const directorySnapshot = async () => {
  return result;
 };`
 
+/** Durable intent metadata only: retain the exact receipt/ledger relation on a stall. */
+export const INSTALLATION_SNAPSHOT = `
+const installationSnapshot = async () => {
+ const host=app.plugins.plugins.abele?.tokenEngines, api=window.__abeleTest;
+ const bounded=(work)=>Promise.race([work.catch(error=>({error:String(error?.message||error)})),new Promise(done=>setTimeout(()=>done({error:'timed out'}),2000))]);
+ const journal=api?.WriteJournal?await bounded(new api.WriteJournal(app).currentEntries()):{error:'unavailable'};
+ const result={journal:Array.isArray(journal)?{count:journal.length,entries:journal.slice(0,20)}:journal,pending:{}};
+ for(const [id,runtime] of host?.live??[])result.pending[id]=await bounded((async()=>{
+  const state=runtime.options?.state,keys=await state.metadataKeys('pull-write:');
+  const rows=[];
+  for(const key of keys.slice(0,20)){
+   const raw=await state.getMeta(key),row=raw==null?null:JSON.parse(raw);
+   if(row)rows.push({key,fileId:row.fileId,target:row.target,wirePath:row.wirePath,receiptId:row.receiptId,stageId:row.stageId,retiring:row.retiring,heldOrder:row.heldOrder});
+  }
+  return {count:keys.length,rows};
+ })());
+ return result;
+};`
+
 /** Never evaluate or print the failed command again: it can contain a private pasted token. */
 export function captureSyncFailure(cli: VaultCli, label: string): string {
   const directory = resolve(
@@ -91,7 +110,7 @@ export function captureSyncFailure(cli: VaultCli, label: string): string {
   let snapshot: unknown
   try {
     snapshot = cli.evalAwait(
-      `(async()=>{${SYNC_SNAPSHOT}${DIRECTORY_SNAPSHOT}const one=syncSnapshot();one.directories=await directorySnapshot();return one})()`
+      `(async()=>{${SYNC_SNAPSHOT}${DIRECTORY_SNAPSHOT}${INSTALLATION_SNAPSHOT}const one=syncSnapshot();one.installations=await installationSnapshot();one.directories=await directorySnapshot();return one})()`
     )
   } catch {
     snapshot = { unavailable: 'Vault did not answer diagnostic evaluation' }

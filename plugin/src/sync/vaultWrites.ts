@@ -113,6 +113,7 @@ export class VaultWriter {
         replacementSha: await signature(bytes),
       }
       const previous = await this.deps.journal.currentEntry(temp)
+      let resumePortable = false
       if (previous) {
         if (
           previous.conditionalReceipt !== id ||
@@ -120,13 +121,31 @@ export class VaultWriter {
           previous.replacementSha !== entry.replacementSha
         )
           throw new EngineError('conflict', 'Installation receipt belongs to another operation')
-        return (await this.installedReceipt(id, path, entry.replacementSha)) ?? false
+        if (
+          !this.deps.native &&
+          this.deps.createAbsent &&
+          !previous.backup &&
+          !previous.streaming &&
+          !previous.retiredGeneration &&
+          !previous.installed &&
+          !(await this.there(path))
+        ) {
+          // A portable rename may have failed before publication. The durable
+          // receipt still owns this exact source; do not strand it forever merely
+          // because a portable host cannot prove a hard-link identity.
+          const staged = await this.there(temp)
+          const proof = staged ? await this.deps.fingerprint?.(temp) : undefined
+          resumePortable =
+            !staged || (proof?.sha === entry.replacementSha && proof.size === bytes.length)
+        }
+        if (!resumePortable)
+          return (await this.installedReceipt(id, path, entry.replacementSha)) ?? false
       }
-      if (await this.there(temp))
+      if (!resumePortable && (await this.there(temp)))
         throw new EngineError('conflict', 'Installation path contains retained evidence')
       await this.deps.makeParents(path)
       await this.deps.makeParents(temp)
-      await this.deps.journal.persist(() => this.deps.journal.add(entry))
+      if (!previous) await this.deps.journal.persist(() => this.deps.journal.add(entry))
       if (!this.deps.native && this.deps.createAbsent) {
         try {
           await this.deps.createAbsent(path, bytes, mtime, temp)
