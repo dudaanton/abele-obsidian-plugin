@@ -28,6 +28,7 @@ import {
   checkedVaultPort,
 } from './vaultPathLinks'
 import {
+  connectionHost,
   connectionPrivateRoot,
   privateDownload,
   withinRoot,
@@ -1655,8 +1656,13 @@ export class ObsidianFileSystem implements FileSystem {
         this.wrote([path], 'file')
       },
     })
-    const active = conditionalOperations.get(app.vault) ?? new Set<string>()
-    conditionalOperations.set(app.vault, active)
+    // Scoped inspection views share physical journals with the underlying vault.
+    // Recovery through another view must not retire an in-flight writer's victim.
+    let operationHost: object = app.vault
+    while (connectionHost(operationHost) !== operationHost)
+      operationHost = connectionHost(operationHost)
+    const active = conditionalOperations.get(operationHost) ?? new Set<string>()
+    conditionalOperations.set(operationHost, active)
     const conditionalRoot =
       options.journalOwner || this.privateRoot
         ? (this.privateRoot ?? connectionPrivateRoot(options.journalOwner)) + '/conditional'
