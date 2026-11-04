@@ -1715,7 +1715,8 @@ export class TokenEngineRuntime
                   for await (const info of value.call(target)) {
                     try {
                       const checkpoint = budget.account(0, signal)
-                      if (checkpoint !== undefined) await trace.run('inventory checkpoint', () => checkpoint)
+                      if (checkpoint !== undefined)
+                        await trace.run('inventory checkpoint', () => checkpoint)
                     } catch (error) {
                       current()
                       throw error
