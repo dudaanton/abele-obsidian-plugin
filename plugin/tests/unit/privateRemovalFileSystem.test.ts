@@ -7,6 +7,8 @@ import {
   recoverRemovals,
   retentionSnapshot,
   sha256,
+  captureRemoval,
+  MemoryStateStore,
 } from '@abele/sync-sdk/core'
 import { privateRemovalFileSystem, PRIVATE_REMOVAL_FILES } from '@/sync/privateRemovalFileSystem'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
@@ -118,6 +120,37 @@ it('preserves independently changed private metadata instead of retiring it', as
   expect(contents).toContain('independently edited metadata')
 })
 
+it('keeps prior metadata when the published successor changed', async () => {
+  const app = buildFakeVault([])
+  const target = '.abele-sync/connections/sample-summary-successor/retained-removals/summary.json'
+  const raw = new ObsidianFileSystem(app as never, { journalOwner: 'sample-summary-successor' })
+  const conditional = Reflect.get(raw, 'conditional'),
+    host = Reflect.get(conditional, 'host')
+  const folder = host.root + '/objects/sample-control'
+  await host.mkdir(folder)
+  await host.create(folder + '/victim', new TextEncoder().encode('[ ]'), 1000)
+  await host.create(folder + '/complete', new TextEncoder().encode('true'), 0)
+  await host.mkdir(target.slice(0, target.lastIndexOf('/')))
+  await app.vault.adapter.write(target, 'externally changed successor')
+  await conditional.retireVictim(folder, {
+    path: target,
+    destination: target,
+    data: folder + '/data',
+    kind: 'write',
+    receipt: false,
+    expected: { size: 3, mtime: 1000, sha: await sha256(new TextEncoder().encode('[ ]')) },
+    incoming: { size: 2, sha: await sha256(new TextEncoder().encode('[]')) },
+  })
+  const contents: string[] = []
+  const collect = async (folder: string) => {
+    const entries = await app.vault.adapter.list(folder)
+    for (const file of entries.files) contents.push(await app.vault.adapter.read(file))
+    for (const child of entries.folders) await collect(child)
+  }
+  await collect('.abele-sync')
+  expect(contents).toContain('[ ]')
+})
+
 it('refuses to remove a decision directory containing unexpected bytes', async () => {
   const app = buildFakeVault([])
   const raw = new ObsidianFileSystem(app as never, { journalOwner: 'sample-private-directory' })
@@ -128,6 +161,53 @@ it('refuses to remove a decision directory containing unexpected bytes', async (
   await expect(fs.removeDirectory!(folder)).rejects.toThrow('not empty')
   expect(await fs.read(folder + '/victim')).toEqual(new Uint8Array([7]))
 })
+
+it.each([false, true])(
+  'retries removal recovery after its directory was removed (replaced=%s)',
+  async (replaced) => {
+    const app = buildFakeVault([
+      { path: 'Notes/sample.md', content: 'sample retained bytes', mtime: 1000 },
+    ])
+    const raw = new ObsidianFileSystem(app as never, { journalOwner: 'sample-removal-retry' })
+    const state = new MemoryStateStore()
+    const have = await raw.fingerprint('Notes/sample.md')
+    const base = {
+      path: 'Notes/sample.md',
+      wirePath: 'Notes/sample.md',
+      fileId: 'sample-file',
+      versionId: 'sample-version',
+      sha: have.sha,
+      size: have.size,
+      mtime: have.mtime,
+    }
+    await state.put(base)
+    expect(await captureRemoval(raw, state, base, async () => true)).toBe(true)
+    const [row] = await retentionSnapshot(raw)
+    const folder = '.abele-sync/connections/sample-removal-retry/retained-removals/' + row.id
+    const remove = raw.removeDirectory.bind(raw)
+    let cut = true
+    raw.removeDirectory = async (path, identity) => {
+      await remove(path, identity)
+      if (cut && path === folder) {
+        cut = false
+        throw new Error('Sample cut after private directory removal')
+      }
+    }
+    await expect(recoverRemovals(raw, state)).rejects.toThrow(
+      'Sample cut after private directory removal'
+    )
+    expect(await app.vault.adapter.read('Notes/sample.md')).toBe('sample retained bytes')
+    if (replaced) {
+      await app.vault.adapter.write(folder, 'unexpected file occupant')
+      await expect(recoverRemovals(raw, state)).rejects.toThrow()
+      expect(await app.vault.adapter.read(folder)).toBe('unexpected file occupant')
+      expect(await retentionSnapshot(raw)).toHaveLength(1)
+    } else {
+      await expect(recoverRemovals(raw, state)).resolves.toBeUndefined()
+      expect(await retentionSnapshot(raw)).toEqual([])
+    }
+  }
+)
 
 it.each([
   'pull-cleanup-head',

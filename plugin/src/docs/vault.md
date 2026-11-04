@@ -3848,7 +3848,7 @@ Captured removals use a connection-local retained-object summary. Victims remain
 for at least 24 hours; changed retained bytes restore exclusively or appear as a root
 conflict file if their former parent is unavailable. Unknown recovery artifacts are kept.
 Once a private removal-summary replacement is durable, its captured prior control record
-is retired only after fresh byte verification. Public files and retained payloads keep
+is retired only after fresh byte verification of both the prior and successor records. Public files and retained payloads keep
 their normal retention; independently changed metadata is preserved too. Disconnect
 and guarded reset settle removal decisions through recovery before dropping the ledger.
 

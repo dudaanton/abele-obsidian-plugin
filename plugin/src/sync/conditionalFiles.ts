@@ -1,4 +1,4 @@
-import { EngineError, sha256 } from '@abele/sync-sdk/core'
+import { EngineError, MAX_CHUNK_BYTES, sha256 } from '@abele/sync-sdk/core'
 import { waitForSyncRead } from './syncTaskBudget'
 import { RETENTION_MS, MemoryRetention, type RetentionIndex } from './retentionIndex'
 import { fitGeneratedName } from '@abele/sync-sdk/protocol'
@@ -240,11 +240,30 @@ export class ConditionalFiles {
       await this.restore(victim, intent.path)
       return
     }
-    if (intent.kind === 'write' && !intent.receipt && h.replaceableMetadata?.(intent.path)) {
+    if (
+      intent.kind === 'write' &&
+      !intent.receipt &&
+      intent.incoming &&
+      intent.incoming.size <= MAX_CHUNK_BYTES &&
+      h.replaceableMetadata?.(intent.path)
+    ) {
       // The replacement and complete marker are already durable. Recheck bytes,
       // rather than treating an inode/stat match as permission to retire metadata.
+      const successorInfo = await h.stat(intent.destination)
+      const successor =
+        successorInfo?.type === 'file' && successorInfo.size === intent.incoming.size
+          ? await h.read(intent.destination)
+          : null
+      const successorMatches =
+        successor !== null &&
+        successor.length === intent.incoming.size &&
+        (await sha256(successor)) === intent.incoming.sha
       const verified = await h.fingerprint(victim)
-      if (verified.size === intent.expected.size && verified.sha === intent.expected.sha) {
+      if (
+        successorMatches &&
+        verified.size === intent.expected.size &&
+        verified.sha === intent.expected.sha
+      ) {
         await h.remove(victim)
         await h.flush(victim, true)
         return
@@ -848,6 +867,11 @@ export class ConditionalFiles {
         source = stage.path
       }
       const intent: Intent = {
+        ...(op.effect.kind === 'write' &&
+        op.effect.bytes.length <= MAX_CHUNK_BYTES &&
+        h.replaceableMetadata?.(op.path)
+          ? { incoming: { size: op.effect.bytes.length, sha: await sha256(op.effect.bytes) } }
+          : {}),
         receipt: op.effect.kind === 'write' && op.effect.receipt !== undefined,
         path: op.path,
         expected: op.expected,

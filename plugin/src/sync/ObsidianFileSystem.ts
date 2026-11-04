@@ -2433,14 +2433,25 @@ export class ObsidianFileSystem implements FileSystem {
           /^[a-f0-9-]{36}$/.test(path.slice(retainedRoot.length + 1))))
     ) {
       this.runtimeFence?.assertReady()
-      if (this.native) await this.native.rmdirEmpty(path)
-      else {
-        const rows = await this.disk.list(path)
-        if (rows.files.length || rows.folders.length)
-          throw new EngineError('conflict', 'Retained removal directory is not empty')
-        // The portable host requires this flag for directories. This branch is
-        // limited to the decision-owned private directory, after proving it empty.
-        await this.disk.rmdir(path, true)
+      const standing = await this.rawStat(path)
+      if (standing === null) return // A prior recovery may have removed it before its ACK.
+      if (standing.type !== 'folder')
+        throw new EngineError(
+          'conflict',
+          'Retained removal directory was replaced; bytes preserved'
+        )
+      try {
+        if (this.native) await this.native.rmdirEmpty(path)
+        else {
+          const rows = await this.disk.list(path)
+          if (rows.files.length || rows.folders.length)
+            throw new EngineError('conflict', 'Retained removal directory is not empty')
+          // The portable host requires this flag for directories. This branch is
+          // limited to the decision-owned private directory, after proving it empty.
+          await this.disk.rmdir(path, true)
+        }
+      } catch (error) {
+        if (!notFound(error) || (await this.rawStat(path)) !== null) throw error
       }
       return
     }
