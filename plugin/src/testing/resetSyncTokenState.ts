@@ -1,7 +1,8 @@
 import { assertDiscardableSyncLedger } from '../sync/privateRemovalFileSystem'
 import { preservePrivateArtifacts, finishRetainedWrites } from '../sync/privateRecovery'
 import type { Plugin } from 'obsidian'
-import { recoverPendingPullWrites, sha256 } from '@abele/sync-sdk/core'
+import { recoverPendingPullWrites, recoverRemovals, sha256 } from '@abele/sync-sdk/core'
+import { LocalFolderPlacement } from '../sync/localFolderPlacement'
 import { ObsidianFileSystem } from '../sync/ObsidianFileSystem'
 import { connectionJournalApp } from '../sync/connectionScope'
 import { TokenEngines } from '../sync/tokenEngines'
@@ -184,11 +185,22 @@ async function performResetSyncTokenState(
             let found = await stage('checking ledger ' + name, () =>
               inspectExistingLedger(window.indexedDB, name)
             )
-            if (found?.metadata.get('plugin:pull-cleanup-head')) {
+            if (
+              found &&
+              (found.metadata.get('plugin:pull-cleanup-head') ||
+                [...found.metadata.keys()].some((key) => key.startsWith('plugin:removal-')))
+            ) {
               // Only committed retirement, never an uncommitted download or a new
               // exchange. The durable ledger identity also covers a retired record
               // that the test ownership journal captured before shutdown.
               const record = ui.registry.records().find((one) => one.ledgerId === name)
+              if (
+                !record &&
+                [...found.metadata.keys()].some((key) => key.startsWith('plugin:removal-'))
+              )
+                throw new Error(
+                  'Removal recovery requires the saved connection placement; ledger kept'
+                )
               const identity = found.metadata.get('plugin:token-engine-identity-v2')
               const binding: unknown = typeof identity === 'string' ? JSON.parse(identity) : null
               const id =
@@ -198,12 +210,22 @@ async function performResetSyncTokenState(
               const store = await IndexedDbStateStore.open(window.indexedDB, name)
               try {
                 const files = new ObsidianFileSystem(connectionJournalApp(plugin.app, id), {
-                  connectionId: id,
+                  connectionId:
+                    record?.scope?.kind === 'folder' && record.scope.path !== '/' ? id : undefined,
                   journalOwner: id,
                 })
+                await stage('recovering conditional cleanup', () => files.recover())
+                const placed =
+                  record?.scope?.kind === 'folder' && record.scope.path !== '/'
+                    ? new LocalFolderPlacement(
+                        record.scope.path,
+                        record.localRoot ?? record.scope.path
+                      ).fileSystem(files)
+                    : files
                 await stage('finishing committed pull cleanup', () =>
-                  recoverPendingPullWrites(files, store, [])
+                  recoverPendingPullWrites(placed, store, [])
                 )
+                await stage('finishing removal decisions', () => recoverRemovals(placed, store))
               } finally {
                 store.close()
               }

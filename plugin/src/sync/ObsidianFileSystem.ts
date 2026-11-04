@@ -358,7 +358,7 @@ export class ObsidianFileSystem implements FileSystem {
         if (
           // A pass already waited for startup indexing. Content metadata can become
           // busy during a pull without making the vault's current children stale.
-          (!this.inventory && !this.indexReady()) ||
+          (!this.startupIndexSettled && !this.inventory && !this.indexReady()) ||
           name.startsWith('.') ||
           directory.split('/').some((part) => part.startsWith('.')) ||
           (directory !== '' &&
@@ -689,6 +689,7 @@ export class ObsidianFileSystem implements FileSystem {
   private indexProbe = 0
   private indexFallback = false
   private layoutReady = false
+  private startupIndexSettled = false
   private indexWaiters = 0
   private runIndexSignal?: AbortSignal
   private readonly indexWaitSignal?: () => AbortSignal | undefined
@@ -723,7 +724,10 @@ export class ObsidianFileSystem implements FileSystem {
       }
     }
     cancellation?.throwIfAborted()
-    if (ready()) return
+    if (ready()) {
+      this.startupIndexSettled = true
+      return
+    }
     if (this.indexWaiters++ === 0) this.onIndexWait?.(true)
     try {
       while (!ready()) {
@@ -732,6 +736,7 @@ export class ObsidianFileSystem implements FileSystem {
         await new Promise<void>((resolve) => window.setTimeout(resolve, STARTUP_INDEX_POLL_MS))
       }
       cancellation?.throwIfAborted()
+      this.startupIndexSettled = true
     } finally {
       if (--this.indexWaiters === 0) this.onIndexWait?.(false)
     }
@@ -1274,6 +1279,7 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly writer: VaultWriter
   private readonly io: BoundedVaultIo
   private readonly conditional: ConditionalFiles
+  private readonly conditionalRoot: string
   private readonly stages = new Map<string, JournalEntry>()
   /** Completed publications only; durable journal reads still authorize retirement. */
   private readonly publications = new Map<string, string>()
@@ -1648,6 +1654,7 @@ export class ObsidianFileSystem implements FileSystem {
       options.journalOwner || this.privateRoot
         ? (this.privateRoot ?? connectionPrivateRoot(options.journalOwner)) + '/conditional'
         : this.configDir + '/plugins/abele/sync-conditional'
+    this.conditionalRoot = conditionalRoot
     const retentionStorage = options.storage ?? storageOf(app)
     const durable = retentionStorage ? durableHostOf(retentionStorage) : undefined
     const caches = retentionCaches.get(app.vault) ?? new Map<string, RetentionIndex>()
@@ -1657,8 +1664,21 @@ export class ObsidianFileSystem implements FileSystem {
       caches.get(conditionalRoot) ??
       new MemoryRetention()
     caches.set(conditionalRoot, retention)
+    // The journal's recovery port is usable while owned but not yet active.
+    // Ordinary public operations and their leased port still require assertReady.
+    const conditionalIo = new BoundedVaultIo(
+      this.guardedAdapter,
+      () => this.runtimeFence?.assertOwned(),
+      (work) => (this.runtimeFence ? this.runtimeFence.effect(work) : work()),
+      this.scopedAdapter,
+      this.configDir,
+      this.privateRoot
+    )
+    // Recovery must not initialize a capability through the not-yet-ready public port.
     const conditionalHost: ConditionalFileHost = {
       retention,
+      replaceableMetadata: (path) =>
+        path === (this.privateRemovalRoot ?? '.abele-sync') + '/retained-removals/summary.json',
       ...(!this.native
         ? {
             checked: {
@@ -1670,12 +1690,9 @@ export class ObsidianFileSystem implements FileSystem {
             },
           }
         : {}),
-      root:
-        options.journalOwner || this.privateRoot
-          ? (this.privateRoot ?? connectionPrivateRoot(options.journalOwner)) + '/conditional'
-          : this.configDir + '/plugins/abele/sync-conditional',
+      root: conditionalRoot,
       active,
-      check: () => this.runtimeFence?.assertReady(),
+      check: () => this.runtimeFence?.assertOwned(),
       validate: (path, recovery = false) => {
         const privatePath =
           (this.privateRoot && withinRoot(path, this.privateRoot)) ||
@@ -1711,12 +1728,12 @@ export class ObsidianFileSystem implements FileSystem {
           )
       },
       retirementStat: (path) => retainedFileStat(this.disk, path),
-      fingerprint: async (path, signal) => this.io.fingerprint(path, signal, true),
+      fingerprint: async (path, signal) => conditionalIo.fingerprint(path, signal, true),
       create: async (path, bytes, mtime) => {
         // ConditionalFiles flushes the complete record before acknowledging its intent.
-        await this.io.create(path, mtime, 'deferred')
+        await conditionalIo.create(path, mtime, 'deferred')
         for (let at = 0; at < bytes.length; at += MAX_CHUNK_BYTES)
-          await this.io.append(
+          await conditionalIo.append(
             path,
             at,
             bytes.slice(at, at + MAX_CHUNK_BYTES),
@@ -1725,7 +1742,7 @@ export class ObsidianFileSystem implements FileSystem {
             'deferred'
           )
       },
-      read: (path) => readConditionalRecord(this.disk, this.io, path),
+      read: (path) => readConditionalRecord(this.disk, conditionalIo, path),
       mkdir: (path) => makeParents(this.disk, path + '/placeholder'),
       list: (path) => this.disk.list(path),
       capture: (from, to) =>
@@ -1743,7 +1760,7 @@ export class ObsidianFileSystem implements FileSystem {
             throw new EngineError('io', 'exclusive native installation is unavailable')
           await this.native.installExclusive(from, to)
         }
-        await this.io.adoptReceipt(from, to)
+        await conditionalIo.adoptReceipt(from, to)
       },
       flush: async (path, parentsOnly) => {
         if (!this.native) return // Mobile adapter acknowledgement is the host durability boundary.
@@ -1866,6 +1883,7 @@ export class ObsidianFileSystem implements FileSystem {
   async [Symbol.for('abele.sync.stream-move-source-v1')](
     operation: ConditionalFileOperation
   ): Promise<boolean> {
+    this.runtimeFence?.assertReady()
     if (
       operation.effect.kind !== 'move' ||
       operation.expected?.identity ||
@@ -1900,6 +1918,7 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async conditionalFile(operation: ConditionalFileOperation): Promise<boolean> {
+    this.runtimeFence?.assertReady()
     const release = this.externalCoordination.beginEngineMutation([
       operation.path,
       ...(operation.effect.kind === 'move' ? [operation.effect.to] : []),
@@ -2018,10 +2037,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
   }
   recoverConditionalFiles(): Promise<void> {
-    const root = this.privateRoot
-      ? this.privateRoot + '/conditional'
-      : this.configDir + '/plugins/abele/sync-conditional'
-    if (inspectedAbsent(this.startupInventory?.(), root)) return Promise.resolve()
+    if (inspectedAbsent(this.startupInventory?.(), this.conditionalRoot)) return Promise.resolve()
     return this.conditional.recover()
   }
   private retentionIdle = false
@@ -2422,7 +2438,9 @@ export class ObsidianFileSystem implements FileSystem {
         const rows = await this.disk.list(path)
         if (rows.files.length || rows.folders.length)
           throw new EngineError('conflict', 'Retained removal directory is not empty')
-        await this.disk.rmdir(path, false)
+        // The portable host requires this flag for directories. This branch is
+        // limited to the decision-owned private directory, after proving it empty.
+        await this.disk.rmdir(path, true)
       }
       return
     }

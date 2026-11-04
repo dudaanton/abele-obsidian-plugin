@@ -52,6 +52,26 @@ it('uses current indexed aliases even before core receives a watcher event', asy
   }
 })
 
+it('keeps indexed path lookup after startup while content metadata is busy outside inventory', async () => {
+  const one = await fixture(Array.from({ length: 2000 }, (_, i) => `Notes/Folder/K-${i}.md`))
+  try {
+    await one.files.waitForStartupIndex()
+    Object.assign(one.app.metadataCache, { isCacheClean: () => false })
+    const listings = vi.spyOn(one.files, 'listChildren')
+    for (let i = 0; i < 60; i++) {
+      const path = `Notes/Folder/K-${i}.md`
+      const paths = await LocalPaths.forFile(one.files, path)
+      expect(paths.resolve(path, 'file')).toBe(path)
+    }
+    expect(listings).not.toHaveBeenCalled()
+    await one.app.vault.create('Notes/Folder/\u212a-0.md', 'sample')
+    const aliases = await LocalPaths.forFile(one.files, 'Notes/Folder/K-0.md')
+    expect(() => aliases.resolve('Notes/Folder/K-0.md', 'file')).toThrow(/collision/)
+  } finally {
+    await one.close()
+  }
+})
+
 for (const kind of ['file', 'symlink', 'directory'] as const)
   it(`refuses a stale indexed ancestor replaced by a ${kind}`, async () => {
     const one = await fixture()

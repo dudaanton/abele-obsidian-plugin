@@ -9,7 +9,7 @@ import { TokenConnectionRegistry, TOKEN_REGISTRY_KEY } from '../../src/sync/toke
 import { IndexedDbStateStore } from '../../src/sync/IndexedDbStateStore'
 import { openDeviceReviews } from '../../src/sync/openDeviceReviews'
 import { TokenUi } from '../../src/sync/tokenUi'
-import { sha256 } from '@abele/sync-sdk/core'
+import { sha256, captureRemoval } from '@abele/sync-sdk/core'
 import { EXTERNAL_ACTIVATION_KEY } from '@/sync/external/recovery'
 import { tokenExternalBinding } from '@/sync/tokenExternalBinding'
 import { buildFakeVault } from '../helpers/fakeVault'
@@ -60,9 +60,11 @@ const resetCases = [
   { retry: false, durable: true, orphan: false, retained: 'missing' },
   { retry: false, durable: true, orphan: false, cleanup: true },
   { retry: false, durable: true, orphan: false, cleanup: 'blocked' },
+  { retry: false, durable: true, orphan: false, cleanup: 'decision' },
+  { retry: false, durable: true, orphan: false, cleanup: 'captured-decision' },
 ]
 it.each(resetCases)(
-  'owned reset ($retry/$durable/$orphan/$retained)',
+  'owned reset ($retry/$durable/$orphan/$retained/$cleanup)',
   async ({ retry, durable, orphan, retained, cleanup }) => {
     const factory = new IDBFactory()
     const descriptor = Object.getOwnPropertyDescriptor(window, 'indexedDB')
@@ -182,7 +184,13 @@ it.each(resetCases)(
     const reviewData = await IndexedDbStateStore.open(factory, 'abele-sync-reviews-' + reviewId)
     await reviewData.setMeta('token-attachment-consent-v1', 'stored accepted and denied decisions')
     await reviewData.setMeta('token-executable-review-v1', 'stored immutable pending bytes')
-    if (retained === 'missing' || cleanup === 'blocked' || retry === true) {
+    if (
+      retained === 'missing' ||
+      cleanup === 'blocked' ||
+      cleanup === 'decision' ||
+      cleanup === 'captured-decision' ||
+      retry === true
+    ) {
       // A refused reset reopens these documents; model valid persisted review state.
       await reviewData.setMeta(
         'token-executable-review-v1',
@@ -251,7 +259,33 @@ it.each(resetCases)(
       },
     } as unknown as Plugin
     const oldHost = Reflect.get(plugin, 'tokenEngines')
-    if (cleanup) {
+    if (cleanup === 'captured-decision') {
+      const files = new ObsidianFileSystem(plugin.app, { journalOwner: record.id })
+      const have = await files.fingerprint('Notes/retained.bin')
+      const base = {
+        path: 'Notes/retained.bin',
+        wirePath: 'Notes/retained.bin',
+        fileId: 'sample-removal-file',
+        versionId: 'sample-removal-version',
+        sha: have.sha,
+        size: have.size,
+        mtime: have.mtime,
+      }
+      await ledger.put(base)
+      expect(await captureRemoval(files, ledger, base, async () => true)).toBe(true)
+      expect(await vault.adapter.exists('Notes/retained.bin')).toBe(false)
+    } else if (cleanup === 'decision') {
+      const decision = '11111111-1111-4111-8111-111111111111'
+      await ledger.setMeta(
+        'removal-decision:' + decision,
+        JSON.stringify({
+          id: decision,
+          base: { path: 'Notes/sample.md', fileId: 'sample-file' },
+          committed: false,
+        })
+      )
+      await ledger.setMeta('removal-source:sample-file', decision)
+    } else if (cleanup) {
       // Publication committed before shutdown, but its private stage retirement
       // did not. Reset must finish this owner before attempting ledger deletion.
       const files = new ObsidianFileSystem(connectionJournalApp(plugin.app, id), {

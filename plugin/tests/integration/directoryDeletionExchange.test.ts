@@ -22,10 +22,43 @@ import { WriteJournal } from '@/sync/writeJournal'
 it.each([
   { name: 'delivers recipient creates and edits through the actual e2e cycle', delivery: true },
   { name: 'retires a renamed directory after its last remotely deleted child', delivery: false },
-])('$name', async ({ delivery }) => {
+])('$name', runExchange)
+// Four durable phases on two peers; this is not a single UI action's deadline.
+it(
+  'delivers a sixty-file server deletion and bulk restore to both native peers',
+  () => runExchange({ delivery: false, bulk: true }),
+  240000
+)
+
+async function runExchange({ delivery, bulk }: { delivery: boolean; bulk?: boolean }) {
+  if (bulk)
+    Object.assign(window, {
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+    })
   const server = await v2Server()
   const root = await disk.realpath(await disk.mkdtemp(join(tmpdir(), 'sample-directory-delete-')))
   const engines: SyncEngine[] = []
+  const refreshers: ((path: string) => Promise<void>)[] = []
+  const removals = new Map<string, number>()
+  const cycles: { device: number; phase: string; elapsedMs: number }[] = []
+  let phase = 'initial',
+    operations = 0,
+    latest = ''
+  const timer = bulk
+    ? setInterval(
+        () =>
+          console.debug('[sample bulk progress]', {
+            phase,
+            operations,
+            latest,
+            removedPaths: removals.size,
+            removalAttempts: [...removals.values()].reduce((sum, n) => sum + n, 0),
+            states: engines.map((one) => one.status),
+          }),
+        10000
+      )
+    : undefined
   try {
     const user = await createUser(
       { db: server.db, pepper: server.config.tokenPepper },
@@ -36,12 +69,75 @@ it.each([
       const home = join(root, name)
       await disk.mkdir(join(home, 'Sample'), { recursive: true })
       const app = nativeVault(home, disk)
+      if (bulk) {
+        // The host's current folder children outlive content-indexing work.
+        let busyUntil = 0
+        Object.assign(app.metadataCache, {
+          initialized: true,
+          isCacheClean: () => Date.now() >= busyUntil,
+        })
+        await app.vault.createFolder('Sample')
+        const refresh = async (path: string) => {
+          if (!path.startsWith('Sample/')) return
+          const file = app.vault.getFileByPath(path)
+          const stat = await disk.stat(join(home, path)).catch((error: unknown) => {
+            if ((error as { code?: string }).code === 'ENOENT') return null
+            throw error
+          })
+          if (!stat) {
+            if (file) {
+              await app.vault.delete(file)
+              app.emit('vault', 'delete', file)
+            }
+          } else if (stat.isFile()) {
+            const row =
+              file ?? (await app.vault.create(path, await disk.readFile(join(home, path), 'utf8')))
+            Object.assign(row.stat, {
+              size: stat.size,
+              mtime: stat.mtimeMs,
+              ctime: stat.birthtimeMs,
+            })
+            app.emit('vault', file ? 'modify' : 'create', row)
+          }
+          busyUntil = Date.now() + 20
+        }
+        Object.assign(app.vault.adapter, { reconcileInternalFile: refresh })
+        refreshers.push(refresh)
+      }
       const files = new ObsidianFileSystem(app as never, {
         fileScope: 'Sample',
         journalOwner: name,
         connectionId: name,
         preserveEmptyDirectories: true,
+        ...(bulk ? { prepareStartupInventory: async () => {} } : {}),
+        ...(bulk
+          ? {
+              diagnostic: (
+                operation: string,
+                _at: number,
+                outcome: string,
+                paths?: readonly string[]
+              ) => {
+                operations++
+                latest = operation + ':' + outcome + ':' + paths?.[0]
+              },
+            }
+          : {}),
       })
+      if (bulk) await files.waitForStartupIndex()
+      if (bulk) {
+        const conditional = files.conditionalFile.bind(files)
+        files.conditionalFile = async (operation) => {
+          if (
+            operation.path.startsWith('Sample/bulk/') &&
+            ['move', 'remove'].includes(operation.effect.kind)
+          ) {
+            const key = name + ':' + operation.path
+            removals.set(key, (removals.get(key) ?? 0) + 1)
+          }
+          return conditional(operation)
+        }
+      }
       engines.push(
         new SyncEngine({
           fs: coordinatedFileSystem(files, new PathCoordinator()),
@@ -54,15 +150,60 @@ it.each([
     }
     // Exercise the actual e2e round-trip helper and native adapters, rather than
     // supplying a correct head callback which could mask its protocol mistake.
+    const sync = async (device: number) => {
+      const started = Date.now()
+      await engines[device].sync()
+      if (bulk) cycles.push({ device, phase, elapsedMs: Date.now() - started })
+    }
     const cycle = () =>
       TokenSyncLive.prototype.cycle.call({
         client: () => new V2EngineClient(user.token, { fetch: globalThis.fetch }),
-        primary: { syncNow: () => engines[0].sync() },
-        peer: { syncNow: () => engines[1].sync() },
+        primary: { syncNow: () => sync(0) },
+        peer: { syncNow: () => sync(1) },
       } as unknown as TokenSyncLive)
     await disk.mkdir(join(root, 'primary/Sample/from'))
     await disk.writeFile(join(root, 'primary/Sample/from/sample.md'), 'sample')
+    if (bulk) await refreshers[0]('Sample/from/sample.md')
     await cycle()
+    if (bulk) {
+      phase = 'upload sixty'
+      await disk.mkdir(join(root, 'primary/Sample/bulk'))
+      for (let i = 0; i < 60; i++)
+        await disk.writeFile(join(root, `primary/Sample/bulk/note-${i}.md`), 'sample restore bytes')
+      for (let i = 0; i < 60; i++) await refreshers[0](`Sample/bulk/note-${i}.md`)
+      await cycle()
+      phase = 'delete sixty'
+      const client = new V2EngineClient(user.token, { fetch: globalThis.fetch })
+      const items = (await client.manifest(null)).items.filter((item) =>
+        item.path.startsWith('Sample/bulk/')
+      )
+      expect(items).toHaveLength(60)
+      const started = Date.now()
+      await client.commit(
+        items.map((item) => ({
+          op: 'delete' as const,
+          file_id: item.file_id,
+          base_version_id: item.version_id,
+        })),
+        crypto.randomUUID()
+      )
+      await cycle()
+      phase = 'restore sixty'
+      expect(await disk.readdir(join(root, 'peer/Sample/bulk')).catch(() => [])).toEqual([])
+      await client.restoreDeletedMany(items.map((item) => item.file_id))
+      phase = 'pull restored sixty'
+      await cycle()
+      for (const name of ['primary', 'peer'])
+        for (let i = 0; i < 60; i++)
+          expect(await disk.readFile(join(root, `${name}/Sample/bulk/note-${i}.md`), 'utf8')).toBe(
+            'sample restore bytes'
+          )
+      console.debug('[sample native bulk restore]', { elapsedMs: Date.now() - started })
+      expect(removals.size).toBe(120)
+      expect([...removals.values()].reduce((sum, n) => sum + n, 0)).toBe(120)
+      console.debug('[sample native bulk cycles]', cycles)
+      return
+    }
     if (delivery) {
       await disk.writeFile(join(root, 'peer/Sample/recipient.md'), 'recipient creates')
       await cycle()
@@ -83,12 +224,16 @@ it.each([
     await cycle()
     expect(await disk.stat(join(root, 'primary/Sample/to')).catch(() => null)).toBeNull()
     expect(await disk.stat(join(root, 'primary/Sample/from')).catch(() => null)).toBeNull()
+  } catch (error) {
+    console.debug('[sample bulk failure]', { phase, operations, latest, error })
+    throw error
   } finally {
+    if (timer !== undefined) clearInterval(timer)
     for (const engine of engines) await engine.stop()
     await server.close()
     await disk.rm(root, { recursive: true, force: true })
   }
-})
+}
 
 it('finishes a whole-vault native installation interrupted before its SDK acknowledgement', async () => {
   const root = await disk.realpath(await disk.mkdtemp(join(tmpdir(), 'sample-native-departure-')))

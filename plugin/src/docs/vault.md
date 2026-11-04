@@ -3847,6 +3847,10 @@ and connection departure drains committed cleanup before dropping its authority.
 Captured removals use a connection-local retained-object summary. Victims remain private
 for at least 24 hours; changed retained bytes restore exclusively or appear as a root
 conflict file if their former parent is unavailable. Unknown recovery artifacts are kept.
+Once a private removal-summary replacement is durable, its captured prior control record
+is retired only after fresh byte verification. Public files and retained payloads keep
+their normal retention; independently changed metadata is preserved too. Disconnect
+and guarded reset settle removal decisions through recovery before dropping the ledger.
 
 Repeated local uploads have a per-file quiet period measured from the last completed
 local upload of that file: 10 seconds through 10 KiB, 20 seconds through 100 KiB, and 30 seconds

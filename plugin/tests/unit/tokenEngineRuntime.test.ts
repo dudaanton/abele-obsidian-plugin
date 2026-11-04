@@ -4727,6 +4727,15 @@ it('drains committed cleanup owners before connection departure without a sync r
       JSON.stringify({ pending, next: null })
     )
     await tx.setMeta('pull-write:sample-file', JSON.stringify(pending))
+    await tx.setMeta(
+      'removal-decision:sample-decision',
+      JSON.stringify({
+        id: 'sample-decision',
+        base: { path: pending.target, fileId: pending.fileId },
+        committed: false,
+      })
+    )
+    await tx.setMeta('removal-source:sample-file', 'sample-decision')
   })
   const one = runtime(wire, fs, state)
   try {
@@ -4734,6 +4743,8 @@ it('drains committed cleanup owners before connection departure without a sync r
     expect(discardStage).toHaveBeenCalledExactlyOnceWith('Notes/sample-stage')
     expect(await state.getMeta('pull-cleanup-head')).toBeNull()
     expect(await state.getMeta('pull-write:sample-file')).toBeNull()
+    expect(await state.getMeta('removal-decision:sample-decision')).toBeNull()
+    expect(await state.getMeta('removal-source:sample-file')).toBeNull()
     expect(wire.fetch).not.toHaveBeenCalled()
   } finally {
     await one.runtime.close()

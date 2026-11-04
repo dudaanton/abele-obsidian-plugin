@@ -50,6 +50,8 @@ export interface ConditionalFileHost {
     publicationCheck(path: string, capturedAt?: string): () => boolean
   }
   retention?: RetentionIndex
+  /** Exact host-owned control records, never public files or retained payloads. */
+  replaceableMetadata?(path: string): boolean
   root: string
   active: Set<string>
   check(): void
@@ -237,6 +239,16 @@ export class ConditionalFiles {
     ) {
       await this.restore(victim, intent.path)
       return
+    }
+    if (intent.kind === 'write' && !intent.receipt && h.replaceableMetadata?.(intent.path)) {
+      // The replacement and complete marker are already durable. Recheck bytes,
+      // rather than treating an inode/stat match as permission to retire metadata.
+      const verified = await h.fingerprint(victim)
+      if (verified.size === intent.expected.size && verified.sha === intent.expected.sha) {
+        await h.remove(victim)
+        await h.flush(victim, true)
+        return
+      }
     }
     await h.mkdir(retained)
     await h.mkdir(h.root + '/retained')

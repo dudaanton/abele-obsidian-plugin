@@ -72,6 +72,63 @@ it('keeps a captured removal through the minimum age and preserves changed bytes
   expect(await raw.read('sample.md')).toEqual(new Uint8Array([9, 8, 7]))
 })
 
+it('retires obsolete owned removal metadata instead of retaining each summary generation', async () => {
+  const app = buildFakeVault([])
+  const raw = new ObsidianFileSystem(app as never, { journalOwner: 'sample-summary-owner' })
+  const fs = raw[PRIVATE_REMOVAL_FILES]()
+  const path = '.abele-sync/retained-removals/summary.json'
+  await fs.writeAtomic(path, new TextEncoder().encode('[ ]'), 1000)
+  await fs.writeAtomic(path, new TextEncoder().encode('[\n]'), 2000)
+  await fs.writeAtomic(path, new TextEncoder().encode('[]'), 3000)
+  expect(new TextDecoder().decode(await fs.read(path))).toBe('[]')
+  const folder = '.abele-sync/connections/sample-summary-owner/retained-removals'
+  expect((await app.vault.adapter.list(folder)).files).toEqual([folder + '/summary.json'])
+  const conditional = Reflect.get(raw, 'conditional')
+  expect((await conditional.host.retention.summary()).count).toBe(0)
+})
+
+it('preserves independently changed private metadata instead of retiring it', async () => {
+  const app = buildFakeVault([])
+  const rename = app.vault.adapter.rename.bind(app.vault.adapter)
+  let changed = false,
+    enabled = false
+  app.vault.adapter.rename = async (from: string, to: string) => {
+    await rename(from, to)
+    if (enabled && !changed && from.endsWith('/summary.json') && to.endsWith('/victim')) {
+      changed = true
+      await app.vault.adapter.write(to, 'independently edited metadata')
+    }
+  }
+  const raw = new ObsidianFileSystem(app as never, { journalOwner: 'sample-changed-summary' })
+  const fs = raw[PRIVATE_REMOVAL_FILES]()
+  const path = '.abele-sync/retained-removals/summary.json'
+  await fs.writeAtomic(path, new TextEncoder().encode('[ ]'), 1000)
+  enabled = true
+  await expect(fs.writeAtomic(path, new TextEncoder().encode('[]'), 2000)).rejects.toThrow(
+    'File changed before publication'
+  )
+  expect(changed).toBe(true)
+  const contents: string[] = []
+  const collect = async (folder: string) => {
+    const entries = await app.vault.adapter.list(folder)
+    for (const file of entries.files) contents.push(await app.vault.adapter.read(file))
+    for (const child of entries.folders) await collect(child)
+  }
+  await collect('.abele-sync')
+  expect(contents).toContain('independently edited metadata')
+})
+
+it('refuses to remove a decision directory containing unexpected bytes', async () => {
+  const app = buildFakeVault([])
+  const raw = new ObsidianFileSystem(app as never, { journalOwner: 'sample-private-directory' })
+  const fs = raw[PRIVATE_REMOVAL_FILES]()
+  const folder = '.abele-sync/retained-removals/11111111-1111-4111-8111-111111111111'
+  await fs.mkdir!(folder)
+  await fs.writeAtomic(folder + '/victim', new Uint8Array([7]), 1000)
+  await expect(fs.removeDirectory!(folder)).rejects.toThrow('not empty')
+  expect(await fs.read(folder + '/victim')).toEqual(new Uint8Array([7]))
+})
+
 it.each([
   'pull-cleanup-head',
   'pull-cleanup:sample',
