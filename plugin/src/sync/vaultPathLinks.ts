@@ -3,7 +3,7 @@ import { directEntryDurability, entryEffect } from './directEntryDurability'
 import { desktopFileIdentity } from './desktopFileIdentity'
 import { inheritHostStorage } from './hostSyncStorage'
 import { crossesSymlink } from './symlinkChain'
-import { diagnosticOrigin, nativeDiagnostics } from './nativeDiagnostics'
+import { diagnosticOrigin, nativeDiagnostics, nativeSyscalls } from './nativeDiagnostics'
 import { TFile, TFolder } from 'obsidian'
 import { Platform } from 'obsidian'
 import { sha256 } from '@noble/hashes/sha2'
@@ -219,7 +219,12 @@ function rootAccess(adapter: DataAdapter & LinkAdapter) {
   const port = origin.fsPromises && diagnosticOrigin(origin.fsPromises)
   const native = (port && (nativeOrigins.get(port) ?? port)) as LinkAdapter['fsPromises']
   const full = origin.getFullPath?.bind(origin)
-  return { native, full, pin: native && full ? pinnedRoot(native, full('')) : undefined }
+  return {
+    native: native && nativeSyscalls(native),
+    full,
+    // Keep ownership/cache identity on the original port, not the diagnostic wrapper.
+    pin: native && full ? pinnedRoot(native, full('')) : undefined,
+  }
 }
 function physicalPath(root: string, path: string): string {
   return root.replace(/\/+$/, '') + (path ? '/' + path.replace(/^\//, '') : '')
@@ -738,6 +743,8 @@ export function releaseVaultPathGuard(vault: Pick<Vault, 'adapter'>): void {
   adapters.delete(origin)
 }
 
+const measuredDesktopModules = new WeakMap<object, typeof import('node:fs')>()
+
 /** Use the renderer's real Node module; a dynamic import becomes a browser shim. */
 export function desktopNodeFs(): typeof import('node:fs') {
   const unavailable = (missing: string[]) =>
@@ -776,7 +783,16 @@ export function desktopNodeFs(): typeof import('node:fs') {
       missing.push('promises.' + key)
   if (typeof module?.lstatSync !== 'function') missing.push('lstatSync')
   if (missing.length) throw unavailable(missing)
-  return module
+  let measured = measuredDesktopModules.get(module)
+  if (!measured) {
+    measured = new Proxy(module, {
+      get(target, key) {
+        return key === 'promises' ? nativeSyscalls(target.promises) : Reflect.get(target, key)
+      },
+    })
+    measuredDesktopModules.set(module, measured)
+  }
+  return measured
 }
 
 async function openNoFollow(
@@ -1283,11 +1299,12 @@ export function nativeChunkPort(adapter: DataAdapter) {
       utimes?(path: string, atime: number, mtime: number): Promise<void>
     }
   }
+  const fsp = disk.fsPromises && nativeDiagnostics(disk.fsPromises, () => {})
   return {
     available: typeof disk.fsPromises === 'object',
     fullPath: disk.getFullPath?.bind(disk),
-    open: disk.fsPromises?.open?.bind(disk.fsPromises),
-    utimes: disk.fsPromises?.utimes?.bind(disk.fsPromises),
+    open: fsp?.open?.bind(fsp),
+    utimes: fsp?.utimes?.bind(fsp),
   }
 }
 
@@ -1587,7 +1604,7 @@ export async function guardedNativeMutation<T>(
 }
 const rootPins = new WeakMap<object, Map<string, RootPin>>()
 function pinnedRoot(native: object, logical: string): RootPin | undefined {
-  const io = native as typeof import('node:fs/promises')
+  const io = nativeSyscalls(native as typeof import('node:fs/promises'))
   if (!io.realpath || !io.lstat || !io.open) return undefined
   let roots = rootPins.get(native)
   if (!roots) rootPins.set(native, (roots = new Map()))
