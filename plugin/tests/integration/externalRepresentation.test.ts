@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
-import { scan, sha256, SyncEngine, MemoryStateStore, RecoveryBarrier } from '@abele/sync-sdk/core'
+import {
+  scan,
+  sha256,
+  SyncEngine,
+  MemoryStateStore,
+  MemoryFileSystem,
+  RecoveryBarrier,
+} from '@abele/sync-sdk/core'
 import type { App } from 'obsidian'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ExternalState } from '@/sync/external/state'
@@ -11,6 +18,7 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { serializeProjection } from '@/sync/external/projection'
 import { EXTERNAL_INSPECTION_KEY } from '@/sync/external/pluginSafety'
 import { buildFakeVault } from '../helpers/fakeVault'
+import { deferred } from '../helpers/deferred'
 
 const binding = {
   endpoint: 'https://sync.example.invalid',
@@ -35,6 +43,43 @@ const entry = {
   mtime: 1000,
 }
 const cleanups: (() => void)[] = []
+it('names a pending list classification and clears it before yielding the row', async () => {
+  const fs = new MemoryFileSystem()
+  await fs.writeAtomic('Notes/sample.md', bytes, 1000)
+  const entered = deferred()
+  const reading = deferred<Uint8Array>()
+  vi.spyOn(fs, 'read').mockImplementation(() => {
+    entered.resolve()
+    return reading.promise
+  })
+  const representation = await ExternalRepresentation.open({
+    state: null,
+    emptyView: { ledgerId: 'sample-ledger', binding },
+    ledger: new MemoryStateStore(),
+    fs,
+    assertOwned: () => {},
+    scriptsFolder: () => 'Scripts',
+    verify: async () => {
+      throw Error('unexpected verification')
+    },
+    installProjection: async () => {
+      throw Error('unexpected install')
+    },
+  })
+  const listing = representation.fileSystem().list()[Symbol.asyncIterator]()
+  const next = listing.next()
+  try {
+    await entered.promise
+    expect(representation.classificationStats()).toMatchObject({
+      listingWait: { path: 'Notes/sample.md', step: 'prefix read', at: expect.any(Number) },
+    })
+  } finally {
+    reading.resolve(bytes)
+    await next
+    await listing.return?.()
+  }
+  expect(representation.classificationStats()).not.toHaveProperty('listingWait')
+})
 it('retains another connection inspection when a group listing completes', async () => {
   const app = buildFakeVault([
     { path: 'Notes/member.md', content: 'member' },

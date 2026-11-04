@@ -103,6 +103,7 @@ const terminal = new Set([
 /** How classification decided, per caller: the harness reads it to attribute a content read.
  * `hit` and `pass` read no content; every `miss-*` reason is followed by one bounded read. */
 export interface ClassificationStats {
+  listingWait?: { path?: string; step: string; at: number }
   storage: string
   loaded: number
   callers: Record<string, Record<string, number>>
@@ -241,6 +242,12 @@ export class ExternalRepresentation {
   }
   classificationStats(): ClassificationStats {
     return structuredClone(this.stats)
+  }
+  private classificationStep(path: string, step: string): void {
+    const pending = this.stats.listingWait
+    if (pending?.path !== path) return
+    pending.step = step
+    pending.at = Date.now()
   }
   private count(caller: string, outcome: string): void {
     const counts = (this.stats.callers[caller] ??= {})
@@ -476,12 +483,15 @@ export class ExternalRepresentation {
     supplied?: Uint8Array,
     caller = 'direct'
   ): Promise<RepresentationDecision> {
+    this.classificationStep(path, 'load inspection')
     await this.loadInspection()
     this.ownedRead()
     if (!supplied && observed !== null) {
+      this.classificationStep(path, 'unchanged identity')
       const known = await this.unchanged(path, caller, observed)
       if (known) return known
     }
+    this.classificationStep(path, 'stat')
     const info = observed === undefined ? await this.options.fs.stat(path) : observed
     this.ownedRead()
     for (const file of this.document.files) {
@@ -494,6 +504,7 @@ export class ExternalRepresentation {
           // Dirty provenance survives unavailable/delete/approval blockers. The observation is
           // durable before scanner/metadata callers can acknowledge it; no second head table.
           try {
+            this.classificationStep(path, 'record unexpected original')
             await this.saveUnexpected(file.fileId)
           } catch (error) {
             this.stopCause ??= error
@@ -536,6 +547,7 @@ export class ExternalRepresentation {
         ? { kind: 'hold', reason: 'projection', dirty: false }
         : { kind: 'ordinary' }
     }
+    this.classificationStep(path, 'inspection identity')
     const identity =
       !supplied && this.options.inspection?.identity
         ? await this.options.inspection.identity(path, this.inspected.get(cachePath))
@@ -551,6 +563,7 @@ export class ExternalRepresentation {
           sameInspectionIdentity(prior, identity)
         : prior.size === info.size && prior.mtime === info.mtime)
     ) {
+      this.classificationStep(path, 'confirm identity')
       const stable = this.options.inspection?.identity
         ? await this.options.inspection.identity(path, prior)
         : identity
@@ -580,11 +593,13 @@ export class ExternalRepresentation {
         })
     }
     this.count(caller, reason)
+    this.classificationStep(path, 'prefix read')
     const bytes = supplied ?? (await this.bytes(path, info))
     if (!supplied && bytes) this.stats.contentBytes += bytes.byteLength
     this.ownedRead()
     const marker = !!bytes && recognizeProjection(bytes)
     if (!supplied) {
+      this.classificationStep(path, 'after-read identity')
       const after = this.options.inspection?.identity
         ? await this.options.inspection.identity(path)
         : null
@@ -717,16 +732,27 @@ export class ExternalRepresentation {
           return async function* () {
             const observed = new Set<string>()
             let complete = false
+            const pending: NonNullable<ClassificationStats['listingWait']> = {
+              step: 'classification',
+              at: Date.now(),
+            }
             try {
               for await (const info of fs.list()) {
+                pending.path = info.path
+                self.stats.listingWait = pending
                 observed.add(self.options.inspection?.cacheKey?.(info.path) ?? info.path)
-                if ((await self.classify(info.path, info, undefined, 'list')).kind === 'ordinary')
-                  yield info
+                const decision = await self.classify(info.path, info, undefined, 'list')
+                if (self.stats.listingWait === pending) delete self.stats.listingWait
+                if (decision.kind === 'ordinary') yield info
               }
               complete = true
             } finally {
               // Only a completed listing proves that old physical paths disappeared.
               const retired: string[] = []
+              delete pending.path
+              pending.step = 'inspection retirement'
+              pending.at = Date.now()
+              self.stats.listingWait = pending
               if (complete && self.options.inspection?.ownsKey) {
                 const budget = new SyncTaskBudget()
                 let checked = 0
@@ -746,7 +772,15 @@ export class ExternalRepresentation {
                   if ((++checked & 63) === 0) await budget.account(64 * 256)
                 }
               }
-              await self.flushInspection(retired)
+              delete pending.path
+              pending.step = 'inspection persistence'
+              pending.at = Date.now()
+              self.stats.listingWait = pending
+              try {
+                await self.flushInspection(retired)
+              } finally {
+                if (self.stats.listingWait === pending) delete self.stats.listingWait
+              }
             }
           }
         if (method === 'openRead' || method === 'fingerprint')

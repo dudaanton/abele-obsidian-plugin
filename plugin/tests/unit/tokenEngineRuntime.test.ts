@@ -2875,6 +2875,39 @@ function runtime(
     reviews,
   }
 }
+it('drains an engine checkpoint on close without waiting for the host continuation', async () => {
+  const wire = await server('Notes/sample.md', '')
+  const one = runtime(wire, new MemoryFileSystem())
+  const entered = deferred()
+  const scheduled = deferred()
+  vi.stubGlobal('window', {
+    setTimeout: window.setTimeout.bind(window),
+    clearTimeout: window.clearTimeout.bind(window),
+    scheduler: {
+      yield: () => {
+        entered.resolve()
+        return scheduled.promise
+      },
+    },
+  })
+  const opts = Reflect.get(one.runtime.engine, 'opts') as { yieldTask(): Promise<void> }
+  let settled = false
+  const work = one.runtime.engine.runExclusive(() => opts.yieldTask()).catch(() => {})
+  try {
+    await entered.promise
+    const closing = one.runtime.close().then(() => {
+      settled = true
+    })
+    await flushPromises()
+    expect(settled).toBe(true)
+    await closing
+  } finally {
+    scheduled.resolve()
+    await work
+    await one.runtime.close()
+    vi.unstubAllGlobals()
+  }
+})
 it.each(['adapter', 'SDK'])(
   'yields to host timers while comparing twelve thousand cached files (%s)',
   async (mode) => {

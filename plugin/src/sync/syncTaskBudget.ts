@@ -13,7 +13,7 @@ export class SyncTaskBudget {
     this.bytes += bytes
     if (this.bytes < 1024 * 1024 && performance.now() - this.since < 8) return
     this.bytes = 0
-    return yieldSyncTask().then(() => {
+    return waitForSyncRead(yieldSyncTask(), signal).then(() => {
       this.since = performance.now()
       signal?.throwIfAborted()
     })

@@ -1,7 +1,7 @@
 import { SizeRefusals } from './sizeRefusals'
 import { PreparedUploads, PREPARED_UPLOAD_LIFETIME } from './preparedUploads'
 import { localOnlyJournalState } from './localOnlyJournal'
-import { SyncTaskBudget, yieldSyncTask } from './syncTaskBudget'
+import { SyncTaskBudget, waitForSyncRead, yieldSyncTask } from './syncTaskBudget'
 import { gateMobileSource } from './mobileLargeFileGate'
 import { FINGERPRINT_UPLOAD, PHONE_FALLBACK_BYTES } from './mobileWholeRead'
 import { connectionPrivateRoot } from './connectionPaths'
@@ -1486,7 +1486,19 @@ export class TokenEngineRuntime
     options.startupMark?.('engine-construct')
     this.engine = new SyncEngine({
       placementConcurrency: 16,
-      yieldTask: yieldSyncTask,
+      // A scheduler continuation is a read-only wait. Stop must release the engine
+      // slot even if the renderer has not dispatched that continuation yet.
+      yieldTask: () => {
+        const signal = this.indexWaitCancellation.signal
+        return this.trace.run('scan checkpoint', async () => {
+          try {
+            await waitForSyncRead(yieldSyncTask(), signal)
+          } catch (error) {
+            if (signal.aborted) throw new SyncCancelled()
+            throw error
+          }
+        })
+      },
       transferBudget: this.transferBudget,
       client: new Proxy(engineClient, {
         get: (target, name) => {
@@ -1673,6 +1685,7 @@ export class TokenEngineRuntime
               const candidate = (path: string) => this.namedCandidate(path)
               const largeUploads = this.largeUploadPaths
               const budget = this.comparisonBudget
+              const cancellation = () => this.indexWaitCancellation.signal
               const checkRoot = () => this.checkRoot()
               const generation = () => (this.active ? this.comparisonRun : -1)
               const syncing = () => this.engine.status.state === 'syncing'
@@ -1686,6 +1699,7 @@ export class TokenEngineRuntime
                 )
                 const run = generation()
                 const managed = syncing()
+                const signal = managed ? cancellation() : undefined
                 const current = () => {
                   if (generation() < 0 || (managed && generation() !== run))
                     throw new SyncCancelled()
@@ -1699,7 +1713,13 @@ export class TokenEngineRuntime
                 let completed = 0
                 try {
                   for await (const info of value.call(target)) {
-                    await budget.account(0)
+                    try {
+                      const checkpoint = budget.account(0, signal)
+                      if (checkpoint !== undefined) await trace.run('inventory checkpoint', () => checkpoint)
+                    } catch (error) {
+                      current()
+                      throw error
+                    }
                     current()
                     if (name === 'list' && !candidate(info.path)) continue
                     if (managed && name === 'list') {

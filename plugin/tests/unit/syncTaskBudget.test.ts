@@ -1,6 +1,27 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest'
 import { SyncTaskBudget } from '@/sync/syncTaskBudget'
+import { deferred } from '../helpers/deferred'
+
+it('releases a cancelled metadata checkpoint before its scheduled continuation runs', async () => {
+  const scheduled = deferred()
+  vi.stubGlobal('window', { scheduler: { yield: () => scheduled.promise } })
+  const controller = new AbortController()
+  let cancelled = false
+  const pending = new SyncTaskBudget().account(1024 * 1024, controller.signal)!
+  const settled = pending.catch(() => {
+    cancelled = true
+  })
+  try {
+    controller.abort(new Error('sample stop'))
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(cancelled).toBe(true)
+  } finally {
+    scheduled.resolve()
+    await settled
+    vi.unstubAllGlobals()
+  }
+})
 
 it('can yield without a window global', async () => {
   expect(typeof window).toBe('undefined')

@@ -154,6 +154,12 @@ it('records inspection stage, counters and timings rather than hiding them behin
           tokenEngines: {
             ui: {
               rows: { value: [{ id: 'sample', status: 'joining', paused: false }] },
+              registry: { records: () => [] },
+              connectionActivity: () => ({
+                startup,
+                startupTimings: timings,
+                inspection: { completed: 8469, total: 12023 },
+              }),
               activity: {
                 value: {
                   sample: {
@@ -197,6 +203,8 @@ it('snapshots a stuck engine and pending holds synchronously without reading a t
       ],
     },
     activity: { value: { sample: { heldDeletes: 60, error: 'Needs attention' } } },
+    registry: { records: () => [] },
+    connectionActivity: () => ({ heldDeletes: 60, error: 'Needs attention' }),
   }
   const app = {
     plugins: {
@@ -229,4 +237,41 @@ it('snapshots a stuck engine and pending holds synchronously without reading a t
   expect(evalAwait.mock.calls[1][0]).toContain('capturePage')
   expect(report).toContain('syncing')
   expect(report).toContain('.png')
+})
+
+it('captures the current classification wait without awaiting the stalled engine', () => {
+  const pending = { path: 'Notes/sample.md', step: 'prefix read', at: 1000 }
+  const classify = vi.fn(() => ({ listingWait: pending }))
+  const app = {
+    setting: {},
+    plugins: {
+      plugins: {
+        abele: {
+          tokenEngines: {
+            ui: {
+              rows: { value: [{ id: 'sample-connection', status: 'syncing' }] },
+              connectionActivity: () => ({}),
+              registry: { records: () => [] },
+            },
+            live: new Map([
+              [
+                'sample-connection',
+                {
+                  engine: { status: { state: 'syncing', pending: 0 } },
+                  trace: { snapshot: () => ({}) },
+                },
+              ],
+            ]),
+            offloadPorts: new Map([['sample-connection', { classification: classify }]]),
+          },
+        },
+      },
+    },
+  }
+  const snapshot = new Function('app', 'document', SYNC_SNAPSHOT + ';return syncSnapshot()')(
+    app,
+    document
+  )
+  expect(snapshot.connections[0].engine.classification).toEqual({ listingWait: pending })
+  expect(classify).toHaveBeenCalledOnce()
 })
