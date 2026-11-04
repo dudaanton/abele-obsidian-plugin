@@ -234,6 +234,10 @@ export class TokenEngines {
       // writers and recovery callers need the completed startup outcome.
       if (!assertCurrent) await this.engines.settled()
     }
+    ui.discoveryReachabilityChanged = (ids, reachable) => {
+      for (const id of ids) this.live.get(id)?.discoveryReachable(reachable)
+      tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault)).changed()
+    }
     ui.disconnectRuntime = async (id) => {
       await this.engines.remove(id)
       TokenSettingsPort.forget(ui, id)

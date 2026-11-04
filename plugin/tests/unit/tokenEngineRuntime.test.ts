@@ -1651,6 +1651,38 @@ it('keeps attachments offline while a reconnect is in flight and restores availa
   }
 })
 
+it('does not treat a retained local sync report as proof the server became reachable', async () => {
+  const wire = await server('Notes/sample.md', 'note')
+  const one = runtime(wire, new MemoryFileSystem())
+  try {
+    let completed: unknown
+    const opts = Reflect.get(one.runtime.engine, 'opts')
+    const report = opts.onSync
+    opts.onSync = (value: unknown) => {
+      completed = value
+      report(value)
+    }
+    await one.runtime.sync()
+    expect(completed).toBeDefined()
+    one.runtime.discoveryReachable(false)
+    report(completed)
+    expect(one.runtime.available).toBe(false)
+    one.runtime.discoveryReachable(true)
+    expect(one.runtime.available).toBe(true)
+    wire.fetch.mockRejectedValueOnce(
+      new NativeSyncFailure('sending', { code: -1001, message: 'Request timed out' })
+    )
+    await expect(one.runtime.sync()).rejects.toBeDefined()
+    expect(one.runtime.available).toBe(false)
+    report(completed)
+    expect(one.runtime.available).toBe(false)
+    await one.runtime.sync()
+    expect(one.runtime.available).toBe(true)
+  } finally {
+    await one.runtime.disconnect()
+  }
+})
+
 it('reviews canonical executable content through its known physical identity', async () => {
   const wire = await server('Café/Café.js', '// remote', undefined, { ...scope, path: 'Café' })
   const physical = 'Café/Cafe\u0301.js',

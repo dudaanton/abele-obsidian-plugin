@@ -384,6 +384,8 @@ const noConnectionHost = async () => {}
 export class TokenUi {
   /** Explicit resume is consumed by this session's next start, never by a later restart. */
   readonly startupApprovals = new Set<string>()
+  /** Discovery can fail before any file engine issues a request. */
+  discoveryReachabilityChanged: (ids: readonly string[], reachable: boolean) => void = () => {}
   connectFailure?: { reason: string; code?: string }
   connectionChangeGuard: (
     id?: string,
@@ -1307,19 +1309,22 @@ export class TokenUi {
     )
       throw new Error(SCOPE_DELETED)
     if (this.itemSets.store.get(id)) {
+      const affected = new Set([
+        id,
+        ...(this.itemSets.store
+          .get(id)
+          ?.items.flatMap((item) => (item.recordId && !item.detached ? [item.recordId] : [])) ??
+          []),
+      ])
+      let changed: boolean
       try {
-        if (await this.itemSets.refresh(id)) await this.connectionsChanged()
+        changed = await this.itemSets.refresh(id)
+        this.discoveryReachabilityChanged([...affected], true)
       } catch (error) {
         const code = (error as { code?: string })?.code
         // Discovery can fail before an engine has a chance to report offline.
         if (code === 'offline' || code === 'unreachable') {
-          const affected = new Set([
-            id,
-            ...(this.itemSets.store
-              .get(id)
-              ?.items.flatMap((item) => (item.recordId && !item.detached ? [item.recordId] : [])) ??
-              []),
-          ])
+          this.discoveryReachabilityChanged([...affected], false)
           for (const record of this.registry.records()) {
             if (!affected.has(record.id) || record.paused || record.status === 'needs-token')
               continue
@@ -1329,6 +1334,7 @@ export class TokenUi {
         }
         throw error
       }
+      if (changed) await this.connectionsChanged()
       const failures: unknown[] = []
       for (const item of this.itemSets.store.get(id).items) {
         if (!item.recordId || item.detached || item.paused) continue

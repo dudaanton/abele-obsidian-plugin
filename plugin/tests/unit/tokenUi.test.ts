@@ -97,6 +97,8 @@ it('keeps the cause text when a shared-item manual sync fails', async () => {
 
 it('publishes offline when shared-item discovery fails before the engine starts', async () => {
   const { ui, registry } = setup()
+  const reachability = vi.fn()
+  ui.discoveryReachabilityChanged = reachability
   await ui.connect(token)
   const id = registry.records()[0].id
   registry.setStatus(id, 'idle')
@@ -110,6 +112,18 @@ it('publishes offline when shared-item discovery fails before the engine starts'
   await expect(ui.sync(id)).rejects.toThrow('sample disconnected')
   expect(registry.records().find((row) => row.id === id)?.status).toBe('offline')
   expect(ui.activity.value[id]?.error).toBeTruthy()
+  expect(reachability).toHaveBeenLastCalledWith([id], false)
+  vi.mocked(ui.itemSets.refresh).mockResolvedValue(false)
+  ui.runtimes.set(id, { sync: async () => {} } as never)
+  await ui.sync(id)
+  expect(reachability).toHaveBeenLastCalledWith([id], true)
+  vi.mocked(ui.itemSets.refresh).mockResolvedValue(true)
+  ui.connectionsChanged = async () => {
+    throw Object.assign(new Error('local startup cancelled'), { code: 'offline' })
+  }
+  reachability.mockClear()
+  await expect(ui.sync(id)).rejects.toThrow('local startup cancelled')
+  expect(reachability.mock.calls).toEqual([[[id], true]])
 })
 
 it('refuses explicit sync while paused without starting or sending work', async () => {

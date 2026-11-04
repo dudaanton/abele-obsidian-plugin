@@ -694,6 +694,7 @@ export class TokenEngineRuntime
               signal: request.signal,
             })
             successful = response.ok
+            if (response.ok) this.serverAvailable = true
             if (response.status >= 500) this.serverAvailable = false
           } catch (error) {
             // A local scan/installation cancellation can also put the engine in
@@ -1860,7 +1861,6 @@ export class TokenEngineRuntime
           }
         // An empty scan has no push journal, but still completed its metadata checks.
         activityLog.finishComparison(this.inventoryTotal)
-        this.serverAvailable = true
         this.trace.finishPull(true)
         this.pendingFolders.clear()
         this.folderProgress.clear()
@@ -2828,6 +2828,10 @@ export class TokenEngineRuntime
   /** Starting a retry does not prove reachability; only a completed exchange clears offline. */
   get available(): boolean {
     return this.serverAvailable
+  }
+  /** A completed discovery request is independent of the file engine's last run. */
+  discoveryReachable(reachable: boolean): void {
+    this.serverAvailable = reachable
   }
   private async checkRoot(): Promise<void> {
     if (
