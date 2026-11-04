@@ -4,7 +4,12 @@ import { expect, it } from 'vitest'
 import { promises as disk } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { retainRemoval, recoverRemovals, retentionSnapshot } from '@abele/sync-sdk/core'
+import {
+  retainRemoval,
+  prepareRemovalCohort,
+  recoverRemovals,
+  retentionSnapshot,
+} from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { buildFakeVault } from '../helpers/fakeVault'
@@ -13,9 +18,14 @@ import { buildFakeVault } from '../helpers/fakeVault'
 // disk can exceed the default budget even for this deliberately tiny fixture.
 const nativeIoTimeout = 30_000
 
-it.each(['missing', 'symlink'] as const)(
-  'restores changed native retained bytes at the connection root after a %s parent',
-  async (mode) => {
+it.each([
+  ['missing', 'single'],
+  ['symlink', 'single'],
+  ['missing', 'cohort'],
+  ['symlink', 'cohort'],
+] as const)(
+  'restores changed native retained bytes at the connection root after a %s parent (%s)',
+  async (mode, retention) => {
     const root = await disk.realpath(await disk.mkdtemp(join(tmpdir(), 'sample-retained-')))
     try {
       await disk.mkdir(join(root, 'Shared/Nested'), { recursive: true })
@@ -63,13 +73,20 @@ it.each(['missing', 'symlink'] as const)(
       const fs = new LocalFolderPlacement('Remote', 'Shared').fileSystem(raw)
       const expected = await raw.fingerprint('Shared/Nested/sample.md')
       const now = Date.now()
-      expect(
-        await retainRemoval(
-          fs,
-          { path: 'Remote/Nested/sample.md', expected, effect: { kind: 'remove' } },
-          { now, clock: () => now }
-        )
-      ).toBe(true)
+      const operation = {
+        path: 'Remote/Nested/sample.md',
+        expected,
+        effect: { kind: 'remove' as const },
+      }
+      if (retention === 'cohort') {
+        const cohort = await prepareRemovalCohort(fs, [{ operation }], { now: () => now })
+        try {
+          expect(await cohort.retain(operation)).toBe(true)
+        } finally {
+          // This test owns preparation, as core does; a host callback only borrows it.
+          await cohort.close()
+        }
+      } else expect(await retainRemoval(fs, operation, { now, clock: () => now })).toBe(true)
       const rows = await retentionSnapshot(fs)
       expect(rows).toHaveLength(1)
       expect(

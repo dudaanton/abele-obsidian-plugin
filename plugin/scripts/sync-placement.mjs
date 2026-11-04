@@ -418,6 +418,13 @@ export function syncPlacementPlugin() {
           'if (ops.length) for await (const entry of this.ctx.state.all())'
         )
       } else if (file.endsWith('/pullRun.js')) {
+        code = replaceOnce(
+          code,
+          '            if (base)\n                bases.push(base);',
+          `            if (base && !this.passedOver(change) &&
+                !this.opts.filter.excluded(base.wirePath ?? base.path, base.size))
+                bases.push(base);`
+        )
         code =
           `import { PendingPullWrites } from './pullWrite.js';\nimport { notifyApplied } from './applied.js';\nimport { ScanWork, scanScheduling } from './scanWork.js';\n` +
           code
@@ -702,9 +709,12 @@ export function syncPlacementPlugin() {
         )
       } else if (file.endsWith('/removalRetention.js')) {
         for (const declaration of [
-          'export async function retentionSnapshot(fs) {',
+          'export async function retentionSnapshot(fs, options = {}) {',
+          'export async function prepareRemovalCohort(fs, items, options = {}) {',
+          'export async function retainRemovals(fs, operations, options = {}) {',
+          'export async function prepareCaptureCohort(fs, state, bases, policy = {}) {',
           'export async function retainRemoval(fs, op, options = {}) {',
-          'export async function captureRemoval(fs, state, base, authorize, now, capturedIdentity, expected = base, signal) {',
+          'export async function captureRemoval(fs, state, base, authorize, now, capturedIdentity, expected = base, signal, cohort) {',
           'export async function retainPublishedVictim(fs, source, path, expected, publication) {',
           'export async function acknowledgePublication(fs, publication) {',
           'export async function recoverRemovals(fs, state, policy = {}, onlyPath) {',

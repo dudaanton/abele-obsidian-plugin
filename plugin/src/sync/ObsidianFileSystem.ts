@@ -3022,6 +3022,7 @@ export class ObsidianFileSystem implements FileSystem {
       }
     }
     this.listPhase('unindexed candidates')
+    const parentListings = new Map<string, { revision: string; files: Promise<ListedFiles> }>()
     for (const path of candidates) {
       const pause = budget.metadataRow()
       if (pause !== undefined) await pause
@@ -3036,7 +3037,7 @@ export class ObsidianFileSystem implements FileSystem {
       }
       // stat alone on a case-folding disk would keep a phantom Report.md after a rename to
       // report.md. List its parent for the actual spelling, and never yield both names.
-      const actual = await this.spellingOnDisk(path)
+      const actual = await this.spellingOnDisk(path, parentListings)
       const info = actual === null || !withinScope(actual) ? null : await this.fileAt(actual)
       if (info !== null && !indexed().has(this.pathKey(info.path))) {
         indexedExact.add(info.path)
@@ -4616,7 +4617,10 @@ export class ObsidianFileSystem implements FileSystem {
     return rows.map((info) => ({ ...info, mtime: stamp(info.mtime) }))
   }
 
-  private async spellingOnDisk(path: string): Promise<string | null> {
+  private async spellingOnDisk(
+    path: string,
+    parents?: Map<string, { revision: string; files: Promise<ListedFiles> }>
+  ): Promise<string | null> {
     if (this.discovery && this.discovery.roots.length === 0)
       return (
         this.app.vault.getFileByPath(path)?.path ?? (this.awaitingIndex.has(path) ? path : null)
@@ -4624,7 +4628,13 @@ export class ObsidianFileSystem implements FileSystem {
     const cut = path.lastIndexOf('/')
     const parent = cut === -1 ? '' : path.slice(0, cut)
     try {
-      const listing = await this.inventoryListing(parent)
+      const revision = `${folderMutations(this.app.vault).revision}:${this.scanWatchRevision}:${this.conditional.assertSettled()}`
+      let cached = parents?.get(parent)
+      if (!cached || cached.revision !== revision) {
+        cached = { revision, files: this.inventoryListing(parent) }
+        parents?.set(parent, cached)
+      }
+      const listing = await cached.files
       return listing.files.includes(path)
         ? path
         : (listing.files.find((file) => this.pathKey(file) === this.pathKey(path)) ?? null)

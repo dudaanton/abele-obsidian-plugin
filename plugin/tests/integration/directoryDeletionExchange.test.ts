@@ -75,6 +75,7 @@ async function runExchange({
   const removals = new Map<string, number>()
   const cycles: { device: number; phase: string; elapsedMs: number }[] = []
   const durability = new Map<string, { calls: number; totalMs: number; maxMs: number }>()
+  const summaryWrites = new Map<string, number>()
   let phase = 'initial',
     operations = 0,
     latest = ''
@@ -266,6 +267,14 @@ async function runExchange({
       if (useIndex) await files.waitForStartupIndex()
 
       if (bulk) {
+        const writeAtomic = files.writeAtomic.bind(files)
+        files.writeAtomic = async (...args) => {
+          if (args[0].endsWith('/retained-removals/summary.json')) {
+            const key = name + ':' + phase
+            summaryWrites.set(key, (summaryWrites.get(key) ?? 0) + 1)
+          }
+          return writeAtomic(...args)
+        }
         const conditional = files.conditionalFile.bind(files)
         files.conditionalFile = async (operation) => {
           if (
@@ -382,6 +391,12 @@ async function runExchange({
       console.debug('[sample native bulk restore]', { elapsedMs: Date.now() - started })
       expect(removals.size).toBe(120)
       expect([...removals.values()].reduce((sum, n) => sum + n, 0)).toBe(120)
+      // Cohorts batch only summary replacements; all 120 captures stay independent.
+      for (const name of ['primary', 'peer']) {
+        expect(summaryWrites.get(name + ':delete sixty')).toBeGreaterThan(0)
+        expect(summaryWrites.get(name + ':delete sixty')).toBeLessThanOrEqual(4)
+      }
+      console.debug('[sample native bulk summary writes]', Object.fromEntries(summaryWrites))
       console.debug('[sample native bulk cycles]', cycles)
       console.debug('[sample native bulk durability]', Object.fromEntries(durability))
       return

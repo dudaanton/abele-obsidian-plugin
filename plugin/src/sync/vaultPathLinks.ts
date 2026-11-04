@@ -14,6 +14,11 @@ import { PathCoordinator } from './pathCoordinator'
 import { SyncTaskBudget } from './syncTaskBudget'
 import { caseKey } from '@abele/sync-sdk/protocol'
 
+/** Explicit test-pool maintenance calls this only after its identity/ownership proof. */
+export async function eraseSyncPoolPrivateDirectory(vault: Vault): Promise<void> {
+  if (await vault.adapter.exists('.abele-sync')) await vault.adapter.rmdir('.abele-sync', true)
+}
+
 const namePolicies = new WeakMap<DataAdapter, (path: string) => string>()
 
 /** A name policy belongs to the vault volume, not the desktop operating system. */

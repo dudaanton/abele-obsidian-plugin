@@ -35,6 +35,45 @@ import { FINGERPRINT_UPLOAD } from '@/sync/mobileWholeRead'
 import { deferred } from '../helpers/deferred'
 import { PreparedUploads } from '@/sync/preparedUploads'
 import { AbeleError, ERROR_CODES } from '@abele/sync-sdk/protocol'
+import { RetainedShareCopies } from '@/sync/retainedShareCopies'
+
+it('uses the native borrowed cohort for departure notification while keeping shared bytes in place', async () => {
+  const wire = await server('Notes/sample.md', 'kept shared bytes')
+  const fs = new MemoryFileSystem()
+  const one = runtime(wire, fs)
+  const entry = {
+    path: wire.item.path,
+    wirePath: wire.item.path,
+    fileId: wire.item.file_id,
+    versionId: wire.item.version_id,
+    sha: wire.item.sha,
+    size: wire.bytes.length,
+    mtime: 1000,
+  }
+  await one.state.put(entry)
+  await fs.writeAtomic(entry.path, wire.bytes, entry.mtime)
+  const cohort = { retain: vi.fn(), close: vi.fn(), owner: vi.fn() }
+  try {
+    expect(one.runtime.client.onRemoval).toBeUndefined()
+    expect(one.runtime.client.onRemovalCohort).toBeTypeOf('function')
+    await one.runtime.client.onRemovalCohort!(
+      {
+        connection: 'sample-token',
+        generation: null,
+        base: entry,
+        pending: false,
+        event: { type: 'removal', file_id: entry.fileId, path: entry.path, cursor: 2 },
+      } as never,
+      cohort
+    )
+    expect(await new RetainedShareCopies(one.state).read()).toEqual([entry])
+    expect(await fs.read(entry.path)).toEqual(wire.bytes)
+    expect(cohort.retain).not.toHaveBeenCalled()
+    expect(cohort.close).not.toHaveBeenCalled()
+  } finally {
+    await one.runtime.close()
+  }
+})
 
 it('marks construction, reconciliation and first idle from the running engine', async () => {
   const wire = await server('Notes/sample.md', 'remote')

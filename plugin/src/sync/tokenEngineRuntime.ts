@@ -1160,11 +1160,18 @@ export class TokenEngineRuntime
       }
       options.startupMark?.('reconcile:post-head:end')
     }
-    this.client.onRemoval = async (id) => {
+    const rememberDeparture = async (id: string) => {
       const entry = await options.state.byFileId(id)
       if (entry) await new RetainedShareCopies(options.state).remember(entry)
       return true
     }
+    if (options.mobile) this.client.onRemoval = rememberDeparture
+    else
+      this.client.onRemovalCohort = async (row) => {
+        // Membership departure keeps the public shared copy. Physical deletions
+        // use the SDK's capture cohorts; capturing here would hide that kept copy.
+        return rememberDeparture(row.event.file_id)
+      }
     const manifest = this.client.manifest.bind(this.client)
     this.client.manifest = async (...args) => {
       options.startupMark?.('reconcile:manifest:begin')

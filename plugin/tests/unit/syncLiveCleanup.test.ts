@@ -8,6 +8,7 @@ import { SyncDriver } from '../e2e/helpers/syncDriver'
 import { cancelSyncJobs, assertSyncJob, finishSyncJob } from '../e2e/helpers/syncJobs'
 import { mkdtempSync, mkdirSync } from 'node:fs'
 import { resolve, join } from 'node:path'
+import * as routeProbe from '../e2e/helpers/phoneRouteProbe'
 vi.mock('../e2e/helpers/syncVault', () => ({ waitFor: vi.fn() }))
 vi.mock('../e2e/helpers/syncServer', () => ({
   siblingMissing: vi.fn(),
@@ -415,6 +416,7 @@ it('records a phone case end once even when shared cleanup rejects', async () =>
 })
 
 it('reopens only its fixture reverse after a pre-authentication close and releases both owners', async () => {
+  const localProbe = vi.spyOn(routeProbe, 'phoneRouteProbe').mockResolvedValue({ ok: true })
   vi.mocked(onPhone).mockReturnValue(true)
   vi.stubEnv('OBSIDIAN_TEST_VAULT', 'primary-pool')
   mkdirSync(resolve('../.scratch'), { recursive: true })
@@ -457,7 +459,11 @@ it('reopens only its fixture reverse after a pre-authentication close and releas
     expect(attempts[1][1]).toBeLessThanOrEqual(30000)
     expect(newStop).not.toHaveBeenCalled()
   } finally {
-    await live.close()
+    try {
+      await live.close()
+    } finally {
+      localProbe.mockRestore()
+    }
   }
   expect(newStop).toHaveBeenCalledOnce()
 })

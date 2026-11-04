@@ -16,6 +16,7 @@ it('connect waits for Ready with a successful first sync instead of private runt
     rows: { value: [] as (typeof row)[] },
     runtimes: new Map(),
     activity: { value: { sample: { startupTimings: [{ outcome: 'complete' }] } } },
+    connectionActivity: () => ({ startupTimings: [{ outcome: 'complete' }] }),
   }
   const host = {
     ui: svc,

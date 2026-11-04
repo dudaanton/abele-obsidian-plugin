@@ -10,6 +10,7 @@ import {
 import { completion, wait } from '../sync/idbRequests'
 import { tokenOffloadsOf } from '../sync/tokenOffloadCoordinator'
 import { pathCoordinatorOf } from '../sync/pathCoordinator'
+import { eraseSyncPoolPrivateDirectory } from '../sync/vaultPathLinks'
 import {
   executePhonePoolWipe,
   executePoolWipe,
@@ -223,8 +224,7 @@ async function wipePoolInternal(plugin: Plugin, request: PhoneWipeIdentity, gene
       }
       console.debug('[e2e sync wipe] owned databases removed; removing private directory')
       // No legacy config-folder cleanup, public-file walk, or recursive alternate path.
-      if (await app.vault.adapter.exists('.abele-sync'))
-        await app.vault.adapter.rmdir('.abele-sync', true)
+      await eraseSyncPoolPrivateDirectory(app.vault)
       console.debug('[e2e sync wipe] private directory removed; clearing namespace rows')
       // Keep ownership evidence until databases and private bytes are gone.
       // Never delete shared databases.

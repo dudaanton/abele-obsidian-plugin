@@ -27,6 +27,7 @@ it('captures the real hold inputs and reports without changing port behavior', a
       },
     },
     app = {
+      loadLocalStorage: () => null,
       vault: {
         adapter: { exists: async () => true, stat: async () => stat },
         getFileByPath: () => ({ stat }),
@@ -67,6 +68,7 @@ it('lists hidden directory entries through the adapter and native filesystem', a
       },
     },
     app = {
+      loadLocalStorage: () => null,
       vault: {
         adapter: {
           exists: async () => true,
