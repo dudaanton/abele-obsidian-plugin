@@ -105,11 +105,11 @@ export class SyncDriver {
     )
   }
   traceMemory = false
-  private phaseMemory(phase: string, boundary: 'before' | 'after'): void {
-    if (!this.traceMemory) return
+  phaseMemory(phase: string, boundary: 'before' | 'after', force = false): void {
+    if (!force && !this.traceMemory) return
     try {
       const sample = this.vault().evalAwait(
-        `const sampleResident=(${residentMemorySampler.toString()})(window);return await (${syncPhaseMemory.toString()})(window,document,sampleResident??undefined)`,
+        `(async()=>{const sampleResident=(${residentMemorySampler.toString()})(window);return await (${syncPhaseMemory.toString()})(window,document,sampleResident??undefined)})()`,
         5000
       )
       console.debug('[sync phase memory]', { phase, boundary, at: Date.now(), sample })

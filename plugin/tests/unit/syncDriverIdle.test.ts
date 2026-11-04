@@ -178,6 +178,8 @@ describe('waiting for a real sync state snapshot', () => {
               ui: {
                 rows: { value: [{ id: 'sample', status: 'syncing' }] },
                 activity: { value: { sample: { transfer } } },
+                registry: { records: () => [] },
+                connectionActivity: () => ({ transfer }),
               },
             },
           },
@@ -274,6 +276,7 @@ describe('waiting for a real sync state snapshot', () => {
         },
       },
       activity: { value: {} },
+      connectionActivity: () => ({}),
       sync: async () => {},
     }
     // A new cycle starts the moment the wait is satisfied.
@@ -293,4 +296,29 @@ describe('waiting for a real sync state snapshot', () => {
     expect(settled[0].status).toBe('idle')
     expect(status).toBe('syncing')
   })
+})
+
+it('evaluates memory evidence as an expression accepted by the vault CLI', async () => {
+  const evalAwait = vi.fn((expression: string) =>
+    new Function('window', 'document', 'return (' + expression + ')')(
+      { performance: {} },
+      { getElementsByTagName: () => [] }
+    )
+  )
+  const sample = new SyncDriver(() => ({ evalAwait }) as never)
+  sample.traceMemory = true
+  const debug = vi.spyOn(console, 'debug').mockImplementation(() => {})
+  try {
+    Reflect.get(sample, 'phaseMemory').call(sample, 'sample case', 'before')
+    expect(evalAwait).toHaveBeenCalledOnce()
+    expect(debug).toHaveBeenCalledWith(
+      '[sync phase memory]',
+      expect.objectContaining({
+        sample: expect.any(Promise),
+      })
+    )
+    await evalAwait.mock.results[0].value
+  } finally {
+    debug.mockRestore()
+  }
 })

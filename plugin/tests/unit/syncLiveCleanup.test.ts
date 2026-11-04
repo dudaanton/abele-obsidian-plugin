@@ -2,7 +2,7 @@
 import { expect, it, vi, afterEach } from 'vitest'
 import { TokenSyncLive } from '../e2e/helpers/tokenSyncLive'
 import { spawnSyncServer } from '../e2e/helpers/syncServer'
-import { exposeToPhone, phoneReverseStatus } from '../e2e/helpers/phone'
+import { exposeToPhone, phoneReverseStatus, waitForPhoneRoute } from '../e2e/helpers/phone'
 import { onPhone } from '../e2e/helpers/target'
 import { SyncDriver } from '../e2e/helpers/syncDriver'
 import { cancelSyncJobs, assertSyncJob, finishSyncJob } from '../e2e/helpers/syncJobs'
@@ -20,9 +20,9 @@ vi.mock('../e2e/helpers/phone', async (original) => ({
   PHONE_VAULT: 'phone',
   exposeToPhone: vi.fn(),
   phoneReverseStatus: vi.fn(() => 'listed'),
-  waitForPhoneRoute: async (probe: () => Promise<unknown>) => {
+  waitForPhoneRoute: vi.fn(async (probe: () => Promise<unknown>) => {
     await probe()
-  },
+  }),
 }))
 vi.mock('../e2e/helpers/target', () => ({ onPhone: vi.fn(() => false) }))
 afterEach(() => {
@@ -393,4 +393,71 @@ it('keeps fixture bytes when neither reset can prove its connection retired', as
   const remove = vi.spyOn(live.primary, 'removeTree').mockResolvedValue()
   await expect(live.close()).rejects.toThrow('sample recovery pending')
   expect(remove).not.toHaveBeenCalled()
+})
+
+it('records a phone case end once even when shared cleanup rejects', async () => {
+  vi.mocked(onPhone).mockReturnValue(true)
+  const live = Object.create(TokenSyncLive.prototype) as TokenSyncLive
+  const phaseMemory = vi.fn()
+  Reflect.set(live, 'primary', { phaseMemory })
+  Reflect.set(
+    live,
+    'closeOwned',
+    vi.fn(async () => {
+      throw new Error('sample cleanup failure')
+    })
+  )
+  const first = live.close()
+  const second = live.close()
+  expect(first).toBe(second)
+  await expect(first).rejects.toThrow('sample cleanup failure')
+  expect(phaseMemory).toHaveBeenCalledExactlyOnceWith('phone case', 'after', true)
+})
+
+it('reopens only its fixture reverse after a pre-authentication close and releases both owners', async () => {
+  vi.mocked(onPhone).mockReturnValue(true)
+  vi.stubEnv('OBSIDIAN_TEST_VAULT', 'primary-pool')
+  mkdirSync(resolve('../.scratch'), { recursive: true })
+  const live = new TokenSyncLive(false)
+  Reflect.set(live, 'work', mkdtempSync(join(resolve('../.scratch'), 'route-case-')))
+  const oldStop = vi.fn(async () => {})
+  const newStop = vi.fn(async () => {})
+  vi.mocked(exposeToPhone)
+    .mockResolvedValueOnce(oldStop)
+    .mockImplementationOnce(async () => {
+      expect(oldStop).toHaveBeenCalledOnce()
+      return newStop
+    })
+  const token = Buffer.from(
+    JSON.stringify({
+      v: 1,
+      address: 'http://127.0.0.1:12345',
+      key: 'a'.repeat(43),
+      scope: { kind: 'folder', id: 'root', path: '/' },
+    })
+  ).toString('base64')
+  vi.mocked(spawnSyncServer).mockResolvedValueOnce({
+    url: 'http://127.0.0.1:12345',
+    rootToken: token,
+    kill: vi.fn(),
+  } as unknown as Awaited<ReturnType<typeof spawnSyncServer>>)
+  const actual =
+    await vi.importActual<typeof import('../e2e/helpers/phone')>('../e2e/helpers/phone')
+  vi.mocked(waitForPhoneRoute).mockImplementationOnce(actual.waitForPhoneRoute)
+  vi.spyOn(live.primary, 'long')
+    .mockResolvedValueOnce({ ok: false, stage: 'upgrade', cause: 'close', code: 1006 })
+    .mockResolvedValue({ ok: true })
+  try {
+    await live.addServer()
+    const attempts = vi.mocked(exposeToPhone).mock.calls.slice(-2)
+    expect(attempts).toHaveLength(2)
+    expect(attempts[0]).toEqual([12345])
+    expect(attempts[1][0]).toBe(12345)
+    expect(attempts[1][1]).toBeGreaterThan(0)
+    expect(attempts[1][1]).toBeLessThanOrEqual(30000)
+    expect(newStop).not.toHaveBeenCalled()
+  } finally {
+    await live.close()
+  }
+  expect(newStop).toHaveBeenCalledOnce()
 })

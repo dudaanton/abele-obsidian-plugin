@@ -54,7 +54,10 @@ export class TokenSyncLive {
   async start(): Promise<void> {
     siblingMissing()
     try {
-      if (onPhone()) beginPhoneCase()
+      if (onPhone()) {
+        beginPhoneCase()
+        this.primary.phaseMemory('phone case', 'before', true)
+      }
       // Validate BOTH leases before mutating either one; never reset pre-existing state here.
       for (const [label, device] of [
         ['primary', this.primary],
@@ -104,31 +107,50 @@ export class TokenSyncLive {
     this.servers.push(server)
     if (onPhone()) {
       const url = new URL(server.url)
-      if (url.protocol === 'http:' && url.hostname === '127.0.0.1')
-        this.reverses.push(await exposeToPhone(Number(url.port)))
+      let stopReverse: (() => Promise<void>) | undefined
+      if (url.protocol === 'http:' && url.hostname === '127.0.0.1') {
+        stopReverse = await exposeToPhone(Number(url.port))
+        this.reverses.push(stopReverse)
+      }
       // Check the actual device route, including WebSocket upgrades, before using this token.
       const token = AccessClient.fromToken(server.rootToken, { fetch: fixtureFetch }).token
-      await waitForPhoneRoute(async () => {
-        const port = Number(url.port)
-        const result = await this.primary
-          .long<PhoneRouteResult>(
-            'phone fixture WebSocket route',
-            `return await (${phoneRouteProbe.toString()})(${JSON.stringify(server.url.replace(/^http/, 'ws') + '/v2/events')},${JSON.stringify(token.key)})`,
-            true,
-            7000
-          )
-          .catch(() => {
-            // A private job can fail outside the socket probe. Never echo its error or snapshot.
-            const detail = `port=${port} reverse=${phoneReverseStatus(port)} stage=unknown cause=private-job`
+      await waitForPhoneRoute(
+        async () => {
+          const port = Number(url.port)
+          const result = await this.primary
+            .long<PhoneRouteResult>(
+              'phone fixture WebSocket route',
+              `return await (${phoneRouteProbe.toString()})(${JSON.stringify(server.url.replace(/^http/, 'ws') + '/v2/events')},${JSON.stringify(token.key)})`,
+              true,
+              7000
+            )
+            .catch(() => {
+              // A private job can fail outside the socket probe. Never echo its error or snapshot.
+              const detail = `port=${port} reverse=${phoneReverseStatus(port)} stage=unknown cause=private-job`
+              console.debug('[phone-route]', detail)
+              throw new Error('phone fixture WebSocket route: ' + detail)
+            })
+          if (!result.ok) {
+            const detail = phoneRouteDetail(result, port, phoneReverseStatus(port))
             console.debug('[phone-route]', detail)
-            throw new Error('phone fixture WebSocket route: ' + detail)
-          })
-        if (!result.ok) {
-          const detail = phoneRouteDetail(result, port, phoneReverseStatus(port))
-          console.debug('[phone-route]', detail)
-          throw new Error('phone fixture WebSocket route: ' + detail)
-        }
-      })
+            throw Object.assign(new Error('phone fixture WebSocket route: ' + detail), {
+              phoneRouteUpgradeClosed:
+                result.stage === 'upgrade' && result.cause === 'close' && result.code === 1006,
+            })
+          }
+        },
+        30000,
+        stopReverse
+          ? async (remainingMs) => {
+              const deadline = Date.now() + remainingMs
+              await stopReverse!()
+              const remaining = deadline - Date.now()
+              if (remaining <= 0) throw new Error('Phone reverse repair exhausted route deadline')
+              stopReverse = await exposeToPhone(Number(url.port), remaining)
+              this.reverses.push(stopReverse)
+            }
+          : undefined
+      )
     }
     return server
   }
@@ -224,7 +246,9 @@ export class TokenSyncLive {
       throw new Error('Remote fixture commit was rejected')
   }
   close(): Promise<void> {
-    return (this.closing ??= this.closeOwned())
+    return (this.closing ??= this.closeOwned().finally(() => {
+      if (onPhone()) this.primary.phaseMemory('phone case', 'after', true)
+    }))
   }
   private async closeOwned(): Promise<void> {
     // Cleanup may inspect a replacement page after reporting the failed case.

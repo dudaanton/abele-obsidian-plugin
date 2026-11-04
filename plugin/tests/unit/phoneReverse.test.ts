@@ -59,3 +59,54 @@ it('awaits the owned reverse exit before allowing a replacement on the same port
   second.emit('exit', 0)
   await done
 })
+
+it('repairs only an owned pre-authentication upgrade failure once within the original deadline', async () => {
+  const refused = Object.assign(new Error('upgrade closed'), { phoneRouteUpgradeClosed: true })
+  const probe = vi
+    .fn()
+    .mockRejectedValueOnce(refused)
+    .mockRejectedValueOnce(refused)
+    .mockResolvedValue(true)
+  const repair = vi.fn(async (remaining: number) => {
+    expect(remaining).toBeGreaterThan(0)
+    expect(remaining).toBeLessThanOrEqual(30000)
+  })
+  await waitForPhoneRoute(probe, 30000, repair)
+  expect(probe).toHaveBeenCalledTimes(3)
+  expect(repair).toHaveBeenCalledOnce()
+})
+
+it('does not repair an authenticated refusal or a route whose deadline already expired', async () => {
+  const repair = vi.fn()
+  await waitForPhoneRoute(
+    vi.fn().mockRejectedValueOnce(new Error('authentication refused')).mockResolvedValue(true),
+    30000,
+    repair
+  )
+  const refused = Object.assign(new Error('upgrade closed'), { phoneRouteUpgradeClosed: true })
+  await expect(
+    waitForPhoneRoute(
+      async () => {
+        throw refused
+      },
+      0,
+      repair
+    )
+  ).rejects.toThrow('upgrade closed')
+  expect(repair).not.toHaveBeenCalled()
+})
+
+it('suppresses raw driver failures while repairing the owned reverse', async () => {
+  const refused = Object.assign(new Error('upgrade closed'), { phoneRouteUpgradeClosed: true })
+  await expect(
+    waitForPhoneRoute(
+      async () => {
+        throw refused
+      },
+      30000,
+      async () => {
+        throw new Error('Bearer sample-private-key; raw device status')
+      }
+    )
+  ).rejects.toThrow('Phone authenticated route readiness failed: owned reverse repair failed')
+})

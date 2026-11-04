@@ -206,7 +206,7 @@ export const screenshot = (path: string): void => {
  * Returns the function that closes it again.
  */
 const tunnels = new Map<number, { stop: () => Promise<void> }>()
-export async function exposeToPhone(port: number): Promise<() => Promise<void>> {
+export async function exposeToPhone(port: number, timeoutMs = 20000): Promise<() => Promise<void>> {
   while (tunnels.has(port)) await tunnels.get(port)!.stop()
   const child: ChildProcess = spawn(DRIVER, ['reverse', String(port)], { stdio: 'ignore' })
   console.debug('[phone-reverse]', { event: 'start', port, at: Date.now() })
@@ -233,7 +233,7 @@ export async function exposeToPhone(port: number): Promise<() => Promise<void>> 
     },
   }
   tunnels.set(port, owner)
-  const deadline = Date.now() + 20000
+  const deadline = Date.now() + timeoutMs
   try {
     for (;;) {
       if (child.exitCode !== null || child.signalCode !== null)
@@ -271,15 +271,34 @@ export function phoneReverseStatus(port: number): 'listed' | 'absent' | 'unavail
 /** Retry authenticated route readiness; never preserve tokens or device snapshots in errors. */
 export async function waitForPhoneRoute(
   probe: () => Promise<unknown>,
-  timeoutMs = 30000
+  timeoutMs = 30000,
+  repairUpgrade?: (remainingMs: number) => Promise<void>
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs
   let detail = 'no answer'
+  let repaired = false
   do {
     try {
       await probe()
       return
     } catch (error) {
+      // Listing a reverse proves ownership, not a working socket. Repair only the
+      // fixture-owned pre-authentication transport, once, without extending its deadline.
+      if (
+        repairUpgrade &&
+        !repaired &&
+        Date.now() < deadline &&
+        error instanceof Error &&
+        Reflect.get(error, 'phoneRouteUpgradeClosed') === true
+      ) {
+        repaired = true
+        try {
+          await repairUpgrade(deadline - Date.now())
+        } catch {
+          // Driver failures may contain raw status; the readiness error stays scalar.
+          throw new Error('Phone authenticated route readiness failed: owned reverse repair failed')
+        }
+      }
       detail = String((error as Error)?.message ?? error)
         .split('; observed')[0]
         .replace(/https?:\/\/[^\s]+/gi, '[address]')
