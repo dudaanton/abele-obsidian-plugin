@@ -425,8 +425,9 @@ export function syncPlacementPlugin() {
                 !this.opts.filter.excluded(base.wirePath ?? base.path, base.size))
                 bases.push(base);`
         )
+        // The pinned SDK already imports ScanWork and scanScheduling.
         code =
-          `import { PendingPullWrites } from './pullWrite.js';\nimport { notifyApplied } from './applied.js';\nimport { ScanWork, scanScheduling } from './scanWork.js';\n` +
+          `import { PendingPullWrites } from './pullWrite.js';\nimport { notifyApplied } from './applied.js';\n` +
           code
         code = replaceOnce(
           code,

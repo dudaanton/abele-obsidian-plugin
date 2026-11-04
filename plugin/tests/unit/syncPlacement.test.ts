@@ -352,6 +352,9 @@ it.each([
   const { id, input } = sample(version, module)
   const first = syncPlacementPlugin().transform(input, id)!
   expect(first.code).toContain('abele-sync-placement-v1:')
+  // Runtime method tests do not parse imports. Check the whole transformed module
+  // too, so pinned SDK additions cannot collide with injected declarations.
+  expect(() => parse(first.code, { ecmaVersion: 'latest', sourceType: 'module' })).not.toThrow()
   expect(syncPlacementPlugin().transform(first.code, id + '?v=sample')).toEqual(first)
 })
 it('handles a symlinked installation without sharing transform state', () => {
