@@ -57,6 +57,15 @@ const localKinds = [
 
 /** Device-local diagnostics. Recording performs no console/storage calls and retains no per-file map. */
 export class ExchangeTrace {
+  private scanProgress?: {
+    startedAt: number
+    phase: string
+    at: number
+    open: boolean
+    retries: number
+    lastRetry?: string
+    samples: { operation: string; paths: string[]; at: number; stack: string }[]
+  }
   private pulling = false
   private writtenPaths: string[] = []
   private writes = 0
@@ -310,6 +319,45 @@ export class ExchangeTrace {
   }
 
   record(operation: string, startedAt: number, outcome: string, paths?: readonly string[]): void {
+    if (operation === 'fs list phase') {
+      if (!this.scanProgress?.open || outcome === 'start')
+        this.scanProgress = {
+          startedAt,
+          phase: outcome,
+          at: startedAt,
+          open: true,
+          retries: 0,
+          samples: [],
+        }
+      const progress = this.scanProgress
+      progress.phase = outcome
+      progress.at = startedAt
+      progress.open = !['complete', 'cancelled', 'failed'].includes(outcome)
+      if (outcome.startsWith('retry: ')) {
+        progress.retries++
+        progress.lastRetry = outcome.slice(7)
+      }
+      return // Diagnostic phases are not physical operations or transfer evidence.
+    }
+    const progress = this.scanProgress
+    if (progress && paths?.length) {
+      const now = Date.now()
+      if (
+        now - progress.startedAt >= 5000 &&
+        now - (progress.samples.at(-1)?.at ?? 0) >= 1000 &&
+        (progress.open || this.active.some((slot) => slot.active && slot.operation === 'fs list'))
+      ) {
+        // Only a stalled scan pays for a stack, at most once a second. Keep no unbounded
+        // per-path history, and no payload or credential values.
+        progress.samples.push({
+          operation,
+          paths: paths.slice(0, 2),
+          at: now,
+          stack: (new Error('Slow inventory I/O').stack ?? '').split('\n').slice(0, 10).join('\n'),
+        })
+        if (progress.samples.length > 4) progress.samples.shift()
+      }
+    }
     const content = contentPattern.test(operation)
     if (!this.sealed) {
       if (content) this.pulls.contentRequests++
@@ -370,6 +418,13 @@ export class ExchangeTrace {
       this.detailCount = 0
     }
     return {
+      scanProgress: this.scanProgress && {
+        ...this.scanProgress,
+        samples: this.scanProgress.samples.map((sample) => ({
+          ...sample,
+          paths: [...sample.paths],
+        })),
+      },
       localReads: mobileReadSnapshot(),
       largeTransfer: mobileLargeFileGate.snapshot(),
       lastPull: this.lastPull ? { ...this.lastPull, paths: [...this.lastPull.paths] } : null,

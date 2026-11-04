@@ -25,6 +25,12 @@ import {
 import { WriteJournal } from '@/sync/writeJournal'
 
 it(
+  'resumes native whole-vault peers with disjoint edits and one stable conflict copy',
+  () => runExchange({ delivery: false, indexed: true, merge: true }),
+  30000
+)
+
+it(
   'retires the peer-deleted renamed folder with a settled whole-vault index',
   () => runExchange({ delivery: false, indexed: true }),
   30000
@@ -45,10 +51,12 @@ async function runExchange({
   delivery,
   bulk,
   indexed,
+  merge,
 }: {
   delivery: boolean
   bulk?: boolean
   indexed?: boolean
+  merge?: boolean
 }) {
   const useIndex = bulk || indexed
   const apps: ReturnType<typeof nativeVault>[] = []
@@ -93,8 +101,37 @@ async function runExchange({
     for (const name of ['primary', 'peer']) {
       const home = join(root, name)
       await disk.mkdir(indexed ? home : join(home, 'Sample'), { recursive: true })
-      const app = nativeVault(home, disk)
+      const nativeDisk = merge
+        ? new Proxy(disk, {
+            get(target, key) {
+              if (key !== 'open') return Reflect.get(target, key)
+              return async (...args: Parameters<typeof disk.open>) => {
+                const handle = await disk.open(...args)
+                const sync = handle.sync.bind(handle)
+                handle.sync = async () => {
+                  // Host durability acknowledgements cross tasks; keep watcher/Resume
+                  // overlap observable even on a fast scratch filesystem.
+                  await new Promise((resolve) => setTimeout(resolve, 5))
+                  await sync()
+                }
+                return handle
+              }
+            },
+          })
+        : disk
+      const app = nativeVault(home, nativeDisk)
       apps.push(app)
+      if (merge) {
+        let pending = Promise.resolve<unknown>(undefined)
+        Object.assign(app.vault.adapter, {
+          queue: (work: () => Promise<unknown>) => {
+            const result = pending.then(work)
+            pending = result.catch(() => {})
+            Reflect.set(app.vault.adapter, 'promise', pending)
+            return result
+          },
+        })
+      }
       if (indexed) {
         const remove = app.vault.delete.bind(app.vault)
         app.vault.delete = async (file) => {
@@ -110,7 +147,7 @@ async function runExchange({
           return info && { ...info, ctime: Math.round(info.ctime), mtime: Math.round(info.mtime) }
         }
       }
-      if (indexed)
+      if (indexed && !merge)
         await disk.writeFile(
           join(home, '.abele-sync-ignore'),
           '*\n!Sample/\n!Sample/**\n.obsidian/\n'
@@ -194,7 +231,7 @@ async function runExchange({
         engines.push(fixture.host.live.get(fixture.id)!.engine)
         // Keep watcher proofs, but drive exchanges explicitly so an extra watcher
         // cycle cannot accidentally finish a parent deferred by the requested cycle.
-        Reflect.set(engines.at(-1)!, 'trigger', () => {})
+        if (!merge) Reflect.set(engines.at(-1)!, 'trigger', () => {})
         continue
       }
       const files = new ObsidianFileSystem(app as never, {
@@ -266,6 +303,45 @@ async function runExchange({
         peer: { syncNow: () => sync(1) },
       } as unknown as TokenSyncLive)
     if (indexed) await cycle()
+    if (merge) {
+      const path = 'Sample/merge.md'
+      const write = async (device: number, bytes: string) => {
+        await disk.mkdir(join(root, device ? 'peer/Sample' : 'primary/Sample'), { recursive: true })
+        await disk.writeFile(join(root, device ? 'peer' : 'primary', path), bytes)
+        await refreshers[device](path)
+      }
+      const pause = (device: number, value: boolean) =>
+        hosts[device].ui.pause(hosts[device].id, value)
+      await write(0, 'one\ntwo\nthree\n')
+      await cycle()
+      await pause(0, true)
+      await pause(1, true)
+      await write(0, 'local\ntwo\nthree\n')
+      await write(1, 'one\ntwo\nremote\n')
+      await pause(0, false)
+      await sync(0)
+      await pause(1, false)
+      await cycle()
+      for (const device of ['primary', 'peer'])
+        expect(await disk.readFile(join(root, device, path), 'utf8')).toBe('local\ntwo\nremote\n')
+      await pause(0, true)
+      await pause(1, true)
+      await write(0, 'first\nfirst second\nremote\n')
+      await write(1, 'second\nsecond second\nremote\n')
+      await pause(0, false)
+      await sync(0)
+      await pause(1, false)
+      await cycle()
+      const copies = () => disk.readdir(join(root, 'primary/Sample'))
+      const before = await copies()
+      expect(before.filter((name) => name !== 'merge.md')).toHaveLength(1)
+      expect(await disk.readdir(join(root, 'peer/Sample'))).toEqual(before)
+      await cycle()
+      await cycle()
+      expect(await copies()).toEqual(before)
+      expect(await disk.readdir(join(root, 'peer/Sample'))).toEqual(before)
+      return
+    }
     await disk.mkdir(join(root, 'primary/Sample/from'), { recursive: true })
     await disk.writeFile(join(root, 'primary/Sample/from/sample.md'), 'sample')
     if (useIndex) await refreshers[0]('Sample/from/sample.md')

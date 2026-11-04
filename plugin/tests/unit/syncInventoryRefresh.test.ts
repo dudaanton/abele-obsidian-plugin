@@ -12,6 +12,29 @@ import {
 } from '@abele/sync-sdk/core'
 import { CommitOpSchema } from '@abele/sync-sdk/protocol'
 
+it('cancels an inventory metadata retry instead of holding the host drain', async () => {
+  const path = '.obsidian/app.json'
+  const app = buildFakeVault([{ path, content: '{}' }])
+  const cancellation = new AbortController()
+  const fs = new ObsidianFileSystem(app as never, {
+    indexWaitSignal: () => cancellation.signal,
+  })
+  const stat = app.vault.adapter.stat.bind(app.vault.adapter)
+  let reads = 0
+  vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (candidate) => {
+    const result = await stat(candidate)
+    if (candidate === path && ++reads <= 3) {
+      app.emit('vault', 'modify', { path })
+      if (reads === 3) cancellation.abort(new Error('sample stop'))
+    }
+    return result
+  })
+  await expect(
+    fs[Symbol.for('abele.sync.inventory-pass-v1')](async () => fs.stat(path))
+  ).rejects.toThrow('sample stop')
+  expect(reads).toBe(3)
+})
+
 it.each([
   ['watch-first', 1234.75],
   ['list-first', 1234.75],
@@ -109,7 +132,12 @@ it('reuses startup inventory once and observes later config edits without waitin
     new TextEncoder().encode('{"changed":true}').buffer as ArrayBuffer,
     { mtime: 2 }
   )
-  expect(await collect()).toContainEqual({ path: '.obsidian/app.json', size: 16, mtime: 2, ctime: 0 })
+  expect(await collect()).toContainEqual({
+    path: '.obsidian/app.json',
+    size: 16,
+    mtime: 2,
+    ctime: 0,
+  })
 })
 
 it('does not stat published siblings again after the index observes them during a pull', async () => {

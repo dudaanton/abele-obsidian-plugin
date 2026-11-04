@@ -128,7 +128,10 @@ async function readConditionalRecord(disk: DataAdapter, io: BoundedVaultIo, path
 /** Revisions belong to reads, never to a later consumer of a cached value. */
 class InventoryCache<T> extends Map<string, T> {
   private readonly revisions = new Map<string, number>()
-  constructor(private readonly revision: (path: string) => number) {
+  constructor(
+    private readonly revision: (path: string) => number,
+    private readonly check: () => void = () => {}
+  ) {
     super()
   }
   override get(path: string): T | undefined {
@@ -158,9 +161,11 @@ class InventoryCache<T> extends Map<string, T> {
   }
   async stable(path: string, read: () => T): Promise<Awaited<T>> {
     for (let attempt = 0; ; attempt++) {
+      this.check()
       const value = this.get(path) ?? this.observe(path, read)
       const revision = this.revisions.get(path)
       const result = await value
+      this.check()
       if (revision === this.revision(path)) return result
       if ((attempt + 1) % INVENTORY_READ_ATTEMPTS === 0) await yieldSyncTask()
     }
@@ -943,7 +948,9 @@ export class ObsidianFileSystem implements FileSystem {
     }
   }
   private createInventory(): InventoryPass {
-    const cache = <T>() => new InventoryCache<T>((path) => this.inventoryRevision(path, inventory))
+    const check = () => (this.runIndexSignal ?? this.indexWaitSignal?.())?.throwIfAborted()
+    const cache = <T>() =>
+      new InventoryCache<T>((path) => this.inventoryRevision(path, inventory), check)
     const inventory: InventoryPass = {
       listings: cache(),
       stats: cache(),
@@ -959,7 +966,7 @@ export class ObsidianFileSystem implements FileSystem {
       indexedChildren: cache(),
       // File arrivals change parent membership, not the identity of existing folders.
       // Directory/ancestor events and polling still invalidate their own proofs.
-      directoryIdentities: new InventoryCache((path) => this.pathRevision(path, inventory)),
+      directoryIdentities: new InventoryCache((path) => this.pathRevision(path, inventory), check),
     }
     return inventory
   }
@@ -2810,24 +2817,29 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   async *list(): AsyncIterable<FileInfo> {
+    this.listPhase('start')
     const signal = this.runIndexSignal ?? this.indexWaitSignal?.()
-    signal?.throwIfAborted()
     const own = this.inventory === null && this.inventoryDepth === 0
-    if (own && this.prepareStartupInventory) {
-      await this.waitForStartupIndex(signal)
-      this.indexFallback = false
-    }
-    let inventory = own ? this.createInventory() : this.inventory
-    if (own) this.inventory = inventory
+    let inventory = this.inventory
+    let complete = false
     try {
+      signal?.throwIfAborted()
+      if (own && this.prepareStartupInventory) {
+        this.listPhase('host index')
+        await this.waitForStartupIndex(signal)
+        this.indexFallback = false
+      }
+      if (own) this.inventory = inventory = this.createInventory()
       for (;;) {
         signal?.throwIfAborted()
         this.runtimeFence?.assertReady()
         const before = !own && inventory && (await this.fileListStamp(inventory, signal))
         if (before && inventory?.fileList?.stamp === before) {
+          this.listPhase('yielding cached files')
           yield* inventory.fileList.files
           break
         }
+        this.listPhase('conditional settlement')
         await this.conditional.waitSettled(signal)
         const files: FileInfo[] = []
         try {
@@ -2837,6 +2849,7 @@ export class ObsidianFileSystem implements FileSystem {
           }
         } catch (error) {
           if (!(error instanceof ScanInterrupted)) throw error
+          this.listPhase('retry: ' + error.message)
           signal?.throwIfAborted()
           // Let host deletion/index callbacks finish before retrying a discarded scan.
           await yieldSyncTask()
@@ -2865,12 +2878,18 @@ export class ObsidianFileSystem implements FileSystem {
         }
         const after = !own && inventory && (await this.fileListStamp(inventory, signal))
         if (before && before === after && inventory) inventory.fileList = { stamp: before, files }
+        this.listPhase('yielding files')
         yield* files
         break
       }
+      complete = true
     } finally {
+      this.listPhase(signal?.aborted ? 'cancelled' : complete ? 'complete' : 'failed')
       if (own && this.inventory === inventory) this.inventory = null
     }
+  }
+  private listPhase(phase: string): void {
+    this.diagnostic?.('fs list phase', Date.now(), phase)
   }
   /** Reuse one complete disk fallback listing only while its inventory and watcher clocks
    * still cover it. An unobserved/indexed or group-discovery view keeps fresh listing. */
@@ -2922,10 +2941,13 @@ export class ObsidianFileSystem implements FileSystem {
     const budget = new SyncTaskBudget()
     const scope = this.scopedRoot()
     this.runtimeFence?.assertReady()
+    this.listPhase('recovery')
     await this.recover()
+    this.listPhase('inspection')
     await this.prepareStartupInventory?.()
     const conditionalRevision = this.conditional.assertSettled()
     const mutations = folderMutations(this.app.vault)
+    this.listPhase('folder mutation settlement')
     await mutations.settled(this.runIndexSignal ?? this.indexWaitSignal?.())
     const revision = mutations.revision
     const indexedExact = new Set<string>()
@@ -2937,6 +2959,7 @@ export class ObsidianFileSystem implements FileSystem {
       this.discovery && this.discovery.roots.length === 0 && this.indexReady()
         ? this.app.vault.getFiles().filter((file) => this.discovery.includes(file.path))
         : this.rawVaultFiles(scope)
+    this.listPhase('indexed files')
     for await (const file of files) {
       const pause = budget.metadataRow()
       if (pause !== undefined) await pause
@@ -2970,6 +2993,7 @@ export class ObsidianFileSystem implements FileSystem {
     // A pull can finish before the index sees its adapter renames, including across engine
     // rebuilds and app restarts. The ledger is authoritative about what might still be on disk.
     const candidates = new Set(this.awaitingIndex)
+    this.listPhase('ledger candidates')
     if (this.ledger !== null) {
       for await (const entry of this.ledgerEntries()) {
         const pause = budget.metadataRow()
@@ -2977,6 +3001,7 @@ export class ObsidianFileSystem implements FileSystem {
         candidates.add(entry.path)
       }
     }
+    this.listPhase('unindexed candidates')
     for (const path of candidates) {
       const pause = budget.metadataRow()
       if (pause !== undefined) await pause
@@ -3002,6 +3027,7 @@ export class ObsidianFileSystem implements FileSystem {
         this.awaitingIndex.delete(path)
     }
     if (!scope && !this.discovery) {
+      this.listPhase('config files')
       const configRevision = this.configRevision()
       if (this.cachedConfigRevision !== configRevision) {
         this.configInventory = null
@@ -3016,6 +3042,7 @@ export class ObsidianFileSystem implements FileSystem {
       }
       for (const info of this.configInventory) yield await this.told(info, true)
     }
+    this.listPhase('final settlement')
     this.conditional.assertSettled(conditionalRevision)
     if (mutations.revision !== revision) {
       throw new ScanInterrupted('a folder deletion started during the scan')

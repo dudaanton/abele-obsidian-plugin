@@ -3,6 +3,38 @@ import { ExchangeTrace } from '@/sync/exchangeTrace'
 import { assertPullEvidence } from '../helpers/smallPullBounds'
 import * as pullCounters from '@/sync/pullOperationCounts'
 
+it('retains bounded caller evidence for a slow listing without sampling ordinary scans', () => {
+  const now = vi.spyOn(Date, 'now').mockReturnValue(1000)
+  try {
+    const trace = new ExchangeTrace()
+    trace.record('fs list phase', 1000, 'recovery')
+    trace.record('adapter stat', 1000, 'complete', ['Sample/note.md'])
+    expect(Reflect.get(trace.snapshot(), 'scanProgress')?.samples).toEqual([])
+    now.mockReturnValue(7000)
+    for (let i = 0; i < 1000; i++)
+      trace.record('adapter stat', 7000, 'complete', ['Sample/note.md'])
+    const progress = Reflect.get(trace.snapshot(), 'scanProgress')
+    expect(progress).toMatchObject({
+      phase: 'recovery',
+      samples: [{ operation: 'adapter stat', paths: ['Sample/note.md'], at: 7000 }],
+    })
+    expect(progress.samples[0].stack).toContain('exchangeTrace.test')
+    for (let i = 1; i <= 10; i++) {
+      now.mockReturnValue(7000 + i * 1000)
+      trace.record('adapter stat', Date.now(), 'complete', ['Sample/note.md'])
+    }
+    expect(Reflect.get(trace.snapshot(), 'scanProgress').samples).toHaveLength(4)
+    trace.record('fs list phase', Date.now(), 'complete')
+    now.mockReturnValue(30000)
+    trace.record('adapter stat', Date.now(), 'complete', ['Other/note.md'])
+    expect(Reflect.get(trace.snapshot(), 'scanProgress').samples.at(-1).paths).toEqual([
+      'Sample/note.md',
+    ])
+  } finally {
+    now.mockRestore()
+  }
+})
+
 it('keeps strict cohort proof when concurrent diagnostics exhaust their bounded slots', async () => {
   const trace = new ExchangeTrace()
   await trace.nativeBatch(['Notes/a.md', 'Notes/b.md'], async (proof) => {
