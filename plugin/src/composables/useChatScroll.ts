@@ -179,19 +179,22 @@ export function useChatScroll(options: ChatScrollOptions) {
     if (boxHeight !== null && el.clientHeight !== boxHeight) return
     // Folded pages can touch both edges. Continue in the requested direction so
     // a bounded window does not alternate between the same two short pages.
-    if (
-      direction === 'newer' &&
-      el.scrollHeight - el.scrollTop - el.clientHeight < LOAD_OLDER_THRESHOLD_PX
-    )
-      loadNewer()
-    else if (el.scrollTop < LOAD_OLDER_THRESHOLD_PX) loadOlder()
+    if (direction === 'newer') {
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < LOAD_OLDER_THRESHOLD_PX) loadNewer()
+      return
+    }
+    if (direction === 'older') {
+      if (el.scrollTop < LOAD_OLDER_THRESHOLD_PX) loadOlder()
+      return
+    }
+    if (el.scrollTop < LOAD_OLDER_THRESHOLD_PX) loadOlder()
     else if (el.scrollHeight - el.scrollTop - el.clientHeight < LOAD_OLDER_THRESHOLD_PX) loadNewer()
   }
   const finishReveal = (direction: 'older' | 'newer') => {
     revealing = false
     const retry = deferredEdge
     deferredEdge = undefined
-    console.debug('[chat-scroll] edge load recheck')
+    console.debug('[chat-scroll] edge load recheck', { direction, retry })
     if (retry || direction === 'newer' || !anchors.anchor) checkEdges(retry ?? direction)
     if (direction === 'older') revealUntilScrollable()
   }
@@ -342,7 +345,9 @@ export function useChatScroll(options: ChatScrollOptions) {
     }
     // The container is exactly where it was put, so nobody has moved it since.
     if (codeScrollTop !== null && Math.abs(el.scrollTop - codeScrollTop) < 1) {
-      if (!anchors.anchor) checkEdges()
+      // A delayed correction event is not a request to undo a marker/navigation
+      // reveal. Refused reader requests retry in finishReveal; edge gestures
+      // also ask directly when the browser has no movement left to report.
       return
     }
     console.debug('[chat-scroll] scroll event', {

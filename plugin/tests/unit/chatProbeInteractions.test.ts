@@ -6,12 +6,48 @@ import {
   expandFirstOutlineQuestion,
   openChatSetup,
   revealNativeMenuItem,
+  scrollBackToChatMessage,
   waitForUiMatch,
 } from '../helpers/chatProbeInteractions'
 
 afterEach(() => {
   vi.restoreAllMocks()
   document.body.replaceChildren()
+})
+
+it('scrolls older bounded pages before measuring a message outside the mounted window', async () => {
+  const box = document.createElement('div')
+  document.body.append(box)
+  let start = 270
+  let pages = 0
+  let requested = false
+  const render = () => {
+    box.replaceChildren()
+    for (let i = start; i < Math.min(300, start + 90); i++) {
+      const row = document.createElement('div')
+      row.dataset.messageId = `sample-${i}`
+      row.getBoundingClientRect = () => new DOMRect(0, (i - start) * 100 - box.scrollTop, 390, 100)
+      box.append(row)
+    }
+  }
+  render()
+  box.addEventListener('wheel', () => {
+    if (!box.querySelector('[data-message-id="sample-80"]')) requested = true
+  })
+  // Mount on a later poll, as Vue does after a reader's scroll event.
+  const wait = async () => {
+    if (requested) {
+      requested = false
+      start = Math.max(0, start - 30)
+      pages++
+      render()
+    }
+  }
+  await scrollBackToChatMessage(() => box, 'sample-80', wait)
+  expect(pages).toBeGreaterThan(1)
+  const target = box.querySelector<HTMLElement>('[data-message-id="sample-80"]')!
+  expect(target.getBoundingClientRect().top).toBe(16)
+  expect(box.children.length).toBeLessThanOrEqual(90)
 })
 
 const nativeMenu = (overflow = 'auto') => {

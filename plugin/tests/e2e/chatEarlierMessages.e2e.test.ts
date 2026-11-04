@@ -184,7 +184,11 @@ const script = (layout: string) => `(async () => {
 
     // A page too short to scroll: the earlier pages come by themselves.
     await openAsHistory(fixtures[2])
-    if (!(await until(() => item('s121')))) throw Error('The short sample chat did not open')
+    // Automatic older paging can evict the tail before the next poll. Observe the
+    // active fixture and its rendered messages rather than requiring its tail to stay mounted.
+    const shortIsOpen = () => chats.activeSession.value?.currentChatFile.value?.path === fixtures[2].path && box()?.querySelector('[data-message-id^="s"]')
+    if (!(await until(shortIsOpen))) throw Error('The short sample chat did not open')
+    await settle()
     // Establish the unscrollable precondition before checking automatic paging.
     report.shortFits = box().clientHeight > 0 && box().scrollHeight <= box().clientHeight + 1
     if (!report.shortFits) throw Error('Short fixture is scrollable: ' + box().scrollHeight + ' > ' + box().clientHeight)

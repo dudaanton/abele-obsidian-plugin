@@ -1,4 +1,44 @@
 /** Browser-only interactions shared by portable probes and DOM regression tests. */
+export async function scrollBackToChatMessage(
+  container: () => HTMLElement,
+  messageId: string,
+  wait: (ms: number) => Promise<void>
+): Promise<void> {
+  const find = () =>
+    [...container().querySelectorAll<HTMLElement>('[data-message-id]')].find(
+      (row) => row.dataset.messageId === messageId
+    )
+  for (let page = 0; page < 60; page++) {
+    const box = container()
+    const win = box.ownerDocument.defaultView!
+    const message = find()
+    if (message) {
+      box.dispatchEvent(new win.WheelEvent('wheel', { bubbles: true, deltaY: -120 }))
+      box.scrollTop += message.getBoundingClientRect().top - box.getBoundingClientRect().top - 16
+      box.dispatchEvent(new win.Event('scroll'))
+      await wait(100)
+      return
+    }
+    const first = box.querySelector<HTMLElement>('[data-message-id]')?.dataset.messageId
+    box.dispatchEvent(new win.WheelEvent('wheel', { bubbles: true, deltaY: -120 }))
+    box.scrollTop = 0
+    box.dispatchEvent(new win.Event('scroll'))
+    let changed = false
+    for (let poll = 0; poll < 60; poll++) {
+      await wait(50)
+      if (
+        find() ||
+        container().querySelector<HTMLElement>('[data-message-id]')?.dataset.messageId !== first
+      ) {
+        changed = true
+        break
+      }
+    }
+    if (!changed) throw Error('Scrolling back revealed no page before ' + messageId)
+  }
+  throw Error('Message was not reached by scrolling back: ' + messageId)
+}
+
 export function revealNativeMenuItem(menu: HTMLElement, item: HTMLElement): boolean {
   const doc = item.ownerDocument
   const win = doc.defaultView!

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { expandFirstOutlineQuestion } from '../helpers/chatProbeInteractions'
+import {
+  expandFirstOutlineQuestion,
+  scrollBackToChatMessage,
+} from '../helpers/chatProbeInteractions'
 import { evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { tap, typeText } from './helpers/phone'
@@ -187,9 +190,9 @@ const script = (layout: string) => `(async () => {
     report.latest = box().scrollHeight - box().scrollTop - box().clientHeight < 60
     await open(); await choose('Back to where you were'); await holds(() => box().scrollHeight - box().scrollTop - box().clientHeight < 60)
     report.returned = box().scrollHeight - box().scrollTop - box().clientHeight < 60
-    box().dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -120 }))
-    box().scrollTop += offset('q80') - 16
-    await wait(100)
+    // The middle message is outside the bounded DOM after visiting the latest turn.
+    // Reach it as a reader does, without changing navigation's return bookmark.
+    await (${scrollBackToChatMessage.toString()})(box, 'q80', wait)
     const middleAt = offset('q80')
     await open(); await choose('To the start'); await holds(() => !modal() && item('q0'))
     await open(); await choose('Back to where you were'); await holds(() => Math.abs(offset('q80') - middleAt) < 2)
@@ -234,9 +237,7 @@ const script = (layout: string) => `(async () => {
     await open(); await choose('Back to where you were'); await wait(1800)
     phase('alternate branch and deferred navigation')
     const originalLeaf = owner.branchLeafId
-    box().dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -120 }))
-    box().scrollTop += offset('q80') - 16
-    await wait(100)
+    await (${scrollBackToChatMessage.toString()})(box, 'q80', wait)
     const originalAt = offset('q80')
     await open()
     modal().querySelector('[data-fork-id="q0"] > .tree-item-self').click()

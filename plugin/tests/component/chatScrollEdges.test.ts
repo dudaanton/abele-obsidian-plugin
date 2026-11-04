@@ -42,6 +42,39 @@ function open(height = 4000) {
 }
 
 describe('bounded chat window edges', () => {
+  it('does not undo marker paging on a delayed event at the last code scroll position', async () => {
+    const { scroll } = open()
+    scroll.shouldAutoScroll = true
+    scroll.doScroll()
+    await nextTick()
+    scroll.shouldAutoScroll = false
+    scroll.loadOlder()
+    await advance(80)
+    const start = scroll.visibleMessages.value[0]?.id
+    scroll.onMessagesScroll()
+    await advance(300)
+    expect(scroll.visibleMessages.value[0]?.id).toBe(start)
+  })
+
+  it('does not reverse a marker reveal just because eviction leaves the viewport at the bottom', async () => {
+    const { scroll, box } = open()
+    box.scrollTop = 3200
+    scroll.loadOlder()
+    const start = scroll.visibleMessages.value[0]?.id
+    await advance(300)
+    expect(scroll.visibleMessages.value[0]?.id).toBe(start)
+  })
+
+  it('does not reverse a newer reveal when layout leaves the viewport at the top', async () => {
+    const { scroll, box } = open()
+    box.scrollTop = 3200
+    scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: 100 }))
+    const start = scroll.visibleMessages.value[0]?.id
+    box.scrollTop = 0
+    await advance(300)
+    expect(scroll.visibleMessages.value[0]?.id).toBe(start)
+  })
+
   it('keeps paging newer when folded messages touch both edges, without oscillating', async () => {
     const { scroll, box } = open(800)
     box.scrollTop = 0
