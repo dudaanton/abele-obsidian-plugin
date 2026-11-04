@@ -38,3 +38,13 @@ it('keeps phase diagnostics usable when the native sampler refuses', async () =>
   )
   expect(result.resident).toEqual({ available: false })
 })
+
+it('labels native app memory separately from the WebContent heap in every phase', async () => {
+  const result = await syncPhaseMemory(
+    { performance: {} } as never,
+    { getElementsByTagName: () => [] } as never,
+    Object.assign(async () => 4096, { source: 'native-app' as const })
+  )
+  expect(result.resident).toEqual({ available: true, bytes: 4096, source: 'native-app' })
+  expect(result.heap).toEqual({ available: false })
+})

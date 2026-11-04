@@ -2,7 +2,7 @@
 export async function syncPhaseMemory(
   view: Window,
   doc: Document,
-  resident?: () => Promise<number>
+  resident?: (() => Promise<number>) & { source?: string }
 ) {
   const memory = Reflect.get(view.performance, 'memory')
   const used = memory?.usedJSHeapSize
@@ -27,7 +27,11 @@ export async function syncPhaseMemory(
     canvasPixels,
     resident:
       typeof residentBytes === 'number' && Number.isFinite(residentBytes) && residentBytes > 0
-        ? { available: true, bytes: residentBytes }
+        ? {
+            available: true,
+            bytes: residentBytes,
+            ...(resident?.source ? { source: resident.source } : {}),
+          }
         : { available: false },
   }
 }
