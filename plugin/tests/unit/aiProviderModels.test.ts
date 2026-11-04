@@ -53,6 +53,7 @@ describe('provider model editing', () => {
     expect(providers.value[0].models).toEqual([
       {
         id: 'remote',
+        entryId: expect.any(String),
         name: '',
         contextWindow: 128000,
         maxTokens: 4096,

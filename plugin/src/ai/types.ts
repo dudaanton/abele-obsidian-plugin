@@ -63,6 +63,8 @@ export interface AiProvider {
 }
 
 export interface AiModelConfig {
+  /** Stable configured-entry identity, separate from the API model id. */
+  entryId?: string
   id: string
   name: string
   contextWindow: number

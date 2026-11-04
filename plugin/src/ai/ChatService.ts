@@ -1,3 +1,4 @@
+import { findModelEntry } from '@/ai/modelEntries'
 import { nodeSectionLive } from './toolSections'
 import { UiError, uiMessage } from '@/i18n/streamBErrors'
 
@@ -1571,7 +1572,7 @@ export class ChatService {
     }
     if (!provider) throw new UiError(uiMessage('streamBError.22b988efd0'))
 
-    let model = provider.models.find((m) => m.id === config.activeModelId)
+    let model = findModelEntry(provider.models, config.activeModelId)
     if (!model) {
       model = provider.models[0]
     }
@@ -1620,7 +1621,7 @@ export class ChatService {
     const [providerId, modelId] = choice.includes('::') ? choice.split('::') : ['', choice]
     for (const provider of choice ? config.providers : []) {
       if (providerId && provider.id !== providerId) continue
-      const model = provider.models.find((m) => m.id === modelId)
+      const model = findModelEntry(provider.models, modelId)
       if (model) {
         return {
           id: model.id,
@@ -1638,6 +1639,7 @@ export class ChatService {
           maxTokens: model.maxTokens,
           supportsReasoning: model.supportsReasoning,
           reasoningDisabled: model.reasoningDisabled,
+          reasoningEffort: model.reasoningEffort,
         }
       }
     }
@@ -1755,7 +1757,7 @@ export class ChatService {
     }
     if (!provider) throw new UiError(uiMessage('streamBError.22b988efd0'))
 
-    let model = provider.models.find((m) => m.id === modelId)
+    let model = findModelEntry(provider.models, modelId)
     if (!model) {
       model = provider.models[0]
     }

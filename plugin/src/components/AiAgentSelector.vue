@@ -40,6 +40,8 @@
 </template>
 
 <script setup lang="ts">
+import { findModelEntry, modelEntryKey } from '@/ai/modelEntries'
+
 import { t } from '@/i18n'
 import { computed, ref, watchEffect } from 'vue'
 import { Menu, Notice, Platform, setTooltip } from 'obsidian'
@@ -140,7 +142,7 @@ const agentModelLabel = computed(() => {
   if (!agent?.modelId) return ''
   for (const provider of AbeleConfig.getInstance().ai.providers)
     if (provider.id === agent.providerId) {
-      const model = provider.models.find((m) => m.id === agent.modelId)
+      const model = findModelEntry(provider.models, agent.modelId)
       if (model) return model.name || model.id
     }
   return agent.modelId
@@ -174,12 +176,13 @@ function showModels() {
         item
           .setTitle(model.name || model.id)
           .setChecked(
-            s.activeProviderId.value === provider.id && s.activeModelId.value === model.id
+            s.activeProviderId.value === provider.id &&
+              findModelEntry(provider.models, s.activeModelId.value) === model
           )
           .setSection('models')
           .onClick(() => {
             s.activeProviderId.value = provider.id
-            s.activeModelId.value = model.id
+            s.activeModelId.value = modelEntryKey(model)
             void s.save()
           })
       )

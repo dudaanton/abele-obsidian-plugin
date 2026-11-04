@@ -103,6 +103,60 @@ function seedAgents() {
   return { main, helper }
 }
 
+it('offers distinct same-id model entries and retains the second choice in agent settings', async () => {
+  const { main } = seedAgents()
+  const config = AbeleConfig.getInstance()
+  config.ai.providers = [
+    {
+      ...provider,
+      models: [
+        {
+          ...provider.models[0],
+          entryId: 'sample-medium',
+          name: 'Balanced',
+          reasoningEffort: 'medium',
+        },
+        {
+          ...provider.models[0],
+          entryId: 'sample-high',
+          name: 'Thorough',
+          reasoningEffort: 'high',
+        },
+      ],
+    },
+  ]
+  const view = mountEditor(main.id)
+  try {
+    const picker = view
+      .findAllComponents(Dropdown)
+      .find((control) =>
+        control
+          .props('options')
+          ?.some((option: { value: string }) => option.value === 'p1::sample-high')
+      )!
+    expect(picker.props('modelValue')).toBe('p1::sample-medium')
+    await picker.vm.$emit('update:model-value', 'p1::sample-high')
+    expect(main.modelId).toBe('sample-high')
+    expect(AgentRegistry.getInstance().resolveModel(main)).toMatchObject({
+      id: 'big',
+      reasoningEffort: 'high',
+    })
+    expect(picker.props('modelValue')).toBe('p1::sample-high')
+  } finally {
+    view.unmount()
+  }
+  const reopened = mountEditor(main.id)
+  try {
+    expect(
+      reopened
+        .findAllComponents(Dropdown)
+        .some((control) => control.props('modelValue') === 'p1::sample-high')
+    ).toBe(true)
+  } finally {
+    reopened.unmount()
+  }
+})
+
 it.each(['forgejo', 'gitea'])('offers %s connection permissions starting Off', async (provider) => {
   const { main } = seedAgents()
   AbeleConfig.getInstance().github = githubSettingsFrom({

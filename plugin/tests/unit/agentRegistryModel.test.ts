@@ -51,6 +51,37 @@ beforeEach(() => {
 })
 
 describe('AgentRegistry.resolveModel', () => {
+  it('keeps duplicate model choices across reload while resolving legacy API ids to the first', () => {
+    const config = AbeleConfig.getInstance()
+    config.applySettings()
+    const settings = config.exportSettings()
+    settings.ai.providers = [
+      {
+        ...openai,
+        models: [
+          { ...openai.models[1], name: 'Balanced', reasoningEffort: 'medium' },
+          { ...openai.models[1], name: 'Thorough', reasoningEffort: 'high' },
+        ],
+      },
+    ]
+    config.applySettings(settings)
+    const second = config.ai.providers[0].models[1] as (typeof openai.models)[0] & {
+      entryId?: string
+    }
+    expect(second.entryId).toBeTruthy()
+    const agent = createAgent({ providerId: 'openai', modelId: second.entryId! })
+    config.ai.agents.push(agent)
+    config.applySettings(JSON.parse(JSON.stringify(config.exportSettings())))
+    expect(AgentRegistry.getInstance().resolveModel(agent)).toMatchObject({
+      id: 'o3',
+      name: 'Thorough',
+      reasoningEffort: 'high',
+    })
+    expect(
+      AgentRegistry.getInstance().resolveModel(createAgent({ providerId: 'openai', modelId: 'o3' }))
+    ).toMatchObject({ id: 'o3', name: 'Balanced', reasoningEffort: 'medium' })
+  })
+
   it('builds a model config from the agent provider and model, with the key from the keychain', () => {
     const agent = createAgent({ providerId: 'openai', modelId: 'o3' })
 

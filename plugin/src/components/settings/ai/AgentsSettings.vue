@@ -85,6 +85,8 @@
 </template>
 
 <script setup lang="ts">
+import { findModelEntry } from '@/ai/modelEntries'
+
 import { settingsCount } from '@/i18n/settingsCounts'
 import { t } from '@/i18n'
 import { streamBAgentDescription } from '@/i18n/streamBLabels'
@@ -148,7 +150,7 @@ function metaFor(agent: AgentDefinition): string[] {
 function modelLabel(agent: AgentDefinition): string {
   if (!agent.modelId) return t('settings.ai.AgentsSettings.no_model.f62c7d17')
   const provider = config.ai.providers.find((p) => p.id === agent.providerId)
-  const model = provider?.models.find((m) => m.id === agent.modelId)
+  const model = provider && findModelEntry(provider.models, agent.modelId)
   return model?.name || agent.modelId
 }
 

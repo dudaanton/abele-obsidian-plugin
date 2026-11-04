@@ -42,6 +42,14 @@ list entries are preserved. A write failure stops the action; already changed no
 remain changed and retrying is safe. With property drawing disabled, Obsidian displays the
 ordinary stored values. Tables and group views do not use select presentation.
 
+## Configured model references
+
+Configured AI models store a stable `entryId` separately from their API `id`. Agent model
+references and chat model overrides store the entry key, so two configurations of the same
+API model retain independent names, reasoning effort and other options. Provider transfers
+include these keys. Older settings receive keys automatically; legacy API-id references
+continue resolving to the first matching entry within the selected provider.
+
 ## Chat compaction
 
 A compaction divider stores the continuation summary as a visible system message and an internal

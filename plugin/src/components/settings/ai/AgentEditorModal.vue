@@ -410,6 +410,8 @@
 </template>
 
 <script setup lang="ts">
+import { modelEntryKey, modelChoiceKey } from '@/ai/modelEntries'
+
 import NodeBypassHelp from '../../NodeBypassHelp.vue'
 import StatusDot from '../../obsidian/StatusDot.vue'
 import { nodeToolRunners } from '@/node/nodeAgentTools'
@@ -596,7 +598,7 @@ const modelOptions = computed(() => {
   for (const provider of config.ai.providers) {
     for (const model of provider.models) {
       opts.push({
-        value: `${provider.id}::${model.id}`,
+        value: `${provider.id}::${modelEntryKey(model)}`,
         display: `${model.name || model.id} · ${provider.name}`,
       })
     }
@@ -605,11 +607,17 @@ const modelOptions = computed(() => {
 })
 
 const modelKey = computed(() =>
-  agent.value?.modelId ? `${agent.value.providerId}::${agent.value.modelId}` : ''
+  agent.value?.modelId
+    ? modelChoiceKey(config.ai.providers, agent.value.providerId, agent.value.modelId)
+    : ''
 )
 const fallbackKey = computed(() =>
   agent.value?.fallbackModelId
-    ? `${agent.value.fallbackProviderId ?? ''}::${agent.value.fallbackModelId}`
+    ? modelChoiceKey(
+        config.ai.providers,
+        agent.value.fallbackProviderId ?? '',
+        agent.value.fallbackModelId
+      )
     : ''
 )
 
@@ -620,7 +628,11 @@ function selectModel(key: string): void {
 
 const backgroundKey = computed(() =>
   agent.value?.auxiliaryModelId
-    ? `${agent.value.auxiliaryProviderId ?? ''}::${agent.value.auxiliaryModelId}`
+    ? modelChoiceKey(
+        config.ai.providers,
+        agent.value.auxiliaryProviderId ?? '',
+        agent.value.auxiliaryModelId
+      )
     : ''
 )
 

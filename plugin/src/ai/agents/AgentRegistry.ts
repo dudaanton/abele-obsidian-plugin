@@ -1,3 +1,4 @@
+import { findModelEntry } from '@/ai/modelEntries'
 import { providerKey } from '@/secrets/destinations'
 import { reactive, ref, isReactive } from 'vue'
 import { TFile } from 'obsidian'
@@ -239,7 +240,7 @@ export class AgentRegistry {
     const candidates = providerId ? providers.filter((p) => p.id === providerId) : providers
 
     for (const provider of candidates) {
-      const model = provider.models.find((m) => m.id === modelId)
+      const model = findModelEntry(provider.models, modelId)
       if (model) return { provider, model }
     }
     return null

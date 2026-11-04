@@ -24,7 +24,10 @@ const frame = new TextEncoder().encode(
 )
 const collect = async (chosen: ModelConfig) => {
   const events: StreamEvent[] = []
-  for await (const event of new OpenAIClient().stream(chosen, '', [], [])) events.push(event)
+  for await (const event of new OpenAIClient().stream(chosen, '', [], [], {
+    reasoningEffort: chosen.reasoningEffort,
+  }))
+    events.push(event)
   return events
 }
 
@@ -56,6 +59,54 @@ afterEach(() => {
 })
 
 describe('model request timeout settings', () => {
+  it('transfers duplicate entries and sends the chosen entry effort after reload', async () => {
+    const config = AbeleConfig.getInstance()
+    config.ai.providers[0].models = [
+      { ...model, entryId: 'sample-balanced', supportsReasoning: true, reasoningEffort: 'medium' },
+      { ...model, entryId: 'sample-thorough', supportsReasoning: true, reasoningEffort: 'high' },
+    ]
+    config.ai.activeModelId = 'sample-thorough'
+    config.ai.auxiliaryModelId = 'sample-provider::sample-thorough'
+    config.applySettings(JSON.parse(JSON.stringify(config.exportSettings())))
+    const service = ChatService.getInstance()
+    for (const chosen of [
+      service.getActiveModelConfig(),
+      service.getModelConfigFor('sample-provider', 'sample-thorough'),
+      service.getAuxiliaryModelConfig(),
+    ]) {
+      expect(chosen).toMatchObject({ id: 'sample-model', reasoningEffort: 'high' })
+    }
+    const fetch = vi.spyOn(window, 'fetch').mockImplementation(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(frame)
+              controller.close()
+            },
+          })
+        )
+    )
+    await collect(service.getModelConfigFor('sample-provider', 'sample-thorough'))
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
+      model: 'sample-model',
+      reasoning_effort: 'high',
+    })
+    expect(service.getModelConfigFor('sample-provider', 'sample-model').reasoningEffort).toBe(
+      'medium'
+    )
+    const entries = collectEntries(config.exportSettings()).filter(
+      (entry) => entry.section === 'ai-providers'
+    )
+    const target = config.exportSettings()
+    target.ai.providers = []
+    const received = applyEntries(entries, target)
+    expect(received.ai.providers[0].models[1]).toMatchObject({
+      entryId: 'sample-thorough',
+      reasoningEffort: 'high',
+    })
+  })
+
   it('reaches primary, fallback, background and legacy model configs', () => {
     const agent = createAgent({
       providerId: 'sample-provider',

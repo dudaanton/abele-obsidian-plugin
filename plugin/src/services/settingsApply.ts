@@ -1,6 +1,7 @@
 import { backgroundsFrom } from '@/maps/core/model'
 import { zenSettings } from '@/zen/zenSession'
 import { migrateAgents } from '@/ai/agents/migration'
+import { migrateModelEntries } from '@/ai/modelEntries'
 import { mergeChatIndex } from '@/ai/chatIndexFile'
 import { migrateMcpPermissions } from '@/ai/mcp/permissions'
 import { notifyMcpPermissionReset } from '@/ai/mcp/settings'
@@ -107,6 +108,7 @@ export function applySettingsTo(
   // Runs before the legacy migrations below, so a settings file predating both is folded
   // into an agent using the values it actually had on disk.
   let migrated = migrateAgents(config.ai)
+  if (migrateModelEntries(config.ai.providers)) migrated = true
   const savedKeys = savedKeysWithIds(config.ai.secrets ?? [])
   if (savedKeys.some((key, index) => key.id !== config.ai.secrets[index].id)) migrated = true
   config.ai.secrets = savedKeys

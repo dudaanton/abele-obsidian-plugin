@@ -1,3 +1,4 @@
+import { findModelEntry, modelEntryKey } from '@/ai/modelEntries'
 import { computed, reactive, ref, type Ref } from 'vue'
 import { nanoid } from 'nanoid'
 import type { AbeleConfig } from '@/services/AbeleConfig'
@@ -40,8 +41,8 @@ export function useAiProviderModels(options: ProviderModelsOptions) {
     const choice = auxiliaryModelId.value
     const [providerId, modelId] = choice.includes('::') ? choice.split('::') : ['', choice]
     for (const p of providers.value) {
-      if ((!providerId || p.id === providerId) && p.models.some((m) => m.id === modelId)) {
-        return `${p.id}::${modelId}`
+      if ((!providerId || p.id === providerId) && findModelEntry(p.models, modelId)) {
+        return `${p.id}::${modelEntryKey(findModelEntry(p.models, modelId)!)}`
       }
     }
     return ''
@@ -52,7 +53,7 @@ export function useAiProviderModels(options: ProviderModelsOptions) {
     for (const p of providers.value) {
       for (const m of p.models) {
         options.push({
-          value: `${p.id}::${m.id}`,
+          value: `${p.id}::${modelEntryKey(m)}`,
           display: `${p.name} / ${m.name || m.id}`,
         })
       }
@@ -135,6 +136,7 @@ export function useAiProviderModels(options: ProviderModelsOptions) {
     } else {
       provider.models.push({
         id: modelId,
+        entryId: nanoid(),
         name: '',
         contextWindow: DEFAULT_CONTEXT_WINDOW,
         maxTokens: DEFAULT_MAX_TOKENS,
@@ -154,6 +156,7 @@ export function useAiProviderModels(options: ProviderModelsOptions) {
   const addModel = (providerIdx: number) => {
     const model: AiModelConfig = {
       id: '',
+      entryId: nanoid(),
       name: '',
       contextWindow: 128000,
       maxTokens: 4096,
@@ -178,6 +181,7 @@ export function useAiProviderModels(options: ProviderModelsOptions) {
 
   const onModelSave = (pIdx: number, mIdx: number, model: AiModelConfig) => {
     const models = providers.value[pIdx].models
+    model.entryId = models[mIdx]?.entryId || model.entryId || nanoid()
     if (mIdx >= models.length) {
       models.push(model)
     } else {

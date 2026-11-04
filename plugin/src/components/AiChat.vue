@@ -542,6 +542,8 @@
 </template>
 
 <script setup lang="ts">
+import { findModelEntry, modelEntryKey } from '@/ai/modelEntries'
+
 import { presentUiError, presentUiMessage } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
 import { NODE_CODE_LINK_OPENER } from '@/node/codeLinkContext'
@@ -2105,18 +2107,20 @@ const applyAiModelProperty = (modelKey: string | undefined) => {
       (p) => p.id === providerPart || p.name === providerPart
     )
     if (provider) {
-      const model = provider.models.find((m) => m.id === modelPart || m.name === modelPart)
+      const model =
+        findModelEntry(provider.models, modelPart) ??
+        provider.models.find((m) => m.name === modelPart)
       if (model) {
         resolvedProviderId = provider.id
-        resolvedModelId = model.id
+        resolvedModelId = modelEntryKey(model)
       }
     }
   } else {
     for (const p of config.ai.providers) {
-      const m = p.models.find((m) => m.id === modelKey || m.name === modelKey)
+      const m = findModelEntry(p.models, modelKey) ?? p.models.find((m) => m.name === modelKey)
       if (m) {
         resolvedProviderId = p.id
-        resolvedModelId = m.id
+        resolvedModelId = modelEntryKey(m)
         break
       }
     }

@@ -85,6 +85,8 @@
 </template>
 
 <script setup lang="ts">
+import { modelEntryKey, modelChoiceKey } from '@/ai/modelEntries'
+
 import { t } from '@/i18n'
 import { nodeRepositoryToolsHost } from '@/ai/tools/node'
 import { revokeObsidianChatNodeApproval } from '@/ai/tools/node/owner'
@@ -124,7 +126,10 @@ const modelOptions = computed(() => {
   const opts: { value: string; display: string }[] = []
   for (const provider of AbeleConfig.getInstance().ai.providers) {
     for (const model of provider.models) {
-      opts.push({ value: `${provider.id}::${model.id}`, display: model.name || model.id })
+      opts.push({
+        value: `${provider.id}::${modelEntryKey(model)}`,
+        display: model.name || model.id,
+      })
     }
   }
   return opts
@@ -133,7 +138,13 @@ const modelOptions = computed(() => {
 const modelKey = computed(() => {
   const s = session.value
   if (!s) return ''
-  return s.activeModelId.value ? `${s.activeProviderId.value}::${s.activeModelId.value}` : ''
+  return s.activeModelId.value
+    ? modelChoiceKey(
+        AbeleConfig.getInstance().ai.providers,
+        s.activeProviderId.value,
+        s.activeModelId.value
+      )
+    : ''
 })
 
 function selectModel(key: string) {
