@@ -46,6 +46,7 @@ const script = (layout: string) => `(async () => {
   const marker = () => box()?.querySelector('.abele-ai-chat__older button')
   const item = id => box()?.querySelector('[data-message-id="' + id + '"]')
   const mounted = () => box()?.querySelectorAll('[data-message-id]').length ?? 0
+  const firstId = () => box()?.querySelector('[data-message-id]')?.getAttribute('data-message-id')
   const offset = el => el.getBoundingClientRect().top - box().getBoundingClientRect().top
   const until = async (fn, ms = 6000) => { for (const end = Date.now() + ms; Date.now() < end; await wait(30)) { try { if (fn()) return true } catch {} } return false }
   // The first message in view, the one the reader is looking at.
@@ -128,11 +129,11 @@ const script = (layout: string) => `(async () => {
     let steps = 0, maxDrift = 0
     while (marker() && steps < 20) {
       steps++
-      const before = mounted()
+      const before = firstId()
       box().scrollTop = 0
       const anchor = firstInView()
       const at = offset(anchor)
-      if (!(await until(() => mounted() > before, 3000))) throw Error('Scrolling to the top revealed nothing at step ' + steps)
+      if (!(await until(() => firstId() !== before, 3000))) throw Error('Scrolling to the top revealed nothing at step ' + steps)
       await settle()
       if (anchor.isConnected) maxDrift = Math.max(maxDrift, Math.abs(offset(anchor) - at))
       if (steps === 1) await capture('scrolled-once')
@@ -162,13 +163,13 @@ const script = (layout: string) => `(async () => {
     report.clickLog = []
     while (marker() && clicks < 20) {
       clicks++
-      const before = mounted()
+      const before = firstId()
       const anchor = firstInView()
       const at = offset(anchor)
       const height = box().clientHeight
       const focused = document.activeElement?.className || document.activeElement?.tagName
       marker().click()
-      if (!(await until(() => mounted() > before, 3000))) break
+      if (!(await until(() => firstId() !== before, 3000))) break
       await settle()
       boxChange = Math.max(boxChange, Math.abs(box().clientHeight - height))
       report.clickLog.push(clicks + ': ' + anchor.dataset.messageId + ' at ' + Math.round(at) + ' -> ' + Math.round(offset(anchor)) + ', box ' + height + ' -> ' + box().clientHeight + ', focus ' + focused)
@@ -205,6 +206,83 @@ const script = (layout: string) => `(async () => {
 })()`
 
 describe.skipIf(!available)('earlier messages of a chat', () => {
+  it.each(onPhone() ? ['phone'] : ['desktop', 'emulated phone'])(
+    'returns to the real end after traversing a bounded long chat on %s',
+    async (layout) => {
+      const run = async () =>
+        JSON.parse(
+          await evalLong(
+            `(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms))
+        const chats = window.__abeleTest.ChatService.getInstance()
+        const path = 'sample-bidirectional-scroll.abchat'
+        const tabs = [...chats.tabOrder.value], active = chats.activeTabId.value
+        let file, session
+        try {
+          if (app.vault.getAbstractFileByPath(path)) throw Error('Sample path occupied')
+          const records = [{ v: 2, k: 'meta', type: 'abele-chat', title: 'Sample bounded scroll', created: '2023-11-14', activeLeafId: 'm1799' }]
+          for (let i = 0; i < 1800; i++) records.push({ k: 'msg', id: 'm' + i, parentId: i ? 'm' + (i - 1) : undefined, role: i % 3 === 1 ? 'tool-call' : i % 2 ? 'assistant' : 'user', content: 'Sample garden message ' + i + '. ' + 'Leave space along the path. '.repeat(8), ...(i % 3 === 1 ? { toolName: 'read', toolParams: { path: 'Samples/sample.md' }, toolResult: 'Sample result', toolStatus: 'approved' } : {}), timestamp: 1700000000000 + i * 1000 })
+          file = await app.vault.create(path, records.map(JSON.stringify).join('\\n') + '\\n')
+          if (!chats.canCreateTab) throw Error('No scratch tab available')
+          await chats.openChatInTab(chats.createTab(), file)
+          session = chats.getSessionByFile(path)
+          await chats.revealSidebar({ focus: false })
+          const box = () => [...document.querySelectorAll('.abele-ai-chat__messages')].find(el => el.getClientRects().length)
+          const item = id => box()?.querySelector('[data-message-id="' + id + '"]')
+          for (let n = 0; n < 100 && !item('m1799'); n++) await wait(50)
+          if (!item('m1799')) throw Error('Chat did not open at its end')
+          await wait(1800)
+          session.isStreaming.value = true
+          for (let n = 0; n < 30; n++) {
+            session.streamingContent.value = ('Sample streamed paragraph ' + n + '. ').repeat(20 + n)
+            session.updateChatMessage(m => m.id === 'm1798', m => ({ ...m, toolResult: 'Sample updated output. '.repeat(10 + n) }))
+            for (const details of box().querySelectorAll('details')) details.open = n % 2 === 0
+            await wait(120)
+            const gap = box().scrollHeight - box().scrollTop - box().clientHeight
+            if (gap > 60) throw Error('Following left the bottom during tool layout: ' + gap)
+          }
+          session.streamingContent.value = ''
+          session.isStreaming.value = false
+          await wait(1800)
+          for (let n = 0; n < 25; n++) {
+            const el = box()
+            el.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -100 }))
+            el.scrollTop = 0
+            el.dispatchEvent(new Event('scroll'))
+            await wait(120)
+          }
+          if (item('m1799')) throw Error('Did not leave the tail window')
+          for (let n = 0; n < 300 && !item('m1799'); n++) {
+            const el = box()
+            el.scrollTop = el.scrollHeight
+            el.dispatchEvent(new Event('scroll'))
+            el.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 100 }))
+            await wait(100)
+          }
+          if (!item('m1799')) throw Error('Last message was not mounted again')
+          box().scrollTop = box().scrollHeight
+          box().dispatchEvent(new Event('scroll'))
+          await wait(1800)
+          const last = item('m1799').getBoundingClientRect()
+          const viewport = box().getBoundingClientRect()
+          return JSON.stringify({ reachedEnd: last.bottom > viewport.top && last.top < viewport.bottom && box().scrollHeight - box().scrollTop - box().clientHeight < 2 })
+        } finally {
+          if (session) { session.streamingContent.value = ''; session.isStreaming.value = false }
+          for (const id of [...chats.tabOrder.value]) if (!tabs.includes(id)) await chats.closeTab(id)
+          if (active) chats.activeTabId.value = active
+          chats.saveTabs()
+          if (file && app.vault.getAbstractFileByPath(path)) await app.vault.delete(file)
+        }
+      })()`,
+            90_000
+          )
+        ) as { reachedEnd: boolean }
+      const result = layout === 'emulated phone' ? await withEmulatedPhone(run) : await run()
+      expect(result.reachedEnd).toBe(true)
+    },
+    180_000
+  )
+
   it.each(onPhone() ? ['phone'] : ['desktop', 'emulated phone'])(
     'are reached by scrolling, by the marker and by themselves on a short page, on %s',
     async (layout) => {

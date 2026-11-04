@@ -126,6 +126,8 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     index: number
     tag: string
     text: string
+    rootIndex: number
+    rootCount: number
     messageId?: string
     streamingHost: HTMLElement | null
     precedingIds: Set<string | undefined>
@@ -141,11 +143,15 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
   const blockKey = (el: HTMLElement, container: HTMLElement): BlockKey | null => {
     const root = el.parentElement
     if (!root?.classList.contains('abele-markdown')) return null
+    const host = el.closest<HTMLElement>('[data-message-id], .abele-ai-chat__streaming')
+    const roots = Array.from(host?.querySelectorAll<HTMLElement>('.abele-markdown') ?? [])
     return {
       root,
       index: Array.from(root.children).indexOf(el),
       tag: el.tagName,
       text: el.textContent ?? '',
+      rootIndex: roots.indexOf(root),
+      rootCount: roots.length,
       messageId: el.closest<HTMLElement>('[data-message-id]')?.dataset.messageId,
       streamingHost: el.closest<HTMLElement>('.abele-ai-chat__streaming'),
       precedingIds: new Set(
@@ -160,24 +166,44 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
   const resolveBlock = (key: BlockKey, container: HTMLElement): HTMLElement | null => {
     const roots: HTMLElement[] = []
     if (container.contains(key.root)) roots.push(key.root)
+    const addRoot = (host: HTMLElement) => {
+      const candidates = Array.from(host.querySelectorAll<HTMLElement>('.abele-markdown'))
+      if (candidates.length === key.rootCount && key.rootIndex >= 0)
+        roots.push(candidates[key.rootIndex])
+    }
     for (const message of Array.from(
       container.querySelectorAll<HTMLElement>('[data-message-id]')
     )) {
       const id = message.dataset.messageId
       if (key.messageId ? id !== key.messageId : !key.streamingHost || key.precedingIds.has(id))
         continue
-      roots.push(...Array.from(message.querySelectorAll<HTMLElement>('.abele-markdown')))
+      if (!roots.length) addRoot(message)
     }
-    if (!key.messageId && key.streamingHost && container.contains(key.streamingHost))
-      roots.push(...Array.from(key.streamingHost.querySelectorAll<HTMLElement>('.abele-markdown')))
+    if (
+      !roots.length &&
+      !key.messageId &&
+      key.streamingHost &&
+      container.contains(key.streamingHost)
+    )
+      addRoot(key.streamingHost)
     for (const root of roots) {
       const blocks = Array.from(root.children)
       const matches = (el: Element | undefined): el is HTMLElement =>
         !!el?.instanceOf(HTMLElement) &&
         el.tagName === key.tag &&
-        (el.textContent ?? '').startsWith(key.text)
-      const indexed = blocks[key.index]
-      const found = matches(indexed) ? indexed : blocks.find(matches)
+        !!key.text &&
+        el.textContent === key.text
+      const exact = blocks.filter(matches)
+      // A short prefix (especially an empty paragraph) is not an identity.
+      // Prefer an unambiguous exact match; only substantial streamed text can grow.
+      const growing = blocks.filter(
+        (el): el is HTMLElement =>
+          el.instanceOf(HTMLElement) &&
+          el.tagName === key.tag &&
+          key.text.length >= 32 &&
+          (el.textContent ?? '').startsWith(key.text)
+      )
+      const found = exact.length === 1 ? exact[0] : growing.length === 1 ? growing[0] : null
       if (!found) continue
       key.root = root
       key.messageId = found.closest<HTMLElement>('[data-message-id]')?.dataset.messageId
@@ -223,6 +249,10 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
   const holdSteady = () => {
     const container = messagesContainer.value
     if (!container || !steady) return
+    if (options.shouldAutoScroll()) {
+      endSteady(container)
+      return
+    }
     if (options.isStreaming?.() && !options.shouldAutoScroll())
       steady.until = container.win.performance.now() + STEADY_MS
     if (container.win.performance.now() > steady.until) {

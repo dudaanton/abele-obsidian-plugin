@@ -95,13 +95,13 @@ function layoutModel(container: HTMLElement) {
   container.getBoundingClientRect = () => ({ top: 0, bottom: BOX, height: BOX }) as DOMRect
 
   const relayout = () => {
-    messagesIn().forEach((el, i) => {
+    messagesIn().forEach((el) => {
       Object.defineProperty(el, 'getBoundingClientRect', {
         configurable: true,
         value: () =>
           ({
-            top: i * HEIGHT - scrollTop,
-            bottom: (i + 1) * HEIGHT - scrollTop,
+            top: messagesIn().indexOf(el) * HEIGHT - scrollTop,
+            bottom: (messagesIn().indexOf(el) + 1) * HEIGHT - scrollTop,
             height: HEIGHT,
           }) as DOMRect,
       })

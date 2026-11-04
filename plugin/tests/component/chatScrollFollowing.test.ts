@@ -8,6 +8,14 @@ import { useFakeClock } from '../helpers/fakeClock'
 
 const advance = useFakeClock()
 
+it('keeps following when content layout reports a scroll before its resize', async () => {
+  const { box, scroll, grow } = await open()
+  // A folded tool row expands before its ResizeObserver callback is delivered.
+  await grow(true)
+  expect(scroll.shouldAutoScroll).toBe(true)
+  expect(box.scrollTop).toBe(box.scrollHeight - box.clientHeight)
+})
+
 let wrapper: VueWrapper | undefined
 afterEach(() => {
   wrapper?.unmount()
@@ -97,8 +105,12 @@ async function open() {
   })
   scroll.doScroll()
   await nextTick()
-  const grow = async () => {
+  const grow = async (scrollBeforeResize = false) => {
     extra += 400
+    if (scrollBeforeResize) {
+      box.scrollTop += 100
+      scroll.onMessagesScroll()
+    }
     const message = box.lastElementChild!
     // Image layout changes the message, but not the scroll container's box.
     for (const observer of observers) if (observer.targets.has(message)) observer.callback()

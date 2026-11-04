@@ -33,6 +33,7 @@ export function useChatScroll(options: ChatScrollOptions) {
   let shouldAutoScroll = true
   let fingerDown = false
   let sendScrollPending = false
+  let edgeCheckAfterResize = false
 
   /**
    * Where the code last left the scroll, for telling its own scrolling from the reader's.
@@ -44,6 +45,7 @@ export function useChatScroll(options: ChatScrollOptions) {
    * streamed into pulled them back down the moment they scrolled up to read something.
    */
   let codeScrollTop: number | null = null
+  let followedHeight: number | null = null
 
   /** How far above the end of the conversation the reader is; kept across a change of box. */
   let bottomGap = 0
@@ -54,6 +56,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     el.scrollTop = top
     codeScrollTop = el.scrollTop
     bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
+    if (shouldAutoScroll) followedHeight = el.scrollHeight
     if (Math.abs(el.scrollTop - before) >= 1)
       console.debug('[chat-scroll] correction', {
         reason,
@@ -127,6 +130,9 @@ export function useChatScroll(options: ChatScrollOptions) {
     // At the very top nothing scrolls, so no scroll event comes to say the reader wants more.
     const el = messagesContainer.value
     if (up && el && el.scrollTop < LOAD_OLDER_THRESHOLD_PX) loadOlder()
+    else if (!up && el && (event?.type === 'wheel' || event?.type === 'keydown')) {
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < LOAD_OLDER_THRESHOLD_PX) loadNewer()
+    } else if (event?.type === 'touchstart') checkEdges()
   }
 
   const SCROLL_UP_KEYS = new Set(['ArrowUp', 'PageUp', 'Home'])
@@ -149,6 +155,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     shouldAutoScroll = !hasNewer.value && bottomGap < AUTO_SCROLL_THRESHOLD_PX
     if (shouldAutoScroll) endSteady(el)
     else if (isStreaming.value) steadyReader()
+    checkEdges()
   }
 
   /**
@@ -159,10 +166,40 @@ export function useChatScroll(options: ChatScrollOptions) {
    * is when layout has settled, and there is nothing to correct between them.
    */
   let revealing = false
+  let deferredEdge: 'older' | 'newer' | undefined
+  const refusedEdge = (direction: 'older' | 'newer') => {
+    deferredEdge = direction
+    console.debug('[chat-scroll] edge load deferred', { direction, revealing })
+  }
+  // A reveal can consume the only scroll event at an edge. Measure again once its
+  // layout settles, even if the browser has no further movement to report.
+  const checkEdges = (direction?: 'older' | 'newer') => {
+    const el = messagesContainer.value
+    if (!el || composing.value || sendScrollPending || !el.clientHeight || !el.scrollHeight) return
+    if (boxHeight !== null && el.clientHeight !== boxHeight) return
+    // Folded pages can touch both edges. Continue in the requested direction so
+    // a bounded window does not alternate between the same two short pages.
+    if (
+      direction === 'newer' &&
+      el.scrollHeight - el.scrollTop - el.clientHeight < LOAD_OLDER_THRESHOLD_PX
+    )
+      loadNewer()
+    else if (el.scrollTop < LOAD_OLDER_THRESHOLD_PX) loadOlder()
+    else if (el.scrollHeight - el.scrollTop - el.clientHeight < LOAD_OLDER_THRESHOLD_PX) loadNewer()
+  }
+  const finishReveal = (direction: 'older' | 'newer') => {
+    revealing = false
+    const retry = deferredEdge
+    deferredEdge = undefined
+    console.debug('[chat-scroll] edge load recheck')
+    if (retry || direction === 'newer' || !anchors.anchor) checkEdges(retry ?? direction)
+    if (direction === 'older') revealUntilScrollable()
+  }
   const loadOlder = () => {
     const el = messagesContainer.value
     // One page at a time: the next is asked for once this one is on the page and measured.
-    if (!el || !hasOlder.value || revealing) return
+    if (!el || !hasOlder.value) return
+    if (revealing) return refusedEdge('older')
 
     revealing = true
     shouldAutoScroll = false
@@ -170,24 +207,20 @@ export function useChatScroll(options: ChatScrollOptions) {
     showOlder()
     void nextTick(() => {
       holdAnchorAWhile(el)
-      anchors.nextFrame(el.win, () => {
-        revealing = false
-        revealUntilScrollable()
-      })
+      anchors.nextFrame(el.win, () => finishReveal('older'))
     })
   }
 
   const loadNewer = () => {
     const el = messagesContainer.value
-    if (!el || !hasNewer.value || revealing) return
+    if (!el || !hasNewer.value) return
+    if (revealing) return refusedEdge('newer')
     revealing = true
     captureAnchor()
     showNewer()
     void nextTick(() => {
       holdAnchorAWhile(el)
-      anchors.nextFrame(el.win, () => {
-        revealing = false
-      })
+      anchors.nextFrame(el.win, () => finishReveal('newer'))
     })
   }
 
@@ -284,9 +317,34 @@ export function useChatScroll(options: ChatScrollOptions) {
     // the position to the new box, not the reader, and the observer is about to put the reader
     // back where they were. The browser reports the clamp before it reports the resize.
     if (boxHeight === null) boxHeight = el.clientHeight
-    if (el.clientHeight !== boxHeight) return
+    if (el.clientHeight !== boxHeight) {
+      edgeCheckAfterResize = true
+      return
+    }
+    // The page has moved in the data but its DOM/anchor may not have settled.
+    // Do not release that anchor or infer following from this intermediate range.
+    if (revealing) {
+      if (codeScrollTop !== null && Math.abs(el.scrollTop - codeScrollTop) < 1) return
+      if (
+        el.scrollTop < LOAD_OLDER_THRESHOLD_PX ||
+        el.scrollHeight - el.scrollTop - el.clientHeight < LOAD_OLDER_THRESHOLD_PX
+      ) {
+        checkEdges()
+        return
+      }
+    }
+    // Layout can move the browser's scroll anchor before ResizeObserver follows
+    // the new end. That event does not mean the reader scrolled away. Upward
+    // reader input has already disabled following in readerTakesOver.
+    if (shouldAutoScroll && followedHeight !== null && el.scrollHeight !== followedHeight) {
+      doScroll()
+      return
+    }
     // The container is exactly where it was put, so nobody has moved it since.
-    if (codeScrollTop !== null && Math.abs(el.scrollTop - codeScrollTop) < 1) return
+    if (codeScrollTop !== null && Math.abs(el.scrollTop - codeScrollTop) < 1) {
+      if (!anchors.anchor) checkEdges()
+      return
+    }
     console.debug('[chat-scroll] scroll event', {
       scrollTop: el.scrollTop,
       codeScrollTop,
@@ -431,6 +489,10 @@ export function useChatScroll(options: ChatScrollOptions) {
     // A narrower box wraps the text longer; a reader at the end stays at the end.
     doScroll()
     revealUntilScrollable()
+    if (edgeCheckAfterResize) {
+      edgeCheckAfterResize = false
+      checkEdges()
+    }
   }
 
   /**
