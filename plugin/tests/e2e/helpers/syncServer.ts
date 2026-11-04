@@ -11,8 +11,8 @@ import { randomBytes } from 'node:crypto'
 import { createInterface } from 'node:readline'
 import { existsSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
-import { createServer } from 'node:net'
-import { join, resolve } from 'node:path'
+import { freeFixturePort } from './syncFixturePort'
+import { join } from 'node:path'
 import { verifySyncFixture } from '../../../scripts/sync-server-fixture.mjs'
 import { locateSyncRepository } from '../../../scripts/sync-repository.mjs'
 
@@ -93,7 +93,7 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
   if (!siblingBuilt()) {
     throw new SiblingUnavailableError(`${SIBLING} has no built server or admin CLI`)
   }
-  const port = await freePort()
+  const port = await freeFixturePort(process.env.E2E_TARGET === 'phone')
   const frozen = join(dir, 'frozen')
   const network = syncFixtureNetwork(port),
     backend = `http://127.0.0.1:${port}`,
@@ -238,19 +238,6 @@ async function ready(url: string, child: ChildProcess, said: string[]): Promise<
     await delay(100)
   }
   throw new Error(`the server never answered ${url}/healthz: ${said.join('')}`)
-}
-
-/** A port nothing is on, by taking one and letting it go again. */
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer()
-    probe.on('error', reject)
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address()
-      const port = typeof address === 'object' && address !== null ? address.port : 0
-      probe.close(() => (port === 0 ? reject(new Error('no free port')) : resolve(port)))
-    })
-  })
 }
 
 /** Waits for the process to be gone, and stops waiting after five seconds by force. */

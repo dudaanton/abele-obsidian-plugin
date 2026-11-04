@@ -143,6 +143,15 @@ export class TokenSyncLive {
         stopReverse
           ? async (remainingMs) => {
               const deadline = Date.now() + remainingMs
+              const local = await phoneRouteProbe(
+                server.url.replace(/^http/, 'ws') + '/v2/events',
+                token.key
+              )
+              console.debug('[phone-route-local]', { port: Number(url.port), ...local })
+              if (!local.ok)
+                throw new Error(
+                  'Fixture local WebSocket authentication failed before reverse repair'
+                )
               await stopReverse!()
               const remaining = deadline - Date.now()
               if (remaining <= 0) throw new Error('Phone reverse repair exhausted route deadline')

@@ -24,6 +24,33 @@ export function installFixtureHttpTrace(write, closeConnections = false) {
   const sockets = new WeakMap()
   let next = 0
   Server.prototype.emit = function (event, ...args) {
+    if (event === 'upgrade') {
+      const [request, socket] = args
+      let connection = sockets.get(socket)
+      if (!connection) {
+        connection = ++next
+        sockets.set(socket, connection)
+      }
+      const base = {
+        connection,
+        port: socket.localPort,
+        startedAt: Date.now(),
+        route: (request.url ?? '').split('?')[0] === '/v2/events' ? '/v2/events' : '/other',
+      }
+      // Upgrade is not an HTTP request event. Absence from the old HTTP trace
+      // could not distinguish a broken reverse from a server-side close.
+      write({ ...base, event: 'upgrade', listeners: this.listenerCount('upgrade') })
+      socket.once('close', (hadError) =>
+        write({
+          ...base,
+          event: 'upgrade-close',
+          hadError,
+          bytesRead: socket.bytesRead,
+          bytesWritten: socket.bytesWritten,
+          durationMs: Date.now() - base.startedAt,
+        })
+      )
+    }
     if (event === 'request') {
       const [request, response] = args
       let connection = sockets.get(request.socket)

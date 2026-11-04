@@ -3,6 +3,42 @@ import { expect, it } from 'vitest'
 import { createServer, request, Agent } from 'node:http'
 import { installFixtureHttpTrace } from '../e2e/helpers/syncFixtureHttpTrace.mjs'
 
+it('attributes fixture upgrades without recording headers, tokens or query strings', async () => {
+  const entries: Record<string, unknown>[] = []
+  const restore = installFixtureHttpTrace(
+    (entry: Record<string, unknown>) => entries.push(entry),
+    true
+  )
+  const server = createServer()
+  server.on('upgrade', (_incoming, socket) => {
+    socket.end(
+      'HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n'
+    )
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = (server.address() as import('node:net').AddressInfo).port
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const req = request(`http://127.0.0.1:${port}/v2/events?token=private`, {
+        headers: { Connection: 'Upgrade', Upgrade: 'websocket', Authorization: 'Bearer private' },
+      })
+      req.on('upgrade', (_response, socket) => {
+        socket.destroy()
+        resolve()
+      })
+      req.on('error', reject)
+      req.end()
+    })
+    expect(entries).toContainEqual(
+      expect.objectContaining({ event: 'upgrade', route: '/v2/events', port, listeners: 1 })
+    )
+    expect(JSON.stringify(entries)).not.toContain('private')
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    restore()
+  }
+})
+
 it('records server arrivals and finishes without credentials and prevents phone socket reuse', async () => {
   const entries: Record<string, unknown>[] = []
   const restore = installFixtureHttpTrace(
