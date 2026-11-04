@@ -349,6 +349,24 @@ describe('reaching the messages held back', () => {
     expect(mounted(wrapper)).toBe(DEFAULT_TAIL_PAGE_SIZE * 2)
   })
 
+  it('counts rapid marker presses, including their mouse and touch input, one page per press', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 5)
+    const wrapper = mountAttached()
+    const marker = wrapper.find('.abele-ai-chat__older button')
+    await marker.trigger('mousedown')
+    await marker.trigger('click')
+    await marker.trigger('touchstart')
+    await marker.trigger('touchend')
+    await marker.trigger('click')
+    await marker.trigger('mousedown')
+    await marker.trigger('click')
+    await advance(300)
+
+    expect(wrapper.findAllComponents(AiChatMessage)[0].props('message').id).toBe('m31')
+    expect(wrapper.find('.abele-ai-chat__older').text()).toContain('30 earlier messages')
+    expect(mounted(wrapper)).toBe(DEFAULT_TAIL_PAGE_SIZE * 3)
+  })
+
   it('reveals earlier pages by itself while the conversation is too short to scroll, up to its start', async () => {
     messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
     const wrapper = mountAttached()

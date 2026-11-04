@@ -42,6 +42,35 @@ function open(height = 4000) {
 }
 
 describe('bounded chat window edges', () => {
+  it.each(['during', 'after'])(
+    'keeps every marker page when browser clamping reports the bottom %s reveal',
+    async (when) => {
+      const { scroll, box } = open()
+      for (let page = 1; page <= 3; page++) {
+        box.scrollTop = 3200
+        scroll.loadOlder(new Event('click'))
+        if (when === 'after') await advance(80)
+        // Evicting the visible tail can clamp/re-anchor scrollTop without reader input.
+        box.scrollTop = 3100
+        scroll.onMessagesScroll()
+        await advance(100)
+        expect(scroll.visibleMessages.value[0]?.id).toBe(String(PAGE * (3 - page)))
+      }
+      // A real downward gesture is still allowed to bring newer pages back.
+      scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: 100 }))
+      await advance(100)
+      expect(scroll.visibleMessages.value[0]?.id).not.toBe('0')
+    }
+  )
+
+  it('keeps marker presses made while the previous page is mounting', async () => {
+    const { scroll, box } = open()
+    box.scrollTop = 3200
+    for (let i = 0; i < 3; i++) scroll.loadOlder(new Event('click'))
+    await advance(300)
+    expect(scroll.visibleMessages.value[0]?.id).toBe('0')
+  })
+
   it('does not undo marker paging on a delayed event at the last code scroll position', async () => {
     const { scroll } = open()
     scroll.shouldAutoScroll = true

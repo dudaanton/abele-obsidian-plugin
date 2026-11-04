@@ -34,6 +34,14 @@ export function useChatScroll(options: ChatScrollOptions) {
   let fingerDown = false
   let sendScrollPending = false
   let edgeCheckAfterResize = false
+  let readingFromMarker = false
+  let queuedMarkerPages = 0
+  const leaveMarker = () => {
+    readingFromMarker = false
+    queuedMarkerPages = 0
+  }
+  const isMarkerInput = (event?: Event) =>
+    !!(event?.target as HTMLElement | null)?.closest?.('.abele-ai-chat__older')
 
   /**
    * Where the code last left the scroll, for telling its own scrolling from the reader's.
@@ -85,12 +93,20 @@ export function useChatScroll(options: ChatScrollOptions) {
     start: olderCount,
     showOlder,
     showNewer,
-    reset: resetWindow,
-    showFrom: showMessagesFrom,
+    reset: resetRenderWindow,
+    showFrom: showRenderMessagesFrom,
   } = useChatRenderWindow(
     () => messages.value,
     () => shouldAutoScroll && !fingerDown
   )
+  const resetWindow = () => {
+    leaveMarker()
+    resetRenderWindow()
+  }
+  const showMessagesFrom = (index: number) => {
+    leaveMarker()
+    showRenderMessagesFrom(index)
+  }
 
   const anchors = useChatScrollAnchors({
     messagesContainer,
@@ -112,6 +128,8 @@ export function useChatScroll(options: ChatScrollOptions) {
    * being taken hold of says what the scroll event cannot.
    */
   const readerTakesOver = (event?: Event) => {
+    if (isMarkerInput(event)) return
+    leaveMarker()
     console.debug('[chat-scroll] reader input', {
       type: event?.type,
       scrollTop: messagesContainer.value?.scrollTop,
@@ -142,10 +160,12 @@ export function useChatScroll(options: ChatScrollOptions) {
    * following the end resumes once it lets go at the end, as the scroll events then say.
    */
   const fingerOn = (event: Event) => {
+    if (isMarkerInput(event)) return
     fingerDown = true
     readerTakesOver(event)
   }
-  const fingerOff = () => {
+  const fingerOff = (event?: Event) => {
+    if (isMarkerInput(event)) return
     fingerDown = false
     // Where the finger left it, read now: the scroll it made may not have been reported yet, and
     // the next piece of the reply would otherwise take a reader who went up for one still following.
@@ -175,6 +195,7 @@ export function useChatScroll(options: ChatScrollOptions) {
   // layout settles, even if the browser has no further movement to report.
   const checkEdges = (direction?: 'older' | 'newer') => {
     const el = messagesContainer.value
+    if (readingFromMarker) return
     if (!el || composing.value || sendScrollPending || !el.clientHeight || !el.scrollHeight) return
     if (boxHeight !== null && el.clientHeight !== boxHeight) return
     // Folded pages can touch both edges. Continue in the requested direction so
@@ -195,11 +216,31 @@ export function useChatScroll(options: ChatScrollOptions) {
     const retry = deferredEdge
     deferredEdge = undefined
     console.debug('[chat-scroll] edge load recheck', { direction, retry })
+    if (queuedMarkerPages) {
+      queuedMarkerPages--
+      if (hasOlder.value) loadOlder()
+      else queuedMarkerPages = 0
+      return
+    }
+    if (readingFromMarker) return
     if (retry || direction === 'newer' || !anchors.anchor) checkEdges(retry ?? direction)
     if (direction === 'older') revealUntilScrollable()
   }
-  const loadOlder = () => {
+  const loadOlder = (event?: Event) => {
     const el = messagesContainer.value
+    if (event?.type === 'click') {
+      readingFromMarker = true
+      deferredEdge = undefined
+      console.debug('[chat-scroll] marker page requested', {
+        olderCount: olderCount.value,
+        revealing,
+      })
+      if (revealing) {
+        queuedMarkerPages++
+        console.debug('[chat-scroll] marker page queued', { queuedMarkerPages })
+        return
+      }
+    }
     // One page at a time: the next is asked for once this one is on the page and measured.
     if (!el || !hasOlder.value) return
     if (revealing) return refusedEdge('older')
@@ -238,7 +279,7 @@ export function useChatScroll(options: ChatScrollOptions) {
    */
   const revealUntilScrollable = () => {
     const el = messagesContainer.value
-    if (!el || composing.value || !hasOlder.value || revealing) return
+    if (!el || composing.value || !hasOlder.value || revealing || readingFromMarker) return
     // Not laid out — hidden, or nothing drawn in it yet: no height to go by.
     if (!el.clientHeight || !el.scrollHeight) return
     if (el.scrollHeight - el.clientHeight < LOAD_OLDER_THRESHOLD_PX) loadOlder()
@@ -312,6 +353,13 @@ export function useChatScroll(options: ChatScrollOptions) {
   const onMessagesScroll = () => {
     const el = messagesContainer.value
     if (!el) return
+    // A marker reveal can evict the visible tail. Browser clamping/re-anchoring
+    // is layout, not a reader asking to put that tail back. Input releases this
+    // intent; queued clicks each retain their own page independently of edges.
+    if (readingFromMarker) {
+      console.debug('[chat-scroll] marker layout scroll', { scrollTop: el.scrollTop })
+      return
+    }
     // Sending resets the render window before its queued bottom scroll. The browser
     // can report that layout adjustment first; it must not cancel the send's intent.
     // Actual reader input cancels it through readerTakesOver, even before this tick.
@@ -572,6 +620,7 @@ export function useChatScroll(options: ChatScrollOptions) {
   onUnmounted(unobserve)
 
   const holdInView = (el: HTMLElement, offset: number) => {
+    leaveMarker()
     const box = messagesContainer.value
     if (!box) return
     shouldAutoScroll = false
