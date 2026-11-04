@@ -7,6 +7,8 @@ import { TOKEN_HOST_READY } from './tokenHostReady'
 import { SHARE_SET_PICKER } from './shareSetPicker'
 import { syncModalClosed } from './syncModal'
 import { cancelSyncJobs, assertSyncJob, finishSyncJob } from './syncJobs'
+import { syncPhaseMemory } from './syncPhaseMemory'
+import { residentMemorySampler } from './residentMemory'
 export const SYNC_PRELUDE = `
  ${SYNC_SNAPSHOT}
  const syncModalClosed = ${syncModalClosed.toString()}
@@ -102,6 +104,19 @@ export class SyncDriver {
       { syncDiagnostic: observed }
     )
   }
+  traceMemory = false
+  private phaseMemory(phase: string, boundary: 'before' | 'after'): void {
+    if (!this.traceMemory) return
+    try {
+      const sample = this.vault().evalAwait(
+        `const sampleResident=(${residentMemorySampler.toString()})(window);return await (${syncPhaseMemory.toString()})(window,document,sampleResident??undefined)`,
+        5000
+      )
+      console.debug('[sync phase memory]', { phase, boundary, at: Date.now(), sample })
+    } catch {
+      console.debug('[sync phase memory]', { phase, boundary, at: Date.now(), unavailable: true })
+    }
+  }
   async long<T>(
     what: string,
     body: string,
@@ -119,6 +134,7 @@ export class SyncDriver {
     const started = Date.now()
     let waiting = 'operation'
     console.debug('[sync action]', what, { timeoutMs })
+    this.phaseMemory(what, 'before')
     try {
       // The job is started and, for up to FIRST_ANSWER_MS, waited for inside the same call: most
       // actions finish well within it and cost one round trip. A longer one is polled as before.
@@ -215,6 +231,7 @@ export class SyncDriver {
         startupFailure ? { startupFailure } : {}
       )
     } finally {
+      this.phaseMemory(what, 'after')
       console.debug('[sync action finished]', what, { elapsedMs: Date.now() - started, timeoutMs })
     }
   }

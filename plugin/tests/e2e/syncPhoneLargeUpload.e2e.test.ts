@@ -23,6 +23,7 @@ for (const offload of [false, true])
         a = s.primary,
         id = await s.connect(),
         path = s.root + '/sample-large.bin'
+      a.traceMemory = true
       const beforeReads = a.run<{ bytesRead: number; chunks: number; wholeReads: number }>(
         `return host.live.get(${JSON.stringify(id)}).trace.snapshot().localReads`
       )

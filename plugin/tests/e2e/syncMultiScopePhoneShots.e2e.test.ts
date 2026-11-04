@@ -16,6 +16,7 @@ const fixture = liveSuite(false)
 it('captures four multi-scope screens on the phone without confirming destructive actions', async () => {
   const s = fixture(),
     phone = s.primary
+  phone.traceMemory = true
   const folder = await createServerFolder(s, s.root + '/Field notes', fixtureFetch)
   const workshop = s.root + '/Workshop.md',
     reading = s.root + '/Reading list.md'
