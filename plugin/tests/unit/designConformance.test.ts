@@ -202,6 +202,7 @@ const COVERED_DIRS = [
   join(ROOT, 'sync'),
 ]
 const COVERED_FILES = [
+  'ChatEffort.vue',
   'AiAgentSelector.vue',
   'AgentOverrideNotice.vue',
   'AiSubAgentRun.vue',
@@ -677,6 +678,41 @@ describe('the design standard', () => {
     const query = /@container\s*\(max-width:\s*420px\)\s*\{([\s\S]*?)\n\}/.exec(selector)?.[1] ?? ''
     expect(query).toContain('.abele-agent-selector__model')
     expect(query).toMatch(/display:\s*none/)
+  })
+
+  it('keeps the effort choice readable when the agent name gives up space', () => {
+    const root = document.createElement('body')
+    const toolbar = document.createElement('div')
+    toolbar.className = 'abele-chat-input__toolbar-left'
+    const agent = document.createElement('div')
+    agent.className = 'abele-agent-selector'
+    const effort = document.createElement('button')
+    effort.className = 'abele-obsidian-icon abele-chat-effort abele-chat-effort_own'
+    const text = document.createElement('span')
+    text.className = 'abele-obsidian-icon__text'
+    text.textContent = 'High'
+    effort.append(text)
+    agent.append(effort)
+    toolbar.append(agent)
+    root.append(toolbar)
+    const compiler = initCompiler()
+    try {
+      const css = compiler.compileString(
+        styleBlock(readFileSync(join(ROOT, 'AiAgentSelector.vue'), 'utf8'))
+      ).css
+      postcss.parse(css).walkRules((rule) => {
+        if (rule.selectors.some((selector) => effort.matches(selector)))
+          rule.walkDecls('flex', (decl) => {
+            expect(decl.value.split(/\s+/)[1], rule.selector).toBe('0')
+          })
+        if (rule.selectors.some((selector) => text.matches(selector)))
+          rule.walkDecls('text-overflow', (decl) => {
+            expect(decl.value, rule.selector).not.toBe('ellipsis')
+          })
+      })
+    } finally {
+      compiler.dispose()
+    }
   })
 
   /**

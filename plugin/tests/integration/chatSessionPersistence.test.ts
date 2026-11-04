@@ -13,6 +13,7 @@ import { ChatSession } from '@/ai/ChatSession'
 import { ChatService } from '@/ai/ChatService'
 import { ChatStorage } from '@/ai/ChatStorage'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
+import { OpenAIClient } from '@/ai/client/OpenAIClient'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import {
   DEFAULT_AI_SETTINGS,
@@ -78,7 +79,7 @@ beforeEach(() => {
 
   AbeleConfig.getInstance().ai = {
     ...DEFAULT_AI_SETTINGS,
-    providers: [provider],
+    providers: [structuredClone(provider)],
     agents: [],
     defaultAgentId: '',
   }
@@ -93,6 +94,77 @@ beforeEach(() => {
 })
 
 describe('saving', () => {
+  it('sends the chat effort to the provider, follows a changed model, and retains unsupported choices', async () => {
+    seedAgent()
+    AbeleConfig.getInstance().ai.providers[0].models = [
+      { ...provider.models[0], supportsReasoning: true, reasoningEffort: 'medium' },
+      { ...provider.models[1], supportsReasoning: false },
+    ]
+    const session = newSession()
+    const requests: unknown[] = []
+    vi.spyOn(session, 'save').mockResolvedValue(undefined)
+    vi.spyOn(ChatService.getInstance(), 'getSystemPrompt').mockResolvedValue('')
+    const summarizer = (session as unknown as { summarizer: Record<string, () => Promise<void>> })
+      .summarizer
+    for (const key of ['generateTitle', 'generateSummary', 'generateRecap', 'autoCompactIfNeeded'])
+      vi.spyOn(summarizer, key).mockResolvedValue(undefined)
+    vi.spyOn(OpenAIClient.prototype, 'stream').mockImplementation(
+      async function* (_model, _prompt, _messages, _tools, options) {
+        requests.push(options?.reasoningEffort)
+        yield {
+          type: 'done',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Sample answer' }],
+            model: 'big',
+            stopReason: 'stop',
+            timestamp: 1,
+            usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 },
+          },
+        }
+      }
+    )
+    session.reasoningEffort.value = 'high'
+    vi.spyOn(ChatService.getInstance(), 'getSystemPrompt').mockImplementationOnce(async () => {
+      // A choice while this turn prepares its prompt belongs to the next message.
+      session.reasoningEffort.value = 'low'
+      return ''
+    })
+    await session.sendMessage('First sample')
+    expect(session.reasoningEffort.value).toBe('low')
+    session.reasoningEffort.value = 'high'
+    session.activeModelId.value = 'small'
+    await session.sendMessage('Second sample')
+    expect(session.reasoningEffort.value).toBe('high')
+    session.activeModelId.value = 'big'
+    session.reasoningEffort.value = undefined
+    await session.sendMessage('Third sample')
+    expect(requests).toEqual(['high', undefined, 'medium'])
+    session.destroy()
+  })
+
+  it('persists a chat effort independently and resumes following the model when cleared', async () => {
+    seedAgent()
+    const session = newSession()
+    session.reasoningEffort.value = 'high'
+    await saveWithOneMessage(session)
+    expect(savedMetadata?.overrides).toEqual({ reasoningEffort: 'high' })
+    storedChat = {
+      metadata: savedMetadata,
+      messages: [{ id: 'sample-message', role: 'user', content: 'hello', timestamp: 1 }],
+    }
+    const reopened = newSession()
+    await reopened.load(FAKE_FILE)
+    expect(reopened.reasoningEffort.value).toBe('high')
+    expect(reopened.isOverridden('reasoningEffort')).toBe(true)
+    reopened.reasoningEffort.value = undefined
+    await reopened.save()
+    expect(savedMetadata?.overrides?.reasoningEffort).toBeUndefined()
+    expect(reopened.isOverridden('reasoningEffort')).toBe(false)
+    session.destroy()
+    reopened.destroy()
+  })
+
   it('records which agent the chat runs on', async () => {
     const agent = seedAgent()
     const session = newSession()

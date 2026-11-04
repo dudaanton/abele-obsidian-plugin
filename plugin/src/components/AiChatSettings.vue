@@ -12,6 +12,15 @@
         @update:model-value="selectModel($event)"
       />
     </Setting>
+    <!-- The model's thinking, for a model that thinks: its own level or this chat's. -->
+    <Setting v-if="reasons" :name="t('chat.effort')" :desc="t('chat.effortDesc')">
+      <AgentOverrideNotice field="reasoningEffort" compact />
+      <Dropdown
+        :model-value="effortKey"
+        :options="effortOptions"
+        @update:model-value="selectEffort($event)"
+      />
+    </Setting>
     <Setting
       :name="t('streamB.systemPrompt.561257')"
       :desc="t('streamB.theGlobalOneANoteOrWords.1ed3c2')"
@@ -156,6 +165,38 @@ function selectModel(key: string) {
   s.save()
 }
 
+// ── Thinking effort ──
+
+type Effort = 'low' | 'medium' | 'high'
+const reasons = computed(() => !!session.value?.resolveModel?.()?.supportsReasoning)
+const effortKey = computed(() => session.value?.overrides?.value.reasoningEffort ?? '')
+const effortOptions = computed(() => {
+  const model = session.value?.resolveModel?.()
+  const levels: [Effort, string][] = [
+    ['low', t('streamB.low.f793de')],
+    ['medium', t('streamB.medium.8e588c')],
+    ['high', t('streamB.high.c4ebc6')],
+  ]
+  const own = levels.find(([id]) => id === model?.reasoningEffort)?.[1]
+  return [
+    {
+      value: '',
+      display: t('chat.effortFollow', {
+        model: model?.name || model?.id || '',
+        effort: own ? own.toLowerCase() : t('chat.effortProviderDefault'),
+      }),
+    },
+    ...levels.map(([value, display]) => ({ value, display })),
+  ]
+})
+
+function selectEffort(key: string) {
+  const s = session.value
+  if (!s) return
+  s.reasoningEffort.value = (key || undefined) as Effort | undefined
+  void s.save()
+}
+
 // ── Interceptor ──
 
 // Any agent may review a draft, utility ones included — that is what most of them are for —
@@ -287,5 +328,16 @@ function updateCustomText(value: string) {
 <style lang="scss">
 .abele-chat-settings {
   padding: var(--size-4-2) 0;
+}
+
+// The way back to the agent's value sits beside the choice it resets, not on a line above it:
+// the choice gives up the glyph's width instead.
+.abele-chat-settings .setting-item-control:has(> .abele-override-notice__reset) {
+  flex-wrap: nowrap;
+
+  > .abele-obsidian-dropdown {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
 }
 </style>

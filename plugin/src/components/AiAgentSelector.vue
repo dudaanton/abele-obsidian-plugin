@@ -36,6 +36,7 @@
       <Icon icon="cpu" size="xs" :interactive="false" class="abele-agent-selector__model-icon" />
       <span class="abele-agent-selector__model-name">{{ modelLabel }}</span>
     </div>
+    <ChatEffort />
   </div>
 </template>
 
@@ -48,6 +49,8 @@ import { Menu, Notice, Platform, setTooltip } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import Dropdown from './obsidian/Dropdown.vue'
 import Icon from './obsidian/Icon.vue'
+import ChatEffort from './ChatEffort.vue'
+import { addEffortItems, effortFacts } from './chatEffort'
 import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { NodeService } from '@/node/NodeService'
@@ -66,8 +69,12 @@ function agentMenu(event: MouseEvent) {
       item
         .setTitle(option.display)
         .setChecked(option.value === activeId.value)
+        .setSection('agents')
         .onClick(() => void onSelect(option.value))
     )
+  // A phone's row has no room for the thinking level's own glyph, so it is here.
+  if (phone && session.value && effortFacts(session.value).shown)
+    addEffortItems(menu, session.value, true)
   menu.showAtMouseEvent(event)
 }
 /** The nodes this vault is connected to; none when node connections did not load. */
@@ -291,6 +298,32 @@ const onSelect = (agentId: string) => {
 @container (max-width: 420px) {
   .abele-agent-selector__model-name {
     display: none;
+  }
+}
+
+/**
+ * With the thinking level beside it the row is full in a sidebar: the agent's name gives way,
+ * ellipsized and named in its tooltip, rather than the send glyphs breaking onto a row of their
+ * own. A basis of nothing, so the row shrinks before it wraps. A phone names no agent, so its
+ * glyphs keep their touch size and the row wraps as it did.
+ */
+body:not(.is-phone) .abele-chat-input__toolbar-left:has(.abele-chat-effort) {
+  flex: 1 1 0;
+  flex-wrap: nowrap;
+
+  .abele-agent-selector {
+    flex: 0 1 auto;
+  }
+
+  .abele-agent-selector > .abele-obsidian-icon:not(.abele-chat-effort) {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  .abele-agent-selector > .abele-obsidian-icon:not(.abele-chat-effort) .abele-obsidian-icon__text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 

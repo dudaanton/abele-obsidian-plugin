@@ -75,6 +75,13 @@ The reasoning toggle sets it to true on an explicit off choice and removes it wh
 Absent means no explicit off choice was recorded; older configs are not migrated to off.
 The prior `reasoningEffort` is retained, and provider settings transfers carry both fields.
 
+A chat may hold its own level in metadata `overrides.reasoningEffort` (`low`, `medium` or
+`high`); absent, the chat follows its model's `reasoningEffort`. It is sent only while the
+model in force supports reasoning, survives a switch to a model that does not, and is dropped
+with the other overrides when the chat changes agent.
+Each turn captures its level before preparing the prompt; a choice made while it is running
+applies to the next message.
+
 ## Device-local connection trust
 
 Multi-item sync grouping uses the separate device-local `abele-sync-connection-sets-v1`

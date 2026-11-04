@@ -1,4 +1,5 @@
 import { chatPromptCacheKey } from './client/promptCache'
+import { resolveChatEffort, type ReasoningEffort } from './chatEffort'
 import {
   NODE_ACTION_TOOLS,
   localNodeActionModes,
@@ -685,6 +686,16 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
   public readonly activeModelId = computed<string>({
     get: () => this.overrides.value.modelId ?? this.agent.value?.modelId ?? '',
     set: (value) => this.setOverride('modelId', value),
+  })
+
+  /**
+   * How hard the model thinks in this chat: the chat's own level, else its model's. A chat's own
+   * level outlives a switch to a model that does not reason, and applies again on the way back.
+   */
+  public readonly reasoningEffort = computed<ReasoningEffort | undefined>({
+    get: () => this.overrides.value.reasoningEffort ?? this.resolveModel()?.reasoningEffort,
+    set: (value) =>
+      value ? this.setOverride('reasoningEffort', value) : this.clearOverride('reasoningEffort'),
   })
 
   // Per-chat tool permissions
@@ -2183,6 +2194,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         return
       }
       const tools = this.getTools()
+      const reasoningEffort = resolveChatEffort(model, this.overrides.value.reasoningEffort)
 
       // Show model indicator when model changes between messages
       if (this.lastModelId && this.lastModelId !== model.id) {
@@ -2266,7 +2278,7 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
         },
         streamOptions: {
           promptCacheKey,
-          ...(model.reasoningEffort ? { reasoningEffort: model.reasoningEffort } : {}),
+          reasoningEffort,
           signal: controller.signal,
         },
         beforeIteration: () => this.takeQueued(controller.signal),

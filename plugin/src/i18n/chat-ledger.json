@@ -787,5 +787,23 @@
   },
   "chat.reviewScripts": {
     "englishHash": "552e425de43e12fc97c2b0ca14848411831b4f0018b5f3b3437403c4e4172ef2"
+  },
+  "chat.effortDefault": {
+    "englishHash": "4ca0e0e73229540cc109b407b56d325b34def70f33f84982ed53de640d81ef49"
+  },
+  "chat.effortProviderDefault": {
+    "englishHash": "2eeec01f6c735d0748a5d852d5d6323183b03f9bfca8e0f4e8504ba53d1ec867"
+  },
+  "chat.effortFollow": {
+    "englishHash": "3cd1218f78834971ae70f78594e1ab7b0a96aff721f8ea0c33fd03e481596d70"
+  },
+  "chat.effortFollowTip": {
+    "englishHash": "ec0337482c8105aa84b0dae00e17e3b4b8914dc87a20933323ebf6cbbe8734af"
+  },
+  "chat.effortOwnTip": {
+    "englishHash": "8b850bb35bba2e41604c85e8ffe6f7ae540d77c8bcb002b413e1718ae554bd5e"
+  },
+  "chat.effortDesc": {
+    "englishHash": "8c668a33a42eecb4588eeff80f944be13e9c178b9a8b29ef8dafd2e36329a338"
   }
 }

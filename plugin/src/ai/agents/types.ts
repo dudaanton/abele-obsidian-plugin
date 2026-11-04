@@ -296,6 +296,8 @@ export function createAgent(overrides: Partial<AgentDefinition> = {}): AgentDefi
 export interface SessionOverrides {
   providerId?: string
   modelId?: string
+  /** How hard the model thinks in this chat; absent follows the model's own setting. */
+  reasoningEffort?: 'low' | 'medium' | 'high'
   permissionMode?: PermissionMode
   toolModes?: Record<string, ToolMode>
   scope?: ScopeEntry[]
