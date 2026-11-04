@@ -4,7 +4,44 @@ import { expect, it, vi } from 'vitest'
 import { MemoryFileSystem, MemoryStateStore, pathAdmission } from '@abele/sync-sdk/core'
 import { LocalFolderPlacement, placementMethods } from '@/sync/localFolderPlacement'
 import { PRIVATE_PLACEMENT_STAGES } from '@/sync/privatePlacementStages'
-import { PLACEMENT } from '@/sync/pathCoordinator'
+import { PLACEMENT, coordinatedFileSystem, PathCoordinator } from '@/sync/pathCoordinator'
+import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+
+// These are host-only callbacks, installed before the engine's placed filesystem exists.
+const hostOnlySymbols = new Set([
+  Symbol.for('abele.sync.parent-proof-v1'),
+  Symbol.for('abele.sync.index-wait-signal-v1'),
+])
+it.each(
+  Reflect.ownKeys(ObsidianFileSystem.prototype).filter(
+    (key): key is symbol =>
+      typeof key === 'symbol' &&
+      !hostOnlySymbols.has(key) &&
+      typeof Object.getOwnPropertyDescriptor(ObsidianFileSystem.prototype, key)?.value ===
+        'function'
+  )
+)('admits filesystem extension %s through placement and coordination', (operation) => {
+  const disk = Object.assign(new MemoryFileSystem(), { [operation]: () => undefined })
+  const placed = new LocalFolderPlacement('Shared', 'Moved').fileSystem(disk)
+  const fs = coordinatedFileSystem(placed, new PathCoordinator())
+  expect(typeof Reflect.get(fs, operation)).toBe('function')
+})
+
+it('reads prefix-wait diagnostics through real placement and coordination with the host receiver', () => {
+  const operation = Symbol.for('abele.sync.prefix-read-wait-v1')
+  const pending = { path: 'Moved/sample.md', step: 'native open', at: 1000 }
+  const disk = Object.assign(new MemoryFileSystem(), {
+    [operation]: function () {
+      expect(this).toBe(disk)
+      return pending
+    },
+  })
+  const fs = coordinatedFileSystem(
+    new LocalFolderPlacement('Shared', 'Moved').fileSystem(disk),
+    new PathCoordinator()
+  )
+  expect(Reflect.get(fs, operation)()).toBe(pending)
+})
 
 it('forwards a readonly scan revision with its receiver and current placement identity', () => {
   const revision = Symbol.for('abele.sync.local-scan-revision-v1')

@@ -331,6 +331,7 @@ export class LocalFolderPlacement {
             Symbol.for('abele.sync.operation-pass-v1'),
             Symbol.for('abele.sync.retention-idle-v1'),
             Symbol.for('abele.sync.diagnostic-v1'),
+            Symbol.for('abele.sync.prefix-read-wait-v1'),
             Symbol.for('abele.sync.replay-stage-v1'),
             Symbol.for('abele.sync.trace-pull-v1'),
             Symbol.for('abele.sync.install-batch-proof-v1'),
