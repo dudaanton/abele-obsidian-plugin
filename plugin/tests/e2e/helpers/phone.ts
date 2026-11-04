@@ -20,6 +20,7 @@ import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { keyboardReady } from './keyboardReady'
+import { phoneLifecycle } from './phoneLifecycle'
 
 export const DRIVER = process.env.ABELE_PHONE_DRIVER ?? 'iphone'
 
@@ -52,7 +53,10 @@ const loadIdentity = `window.__abelePhoneLoadIdentity ||= {timeOrigin:performanc
 export function beginPhoneCase(): void {
   caseIdentity = undefined
   caseIdentity = JSON.parse(
-    rawPhoneEval(`(()=>(${loadIdentity}))()`, 10000).slice(3)
+    rawPhoneEval(
+      `(()=>{(${phoneLifecycle.toString()})(window,'case-start');return (${loadIdentity})})()`,
+      10000
+    ).slice(3)
   ) as PhoneLoadIdentity
   console.debug('[phone-webview]', { event: 'case-start', ...caseIdentity, at: Date.now() })
 }
@@ -68,7 +72,8 @@ export function phoneEval(code: string, timeoutMs: number): string {
   // job, never a second gesture/write, and a replacement page executes nothing.
   const wrapped = `(async()=>{
     const identity=${loadIdentity},expected=${JSON.stringify(expected)},key=${JSON.stringify(key)};
-    if((${wasReloaded.toString()})(expected,identity))return {identity};
+    const lifecycle=(${phoneLifecycle.toString()})(window);
+    if((${wasReloaded.toString()})(expected,identity))return {identity,lifecycle:lifecycle.snapshot()};
     if(window.__abelePhoneEvalReply?.key!==key)window.__abelePhoneEvalReply={key,promise:Promise.resolve().then(async()=>{
       try{const value=await eval(${JSON.stringify(code)});return {type:typeof value,value}}
       catch(error){return {thrown:String(error?.message||error)}}
@@ -76,7 +81,11 @@ export function phoneEval(code: string, timeoutMs: number): string {
     return {identity,answer:await window.__abelePhoneEvalReply.promise};
   })()`
   let packet:
-    | { identity: PhoneLoadIdentity; answer?: { type?: string; value?: unknown; thrown?: string } }
+    | {
+        identity: PhoneLoadIdentity
+        lifecycle?: ReturnType<ReturnType<typeof phoneLifecycle>['snapshot']>
+        answer?: { type?: string; value?: unknown; thrown?: string }
+      }
     | undefined
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -94,7 +103,7 @@ export function phoneEval(code: string, timeoutMs: number): string {
   if (wasReloaded(expected, packet!.identity))
     throw new Error(
       'Obsidian was reloaded during the case: ' +
-        JSON.stringify({ before: expected, after: packet!.identity })
+        JSON.stringify({ before: expected, after: packet!.identity, lifecycle: packet!.lifecycle })
     )
   const answer = packet!.answer
   if (!answer) throw new Error('phone driver transport: missing eval answer')
@@ -179,6 +188,10 @@ export function typeText(text: string, via?: 'focus' | 'keys'): void {
   )
   if (!ready.startsWith('=> ready')) throw new Error('The phone keyboard is not ready: ' + ready)
   const path = ready.slice('=> ready '.length)
+  phoneEval(
+    `window.__abelePhoneLifecycle?.mark(${JSON.stringify(path === 'focus' ? 'type-focus' : path === 'keys' ? 'type-keys' : 'type-driver')})`,
+    10000
+  )
   // Which way the driver typed (the field's focus or the keyboard's keys), for a loss to be read.
   console.debug('[phone-type]', driver(['type', text, ...(path ? ['--via', path] : [])]))
 }
