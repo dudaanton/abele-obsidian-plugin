@@ -10,12 +10,13 @@ import { requireLargeUploadSource, requireLargeUploadHead } from './helpers/sync
 targets('phone')
 const fixture = liveSuite(false),
   chunk = 1024 * 1024,
-  size = 200 * chunk
+  size = 200 * chunk,
+  residentGrowthBudget = 16 * chunk
 for (const offload of [false, true])
   liveCase(
     'syncPhoneLargeUpload',
     offload
-      ? 'offloads and rehydrates a 200 MiB phone attachment after a single-read upload'
+      ? 'offloads and rehydrates a 200 MiB phone attachment after a bounded-memory upload'
       : 'uploads a 200 MiB phone attachment and pulls byte-identical content on desktop',
     [],
     async () => {
@@ -24,6 +25,16 @@ for (const offload of [false, true])
         id = await s.connect(),
         path = s.root + '/sample-large.bin'
       a.traceMemory = true
+      const reader = await a.long<{ available: boolean; mode: string; events: unknown[] }>(
+        'verify bounded mobile file reader',
+        `const Io=window.__abeleTest?.BoundedVaultIo;
+        if(!Io)throw new Error('Filesystem test API unavailable');
+        return await new Io(app.vault.adapter,undefined,undefined,undefined,app.vault.configDir).diagnoseMobile()`
+      )
+      console.info('large mobile reader capability', reader)
+      expect(reader.available, 'bounded local resource reader required before large transfer').toBe(
+        true
+      )
       const beforeReads = a.run<{ bytesRead: number; chunks: number; wholeReads: number }>(
         `return host.live.get(${JSON.stringify(id)}).trace.snapshot().localReads`
       )
@@ -75,8 +86,9 @@ for (const offload of [false, true])
           maxOutputBytes: number
         }>(`return host.live.get(${JSON.stringify(id)}).trace.snapshot().localReads`)
         expect(afterReads.bytesRead - beforeReads.bytesRead).toBeGreaterThanOrEqual(size)
-        expect(a.run<number>('return window.__largeUploadReadCount')).toBe(1)
-        expect(afterReads.wholeReads - beforeReads.wholeReads).toBe(1)
+        // Streaming replaces the former one-whole-file allocation; no adapter-wide read.
+        expect(a.run<number>('return window.__largeUploadReadCount')).toBe(0)
+        expect(afterReads.wholeReads - beforeReads.wholeReads).toBe(0)
         const memory = await a.long<{
           baseline: number
           peak: number
@@ -94,11 +106,14 @@ for (const offload of [false, true])
         expect(memory.samples).toBeGreaterThan(2)
         expect(memory.baseline).toBeGreaterThan(0)
         expect(memory.peak).toBeGreaterThanOrEqual(memory.baseline)
+        expect(memory.peak - memory.baseline, 'upload resident-memory growth').toBeLessThanOrEqual(
+          residentGrowthBudget
+        )
         expect(afterReads.chunks - beforeReads.chunks).toBeGreaterThan(0)
         expect(afterReads.maxOutputBytes).toBeLessThanOrEqual(chunk)
-        expect(afterReads.peakReaderBytes).toBeLessThanOrEqual(afterReads.maxChunkBytes + chunk)
-        expect(afterReads.maxChunkBytes).toBe(size)
-        console.info('large single-read bounds', {
+        expect(afterReads.peakReaderBytes).toBeLessThanOrEqual(2 * chunk)
+        expect(afterReads.maxChunkBytes).toBeLessThanOrEqual(chunk)
+        console.info('large streaming bounds', {
           ...afterReads,
           wholeReadDelta: afterReads.wholeReads - beforeReads.wholeReads,
           fixtureReads: a.run<number>('return window.__largeUploadReadCount'),
@@ -165,7 +180,8 @@ for (const offload of [false, true])
             maxOutputBytes: number
           }>(`return host.live.get(${JSON.stringify(id)}).trace.snapshot().localReads`)
           expect(finalReads.maxOutputBytes).toBeLessThanOrEqual(chunk)
-          expect(finalReads.peakReaderBytes).toBeLessThanOrEqual(finalReads.maxChunkBytes + chunk)
+          expect(finalReads.maxChunkBytes).toBeLessThanOrEqual(chunk)
+          expect(finalReads.peakReaderBytes).toBeLessThanOrEqual(2 * chunk)
           console.info('large offload read bounds', finalReads)
           const offloadMemory = await a.long<{
             baseline: number
@@ -182,6 +198,10 @@ for (const offload of [false, true])
           })
           expect(offloadMemory.error).toBeNull()
           expect(offloadMemory.samples).toBeGreaterThan(memory.samples)
+          expect(
+            offloadMemory.peak - offloadMemory.baseline,
+            'upload and rehydrate resident-memory growth'
+          ).toBeLessThanOrEqual(residentGrowthBudget)
         }
       } finally {
         a.run(

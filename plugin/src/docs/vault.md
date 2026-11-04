@@ -396,6 +396,16 @@ its retryable runtime. `abele-sync-ignore-content-v1` keeps the root ignore text
 size, mtime, ctime and available native file identity so an unchanged restart can reuse the scope
 without a content read. Portable hosts use indexed metadata for ordinary files and adapter
 metadata for hidden files; without either native identity or creation time they inspect again.
+On mobile, bounded local reads can use native cache copies under
+`abele-sync-read-v1/<hash-of-private-staging-URI>/read-<random-id>.mp4` in the app's
+native cache directory. The suffix selects the host's ranged file-resource route; the
+copy contains the original bytes and is never opened as media. Each resource request
+is at most 1 MiB. These copies are derived, disposable read buffers: originals remain
+in the vault, and neither upload nor recovery authority comes from a cache file.
+Readers remove them on close or failure. Before reuse, the plugin removes only inactive,
+recognized aliases in its own namespace; another namespace, unknown names and active
+readers are preserved. A crash can leave a cache copy until the next use or OS cache
+eviction. Lost cache files cause a fresh read/retry, not a vault recovery hold.
 Retained `abele-sync-external-connection-switch-v1` evidence is a
 recovery hold until its recorded credential and descriptor writes are reconciled. Explicit
 disconnect preparation materializes active attachments, verifies local originals and retained

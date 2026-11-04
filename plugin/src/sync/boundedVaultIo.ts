@@ -14,6 +14,7 @@ import { bytesOf } from './vaultWrites'
 import { sha256 } from '@noble/hashes/sha2'
 import { probeSequentialFiles, type ProbeEvent } from './mobileSequentialSource'
 import { probeResourceRanges } from './mobileResourceRanges'
+import { probeResourceStream } from './mobileResourceStream'
 import { mobileReadMeter } from './mobileReadDiagnostics'
 import {
   MOBILE_WHOLE_READ_MAX,
@@ -37,6 +38,7 @@ interface MobileAccess {
 }
 interface MobileProbeResult {
   access: MobileAccess | null
+  stream: Awaited<ReturnType<typeof probeResourceStream>>
   resource: Awaited<ReturnType<typeof probeResourceRanges>>
   sequential: Awaited<ReturnType<typeof probeSequentialFiles>>
 }
@@ -87,6 +89,7 @@ export class BoundedVaultIo {
   private readonly taskBudget = new SyncTaskBudget()
   private rangedMobile: Promise<MobileProbeResult> | undefined
   private sequentialMobile: Awaited<ReturnType<typeof probeSequentialFiles>> = null
+  private streamMobile: Awaited<ReturnType<typeof probeResourceStream>> = null
   private resourceMobile: Awaited<ReturnType<typeof probeResourceRanges>> = null
   private capabilitySource?: BoundedVaultIo
   private capabilitySignature?: unknown[]
@@ -98,6 +101,7 @@ export class BoundedVaultIo {
     this.rangedMobile = undefined
     this.sequentialMobile = null
     this.resourceMobile = null
+    this.streamMobile = null
     this.capabilitySignature = undefined
   }
   private capabilityInputs(): unknown[] {
@@ -129,6 +133,11 @@ export class BoundedVaultIo {
       method('stat'),
       method('readFile'),
       method('readFileInChunks'),
+      method('copy'),
+      method('getUri'),
+      method('deleteFile'),
+      method('mkdir'),
+      method('readdir'),
       mapping,
     ]
   }
@@ -238,6 +247,7 @@ export class BoundedVaultIo {
       const access = await this.capabilitySource.mobile()
       this.assertOwned()
       this.resourceMobile = this.capabilitySource.resourceMobile
+      this.streamMobile = this.capabilitySource.streamMobile
       this.sequentialMobile = this.capabilitySource.sequentialMobile
       return access
     }
@@ -253,6 +263,7 @@ export class BoundedVaultIo {
     const result = await pending
     if (this.rangedMobile !== pending) return this.mobile()
     this.resourceMobile = result.resource
+    this.streamMobile = result.stream
     this.sequentialMobile = result.sequential
     return result.access
   }
@@ -266,18 +277,25 @@ export class BoundedVaultIo {
       available: available !== null,
       mode: this.resourceMobile
         ? 'webview-ranges'
-        : this.sequentialMobile
-          ? 'sequential'
-          : available
-            ? 'ranged'
-            : 'unavailable',
+        : this.streamMobile
+          ? 'cached-native-ranges'
+          : this.sequentialMobile
+            ? 'sequential'
+            : available
+              ? 'ranged'
+              : 'unavailable',
       events,
     }
   }
   private async runMobileProbe(
     trace: (event: ProbeEvent) => void = () => {}
   ): Promise<MobileProbeResult> {
-    const state: MobileProbeResult = { access: null, resource: null, sequential: null }
+    const state: MobileProbeResult = {
+      access: null,
+      resource: null,
+      stream: null,
+      sequential: null,
+    }
     state.access = await this.probeMobile(trace, state)
     return state
   }
@@ -298,6 +316,20 @@ export class BoundedVaultIo {
           )
     if (state.resource) {
       console.debug('[abele-sync] WebView file ranges verified')
+      return {}
+    }
+    state.stream =
+      typeof window === 'undefined' || typeof window.fetch !== 'function'
+        ? null
+        : await probeResourceStream(
+            this.disk,
+            window.fetch.bind(window),
+            trace,
+            this.configDir,
+            this.privateRoot
+          )
+    if (state.stream) {
+      console.debug('[abele-sync] cached native file ranges verified')
       return {}
     }
     const files = mobileFiles()
@@ -372,13 +404,17 @@ export class BoundedVaultIo {
       throw new EngineError('conflict', `${path} changed before opening`)
     const raw = this.raw
     const handle = raw.open && raw.fullPath ? await raw.open(raw.fullPath(path), 'r') : null
-    // A stat-bounded small read avoids a resource fetch for every note in a first pull.
-    const small = original.size <= PHONE_FALLBACK_BYTES
+    // Keep inline allocations small; the larger legacy ceiling is not an inline-read budget.
+    const small = original.size <= 4 * 1024 * 1024
     const access = handle || small ? null : await this.mobile()
     const files = access?.files
     const resource = access && this.resourceMobile
     const sequential =
-      !resource && files ? this.sequentialMobile?.open(path, original.size) : undefined
+      access && this.streamMobile
+        ? this.streamMobile.open(path, original.size)
+        : !resource && files
+          ? this.sequentialMobile?.open(path, original.size)
+          : undefined
     let fallback: Uint8Array | null = null
     const meter = mobileReadMeter()
     if (!handle && !access) {
@@ -426,7 +462,7 @@ export class BoundedVaultIo {
       }
     }
     if (!handle && !access) {
-      // iOS delivers the whole file anyway. Read directly, avoiding a fetch body plus a copy.
+      // Legacy hosts without a streaming port retain their bounded-size upload fallback.
       // Slice only the outgoing part: the bridge must never receive the whole backing buffer.
       // Opening a queued source precedes its transfer-budget slot. Taking the
       // buffer lease here can deadlock a scanner that already owns that slot.
