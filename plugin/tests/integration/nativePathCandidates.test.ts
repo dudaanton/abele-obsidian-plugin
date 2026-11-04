@@ -200,6 +200,25 @@ it('updates a wide folder map incrementally on host create, rename and delete', 
   }
 })
 
+it('lists group occupancy with a busy index without claiming directory ownership', async () => {
+  const one = await fixture()
+  try {
+    await disk.writeFile(join(one.root, 'Notes/Folder/K.md'), 'sample')
+    Object.assign(one.app.metadataCache, { isCacheClean: () => false })
+    const files = new ObsidianFileSystem(one.app as unknown as App, {
+      discovery: { roots: [], includes: () => true },
+    })
+    expect(await files.listChildren('Notes')).toEqual([
+      { path: 'Notes/Folder', kind: 'directory' },
+    ])
+    expect(await files.listChildren('Notes/Folder')).toEqual([
+      { path: 'Notes/Folder/K.md', kind: 'file' },
+    ])
+  } finally {
+    await one.close()
+  }
+})
+
 it('keeps the portable fallback for groups and adapters without a native no-follow stat', async () => {
   const one = await fixture()
   try {

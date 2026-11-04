@@ -2371,7 +2371,11 @@ export class ObsidianFileSystem implements FileSystem {
       children.push({
         path,
         kind: 'directory',
-        identity: await this.directories.identity(path, true),
+        // A group sees physical occupancy during index fallback, but never
+        // acquires identities or directory effects outside its file membership.
+        ...(this.discovery?.roots.length === 0
+          ? {}
+          : { identity: await this.directories.identity(path, true) }),
       })
     }
     return children
