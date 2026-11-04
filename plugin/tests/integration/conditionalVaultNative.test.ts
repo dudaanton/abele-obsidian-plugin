@@ -18,6 +18,59 @@ import { WriteJournal, JOURNAL_KEY } from '@/sync/writeJournal'
 import { deferred } from '../helpers/deferred'
 
 const roots: string[] = []
+it('flushes immutable native control contents once while retaining every namespace barrier', async () => {
+  const flushed: { path: string; size: number }[] = []
+  const directories: string[] = []
+  const { root, app } = await setup({
+    open: async (...args: Parameters<typeof fs.open>) => {
+      const handle = await fs.open(...args)
+      return new Proxy(handle, {
+        get(target, key) {
+          if (key === 'sync')
+            return async () => {
+              const info = await target.stat()
+              if (info.isFile()) flushed.push({ path: String(args[0]), size: info.size })
+              else directories.push(String(args[0]))
+              await target.sync()
+            }
+          const value = Reflect.get(target, key)
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      })
+    },
+  })
+  await fs.writeFile(join(root, 'sample.md'), 'sample deletion bytes')
+  const files = new ObsidianFileSystem(app as never, {
+    journalOwner: 'sample-cost',
+    connectionId: 'sample-cost',
+  })
+  const expected = await files.fingerprint('sample.md')
+  expect(
+    await files.conditionalFile({
+      path: 'sample.md',
+      expected,
+      effect: { kind: 'remove' },
+    })
+  ).toBe(true)
+  console.debug('[sample conditional content barriers]', flushed)
+  // The durable intent and allocation are immutable. Linking their names into
+  // active/victim and renaming active to completed require namespace barriers,
+  // not another flush of the very same content.
+  expect(flushed.filter((one) => /\/(active|completed)\//.test(one.path))).toEqual([])
+  expect(flushed.filter((one) => one.size === 0)).toHaveLength(1)
+  expect(directories.some((path) => path.endsWith('/active'))).toBe(true)
+  expect(directories.some((path) => path.endsWith('/completed'))).toBe(true)
+  expect(directories.filter((path) => /\/objects\/[a-f0-9-]+$/.test(path))).toHaveLength(4)
+  flushed.length = 0
+  const privateFiles = files[PRIVATE_REMOVAL_FILES]()
+  const summary = '.abele-sync/retained-removals/summary.json'
+  await privateFiles.writeAtomic(summary, new TextEncoder().encode('[]'), 1000)
+  await privateFiles.writeAtomic(summary, new TextEncoder().encode('[1]'), 2000)
+  // Both installation and replacement flush their private payload before linking
+  // the summary name. Its publication still needs a directory barrier.
+  expect(flushed.filter((one) => one.path.endsWith('/retained-removals/summary.json'))).toEqual([])
+})
+
 it('finishes private summary receipts after delete everywhere, bulk restore and close', async () => {
   const { root, app } = await setup()
   const owner = 'sample-removal-owner'

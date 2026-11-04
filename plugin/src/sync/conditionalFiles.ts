@@ -69,6 +69,8 @@ export interface ConditionalFileHost {
   install(from: string, to: string): Promise<void>
   restoreDirectory?(from: string, to: string): Promise<void>
   flush(path: string, parentsOnly?: boolean): Promise<void>
+  /** Native content barrier, without publishing any directory entry. */
+  flushContents?(path: string): Promise<void>
   resumeNamespace?(paths: readonly string[]): void
   sameObject?(a: string, b: string): Promise<boolean>
   stage(
@@ -141,6 +143,8 @@ function leasedHost(
 
 /** Quarantine is retained evidence, never disposable staging or an equality receipt. */
 export class ConditionalFiles {
+  // In-process proof only. Recovery always re-establishes content durability.
+  private readonly durableIntents = new Set<string>()
   private async pairedVersion(
     path: string,
     expected: FileVersion | null
@@ -194,6 +198,25 @@ export class ConditionalFiles {
   private async record(path: string, value: unknown) {
     await this.host.create(path, new TextEncoder().encode(JSON.stringify(value)), 0)
     await this.host.flush(path)
+    if (path.endsWith('/intent.json')) this.durableIntents.add(path)
+  }
+  private async flushMove(from: string, to: string, durableControl = false): Promise<void> {
+    const h = this.host
+    if (!h.flushContents) {
+      await h.flush(to, durableControl)
+      await h.flush(from, true)
+      return
+    }
+    // Content precedes namespace publication. Once it is durable, the two
+    // independent directory-entry barriers can settle together. Never return
+    // early on failure with another barrier still using the ownership lease.
+    if (!durableControl) await h.flushContents(to)
+    const settled = await Promise.allSettled([
+      Promise.resolve().then(() => h.flush(to, true)),
+      Promise.resolve().then(() => h.flush(from, true)),
+    ])
+    const failed = settled.find((one) => one.status === 'rejected')
+    if (failed?.status === 'rejected') throw failed.reason
   }
   private async retireVictim(folder: string, intent: Intent): Promise<void> {
     const h = this.host,
@@ -290,8 +313,7 @@ export class ConditionalFiles {
     }
     await this.index.put({ id, at: retainedAt, size: info.size + RETAINED_RECORD_OVERHEAD, intent })
     await h.capture(victim, retained + '/victim')
-    await h.flush(retained + '/victim')
-    await h.flush(victim, true)
+    await this.flushMove(victim, retained + '/victim')
     // A crash before capture acknowledgement must not backdate the minimum age.
     await this.index.put({ id, at: Date.now(), size: info.size + RETAINED_RECORD_OVERHEAD, intent })
     await this.record(retained + '/ready', true)
@@ -513,7 +535,8 @@ export class ConditionalFiles {
   private async install(
     from: string,
     to: string,
-    published?: (value: boolean) => void
+    published?: (value: boolean) => void,
+    durability: { durableControl?: boolean; transientSentinel?: boolean } = {}
   ): Promise<boolean> {
     published?.(true) // Treat a lost acknowledgement as possibly published until disproved.
     try {
@@ -536,7 +559,9 @@ export class ConditionalFiles {
         return false
       }
     }
-    await this.host.flush(to)
+    // An immutable control inode was flushed before linking this new name.
+    // Keep the namespace barrier; public/recovered bytes still get a full flush.
+    if (!durability.transientSentinel) await this.host.flush(to, durability.durableControl ?? false)
     return true
   }
   private async restore(from: string, to: string, retained = false, evidenceFolder?: string) {
@@ -712,7 +737,7 @@ export class ConditionalFiles {
     }
     throw new EngineError('io', 'visible recovery destinations are occupied')
   }
-  private async archive(_folder: string, id: string, successful: boolean) {
+  private async archive(folder: string, id: string, successful: boolean) {
     let source = this.host.root + '/active/' + id + '.json'
     if (!(await this.host.stat(source))) {
       if (successful) return
@@ -721,9 +746,12 @@ export class ConditionalFiles {
     }
     const parent = this.host.root + (successful ? '/completed' : '/review')
     await this.host.mkdir(parent)
+    const intent = folder + '/intent.json'
+    const durableControl =
+      this.durableIntents.has(intent) && !!(await this.host.sameObject?.(source, intent))
     await this.host.capture(source, parent + '/' + id + '.json')
-    await this.host.flush(parent + '/' + id + '.json')
-    await this.host.flush(source, true)
+    await this.flushMove(source, parent + '/' + id + '.json', durableControl)
+    this.durableIntents.delete(intent)
   }
   private async repairIntent(folder: string, id: string) {
     const h = this.host
@@ -882,11 +910,27 @@ export class ConditionalFiles {
       await h.mkdir(folder)
       if (op.expected !== null) {
         await h.create(folder + '/allocation', new Uint8Array(), 0)
-        await h.flush(folder + '/allocation')
+        if (h.flushContents) await h.flushContents(folder + '/allocation')
+        else await h.flush(folder + '/allocation')
       }
+      // This barrier publishes both the intent and its pre-flushed allocation,
+      // before any active pointer or public-file effect is allowed.
       await this.record(folder + '/intent.json', intent)
       await h.mkdir(h.root + '/active')
-      await this.record(h.root + '/active/' + id + '.json', intent)
+      if (h.sameObject) {
+        // The active pointer has exactly the already durable intent's bytes.
+        // Exclusive linking preserves its old recovery format without another
+        // content write/flush. Do not use this on portable hosts without inode proof.
+        if (
+          !(await this.install(
+            folder + '/intent.json',
+            h.root + '/active/' + id + '.json',
+            undefined,
+            { durableControl: true }
+          ))
+        )
+          throw new EngineError('io', 'conditional active pointer is occupied')
+      } else await this.record(h.root + '/active/' + id + '.json', intent)
       recorded = true
       h.check()
       if (op.expected !== null) {
@@ -898,7 +942,15 @@ export class ConditionalFiles {
         }
         try {
           // The filesystem refuses a directory substituted at the capture boundary.
-          if (!(await this.install(folder + '/allocation', victim)))
+          // The sentinel name is transient, not an acknowledged file effect.
+          // Its durable allocation and intent already precede capture. The
+          // captured victim's barrier below persists the final directory state.
+          if (
+            !(await this.install(folder + '/allocation', victim, undefined, {
+              durableControl: true,
+              transientSentinel: !!h.flushContents,
+            }))
+          )
             throw new EngineError('io', 'capture sentinel is occupied')
           await h.capture(op.path, victim)
           captured = true
@@ -912,8 +964,7 @@ export class ConditionalFiles {
           if (removed) await this.discardOwned(id, intent)
           return removed
         }
-        await h.flush(victim)
-        await h.flush(op.path, true)
+        await this.flushMove(op.path, victim)
         const info = await h.stat(victim)
         if (
           op.expected.identity !== undefined &&
@@ -958,7 +1009,11 @@ export class ConditionalFiles {
         const parent = intent.destination.slice(0, Math.max(0, intent.destination.lastIndexOf('/')))
         if (parent) await h.mkdir(parent)
         h.check()
-        if (!(await this.install(source, intent.destination))) {
+        if (
+          !(await this.install(source, intent.destination, undefined, {
+            durableControl: op.effect.kind === 'write' && !!h.replaceableMetadata?.(op.path),
+          }))
+        ) {
           await restore()
           await this.archive(folder, id, false)
           return false
@@ -990,6 +1045,7 @@ export class ConditionalFiles {
       throw error
     } finally {
       h.active.delete(activeKey)
+      this.durableIntents.delete(folder + '/intent.json')
     }
   }
   /** Content decision plus a pending-save/stat fence; no object-identity claim. */

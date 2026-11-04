@@ -66,6 +66,7 @@ async function runExchange({
   const refreshers: ((path: string) => Promise<void>)[] = []
   const removals = new Map<string, number>()
   const cycles: { device: number; phase: string; elapsedMs: number }[] = []
+  const durability = new Map<string, { calls: number; totalMs: number; maxMs: number }>()
   let phase = 'initial',
     operations = 0,
     latest = ''
@@ -212,6 +213,15 @@ async function runExchange({
               ) => {
                 operations++
                 latest = operation + ':' + outcome + ':' + paths?.[0]
+                if (operation === 'native sync' && outcome === 'complete') {
+                  const key = name + ':' + phase
+                  const row = durability.get(key) ?? { calls: 0, totalMs: 0, maxMs: 0 }
+                  const elapsed = Date.now() - _at
+                  row.calls++
+                  row.totalMs += elapsed
+                  row.maxMs = Math.max(row.maxMs, elapsed)
+                  durability.set(key, row)
+                }
               },
             }
           : {}),
@@ -297,6 +307,7 @@ async function runExchange({
       expect(removals.size).toBe(120)
       expect([...removals.values()].reduce((sum, n) => sum + n, 0)).toBe(120)
       console.debug('[sample native bulk cycles]', cycles)
+      console.debug('[sample native bulk durability]', Object.fromEntries(durability))
       return
     }
     if (delivery) {

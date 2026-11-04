@@ -1767,6 +1767,9 @@ export class ObsidianFileSystem implements FileSystem {
         if (!this.native.syncPath) throw new EngineError('io', 'native durability is unavailable')
         await this.native.syncPath(path, parentsOnly)
       },
+      ...(this.native?.syncFile
+        ? { flushContents: (path: string) => this.native.syncFile(path) }
+        : {}),
       ...(this.native?.sameObject ? { sameObject: (a, b) => this.native.sameObject(a, b) } : {}),
       ...(this.native?.fileIdentity
         ? { fileIdentity: (path: string) => this.native.fileIdentity(path) }
@@ -1864,6 +1867,7 @@ export class ObsidianFileSystem implements FileSystem {
         if (!native.syncPath) throw new EngineError('io', 'native durability is unavailable')
         await native.syncPath(path, parentsOnly)
       },
+      ...(native?.syncFile ? { flushContents: (path: string) => native.syncFile(path) } : {}),
       ...(native?.sameObject ? { sameObject: (a, b) => native.sameObject(a, b) } : {}),
       ...(native?.fileIdentity
         ? { fileIdentity: (path: string) => native.fileIdentity(path) }
