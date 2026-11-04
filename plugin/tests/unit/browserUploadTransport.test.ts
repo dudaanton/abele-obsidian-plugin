@@ -29,7 +29,7 @@ function fixture(capability: unknown = true, browserAvailable = true) {
     send: browserUploadTransport(native, browserAvailable ? browser : undefined),
   }
 }
-it.each([true, { enabled: true }])(
+it.each([true])(
   'selects original browser fetch only after advertisement: %j',
   async (capability) => {
     const f = fixture(capability)
@@ -57,7 +57,7 @@ it.each([true, { enabled: true }])(
     )
   }
 )
-it.each([undefined, false, {}, { enabled: false }, 'true'])(
+it.each([undefined, false, {}, { enabled: false }, { enabled: true }, 'true'])(
   'keeps old/unknown capabilities on native: %j',
   async (capability) => {
     const f = fixture(capability === undefined ? null : capability)
@@ -168,10 +168,41 @@ it('revokes a previously advertised capability on refresh', async () => {
   await f.send(origin + part, { method: 'PUT', headers, body })
   expect(f.browser).not.toHaveBeenCalled()
 })
-it('keeps the provisional capability interpretation in one function', () => {
+it('accepts only the negotiated literal-true capability', () => {
   expect(supportsBrowserUploads({ browserUploads: true })).toBe(true)
-  expect(supportsBrowserUploads({ browserUploads: { enabled: true } })).toBe(true)
+  // The finalized server contract emits literal true, never the provisional object form.
+  expect(supportsBrowserUploads({ browserUploads: { enabled: true } })).toBe(false)
   expect(supportsBrowserUploads(null)).toBe(false)
+})
+
+it.each([false, true])(
+  'negotiates on connection discovery and preserves capability tokens (Request=%s)',
+  async (asRequest) => {
+    const f = fixture()
+    const init = { headers: { ...headers, 'abele-client-capabilities': 'existing, another' } }
+    const input = origin + '/v2/connection'
+    if (asRequest) await f.send(new Request(input, init))
+    else await f.send(input, init)
+    const sent = f.native.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit]
+    expect(new Headers(sent[1].headers).get('abele-client-capabilities')).toBe(
+      'existing, another, browserUploads'
+    )
+    expect(new Headers(sent[1].headers).get('authorization')).toBe(headers.Authorization)
+    expect(init.headers['abele-client-capabilities']).toBe('existing, another')
+  }
+)
+
+it('does not duplicate the exact capability or advertise it on unrelated requests', async () => {
+  const f = fixture()
+  await f.send(origin + '/v2/connection', {
+    headers: { ...headers, 'abele-client-capabilities': 'browseruploads, browserUploads' },
+  })
+  const sent = f.native.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit]
+  expect(new Headers(sent[1].headers).get('abele-client-capabilities')).toBe(
+    'browseruploads, browserUploads'
+  )
+  await f.send(origin + '/v2/other', { headers })
+  expect(f.native.mock.calls[1]).toEqual([origin + '/v2/other', { headers }])
 })
 
 it.each([true, false])(

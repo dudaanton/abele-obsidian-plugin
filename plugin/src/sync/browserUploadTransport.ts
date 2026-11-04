@@ -1,6 +1,6 @@
 import { EngineError } from '@abele/sync-sdk/core'
 
-/** Provisional server contract. Keep its interpretation here until finalized. */
+/** Only the authenticated connection response's literal true enables browser parts. */
 export function supportsBrowserUploads(
   connection: unknown,
   consumeExtension?: (protocol: Record<string, unknown>) => void
@@ -10,10 +10,7 @@ export function supportsBrowserUploads(
   // The pinned SDK validates connection replies strictly. Remove only this
   // transport extension; all other fields still reach its normal validation.
   if (Object.hasOwn(connection, 'browserUploads')) consumeExtension?.(protocol)
-  return (
-    capability === true ||
-    (!!capability && typeof capability === 'object' && Reflect.get(capability, 'enabled') === true)
-  )
+  return capability === true
 }
 
 const partPath = /^\/v2\/uploads\/[a-f0-9]{64}\/[A-Za-z0-9_-]+\/(?:0|[1-9][0-9]*)$/
@@ -45,7 +42,13 @@ export function browserUploadTransport(native: typeof fetch, browser?: typeof fe
       const entry = capabilities.get(key) ?? { generation: 0, allowed: false }
       capabilities.set(key, entry)
       const generation = ++entry.generation
-      const response = await native(input, init)
+      const requested = headers.get('abele-client-capabilities')
+      if (!requested?.split(',').some((token) => token.trim() === 'browserUploads'))
+        headers.set(
+          'abele-client-capabilities',
+          requested ? `${requested}, browserUploads` : 'browserUploads'
+        )
+      const response = await native(input, { ...init, headers })
       let result = response
       let allowed = false
       if (response.ok) {
