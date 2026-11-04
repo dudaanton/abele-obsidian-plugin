@@ -1128,13 +1128,27 @@ export class ObsidianFileSystem implements FileSystem {
   }
   private inventoryListing(parent: string): Promise<ListedFiles> {
     const inventory = this.inventory
-    const read = () =>
-      this.disk.list(parent).catch(async (error): Promise<ListedFiles> => {
-        if (notFound(error) || (await this.rawStat(parent)) === null)
-          return { files: [], folders: [] }
-        inventory?.listings.delete(parent)
-        throw error
-      })
+    const read = async (): Promise<ListedFiles> => {
+      for (let attempt = 0; ; attempt++) {
+        this.runtimeFence?.assertOwned()
+        try {
+          return await this.disk.list(parent)
+        } catch (error) {
+          // ENOENT may describe a child removed during listing, not the parent.
+          // Never turn a failed listing of an existing folder into remote deletions.
+          inventory?.listings.delete(parent)
+          this.runtimeFence?.assertOwned()
+          if ((await this.rawStat(parent)) === null) return { files: [], folders: [] }
+          const hostTimeout =
+            error instanceof Error && error.message === 'File system operation timed out.'
+          if (attempt !== 0 || (!notFound(error) && !hostTimeout)) throw error
+          console.debug('[abele-sync] retrying interrupted directory listing', parent, error)
+          // The host has rejected its timed-out queued action. Let it advance before
+          // submitting one fresh read; persistent errors still abort the scan.
+          await yieldSyncTask()
+        }
+      }
+    }
     return inventory ? inventory.listings.stable(parent, read) : read()
   }
   private updateInventory(
