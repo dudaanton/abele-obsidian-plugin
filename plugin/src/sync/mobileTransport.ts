@@ -1,3 +1,10 @@
+import {
+  mobileAllocationSnapshot,
+  startMobileAllocationEvidence,
+  stopMobileAllocationEvidence,
+  submittedMobileAllocation,
+  trackMobileAllocation,
+} from './mobileAllocationEvidence'
 import { EngineError } from '@abele/sync-sdk/core'
 import { binaryResponse } from './binaryResponse'
 import { rangedBinaryTransport } from './rangedBinaryTransport'
@@ -16,7 +23,16 @@ export const nativeSyncTransportSnapshot = () => ({
   bodyMemory: { ...bodyMemory },
 })
 /** Scalar-only sampling; does not allocate the request history on a hot timer. */
-export const mobileTransferMemory = () => ({ ...mobileReadSnapshot(), ...bodyMemory })
+export const mobileTransferMemory = (start: boolean | 'stop' = false) => {
+  if (start === true) startMobileAllocationEvidence()
+  const snapshot = {
+    ...mobileReadSnapshot(),
+    ...bodyMemory,
+    allocation: mobileAllocationSnapshot(),
+  }
+  if (start === 'stop') stopMobileAllocationEvidence()
+  return snapshot
+}
 export const MOBILE_BINARY_CHUNK_BYTES = 1024 * 1024
 /** How long a native request waits to connect, and then to read. */
 const NATIVE_TIMEOUT_MS = 30_000
@@ -269,6 +285,7 @@ function capacitorFetch(native: NativeHttp): typeof fetch {
             body instanceof ArrayBuffer
               ? new Uint8Array(body)
               : new Uint8Array(body.buffer, body.byteOffset, body.byteLength)
+          trackMobileAllocation(bytes.buffer)
           requestBytes = bytes.byteLength
           options.data = base64(bytes)
           options.dataType = 'file'
@@ -311,12 +328,14 @@ function capacitorFetch(native: NativeHttp): typeof fetch {
               bodyMemory.activeEncodedBytes
             )
             bodyMemory.encodedBytes += encodedBytes
+            const acknowledged = submittedMobileAllocation(encodedBytes)
             try {
               return await native.request(options)
             } finally {
               options.data = undefined
               bodyMemory.activeEncodedBytes -= encodedBytes
               bodyMemory.completedRequests++
+              acknowledged?.()
             }
           })
           .then((value) => (signal?.aborted ? reject(cancellation()) : resolve(value)), reject)

@@ -4,6 +4,7 @@ it('uses the native current-app resident memory measurement when renderer RSS is
   const getInfo = vi.fn(async () => ({ memUsed: 123456 }))
   const sample = residentMemorySampler({ Capacitor: { Plugins: { Device: { getInfo } } } })
   expect(await sample!()).toBe(123456)
+  expect(sample).toHaveProperty('source', 'native-app')
   expect(getInfo).toHaveBeenCalledOnce()
 })
 it('keeps injected and renderer RSS measurements ahead of optional native sampling', async () => {
@@ -13,6 +14,7 @@ it('keeps injected and renderer RSS measurements ahead of optional native sampli
     Capacitor: { Plugins: { Device: { getInfo } } },
   })
   expect(await sample!()).toBe(345678)
+  expect(sample).toHaveProperty('source', 'injected')
   expect(
     await residentMemorySampler({ process: { memoryUsage: () => ({ rss: 234567 }) } })!()
   ).toBe(234567)

@@ -4,14 +4,22 @@ interface MemoryRuntime {
   Capacitor?: { Plugins?: { Device?: { getInfo(): Promise<{ memUsed?: number }> } } }
 }
 /** Self-contained so a live test can serialize it into either renderer. */
-export function residentMemorySampler(runtime: MemoryRuntime): (() => Promise<number>) | null {
+export function residentMemorySampler(
+  runtime: MemoryRuntime
+): ((() => Promise<number>) & { source: 'injected' | 'renderer' | 'native-app' }) | null {
   if (typeof runtime.__abeleExternalMemoryBytes === 'function')
-    return async () => runtime.__abeleExternalMemoryBytes!()
+    return Object.assign(async () => runtime.__abeleExternalMemoryBytes!(), {
+      source: 'injected' as const,
+    })
   if (typeof runtime.process?.memoryUsage === 'function')
-    return async () => runtime.process!.memoryUsage!().rss
+    return Object.assign(async () => runtime.process!.memoryUsage!().rss, {
+      source: 'renderer' as const,
+    })
   const device = runtime.Capacitor?.Plugins?.Device
   // The native Device plugin reports the current application's resident bytes on iOS.
   if (typeof device?.getInfo === 'function')
-    return async () => Number((await device.getInfo()).memUsed)
+    return Object.assign(async () => Number((await device.getInfo()).memUsed), {
+      source: 'native-app' as const,
+    })
   return null
 }

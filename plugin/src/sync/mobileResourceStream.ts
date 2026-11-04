@@ -1,3 +1,4 @@
+import { trackMobileAllocation } from './mobileAllocationEvidence'
 import type { DataAdapter } from 'obsidian'
 import { EngineError, MAX_CHUNK_BYTES, type ChunkSource } from '@abele/sync-sdk/core'
 import { resourceUrl } from './mobileResourceRanges'
@@ -84,6 +85,7 @@ export function openResourceStream(
         meter.opened()
       }
       const output = new Uint8Array(length)
+      trackMobileAllocation(output.buffer)
       meter.hold((tail?.buffer.byteLength ?? 0) + output.byteLength)
       let copied = 0
       while (copied < length) {

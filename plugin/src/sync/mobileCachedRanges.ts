@@ -1,3 +1,4 @@
+import { trackMobileAllocation } from './mobileAllocationEvidence'
 import { EngineError, MAX_CHUNK_BYTES } from '@abele/sync-sdk/core'
 import { sha256 } from '@noble/hashes/sha2'
 import { bytesToHex } from '@noble/hashes/utils'
@@ -148,6 +149,7 @@ export function cachedResourceRanges(adapter: DataAdapter, fetcher: typeof fetch
                     throw new EngineError('io', 'Native cache range response is invalid')
                   }
                   const bytes = new Uint8Array(await response.arrayBuffer())
+                  trackMobileAllocation(bytes.buffer)
                   controller.signal.throwIfAborted()
                   if (bytes.length !== length)
                     throw new EngineError('io', 'Truncated native cache range')
