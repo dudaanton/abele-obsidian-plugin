@@ -300,8 +300,11 @@ export function syncPlacementPlugin() {
         code = replaceOnce(
           code,
           '        return {\n            pull: before,',
-          `        if (localRevision !== undefined && localRevision === fs[Symbol.for('abele.sync.local-scan-revision-v1')]?.() &&
-            this.ctx.watch.noticed.size === 0 && this.ctx.watch.reported.size === 0) {
+          `        // A directory commit can advance the consumed feed beyond the file batch head.
+        this.ctx.set({ headSeq: Math.max(this.ctx.status().headSeq ?? 0, (secondPull ?? before).cursor) });
+        if (localRevision !== undefined && localRevision === fs[Symbol.for('abele.sync.local-scan-revision-v1')]?.() &&
+            this.ctx.watch.noticed.size === 0 && this.ctx.watch.reported.size === 0 &&
+            !client[Symbol.for('abele.sync.deferred-directory-deletes-v1')]?.()) {
           this.settledDirectoryRevision = await state.getMeta?.('v2-directories');
           this.settledLocalRevision = localRevision;
           this.settledWatchEpoch = fs[Symbol.for('abele.sync.watch-epoch-v1')]?.();
@@ -313,6 +316,19 @@ export function syncPlacementPlugin() {
         }
         return {
             pull: before,`
+        )
+        // A child delete ACK removes the guard which deferred its parent earlier
+        // in this cycle. Finish that work before the ordinary post-push pull.
+        code = replaceOnce(
+          code,
+          '        await this.staging.afterPush(judged);',
+          `        await this.staging.afterPush(judged);
+        const completingParents = !this.ctx.stopping() && pushed.committed !== null &&
+          client[Symbol.for('abele.sync.deferred-directory-deletes-v1')]?.();
+        if (completingParents) {
+          this.ctx.log('sync: finishing deferred parent deletions after child acknowledgements');
+          await client.syncDirectories?.();
+        }`
         )
         code = replaceOnce(
           code,
@@ -1472,6 +1488,12 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
       } else if (file.endsWith('/v2Directories.js')) {
         code = replaceOnce(
           code,
+          '    async scan() {',
+          '    async scan() {\n        this.deferredDeletion = false;'
+        )
+
+        code = replaceOnce(
+          code,
           'for await (const dir of this.fs.listDirectories())',
           'for await (const dir of inventoryDirectories(this.fs))'
         )
@@ -1485,7 +1507,7 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
               for await (const entry of this.state.all()) {
                 if ((entry.wirePath ?? entry.path).startsWith(old.path + '/')) { children = true; break; }
               }
-              if (children) continue;
+              if (children) { this.deferredDeletion = true; continue; }
             }
             const op = moved\n`
         )
@@ -1541,6 +1563,15 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         for (const membership of memberships) {`
         )
       } else if (file.endsWith('/v2Client.js')) {
+        code = replaceOnce(
+          code,
+          '    syncDirectories() {',
+          `    [Symbol.for('abele.sync.deferred-directory-deletes-v1')]() {
+          return this.directories?.deferredDeletion === true;
+        }
+    syncDirectories() {`
+        )
+
         code = replaceOnce(
           code,
           '    async state() {',

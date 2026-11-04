@@ -1,6 +1,6 @@
 // @vitest-environment node
 import '../helpers/desktopRequire'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { promises as disk } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -10,6 +10,11 @@ import { createUser } from '@abele/sync-server/src/access/tokens.js'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { coordinatedFileSystem, PathCoordinator } from '@/sync/pathCoordinator'
 import { selectiveFrom } from '@/sync/connection'
+import { TokenEngines } from '@/sync/tokenEngines'
+import { tokenHostFixture } from '../helpers/tokenHostFixture'
+import { IDBFactory } from 'fake-indexeddb'
+import { decodeAccessToken } from '@abele/sync-sdk/protocol'
+import { V2Client } from '@/sync/v2/client'
 import { nativeVault } from '../helpers/nativeRestartVault'
 import { TokenSyncLive } from '../e2e/helpers/tokenSyncLive'
 import { connectionJournalApp } from '@/sync/connectionScope'
@@ -18,6 +23,12 @@ import {
   requireExternalEnrollmentSafety,
 } from '@/sync/external/pluginSafety'
 import { WriteJournal } from '@/sync/writeJournal'
+
+it(
+  'retires the peer-deleted renamed folder with a settled whole-vault index',
+  () => runExchange({ delivery: false, indexed: true }),
+  30000
+)
 
 it.each([
   { name: 'delivers recipient creates and edits through the actual e2e cycle', delivery: true },
@@ -30,11 +41,24 @@ it(
   240000
 )
 
-async function runExchange({ delivery, bulk }: { delivery: boolean; bulk?: boolean }) {
-  if (bulk)
+async function runExchange({
+  delivery,
+  bulk,
+  indexed,
+}: {
+  delivery: boolean
+  bulk?: boolean
+  indexed?: boolean
+}) {
+  const useIndex = bulk || indexed
+  const apps: ReturnType<typeof nativeVault>[] = []
+  const hosts: ReturnType<typeof tokenHostFixture>[] = []
+  if (useIndex)
     Object.assign(window, {
       setTimeout: globalThis.setTimeout,
       clearTimeout: globalThis.clearTimeout,
+      setInterval: globalThis.setInterval,
+      clearInterval: globalThis.clearInterval,
     })
   const server = await v2Server()
   const root = await disk.realpath(await disk.mkdtemp(join(tmpdir(), 'sample-directory-delete-')))
@@ -67,16 +91,37 @@ async function runExchange({ delivery, bulk }: { delivery: boolean; bulk?: boole
     )
     for (const name of ['primary', 'peer']) {
       const home = join(root, name)
-      await disk.mkdir(join(home, 'Sample'), { recursive: true })
+      await disk.mkdir(indexed ? home : join(home, 'Sample'), { recursive: true })
       const app = nativeVault(home, disk)
-      if (bulk) {
+      apps.push(app)
+      if (indexed) {
+        const remove = app.vault.delete.bind(app.vault)
+        app.vault.delete = async (file) => {
+          if ('children' in file) await app.vault.adapter.rmdir(file.path, true)
+          await remove(file)
+          app.emit('vault', 'delete', file)
+        }
+      }
+      if (indexed) {
+        const stat = app.vault.adapter.stat.bind(app.vault.adapter)
+        app.vault.adapter.stat = async (path) => {
+          const info = await stat(path)
+          return info && { ...info, ctime: Math.round(info.ctime), mtime: Math.round(info.mtime) }
+        }
+      }
+      if (indexed)
+        await disk.writeFile(
+          join(home, '.abele-sync-ignore'),
+          '*\n!Sample/\n!Sample/**\n.obsidian/\n'
+        )
+      if (useIndex) {
         // The host's current folder children outlive content-indexing work.
         let busyUntil = 0
         Object.assign(app.metadataCache, {
           initialized: true,
           isCacheClean: () => Date.now() >= busyUntil,
         })
-        await app.vault.createFolder('Sample')
+        if (!indexed) await app.vault.createFolder('Sample')
         const refresh = async (path: string) => {
           if (!path.startsWith('Sample/')) return
           const file = app.vault.getFileByPath(path)
@@ -104,12 +149,59 @@ async function runExchange({ delivery, bulk }: { delivery: boolean; bulk?: boole
         Object.assign(app.vault.adapter, { reconcileInternalFile: refresh })
         refreshers.push(refresh)
       }
+      if (indexed) {
+        const fixture = tokenHostFixture(globalThis.fetch, [], { app, factory: new IDBFactory() })
+        fixture.registry.forget(fixture.id)
+        fixture.id = fixture.registry.add()
+        const token = decodeAccessToken(user.token)
+        const authority = await new V2EngineClient(user.token, {
+          fetch: globalThis.fetch,
+        }).connection()
+        fixture.registry.attach(fixture.id, token, authority, {
+          get: (key) => fixture.keys.get(key) ?? null,
+          set: (key, value) => {
+            fixture.keys.set(key, value)
+          },
+          remove: (key) => {
+            fixture.keys.delete(key)
+          },
+        })
+        await fixture.host.close(false)
+        fixture.host = new TokenEngines(
+          app as never,
+          fixture.ui,
+          (key) => fixture.keys.get(key) ?? null,
+          {
+            indexedDB: fixture.factory,
+            fetch: globalThis.fetch,
+            fallbackMs: 60000,
+            pollMs: 60000,
+            WebSocket: class {
+              constructor() {
+                throw new Error('Fixture uses polling')
+              }
+            } as never,
+          }
+        )
+        hosts.push(fixture)
+        fixture.host.start()
+        await fixture.ui.connectionsChanged()
+        await vi.waitFor(
+          () => expect(fixture.host.live.get(fixture.id)?.engine.status.state).toBe('idle'),
+          { timeout: 10000 }
+        )
+        engines.push(fixture.host.live.get(fixture.id)!.engine)
+        // Keep watcher proofs, but drive exchanges explicitly so an extra watcher
+        // cycle cannot accidentally finish a parent deferred by the requested cycle.
+        Reflect.set(engines.at(-1)!, 'trigger', () => {})
+        continue
+      }
       const files = new ObsidianFileSystem(app as never, {
         fileScope: 'Sample',
         journalOwner: name,
         connectionId: name,
         preserveEmptyDirectories: true,
-        ...(bulk ? { prepareStartupInventory: async () => {} } : {}),
+        ...(useIndex ? { prepareStartupInventory: async () => {} } : {}),
         ...(bulk
           ? {
               diagnostic: (
@@ -124,7 +216,8 @@ async function runExchange({ delivery, bulk }: { delivery: boolean; bulk?: boole
             }
           : {}),
       })
-      if (bulk) await files.waitForStartupIndex()
+      if (useIndex) await files.waitForStartupIndex()
+
       if (bulk) {
         const conditional = files.conditionalFile.bind(files)
         files.conditionalFile = async (operation) => {
@@ -152,7 +245,8 @@ async function runExchange({ delivery, bulk }: { delivery: boolean; bulk?: boole
     // supplying a correct head callback which could mask its protocol mistake.
     const sync = async (device: number) => {
       const started = Date.now()
-      await engines[device].sync()
+      if (indexed) await hosts[device].ui.sync(hosts[device].id)
+      else await engines[device].sync()
       if (bulk) cycles.push({ device, phase, elapsedMs: Date.now() - started })
     }
     const cycle = () =>
@@ -161,9 +255,10 @@ async function runExchange({ delivery, bulk }: { delivery: boolean; bulk?: boole
         primary: { syncNow: () => sync(0) },
         peer: { syncNow: () => sync(1) },
       } as unknown as TokenSyncLive)
-    await disk.mkdir(join(root, 'primary/Sample/from'))
+    if (indexed) await cycle()
+    await disk.mkdir(join(root, 'primary/Sample/from'), { recursive: true })
     await disk.writeFile(join(root, 'primary/Sample/from/sample.md'), 'sample')
-    if (bulk) await refreshers[0]('Sample/from/sample.md')
+    if (useIndex) await refreshers[0]('Sample/from/sample.md')
     await cycle()
     if (bulk) {
       phase = 'upload sixty'
@@ -217,10 +312,31 @@ async function runExchange({ delivery, bulk }: { delivery: boolean; bulk?: boole
       )
       return
     }
-    await disk.rename(join(root, 'peer/Sample/from'), join(root, 'peer/Sample/to'))
+    if (indexed) await apps[1].vault.adapter.rename('Sample/from', 'Sample/to')
+    else await disk.rename(join(root, 'peer/Sample/from'), join(root, 'peer/Sample/to'))
+    if (indexed) {
+      const folder = apps[1].vault.getAbstractFileByPath('Sample/from')!
+      await apps[1].vault.rename(folder, 'Sample/to')
+      apps[1].emit('vault', 'rename', folder, 'Sample/from')
+    }
     await cycle()
     expect(await disk.readFile(join(root, 'primary/Sample/to/sample.md'), 'utf8')).toBe('sample')
-    await disk.rm(join(root, 'peer/Sample/to'), { recursive: true })
+    if (indexed) {
+      const folder = apps[1].vault.getAbstractFileByPath('Sample/to')!
+      await apps[1].vault.delete(folder)
+      // Deliver the complete host batch before scanning, as on a busy live vault.
+      await vi.waitFor(() =>
+        expect(Reflect.get(engines[1], 'watch').noticed.has('Sample/to')).toBe(true)
+      )
+      await hosts[1].ui.sync(hosts[1].id)
+      const manifest = await new V2Client(
+        decodeAccessToken(user.token),
+        globalThis.fetch
+      ).manifest()
+      expect(manifest.items.some((item) => item.path === 'Sample/to')).toBe(false)
+      expect(engines[1].status.headSeq).toBe(manifest.cursor)
+      expect(engines[1].status.cursor).toBe(manifest.cursor)
+    } else await disk.rm(join(root, 'peer/Sample/to'), { recursive: true })
     await cycle()
     expect(await disk.stat(join(root, 'primary/Sample/to')).catch(() => null)).toBeNull()
     expect(await disk.stat(join(root, 'primary/Sample/from')).catch(() => null)).toBeNull()
@@ -229,6 +345,7 @@ async function runExchange({ delivery, bulk }: { delivery: boolean; bulk?: boole
     throw error
   } finally {
     if (timer !== undefined) clearInterval(timer)
+    for (const fixture of hosts) await fixture.host.close()
     for (const engine of engines) await engine.stop()
     await server.close()
     await disk.rm(root, { recursive: true, force: true })
