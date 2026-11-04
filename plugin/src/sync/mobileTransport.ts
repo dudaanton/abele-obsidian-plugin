@@ -10,6 +10,7 @@ import { binaryResponse } from './binaryResponse'
 import { rangedBinaryTransport } from './rangedBinaryTransport'
 import { ExchangeTrace } from './exchangeTrace'
 import { mobileReadSnapshot } from './mobileReadDiagnostics'
+import { browserUploadTransport, browserUploadSnapshot } from './browserUploadTransport'
 const nativeRequests = new ExchangeTrace()
 nativeRequests.finishFirstSync()
 const bodyMemory = {
@@ -21,6 +22,7 @@ const bodyMemory = {
 export const nativeSyncTransportSnapshot = () => ({
   ...nativeRequests.snapshot(),
   bodyMemory: { ...bodyMemory },
+  browserUploads: browserUploadSnapshot(),
 })
 /** Scalar-only sampling; does not allocate the request history on a hot timer. */
 export const mobileTransferMemory = (start: boolean | 'stop' = false) => {
@@ -29,6 +31,7 @@ export const mobileTransferMemory = (start: boolean | 'stop' = false) => {
     ...mobileReadSnapshot(),
     ...bodyMemory,
     allocation: mobileAllocationSnapshot(),
+    browserUploads: browserUploadSnapshot(),
   }
   if (start === 'stop') stopMobileAllocationEvidence()
   return snapshot
@@ -147,18 +150,28 @@ function responseBytes(data: unknown): Uint8Array {
 }
 /** Known runtime only; no fallback to requestUrl, whose native redirect/cache behavior is unsafe. */
 export function mobileTransport(): typeof fetch {
-  const capacitor = (
-    window as unknown as {
-      Capacitor?: { getPlatform?: () => string; Plugins?: { CapacitorHttp?: NativeHttp } }
-    }
-  ).Capacitor
+  const runtime = window as unknown as {
+    Capacitor?: { getPlatform?: () => string; Plugins?: { CapacitorHttp?: NativeHttp } }
+    CapacitorWebFetch?: typeof fetch
+  }
+  const capacitor = runtime.Capacitor
   const http = capacitor?.Plugins?.CapacitorHttp
   if (capacitor?.getPlatform?.() !== 'ios' || typeof http?.request !== 'function')
     throw new Error(
       'Native sync transport is unsupported until its non-following runtime is verified'
     )
+  const original =
+    typeof runtime.CapacitorWebFetch === 'function'
+      ? runtime.CapacitorWebFetch.bind(window)
+      : undefined
   return rangedBinaryTransport(
-    fetchViaCapacitorHttp(exactNativeRequestBodies(http)),
+    browserUploadTransport(
+      fetchViaCapacitorHttp(exactNativeRequestBodies(http)),
+      original
+        ? (input, init) =>
+            nativeRequests.run('PUT /v2/uploads/:id/:part', () => original(input, init))
+        : undefined
+    ),
     MOBILE_BINARY_CHUNK_BYTES
   )
 }

@@ -9,7 +9,8 @@ import type { SyncStartupTimeline } from './startupTimeline'
  * What a test replaces to run the service against a server in its own process.
  *
  * Production passes none of it: desktop transport is native non-following HTTP; verified iOS
- * uses the explicitly non-following native bridge. Unknown mobile runtimes stay blocked. The socket is the WebView's own and the database is the
+ * uses the native bridge plus original browser fetch for advertised bounded part uploads;
+ * both refuse redirects before following. Unknown mobile runtimes stay blocked. The socket is the WebView's own and the database is the
  * window's IndexedDB. A test hands over a `fetch` into
  * the running server, a `WebSocket` bound to its port, and an `IDBFactory` of its own so that
  * no two tests share a database.
