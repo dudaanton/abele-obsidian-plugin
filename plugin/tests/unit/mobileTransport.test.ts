@@ -108,7 +108,10 @@ describe('bounded native connection-lost retry', () => {
       headers: { 'idempotency-key': 'sample-original-key' },
       body: 'sample original bytes',
     }
+    // Request envelopes release payloads after completion; inspect bytes at submission.
+    const submitted: import('@/sync/mobileTransport').NativeHttpOptions[] = []
     const request = vi.fn(async (options: import('@/sync/mobileTransport').NativeHttpOptions) => {
+      submitted.push(structuredClone(options))
       if (request.mock.calls.length === 1) {
         init.headers['idempotency-key'] = 'sample-replacement-key'
         init.body = 'sample replacement bytes'
@@ -117,8 +120,8 @@ describe('bounded native connection-lost retry', () => {
       return { status: 200, headers: {}, data: '', url: options.url }
     })
     await fetchViaCapacitorHttp({ request })(commit, init)
-    expect(request.mock.calls[1][0].headers['idempotency-key']).toBe('sample-original-key')
-    expect(request.mock.calls[1][0].data).toBe('sample original bytes')
+    expect(submitted[1].headers['idempotency-key']).toBe('sample-original-key')
+    expect(submitted[1].data).toBe('sample original bytes')
   })
   it('does not retry an unkeyed commit or an unrelated keyed POST', async () => {
     for (const [path, headers] of [
@@ -488,15 +491,20 @@ describe('non-following native mobile fetch', () => {
     ])
   })
   it('encodes binary file bytes exactly and preserves explicit text/JSON bodies', async () => {
-    const request = vi.fn(async (opts: any) => ({
-      status: 200,
-      headers: {},
-      data:
-        opts.dataType === 'file'
-          ? opts.data
-          : btoa(typeof opts.data === 'string' ? opts.data : JSON.stringify(opts.data)),
-      url: opts.url,
-    }))
+    // Snapshot at native entry: the completed envelope must no longer own body bytes.
+    const submitted: import('@/sync/mobileTransport').NativeHttpOptions[] = []
+    const request = vi.fn(async (opts: any) => {
+      submitted.push(structuredClone(opts))
+      return {
+        status: 200,
+        headers: {},
+        data:
+          opts.dataType === 'file'
+            ? opts.data
+            : btoa(typeof opts.data === 'string' ? opts.data : JSON.stringify(opts.data)),
+        url: opts.url,
+      }
+    })
     const fetch = fetchViaCapacitorHttp({ request })
     const binary = await fetch('https://sync.example/bytes', {
       method: 'POST',
@@ -504,7 +512,7 @@ describe('non-following native mobile fetch', () => {
       body: new Uint8Array([0, 255, 1, 128]),
     })
     expect([...new Uint8Array(await binary.arrayBuffer())]).toEqual([0, 255, 1, 128])
-    expect(request.mock.calls[0][0]).toMatchObject({
+    expect(submitted[0]).toMatchObject({
       data: 'AP8BgA==',
       dataType: 'file',
       headers: { 'Content-Type': 'application/octet-stream' },
@@ -515,12 +523,12 @@ describe('non-following native mobile fetch', () => {
       headers: { 'content-type': 'application/json' },
       body: '{"sample":"value"}',
     })
-    expect(request.mock.calls[1][0]).toMatchObject({
+    expect(submitted[1]).toMatchObject({
       data: { sample: 'value' },
       headers: { 'Content-Type': 'application/json' },
     })
     await fetch('https://sync.example/text', { method: 'POST', body: 'sample-password' })
-    expect(request.mock.calls[2][0]).toMatchObject({
+    expect(submitted[2]).toMatchObject({
       data: 'sample-password',
       headers: { 'Content-Type': 'text/plain' },
     })

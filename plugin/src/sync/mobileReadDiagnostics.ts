@@ -13,12 +13,27 @@ const counters = {
   maxChunkBytes: 0,
   oversizedChunks: 0,
   maxOutputBytes: 0,
+  nativeCopies: 0,
+  nativeCopyBytes: 0,
+  activeNativeCopies: 0,
+  resourceRangeBytes: 0,
 }
 export const mobileReadSnapshot = () => ({ ...counters })
 export function mobileReadMeter() {
   let held = 0,
     active = false
   return {
+    copyStarted() {
+      counters.nativeCopies++
+      counters.activeNativeCopies++
+    },
+    copyFinished(bytes: number) {
+      counters.activeNativeCopies--
+      counters.nativeCopyBytes += bytes
+    },
+    resourceRange(bytes: number) {
+      counters.resourceRangeBytes += bytes
+    },
     wholeRead() {
       counters.wholeReads++
     },

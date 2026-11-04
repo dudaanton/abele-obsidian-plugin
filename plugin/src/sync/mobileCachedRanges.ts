@@ -3,6 +3,7 @@ import { sha256 } from '@noble/hashes/sha2'
 import { bytesToHex } from '@noble/hashes/utils'
 import type { DataAdapter } from 'obsidian'
 import { resourceUrl } from './mobileResourceRanges'
+import { mobileReadMeter } from './mobileReadDiagnostics'
 
 interface CacheFiles {
   mkdir(options: { path: string; directory: 'CACHE'; recursive: boolean }): Promise<unknown>
@@ -94,11 +95,19 @@ export function cachedResourceRanges(adapter: DataAdapter, fetcher: typeof fetch
         // Only a host-provided local URI reaches the native copy API.
         const original = new URL(resourceUrl(adapter, path))
         const nativePath = original.pathname.slice('/_capacitor_file_'.length)
-        await files.copy({
-          from: new URL(nativePath, 'file://').href,
-          to: alias,
-          toDirectory: 'CACHE',
-        })
+        const meter = mobileReadMeter()
+        let copied = false
+        meter.copyStarted()
+        try {
+          await files.copy({
+            from: new URL(nativePath, 'file://').href,
+            to: alias,
+            toDirectory: 'CACHE',
+          })
+          copied = true
+        } finally {
+          meter.copyFinished(copied ? size : 0)
+        }
         signal?.throwIfAborted()
         if ((await files.stat({ path: alias, directory: 'CACHE' })).size !== size)
           throw new EngineError('conflict', 'Disposable read copy changed size')
@@ -142,6 +151,7 @@ export function cachedResourceRanges(adapter: DataAdapter, fetcher: typeof fetch
                   controller.signal.throwIfAborted()
                   if (bytes.length !== length)
                     throw new EngineError('io', 'Truncated native cache range')
+                  meter.resourceRange(bytes.length)
                   at += length
                   output.enqueue(bytes)
                   if (at === size) await finish()

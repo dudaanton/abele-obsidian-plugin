@@ -2,9 +2,21 @@ import { EngineError } from '@abele/sync-sdk/core'
 import { binaryResponse } from './binaryResponse'
 import { rangedBinaryTransport } from './rangedBinaryTransport'
 import { ExchangeTrace } from './exchangeTrace'
+import { mobileReadSnapshot } from './mobileReadDiagnostics'
 const nativeRequests = new ExchangeTrace()
 nativeRequests.finishFirstSync()
-export const nativeSyncTransportSnapshot = () => nativeRequests.snapshot()
+const bodyMemory = {
+  activeEncodedBytes: 0,
+  peakEncodedBytes: 0,
+  completedRequests: 0,
+  encodedBytes: 0,
+}
+export const nativeSyncTransportSnapshot = () => ({
+  ...nativeRequests.snapshot(),
+  bodyMemory: { ...bodyMemory },
+})
+/** Scalar-only sampling; does not allocate the request history on a hot timer. */
+export const mobileTransferMemory = () => ({ ...mobileReadSnapshot(), ...bodyMemory })
 export const MOBILE_BINARY_CHUNK_BYTES = 1024 * 1024
 /** How long a native request waits to connect, and then to read. */
 const NATIVE_TIMEOUT_MS = 30_000
@@ -97,10 +109,12 @@ export class NativeSyncUnknownOutcome extends DOMException {
   }
 }
 function base64(bytes: Uint8Array): string {
-  let text = ''
-  for (let at = 0; at < bytes.length; at += 32768)
-    text += String.fromCharCode(...bytes.subarray(at, at + 32768))
-  return btoa(text)
+  const parts: string[] = []
+  // Three-byte alignment makes separately encoded pieces concatenable without
+  // padding in the middle. Never build a second, chunk-sized binary string.
+  for (let at = 0; at < bytes.length; at += 32766)
+    parts.push(btoa(String.fromCharCode(...bytes.subarray(at, at + 32766))))
+  return parts.join('')
 }
 function responseBytes(data: unknown): Uint8Array {
   if (data == null) return new Uint8Array()
@@ -135,14 +149,19 @@ export function mobileTransport(): typeof fetch {
 /** NSJSONSerialization can reorder dictionaries. Commit replay must send the same bytes. */
 export function exactNativeRequestBodies(native: NativeHttp): NativeHttp {
   return {
-    request(options) {
+    async request(options) {
       if (options.data !== undefined && options.dataType !== 'file') {
         const text = typeof options.data === 'string' ? options.data : JSON.stringify(options.data)
-        return native.request({
+        const encoded: NativeHttpOptions = {
           ...options,
           data: base64(new TextEncoder().encode(text)),
-          dataType: 'file',
-        })
+          dataType: 'file' as const,
+        }
+        try {
+          return await native.request(encoded)
+        } finally {
+          encoded.data = undefined
+        }
       }
       return native.request(options)
     },
@@ -279,10 +298,26 @@ function capacitorFetch(native: NativeHttp): typeof fetch {
         )
         signal?.addEventListener('abort', aborted, { once: true })
         Promise.resolve()
-          .then(() => {
+          .then(async () => {
             if (signal?.aborted) throw abortError()
             sent = true
-            return native.request(options)
+            // A bridge may retain its request envelope after acknowledgement.
+            // Keep bytes until native completion (including after JS abort), then
+            // release our encoded copy without changing the retry source body.
+            const encodedBytes = typeof options.data === 'string' ? options.data.length : 0
+            bodyMemory.activeEncodedBytes += encodedBytes
+            bodyMemory.peakEncodedBytes = Math.max(
+              bodyMemory.peakEncodedBytes,
+              bodyMemory.activeEncodedBytes
+            )
+            bodyMemory.encodedBytes += encodedBytes
+            try {
+              return await native.request(options)
+            } finally {
+              options.data = undefined
+              bodyMemory.activeEncodedBytes -= encodedBytes
+              bodyMemory.completedRequests++
+            }
           })
           .then((value) => (signal?.aborted ? reject(cancellation()) : resolve(value)), reject)
       }).finally(() => {

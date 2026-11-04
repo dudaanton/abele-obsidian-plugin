@@ -57,8 +57,8 @@ for (const offload of [false, true])
         adapter.readBinary=function(path,...args){if(path===${JSON.stringify(path)})window.__largeUploadReadCount++;return original.call(this,path,...args)};
         const sampler=(${residentMemorySampler.toString()})(window);
         if(!sampler)throw new Error('Resident-memory sampler required');
-        const state=window.__largeUploadMemory={baseline:0,peak:0,samples:0,error:null,timer:null,flight:null};
-        const sample=()=>state.flight??=Promise.resolve().then(sampler).then(bytes=>{if(!Number.isFinite(bytes)||bytes<=0)throw new Error('Invalid resident-memory sample');if(!state.samples)state.baseline=bytes;state.peak=Math.max(state.peak,bytes);state.samples++}).catch(error=>{state.error=String(error)}).finally(()=>{state.flight=null});
+        const state=window.__largeUploadMemory={baseline:0,peak:0,samples:0,error:null,timer:null,flight:null,timeline:[],key:null};
+        const sample=()=>state.flight??=Promise.resolve().then(sampler).then(bytes=>{if(!Number.isFinite(bytes)||bytes<=0)throw new Error('Invalid resident-memory sample');if(!state.samples)state.baseline=bytes;state.peak=Math.max(state.peak,bytes);state.samples++;const io=window.__abeleTest.mobileTransferMemory(),key=[io.activeNativeCopies,Math.floor(io.resourceRangeBytes/16777216),Math.floor(io.encodedBytes/16777216),Math.floor(bytes/4194304)].join(':');if(key!==state.key){state.key=key;state.timeline.push({at:Date.now(),resident:bytes,...io});if(state.timeline.length>64)state.timeline.splice(1,1)}}).catch(error=>{state.error=String(error)}).finally(()=>{state.flight=null});
         await sample();state.timer=setInterval(()=>void sample(),25);return true`
         )
         await a.syncNow(id)
@@ -96,11 +96,12 @@ for (const offload of [false, true])
           error: string | null
         }>(
           'collect upload resident-memory evidence',
-          `const state=window.__largeUploadMemory;await state.flight;return {baseline:state.baseline,peak:state.peak,samples:state.samples,error:state.error}`
+          `const state=window.__largeUploadMemory;await state.flight;return {baseline:state.baseline,peak:state.peak,samples:state.samples,error:state.error,timeline:state.timeline}`
         )
         console.info('large upload resident bytes', {
           ...memory,
           growth: memory.peak - memory.baseline,
+          localReads: afterReads,
         })
         expect(memory.error).toBeNull()
         expect(memory.samples).toBeGreaterThan(2)
@@ -190,7 +191,7 @@ for (const offload of [false, true])
             error: string | null
           }>(
             'collect offload and rehydrate resident-memory evidence',
-            `const state=window.__largeUploadMemory;await state.flight;return {baseline:state.baseline,peak:state.peak,samples:state.samples,error:state.error}`
+            `const state=window.__largeUploadMemory;await state.flight;return {baseline:state.baseline,peak:state.peak,samples:state.samples,error:state.error,timeline:state.timeline}`
           )
           console.info('large upload, offload and rehydrate resident bytes', {
             ...offloadMemory,
