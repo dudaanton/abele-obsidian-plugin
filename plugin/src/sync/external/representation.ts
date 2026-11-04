@@ -104,6 +104,7 @@ const terminal = new Set([
  * `hit` and `pass` read no content; every `miss-*` reason is followed by one bounded read. */
 export interface ClassificationStats {
   listingWait?: { path?: string; step: string; at: number }
+  prefixRead?: { path: string; step: string; at: number }
   storage: string
   loaded: number
   callers: Record<string, Record<string, number>>
@@ -241,7 +242,11 @@ export class ExternalRepresentation {
     }
   }
   classificationStats(): ClassificationStats {
-    return structuredClone(this.stats)
+    const read = Reflect.get(this.options.fs, Symbol.for('abele.sync.prefix-read-wait-v1')) as
+      | (() => ClassificationStats['prefixRead'])
+      | undefined
+    const prefixRead = read?.call(this.options.fs)
+    return structuredClone({ ...this.stats, ...(prefixRead ? { prefixRead } : {}) })
   }
   private classificationStep(path: string, step: string): void {
     const pending = this.stats.listingWait

@@ -48,6 +48,10 @@ it('names a pending list classification and clears it before yielding the row', 
   await fs.writeAtomic('Notes/sample.md', bytes, 1000)
   const entered = deferred()
   const reading = deferred<Uint8Array>()
+  const prefix = { path: 'Notes/sample.md', step: 'native close', at: 1000 }
+  Object.defineProperty(fs, Symbol.for('abele.sync.prefix-read-wait-v1'), {
+    value: () => prefix,
+  })
   vi.spyOn(fs, 'read').mockImplementation(() => {
     entered.resolve()
     return reading.promise
@@ -72,6 +76,7 @@ it('names a pending list classification and clears it before yielding the row', 
     await entered.promise
     expect(representation.classificationStats()).toMatchObject({
       listingWait: { path: 'Notes/sample.md', step: 'prefix read', at: expect.any(Number) },
+      prefixRead: prefix,
     })
   } finally {
     reading.resolve(bytes)

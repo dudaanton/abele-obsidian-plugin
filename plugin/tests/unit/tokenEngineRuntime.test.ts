@@ -2914,6 +2914,47 @@ function runtime(
     reviews,
   }
 }
+it('drains the engine slot on disconnect while a prefix inspection is waiting for host I/O', async () => {
+  const wire = await server('Notes/sample.md', '')
+  const one = runtime(wire, new MemoryFileSystem())
+  const entered = deferred()
+  const reading = deferred<Uint8Array>()
+  const fs = Object.assign(Object.create(ObsidianFileSystem.prototype), {
+    indexWaitSignal: () => one.runtime.indexWaitSignal(),
+  }) as ObsidianFileSystem
+  Object.defineProperty(fs, 'disk', {
+    value: {
+      readBinaryPrefix: () => {
+        entered.resolve()
+        return reading.promise
+      },
+    },
+  })
+  let accepted = false
+  const work = one.runtime.engine
+    .runExclusive(async () => {
+      await fs.readPrefix('.config/settings.json', 16)
+      accepted = true
+    })
+    .catch(() => {})
+  let closed = false
+  try {
+    await entered.promise
+    const closing = one.runtime.close().then(() => {
+      closed = true
+    })
+    await flushPromises()
+    expect(closed).toBe(true)
+    expect(accepted).toBe(false)
+    await closing
+  } finally {
+    reading.resolve(new Uint8Array([123]))
+    await work
+    await one.runtime.close()
+  }
+  expect(accepted).toBe(false)
+})
+
 it('drains an engine checkpoint on close without waiting for the host continuation', async () => {
   const wire = await server('Notes/sample.md', '')
   const one = runtime(wire, new MemoryFileSystem())

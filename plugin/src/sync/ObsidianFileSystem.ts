@@ -1,7 +1,7 @@
 import { indexedPathBucket, invalidateIndexedPathCandidates } from './indexedPathCandidates'
 import { PRIVATE_REMOVAL_FILES, privateRemovalFileSystem } from './privateRemovalFileSystem'
 import { inspectedAbsent, invalidateInspectedAbsence } from './inspectionDirectories'
-import { SyncTaskBudget, yieldSyncTask } from './syncTaskBudget'
+import { SyncTaskBudget, waitForSyncRead, yieldSyncTask } from './syncTaskBudget'
 import { directEntryDurability } from './directEntryDurability'
 import { INSTALL_BATCH, nativeInstallBatch, type InstallItem } from './nativeInstallBatch'
 import { PORTABLE_CANDIDATES } from './ledgerPathCandidates'
@@ -3391,33 +3391,77 @@ export class ObsidianFileSystem implements FileSystem {
    * ceiling and inspected one at a time. This never promotes a prefix to a proven local base. */
   async readPrefix(path: string, maximum: number): Promise<Uint8Array> {
     this.runtimeFence?.assertReady()
+    const signal = this.runIndexSignal ?? this.indexWaitSignal?.()
+    signal?.throwIfAborted()
+    const pending = { path, step: 'select reader', at: Date.now() }
+    this.prefixReadWait = pending
+    const step = (name: string) => {
+      pending.step = name
+      pending.at = Date.now()
+    }
+    // Prefix inspection has no effects. Cancel the consumer independently of host I/O,
+    // while retaining the continuation that closes a handle even if open finishes late.
+    const work = this.readPrefixOwned(path, maximum, signal, step).finally(() => {
+      if (this.prefixReadWait === pending) this.prefixReadWait = undefined
+    })
+    return waitForSyncRead(work, signal)
+  }
+
+  private prefixReadWait?: { path: string; step: string; at: number };
+
+  [Symbol.for('abele.sync.prefix-read-wait-v1')]() {
+    return this.prefixReadWait ? { ...this.prefixReadWait } : undefined
+  }
+
+  private async readPrefixOwned(
+    path: string,
+    maximum: number,
+    signal: AbortSignal | undefined,
+    step: (name: string) => void
+  ): Promise<Uint8Array> {
     const adapter = this.disk as DataAdapter & {
       readBinaryPrefix?(path: string, maximum: number): Promise<ArrayBuffer | Uint8Array>
     }
     const native = nativeChunkPort(adapter)
     if (adapter.readBinaryPrefix) {
+      step('adapter prefix')
       const bytes = await adapter.readBinaryPrefix(path, maximum)
+      signal?.throwIfAborted()
       return (bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)).subarray(0, maximum)
     }
     if (native.fullPath && native.open) {
+      step('native open')
       const handle = await native.open(native.fullPath(path), 'r')
       try {
+        signal?.throwIfAborted()
         const bytes = new Uint8Array(maximum)
+        step('native read')
         const result = await handle.read(bytes, 0, maximum, 0)
+        signal?.throwIfAborted()
         return bytes.subarray(0, result.bytesRead)
       } finally {
+        step('native close')
         await handle.close()
       }
     }
+    step('portable stat')
     const info = await this.rawStat(path)
+    signal?.throwIfAborted()
     if (info === null || info.type !== 'file' || info.size > 200 * 1024 * 1024)
       return new Uint8Array()
+    step('portable open')
     const source = await this.io.openRead(path)
     try {
-      const bytes = await source.read(0, Math.min(maximum, source.size, MAX_CHUNK_BYTES))
+      signal?.throwIfAborted()
+      step('portable read')
+      const bytes = await source.read(0, Math.min(maximum, source.size, MAX_CHUNK_BYTES), signal)
+      signal?.throwIfAborted()
+      step('portable identity')
       await source.assertUnchanged()
+      signal?.throwIfAborted()
       return bytes
     } finally {
+      step('portable close')
       await source.close()
     }
   }
