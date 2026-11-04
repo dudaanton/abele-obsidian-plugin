@@ -3,7 +3,7 @@ import { ChatSession } from '@/ai/ChatSession'
 import { ChatService } from '@/ai/ChatService'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { DEFAULT_AI_SETTINGS, type AiProvider } from '@/ai/types'
+import { DEFAULT_AI_SETTINGS, type AiProvider, type ChatMessage } from '@/ai/types'
 import { createChatMessagingTools } from '@/ai/tools/ChatMessagingTools'
 import { createAgentTools, getToolRegistry, codeToolDescriptions } from '@/ai/tools'
 import {
@@ -395,6 +395,129 @@ beforeEach(() => {
   vi.spyOn(ChatService.getInstance(), 'saveTabs').mockImplementation(() => {})
 })
 afterEach(() => vi.restoreAllMocks())
+
+it('returns from a no-wait handoff before its answer and delivers a passive letter later', async () => {
+  const service = ChatService.getInstance()
+  const caller = service.getSession(service.createTab())!
+  const target = service.getSession(service.createTab())!
+  let finish!: (answer: string) => void
+  vi.spyOn(target, 'receiveChatLetter').mockImplementation(
+    () =>
+      new Promise<string>((resolve) => {
+        finish = resolve
+      })
+  )
+  const wake = vi.spyOn(caller, 'sendMessage')
+  const send = createChatMessagingTools(caller).find(
+    (tool) => tool.name === 'send_message_to_chat'
+  )!
+  const result = await send.execute('handoff', {
+    chat_id: target.id,
+    message: 'Sample work',
+    wait: false,
+  })
+  expect(result.content).toEqual([
+    {
+      type: 'text',
+      text: 'Message queued. The final answer will arrive as an incoming letter; do not wait.',
+    },
+  ])
+  expect(caller.messages.value.some((m) => m.fromSession?.id === target.id)).toBe(false)
+  finish('Sample completed work')
+  await vi.waitFor(() =>
+    expect(caller.messages.value.find((m) => m.fromSession?.id === target.id)).toMatchObject({
+      content: 'Sample completed work',
+      role: 'system',
+      sessionMark: { kind: 'notice', text: 'Sample completed work' },
+    })
+  )
+  expect(wake).not.toHaveBeenCalled()
+})
+
+it('keeps wait=true blocked until the final answer', async () => {
+  const service = ChatService.getInstance()
+  const caller = service.getSession(service.createTab())!
+  const target = service.getSession(service.createTab())!
+  let finish!: (answer: string) => void
+  vi.spyOn(target, 'receiveChatLetter').mockImplementation(
+    () =>
+      new Promise<string>((resolve) => {
+        finish = resolve
+      })
+  )
+  const send = createChatMessagingTools(caller).find(
+    (tool) => tool.name === 'send_message_to_chat'
+  )!
+  let settled = false
+  const result = send
+    .execute('question', { chat_id: target.id, message: 'Sample question', wait: true })
+    .then((answer) => {
+      settled = true
+      return answer
+    })
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+  expect(settled).toBe(false)
+  finish('Quick answer')
+  expect((await result).content).toEqual([{ type: 'text', text: 'Quick answer' }])
+  expect(caller.messages.value.some((m) => m.fromSession)).toBe(false)
+})
+
+it('queues no-wait work behind a busy target and keeps a reloaded receipt without resending', async () => {
+  const service = ChatService.getInstance()
+  const caller = service.getSession(service.createTab())!
+  const target = service.getSession(service.createTab())!
+  await caller.addUserNote('Sample sender context')
+  const receive = vi.spyOn(target, 'receiveChatLetter')
+  const send = createChatMessagingTools(caller).find(
+    (tool) => tool.name === 'send_message_to_chat'
+  )!
+  target.isStreaming.value = true
+  const append = caller as unknown as {
+    appendChatMessage(message: unknown): void
+    updateChatMessage(
+      predicate: (message: ChatMessage) => boolean,
+      updater: (message: ChatMessage) => ChatMessage
+    ): void
+  }
+  append.appendChatMessage({
+    id: 'queued-call',
+    role: 'tool-call',
+    toolCallId: 'queued',
+    toolName: 'send_message_to_chat',
+    toolStatus: 'approved',
+    content: '',
+    timestamp: 1,
+    toolParams: { wait: false },
+  })
+  try {
+    const result = await send.execute('queued', {
+      chat_id: target.id,
+      message: 'Sample queued work',
+      wait: false,
+    })
+    append.updateChatMessage(
+      (m) => m.id === 'queued-call',
+      (m) => ({ ...m, toolResult: result.content[0].type === 'text' ? result.content[0].text : '' })
+    )
+    await caller.save()
+    expect(target.messages.value.some((m) => m.fromSession)).toBe(false)
+    const reopened = new ChatSession(service)
+    await reopened.load(caller.currentChatFile.value!)
+    expect(reopened.messages.value.find((m) => m.id === 'queued-call')?.toolResult).toContain(
+      'queued'
+    )
+    expect(receive).toHaveBeenCalledTimes(1)
+    target.isStreaming.value = false
+    await vi.waitFor(() =>
+      expect(caller.messages.value.find((m) => m.fromSession?.id === target.id)?.content).toBe(
+        'A sample answer'
+      )
+    )
+    expect(receive).toHaveBeenCalledTimes(1)
+  } finally {
+    target.isStreaming.value = false
+  }
+})
 
 it('delivers a node destination through its presenter and returns only that answer', async () => {
   const service = ChatService.getInstance()

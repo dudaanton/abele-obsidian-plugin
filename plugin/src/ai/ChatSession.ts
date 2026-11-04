@@ -5072,6 +5072,16 @@ export class ChatSession implements SummarizerHost, InterceptorHost, AnchorStora
     this.markDirty()
   }
 
+  /** Keep a handoff answer as an incoming notice without starting a model turn. */
+  async receiveChatLetterReply(content: string, from: LetterChat, version: number): Promise<void> {
+    if (this.destroyed || this.conversationVersion.value !== version) return
+    const bubble = this.userBubble(content, undefined, undefined, from, true)
+    bubble.sessionMark = { kind: 'notice', text: content }
+    this.publishUserMessage(bubble, false)
+    this.rememberInternal(await this.modelMessage(bubble))
+    await this.save()
+  }
+
   /** A letter uses this conversation's own tools, agent and approval queue. */
   private receivingLetter = false
 

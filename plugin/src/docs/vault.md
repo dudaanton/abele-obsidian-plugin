@@ -3445,6 +3445,8 @@ The agent’s ordinary tool modes remain in plugin settings; unset node action m
 
 # Messages between chats
 
+A no-wait cross-chat handoff keeps its queue receipt in the ordinary tool result. Its later answer (or delivery failure) is stored as an incoming automatic notice with the target chat as sender, and the outgoing letter retains the reply or refusal. These notices do not start an agent turn. Reload never resends a handoff; delivery queues are in memory and an unfinished reply is not guaranteed to survive a reload.
+
 Chat records retain the target reference, reply or refusal on a cross-chat tool call (`chatLetter`), the source reference on an incoming message (`fromSession`), and the destination reference on the answering message (`sentTo`). References include the saved chat path so links can reopen chats after a reload. An unresolved target carries `unknown: true`; its identifier is diagnostic metadata, not its display title. An interrupted request is not automatically replayed.
 
 On nodes advertising `session_letters_v1`, cross-chat sends journal a display-only sender

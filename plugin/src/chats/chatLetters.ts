@@ -64,7 +64,8 @@ export class ChatLetters {
     caller: string,
     target: string,
     message: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onQueued?: () => void
   ): Promise<string> {
     if (caller === target) throw new LetterRefusal('self')
     const chats = this.openChats()
@@ -106,6 +107,7 @@ export class ChatLetters {
       (): void => undefined
     )
     this.receiving.set(target, tail)
+    onQueued?.()
     void tail.then(() => {
       if (this.receiving.get(target) === tail) this.receiving.delete(target)
     })

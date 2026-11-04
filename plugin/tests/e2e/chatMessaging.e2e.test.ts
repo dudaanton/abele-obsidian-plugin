@@ -54,7 +54,7 @@ it.each(onPhone() ? [true] : [false, true])(
         originalLoop=target.runAgentLoop;
         originalAfter=target.afterTurn;originalCheck=target.checkAnswer;
         target.afterTurn=async()=>{};target.checkAnswer=async()=>{};
-        target.runAgentLoop=async function(){this.isStreaming.value=true;try{await new Promise(r=>release=r);this.appendChatMessage({id:'sample-answer',role:'assistant',content:'The sample reconnects after waking. Check the connection state before retrying.',timestamp:Date.now()});this.updateVisibleMessages()}finally{this.isStreaming.value=false}};
+        target.runAgentLoop=async function(){this.isStreaming.value=true;try{await new Promise(r=>release=r);this.appendChatMessage({id:'sample-answer-'+Date.now(),role:'assistant',content:'The sample reconnects after waking. Check the connection state before retrying.',timestamp:Date.now()});this.updateVisibleMessages()}finally{this.isStreaming.value=false}};
         pending=send.execute('ask',call.toolParams,undefined,{approved:true});
         await until(()=>release&&root().querySelector('.abele-chat-letter_running'));
         await shot('asking');
@@ -78,6 +78,18 @@ it.each(onPhone() ? [true] : [false, true])(
         const replyOffset=Math.abs(textStart(root().querySelector('.abele-chat-letter .abele-tree-item__text'))-textStart(root().querySelector('.abele-chat-letter__reply')));
         const replyBorder=getComputedStyle(root().querySelector('.abele-chat-letter > .tree-item-children')).borderInlineStartWidth;
         const answeredDots=root().querySelector('[data-message-id="letter"]').querySelectorAll('.abele-status-dot').length;
+        release=undefined;
+        const handoff={...call,id:'handoff',toolCallId:'handoff',toolStatus:'approved',toolParams:{chat_id:target.id,message:'Complete the sample long work.',wait:false}};
+        caller.appendChatMessage(handoff);caller.updateVisibleMessages();
+        const receipt=await send.execute('handoff',handoff.toolParams,undefined,{approved:true});
+        if(!receipt.content[0].text.includes('queued'))throw Error('Handoff did not return its queue receipt');
+        await until(()=>release);
+        if(caller.messages.value.some(m=>m.fromSession?.id===target.id))throw Error('Handoff answered before the target finished');
+        release();
+        await until(()=>caller.messages.value.some(m=>m.fromSession?.id===target.id&&m.content.includes('reconnects')));
+        await until(()=>root().querySelector('.abele-chat-msg__from')?.textContent.includes('Sample documentation'));
+        await until(()=>root().querySelector('.abele-session-mark_notice')?.textContent.includes('reconnects'));
+        await shot('handoff-incoming-answer');
         const refused={...call,id:'refused',toolCallId:'refusal',toolParams:{chat_id:caller.id,message:'Sample self request'}};
         caller.appendChatMessage(refused);caller.updateVisibleMessages();
         try{await send.execute('refusal',refused.toolParams)}catch{}
