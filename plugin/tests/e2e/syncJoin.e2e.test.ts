@@ -2,6 +2,7 @@ import { expect } from 'vitest'
 import { liveSuite, liveCase } from './helpers/syncLiveCases'
 import { AccessClient } from '@abele/sync-sdk/core'
 import { decodeAccessToken } from '@abele/sync-sdk/protocol'
+import { tokenScope } from '@/sync/v2/client'
 import { fixtureFetch } from './helpers/syncServer'
 const fixture = liveSuite()
 liveCase(
@@ -15,10 +16,10 @@ liveCase(
       path = s.root + '/kept.md'
     a.create(path, 'existing local content')
     await a.syncNow()
-    const root = decodeAccessToken(s.server.rootToken),
+    const root = tokenScope(decodeAccessToken(s.server.rootToken)),
       access = AccessClient.fromToken(s.server.rootToken, { fetch: fixtureFetch })
     const revoked = await access.issue({
-      scope: { kind: 'folder', id: root.scope.id },
+      scope: { kind: 'folder', id: root.id },
       label: 'Sample revoked token',
     })
     await access.revoke(revoked.info.id)

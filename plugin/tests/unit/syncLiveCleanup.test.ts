@@ -9,6 +9,7 @@ import { cancelSyncJobs, assertSyncJob, finishSyncJob } from '../e2e/helpers/syn
 import { mkdtempSync, mkdirSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import * as routeProbe from '../e2e/helpers/phoneRouteProbe'
+import { startupScanProgress } from '../e2e/helpers/startupWait'
 vi.mock('../e2e/helpers/syncVault', () => ({ waitFor: vi.fn() }))
 vi.mock('../e2e/helpers/syncServer', () => ({
   siblingMissing: vi.fn(),
@@ -84,6 +85,7 @@ it('waits through a retried read conflict instead of rejecting a successful conn
       'modal',
       'typeInto',
       'waitForStartup',
+      'startupScanProgress',
       'closeSettings',
       body
     )(
@@ -115,6 +117,7 @@ it('waits through a retried read conflict instead of rejecting a successful conn
         engine.lastError = null
         expect(read()).toMatchObject({ ready: true, error: undefined })
       },
+      startupScanProgress,
       async () => {}
     )
   })

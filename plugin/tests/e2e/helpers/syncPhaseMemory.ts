@@ -8,7 +8,7 @@ export async function syncPhaseMemory(
   const used = memory?.usedJSHeapSize
   const total = memory?.totalJSHeapSize
   let canvasPixels = 0
-  for (const canvas of doc.getElementsByTagName('canvas'))
+  for (const canvas of Array.from(doc.getElementsByTagName('canvas')))
     canvasPixels += canvas.width * canvas.height
   let residentBytes: number | undefined
   try {

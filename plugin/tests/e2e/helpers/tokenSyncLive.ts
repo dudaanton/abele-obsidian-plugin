@@ -130,7 +130,7 @@ export class TokenSyncLive {
               console.debug('[phone-route]', detail)
               throw new Error('phone fixture WebSocket route: ' + detail)
             })
-          if (!result.ok) {
+          if (result.ok === false) {
             const detail = phoneRouteDetail(result, port, phoneReverseStatus(port))
             console.debug('[phone-route]', detail)
             throw Object.assign(new Error('phone fixture WebSocket route: ' + detail), {

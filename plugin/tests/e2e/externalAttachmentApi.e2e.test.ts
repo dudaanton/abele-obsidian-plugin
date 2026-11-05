@@ -1,5 +1,6 @@
 import { verifyBoundedAttachmentRead } from './helpers/boundedAttachmentRead'
 import { decodeAccessToken } from '@abele/sync-sdk/protocol'
+import { tokenScope } from '@/sync/v2/client'
 import { AccessClient, sha256 } from '@abele/sync-sdk/core'
 import { beforeEach, afterEach, describe, expect, it } from 'vitest'
 import { TokenSyncLive } from './helpers/tokenSyncLive'
@@ -49,7 +50,7 @@ async function attachment(folderToken = false, size = 26, raiseCap = true) {
   const path = live.root + '/sample.bin'
   // Connect empty first: the large transfer has its own explicit operation budget.
   await live.put(live.root + '/seed.md', 'attachment fixture')
-  const folder = decodeAccessToken(live.server.rootToken).scope.id
+  const folder = tokenScope(decodeAccessToken(live.server.rootToken)).id
   const encoded = folderToken
     ? await live.server.issue({ kind: 'folder', id: folder })
     : live.server.rootToken

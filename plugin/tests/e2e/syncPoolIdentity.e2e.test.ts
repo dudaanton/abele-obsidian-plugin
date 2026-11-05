@@ -26,7 +26,7 @@ it.skipIf(process.env.ABELE_SYNC_IDENTITY_PROBE_CONFIRM !== 'read-sync-pool-vaul
     console.log('[sync pool vault registry]', JSON.stringify(result))
     expect(typeof result.available).toBe('boolean')
     // An unavailable registry is a useful executed probe, not authority to wipe.
-    if (result.available) expect(result.vaults.length).toBeGreaterThan(0)
+    if (result.available === true) expect(result.vaults.length).toBeGreaterThan(0)
     else expect(result.reason).toContain('not independent registry evidence')
   }
 )
