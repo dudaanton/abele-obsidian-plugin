@@ -1,10 +1,5 @@
 import { waitForSyncRead } from './syncTaskBudget'
-import {
-  boundedNativeRead,
-  boundedNativeMetadata,
-  boundedNativeReader,
-  NativeReadTimeout,
-} from './nativeReadDeadline'
+import { boundedNativeOperations, NativeReadTimeout } from './nativeReadDeadline'
 import { directEntryDurability, entryEffect } from './directEntryDurability'
 import { desktopFileIdentity } from './desktopFileIdentity'
 import { inheritHostStorage } from './hostSyncStorage'
@@ -223,10 +218,13 @@ export async function assertVaultPath(
 function rootAccess(adapter: DataAdapter & LinkAdapter) {
   const origin = (adapterOrigins.get(adapter) ?? adapter) as DataAdapter & LinkAdapter
   const port = origin.fsPromises && diagnosticOrigin(origin.fsPromises)
-  const native = (port && (nativeOrigins.get(port) ?? port)) as LinkAdapter['fsPromises']
+  const native = (port &&
+    originalNativeLeaf(nativeOrigins.get(port) ?? port)) as LinkAdapter['fsPromises']
   const full = origin.getFullPath?.bind(origin)
   return {
-    native: native && boundedNativeMetadata(nativeSyscalls(native, 'path-validation')),
+    native:
+      native &&
+      boundedNativeOperations(nativeSyscalls(native, 'path-validation'), full?.('') ?? ''),
     full,
     // Keep ownership/cache identity on the original port, not the diagnostic wrapper.
     pin: native && full ? pinnedRoot(native, full('')) : undefined,
@@ -263,6 +261,14 @@ const GUARDED = Symbol('sync guarded filesystem')
 const adapterOrigins = new WeakMap<DataAdapter, DataAdapter>()
 const nativeOrigins = new WeakMap<object, object>()
 const checkedNativePort = Symbol('checked-native-port')
+
+/** Substitute only an identified ambient module; decorated policy ports keep their checks. */
+function originalNativeLeaf<T extends object>(port: T): T {
+  if (typeof window === 'undefined' || typeof window.require !== 'function') return port
+  const original = window.require('original-fs').promises
+  const patched = window.require('fs').promises
+  return (port === patched ? original : port) as T
+}
 const adapters = new WeakMap<DataAdapter, DataAdapter>()
 const mutationRebuilders = new WeakMap<
   DataAdapter,
@@ -309,7 +315,13 @@ export function mutationCheckedAdapter(
 ): DataAdapter {
   const rebuild = mutationRebuilders.get(adapter)
   if (rebuild) return rebuild(check, privateRoots)
-  const native = Reflect.get(adapter, 'fsPromises')
+  const supplied = Reflect.get(adapter, 'fsPromises')
+  const native =
+    supplied &&
+    boundedNativeOperations(
+      originalNativeLeaf(supplied),
+      Reflect.get(adapter, 'getFullPath')?.call(adapter, '') ?? ''
+    )
   let writableMask: number | undefined
   const writableOpen = (flags: unknown) => {
     if (typeof flags !== 'number') return typeof flags === 'string' && /[wa+]/.test(flags)
@@ -455,8 +467,11 @@ export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
     return adapter
   const cached = adapters.get(adapter)
   if (cached) return cached
-  const native = (adapter as DataAdapter & LinkAdapter).fsPromises
+  const suppliedNative = (adapter as DataAdapter & LinkAdapter).fsPromises
   const full = (adapter as DataAdapter & LinkAdapter).getFullPath?.bind(adapter)
+  const leafNative = suppliedNative && originalNativeLeaf(suppliedNative)
+  const native = leafNative && boundedNativeOperations(leafNative, full?.('') ?? '')
+  if (native && leafNative) nativeOrigins.set(native, nativeOrigins.get(leafNative) ?? leafNative)
   if (!full || !native) {
     const proxy = mobileGuard(adapter)
     mutationRebuilders.set(proxy, (check, privateRoots) =>
@@ -513,7 +528,7 @@ export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
             for (let n = 0; n < count; n++)
               physical[n] =
                 pinned.path + pathArgument(args[n]).replace(/\\/g, '/').slice(root.length)
-          const rawNative = nativeOrigins.get(native) ?? native
+          const rawNative = boundedNativeOperations(nativeOrigins.get(native) ?? native, full(''))
           const localPaths = args
             .slice(0, count)
             .map((path) =>
@@ -588,7 +603,7 @@ export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
     get(target, key) {
       if (key === GUARDED) return true
       if (key === 'fsPromises') {
-        if (Reflect.get(target, key) !== native) {
+        if (Reflect.get(target, key) !== suppliedNative) {
           adapters.delete(target)
           return Reflect.get(guardedVaultAdapter(target), key)
         }
@@ -794,7 +809,7 @@ export function desktopNodeFs(): typeof import('node:fs') {
     measured = new Proxy(module, {
       get(target, key) {
         return key === 'promises'
-          ? boundedNativeMetadata(nativeSyscalls(target.promises, 'no-follow-open'))
+          ? nativeSyscalls(target.promises, 'no-follow-open')
           : Reflect.get(target, key)
       },
     })
@@ -814,10 +829,11 @@ async function openNoFollow(
   const desktop = desktopNodeFs()
   // A checked port carries the lease down to the native leaf. Ordinary adapters
   // still obtain native opens from the desktop module, never an adapter override.
-  const fs = boundedNativeMetadata(
+  const fs = boundedNativeOperations(
     (Reflect.get(raw, checkedNativePort)
       ? raw
-      : desktop.promises) as typeof import('node:fs/promises')
+      : desktop.promises) as typeof import('node:fs/promises'),
+    expectedRoot?.scope ?? root
   )
   const constants = desktop.constants
   // Fail closed if the runtime cannot supply the native no-follow flag. Do not
@@ -866,9 +882,9 @@ async function openNoFollow(
       if (mode & constants.O_EXCL) throw error
       handle = await fs.open(path, opening & ~constants.O_CREAT)
     }
-  } else handle = await boundedNativeRead(fs.open(path, opening), 'open', (late) => late.close())
+  } else handle = await fs.open(path, opening)
   try {
-    const opened = await boundedNativeRead(handle.stat(), 'stat')
+    const opened = await handle.stat()
     const linked = await fs.lstat(path)
     if (
       !Number.isSafeInteger(opened.dev) ||
@@ -884,16 +900,9 @@ async function openNoFollow(
         throw new EngineError('io', 'Native parent identity changed during open')
     }
     if (mode & constants.O_TRUNC) await handle.truncate(0)
-    return mode &
-      (constants.O_WRONLY |
-        constants.O_RDWR |
-        constants.O_CREAT |
-        constants.O_TRUNC |
-        constants.O_APPEND)
-      ? handle
-      : boundedNativeReader(handle)
+    return handle
   } catch (error) {
-    await boundedNativeRead(handle.close(), 'close')
+    await handle.close()
     throw error
   }
 }
@@ -1481,10 +1490,12 @@ function bumpConfigRevision(adapter: DataAdapter, paths: readonly string[]): voi
 }
 interface RootIdentity {
   path: string
+  scope?: string
   dev: number
   ino: number
 }
 interface RootPin {
+  scope: string
   verify(): Promise<RootIdentity>
   stop(error: Error): void
 }
@@ -1621,8 +1632,9 @@ export async function guardedNativeMutation<T>(
 }
 const rootPins = new WeakMap<object, Map<string, RootPin>>()
 function pinnedRoot(native: object, logical: string): RootPin | undefined {
-  const io = boundedNativeMetadata(
-    nativeSyscalls(native as typeof import('node:fs/promises'), 'root-pin')
+  const io = boundedNativeOperations(
+    nativeSyscalls(originalNativeLeaf(native) as typeof import('node:fs/promises'), 'root-pin'),
+    logical
   )
   if (!io.realpath || !io.lstat || !io.open) return undefined
   let roots = rootPins.get(native)
@@ -1634,7 +1646,12 @@ function pinnedRoot(native: object, logical: string): RootPin | undefined {
       stat = await io.lstat(path)
     if (!stat.isDirectory() || !Number.isSafeInteger(stat.dev) || !Number.isSafeInteger(stat.ino))
       throw new VaultRootChangedError()
-    return { path: path.replace(/\\/g, '/').replace(/\/+$/, ''), dev: stat.dev, ino: stat.ino }
+    return {
+      path: path.replace(/\\/g, '/').replace(/\/+$/, ''),
+      scope: logical,
+      dev: stat.dev,
+      ino: stat.ino,
+    }
   }
   let initial: Promise<RootIdentity> | undefined
   const first = () => {
@@ -1650,6 +1667,7 @@ function pinnedRoot(native: object, logical: string): RootPin | undefined {
   void first()
   let stopped: Error | undefined
   const pin = {
+    scope: logical,
     stop: (error: Error) => {
       stopped = error
     },
@@ -1676,7 +1694,10 @@ function pinnedRoot(native: object, logical: string): RootPin | undefined {
 }
 /** Fresh read-only metadata: one no-link walk, with the root pinned at both ends. */
 async function nativeMetadata(native: object, pin: RootPin, path: string) {
-  const io = native as typeof import('node:fs/promises')
+  const io = boundedNativeOperations(
+    nativeSyscalls(originalNativeLeaf(native), 'metadata-leaf'),
+    pin.scope
+  ) as typeof import('node:fs/promises')
   const inventory = metadataInventories.get(pin)
   const root = await (inventory?.root ?? pin.verify())
   let leaf: import('node:fs').Stats | null = null
@@ -1720,7 +1741,10 @@ async function desktopOperation(
   full: (path: string) => string,
   pin: RootPin
 ) {
-  const io = native as typeof import('node:fs/promises')
+  const io = boundedNativeOperations(
+    nativeSyscalls(originalNativeLeaf(native), 'desktop-operation'),
+    pin.scope
+  ) as typeof import('node:fs/promises')
   const durability = directEntryDurability(adapter)
   const root = await pin.verify()
   const local = pathArgument(args[0]),

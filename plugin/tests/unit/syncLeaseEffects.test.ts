@@ -89,6 +89,30 @@ it.each([false, true])(
   }
 )
 
+/** Drive cooperative task yields without advancing to the lease's expiry.
+ * A microtask-only flush leaves nested zero-delay task boundaries frozen at +1 ms. */
+async function driveTasks<T>(work: Promise<T>): Promise<T> {
+  let settled = false,
+    failed = false,
+    error: unknown,
+    value!: T
+  void work.then(
+    (answer) => {
+      value = answer
+      settled = true
+    },
+    (reason) => {
+      error = reason
+      failed = true
+      settled = true
+    }
+  )
+  for (let step = 0; step < 256 && !settled; step++) await vi.advanceTimersByTimeAsync(1)
+  if (!settled) throw new Error('Fixture did not reach the next task boundary before lease expiry')
+  if (failed) throw error
+  return value
+}
+
 async function runCut(native: boolean, path: Path, cut?: number) {
   const fixture = native ? virtualNativeVault() : undefined
   const app = fixture?.app ?? buildFakeVault([])
@@ -177,21 +201,23 @@ async function runCut(native: boolean, path: Path, cut?: number) {
   try {
     await vi.advanceTimersByTimeAsync(0)
     if (cut === undefined) {
-      expect(await result).toBe('done')
+      expect(await driveTasks(result)).toBe('done')
       expect(trace.length).toBeGreaterThan(0)
       expect(effects.length).toBeGreaterThan(0)
     } else {
-      await entered.promise
+      await driveTasks(entered.promise)
       await vi.advanceTimersByTimeAsync(2000)
       expect(await result).toMatchObject({ leaseExpired: true })
       const before = [...effects]
       resume.resolve()
       await vi.advanceTimersByTimeAsync(0)
-      await underlying
+      await driveTasks(underlying)
       if (path === 'recovery') {
         // Recovery now deliberately starts a fresh repair after the expired call
         // settles. The invariant is byte preservation, not suppression of repair.
-        await Promise.all(Reflect.get(Reflect.get(disk, 'conditional'), 'lateRepairs') ?? [])
+        await driveTasks(
+          Promise.all(Reflect.get(Reflect.get(disk, 'conditional'), 'lateRepairs') ?? [])
+        )
         expect([...new Uint8Array(await app.vault.adapter.readBinary('scope/sample.bin'))]).toEqual(
           [...new TextEncoder().encode('local')]
         )
@@ -218,7 +244,9 @@ async function runCut(native: boolean, path: Path, cut?: number) {
 
 const cases = [false, true].flatMap((native) =>
   (['recovery', 'publish', 'rename', 'remove'] as const).flatMap((path) => {
-    const shards = native && path === 'recovery' ? 16 : 1
+    // Keep every continuation cut and the five-second case budget. The bounded
+    // native pipeline has more promise continuations; distribute its matrix.
+    const shards = native && path === 'recovery' ? 64 : native && path === 'publish' ? 8 : 1
     return Array.from({ length: shards }, (_, shard) => ({ native, path, shard, shards }))
   })
 )
