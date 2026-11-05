@@ -1,4 +1,24 @@
 {
+  "sync.nativeMutationStuckNotice": {
+    "englishHash": "d8c40ad2e2165f8d457ffb36f49121b2e9048d7d78f1686e80f2e5f00b82cb74",
+    "context": "Native file mutation has not settled; one vault notice and restart-required follow-on error",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.nativeMutationRestart": {
+    "englishHash": "1a3b4853c2ab08c4857b88deabf3cb21c6564d2d2b24d8bb60b294a62b87d748",
+    "context": "Native file mutation has not settled; one vault notice and restart-required follow-on error",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
   "debug.referencesTextFallback": {
     "englishHash": "b299534e1395a3f80ed156f58715e0fdbcbd77c1830274276316785c2454b0ba",
     "context": "Debugger recording and code navigation fallback",

@@ -1,4 +1,8 @@
 export const streamC = {
+  'sync.nativeMutationStuckNotice':
+    'El guardado en esta bóveda está bloqueado porque una operación de archivo no ha terminado. Cierra Obsidian por completo y vuelve a abrirlo. Recargar el complemento no resolverá el problema.',
+  'sync.nativeMutationRestart':
+    'Una operación de archivo no ha terminado. Cierra Obsidian por completo y vuelve a abrirlo antes de intentarlo de nuevo.',
   'debug.requestsImporting': 'Importando solicitudes…',
   'debug.httpIncoming': 'Entrante',
   'debug.httpOutgoing': 'Saliente',

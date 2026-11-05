@@ -1,4 +1,8 @@
 export const streamC = {
+  'sync.nativeMutationStuckNotice':
+    'Saving to this vault is stuck because a file operation has not finished. Fully quit and restart Obsidian. Reloading the plugin will not fix this.',
+  'sync.nativeMutationRestart':
+    'A file operation has not finished. Fully quit and restart Obsidian before trying again.',
   'debug.requestsImporting': 'Importing requests…',
   'debug.httpIncoming': 'Incoming',
   'debug.httpOutgoing': 'Outgoing',

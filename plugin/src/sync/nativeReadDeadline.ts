@@ -1,14 +1,22 @@
 import { EngineError } from '@abele/sync-sdk/core'
+import { Notice } from 'obsidian'
+import { t } from '@/i18n'
 
 export const NATIVE_READ_DEADLINE_MS = 15000
 export class NativeReadTimeout extends EngineError {
   readonly retryable = true
   constructor(operation: string, uncertain = false) {
-    super('offline', 'The filesystem did not answer. Sync will retry.', {
-      code: uncertain ? 'native-operation-timeout' : 'native-read-timeout',
-      operation,
-      ...(uncertain ? { uncertain: true } : {}),
-    })
+    super(
+      'offline',
+      uncertain
+        ? t('sync.nativeMutationRestart')
+        : 'The filesystem did not answer. Sync will retry.',
+      {
+        code: uncertain ? 'native-operation-timeout' : 'native-read-timeout',
+        operation,
+        ...(uncertain ? { uncertain: true } : {}),
+      }
+    )
   }
 }
 
@@ -125,8 +133,19 @@ export function boundedNativeOperations<T extends object>(port: T, scope: string
             const timer = window.setTimeout(() => {
               failure = new NativeReadTimeout(kind, true)
               let held = uncertainScopes.get(scope)
+              const first = !held?.size
               if (!held) uncertainScopes.set(scope, (held = new Set()))
               held.add(failure)
+              if (first) {
+                try {
+                  new Notice(t('sync.nativeMutationStuckNotice'), 0)
+                } catch (error) {
+                  console.error(
+                    '[abele-sync] could not show the stuck file operation notice',
+                    error
+                  )
+                }
+              }
             }, NATIVE_READ_DEADLINE_MS)
             const finish = () => {
               window.clearTimeout(timer)

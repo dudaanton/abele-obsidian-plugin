@@ -1,4 +1,8 @@
 export const streamC = {
+  'sync.nativeMutationStuckNotice':
+    'Das Speichern in diesem Vault ist blockiert, weil ein Dateivorgang nicht abgeschlossen wurde. Beende Obsidian vollständig und starte es neu. Das Neuladen des Plugins behebt das Problem nicht.',
+  'sync.nativeMutationRestart':
+    'Ein Dateivorgang ist nicht abgeschlossen. Beende Obsidian vollständig und starte es neu, bevor du es erneut versuchst.',
   'debug.requestsImporting': 'Anfragen werden importiert…',
   'debug.httpIncoming': 'Eingehend',
   'debug.httpOutgoing': 'Ausgehend',

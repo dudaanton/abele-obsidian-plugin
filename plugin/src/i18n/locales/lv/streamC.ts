@@ -1,4 +1,8 @@
 export const streamC = {
+  'sync.nativeMutationStuckNotice':
+    'Saglabāšana šajā krātuvē ir bloķēta, jo faila darbība nav pabeigta. Pilnībā aizveriet un no jauna palaidiet Obsidian. Spraudņa pārlāde to nenovērsīs.',
+  'sync.nativeMutationRestart':
+    'Faila darbība nav pabeigta. Pirms mēģināt vēlreiz, pilnībā aizveriet un no jauna palaidiet Obsidian.',
   'debug.requestsImporting': 'Importē pieprasījumus…',
   'debug.httpIncoming': 'Ienākošs',
   'debug.httpOutgoing': 'Izejošs',

@@ -1,4 +1,8 @@
 export const streamC = {
+  'sync.nativeMutationStuckNotice':
+    'Сохранение в это хранилище заблокировано: файловая операция не завершилась. Полностью закройте и снова откройте Obsidian. Перезагрузка плагина не поможет.',
+  'sync.nativeMutationRestart':
+    'Файловая операция не завершилась. Полностью закройте и снова откройте Obsidian, прежде чем повторять попытку.',
   'debug.requestsImporting': 'Импорт запросов…',
   'debug.httpIncoming': 'Входящий',
   'debug.httpOutgoing': 'Исходящий',
