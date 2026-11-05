@@ -4,7 +4,7 @@ import { deferred } from '../helpers/deferred'
 
 afterEach(() => vi.useRealTimers())
 
-it('closes a late create-open handle and releases its uncertainty fence only after settlement', async () => {
+it('keeps a delayed create-open owned and releases its uncertainty fence only after settlement', async () => {
   vi.useFakeTimers()
   const opening = deferred<{ close(): Promise<void> }>()
   const close = vi.fn(async () => {})
@@ -12,22 +12,18 @@ it('closes a late create-open handle and releases its uncertainty fence only aft
     { open: (_path: string, _flags: string) => opening.promise, lstat: async () => 3 },
     'sample-late-create-scope'
   )
-  const failed = expect(port.open('sample.tmp', 'wx')).rejects.toMatchObject({
-    cause: { uncertain: true },
-  })
+  const openingResult = port.open('sample.tmp', 'wx')
   await vi.advanceTimersByTimeAsync(NATIVE_READ_DEADLINE_MS)
-  await failed
   await expect(port.lstat()).rejects.toMatchObject({ retryable: true })
   opening.resolve({ close })
-  await Promise.resolve()
-  await Promise.resolve()
+  await (await openingResult).close()
   expect(close).toHaveBeenCalledOnce()
   expect(await port.lstat()).toBe(3)
   expect(vi.getTimerCount()).toBe(0)
 })
 
 it.each(['lstat', 'readdir', 'open', 'read', 'write', 'close'])(
-  'bounds native %s without dropping late settlement',
+  'preserves native %s ownership until safe settlement',
   async (kind) => {
     vi.useFakeTimers()
     const pending = deferred<void>()
@@ -35,10 +31,24 @@ it.each(['lstat', 'readdir', 'open', 'read', 'write', 'close'])(
       { [kind]: () => pending.promise },
       'sample-operation-' + kind
     )
-    const failed = expect(port[kind]()).rejects.toMatchObject({ retryable: true })
+    // Mutation deadlines must not release the caller or its host queue.
+    const mutation = kind === 'write' || kind === 'open'
+    const done = port[kind]()
+    let settled = false
+    void done.then(
+      () => {
+        settled = true
+      },
+      () => {
+        settled = true
+      }
+    )
+    const failed = mutation ? undefined : expect(done).rejects.toMatchObject({ retryable: true })
     await vi.advanceTimersByTimeAsync(NATIVE_READ_DEADLINE_MS)
     await failed
+    expect(settled).toBe(!mutation)
     pending.resolve()
+    if (mutation) await done
     await Promise.resolve()
     expect(vi.getTimerCount()).toBe(0)
   }
@@ -65,7 +75,7 @@ it('bounds directory enumeration and closes its directory handle', async () => {
   expect(close).toHaveBeenCalledOnce()
 })
 
-it('bounds a write and refuses new work until its actual completion, retaining cleanup access', async () => {
+it('holds a write and refuses new work until its actual completion, retaining cleanup access', async () => {
   vi.useFakeTimers()
   const writing = deferred<void>()
   const write = vi.fn(() => writing.promise)
@@ -77,17 +87,13 @@ it('bounds a write and refuses new work until its actual completion, retaining c
   )
   const other = boundedNativeOperations({ read }, 'sample-write-scope')
   const handle = await port.open()
-  const failed = expect(handle.write()).rejects.toMatchObject({
-    retryable: true,
-    cause: { uncertain: true },
-  })
+  const done = handle.write()
   await vi.advanceTimersByTimeAsync(NATIVE_READ_DEADLINE_MS)
-  await failed
   await expect(other.read()).rejects.toMatchObject({ retryable: true })
   expect(read).not.toHaveBeenCalled()
-  await handle.close()
   writing.resolve()
-  await Promise.resolve()
+  await done
+  await handle.close()
   expect(await other.read()).toBe(3)
   expect(write).toHaveBeenCalledOnce()
   expect(close).toHaveBeenCalledOnce()
@@ -97,9 +103,8 @@ it('keeps an uncertain mutation fenced across a plugin module reload', async () 
   vi.useFakeTimers()
   const pending = deferred<void>()
   const old = boundedNativeOperations({ write: () => pending.promise }, 'sample-reload-scope')
-  const failed = expect(old.write()).rejects.toMatchObject({ retryable: true })
+  const done = old.write()
   await vi.advanceTimersByTimeAsync(NATIVE_READ_DEADLINE_MS)
-  await failed
   vi.resetModules()
   const next = await import('@/sync/nativeReadDeadline')
   const read = vi.fn(async () => 3)
@@ -107,6 +112,6 @@ it('keeps an uncertain mutation fenced across a plugin module reload', async () 
   await expect(fresh.read()).rejects.toBeInstanceOf(next.NativeReadTimeout)
   expect(read).not.toHaveBeenCalled()
   pending.resolve()
-  await Promise.resolve()
+  await done
   expect(await fresh.read()).toBe(3)
 })

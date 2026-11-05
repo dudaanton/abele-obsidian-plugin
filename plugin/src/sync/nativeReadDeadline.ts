@@ -76,8 +76,20 @@ const readMethods = new Set([
   'access',
 ])
 
-/** A timeout ends the caller's wait, never pretends an issued mutation was cancelled.
- * Every port for this vault fences new work until uncertain native effects really settle. */
+function readOnlyOpen(flags: unknown): boolean {
+  if (typeof flags === 'string') return ['r', 'rs', 'sr'].includes(flags)
+  if (typeof flags !== 'number' || !Number.isSafeInteger(flags)) return false
+  // Flag values differ by platform. Use the same native constants as no-follow open.
+  const require = typeof window === 'undefined' ? undefined : Reflect.get(window, 'require')
+  if (typeof require !== 'function') return false
+  const constants = require('original-fs').constants
+  const keys = ['O_WRONLY', 'O_RDWR', 'O_CREAT', 'O_TRUNC', 'O_APPEND']
+  if (!keys.every((key) => Number.isSafeInteger(constants?.[key]))) return false
+  return (flags & keys.reduce((mask, key) => mask | constants[key], 0)) === 0
+}
+
+/** Read deadlines release safe waits. Mutation deadlines only fence new sync work:
+ * their callers must retain host queues and path leases until the native call settles. */
 export function boundedNativeOperations<T extends object>(port: T, scope: string): T {
   // A plugin reload cannot cancel an issued native mutation. Keep its fence in the page.
   const uncertainScopes = uncertainRegistry()
@@ -105,15 +117,40 @@ export function boundedNativeOperations<T extends object>(port: T, scope: string
             )
           let failure: NativeReadTimeout | undefined
           const mutation =
-            !readMethods.has(kind) && kind !== 'close' && !(kind === 'open' && args[1] === 'r')
+            !readMethods.has(kind) &&
+            kind !== 'close' &&
+            !(kind === 'open' && readOnlyOpen(args[1]))
           const work = Promise.resolve(value.apply(host, args))
-          const settled = () => {
+          if (mutation) {
+            const timer = window.setTimeout(() => {
+              failure = new NativeReadTimeout(kind, true)
+              let held = uncertainScopes.get(scope)
+              if (!held) uncertainScopes.set(scope, (held = new Set()))
+              held.add(failure)
+            }, NATIVE_READ_DEADLINE_MS)
+            const finish = () => {
+              window.clearTimeout(timer)
+              settled()
+            }
+            // Never race this promise against a deadline: rejection would release
+            // serialization while the kernel may still change the file later.
+            return work.then(
+              (result) => {
+                finish()
+                return key === 'open' && result ? wrap(result) : result
+              },
+              (error) => {
+                finish()
+                throw error
+              }
+            )
+          }
+          function settled() {
             if (!failure) return
             const held = uncertainScopes.get(scope)
             held?.delete(failure)
             if (held?.size === 0) uncertainScopes.delete(scope)
           }
-          void work.then(settled, settled)
           return boundedNativeRead(
             work,
             kind,
@@ -122,16 +159,7 @@ export function boundedNativeOperations<T extends object>(port: T, scope: string
                   if (handle && typeof Reflect.get(handle, 'close') === 'function')
                     await boundedNativeRead(Reflect.get(handle, 'close').call(handle), 'close')
                 }
-              : undefined,
-            mutation
-              ? (error) => {
-                  failure = error
-                  let held = uncertainScopes.get(scope)
-                  if (!held) uncertainScopes.set(scope, (held = new Set()))
-                  held.add(error)
-                }
-              : undefined,
-            mutation
+              : undefined
           ).then((result) => (key === 'open' && result ? wrap(result) : result))
         }
       },
