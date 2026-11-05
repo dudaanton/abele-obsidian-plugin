@@ -7,6 +7,8 @@ import {
 } from './pullOperationCounts'
 import { mobileReadSnapshot } from './mobileReadDiagnostics'
 import { nativeIoSnapshot, nativeLstatSnapshot } from './nativeDiagnostics'
+import { portableIoSnapshot } from './portableIoDiagnostics'
+import { pathCoordinationSnapshot } from './pathCoordinator'
 import { mobileLargeFileGate } from './mobileLargeFileGate'
 import type { NativeInstallProof } from './nativeInstallBatch'
 
@@ -428,6 +430,8 @@ export class ExchangeTrace {
       },
       nativeIo: nativeIoSnapshot(),
       nativeLstat: nativeLstatSnapshot(),
+      portableIo: portableIoSnapshot(),
+      pathWaits: pathCoordinationSnapshot(),
       localReads: mobileReadSnapshot(),
       largeTransfer: mobileLargeFileGate.snapshot(),
       lastPull: this.lastPull ? { ...this.lastPull, paths: [...this.lastPull.paths] } : null,

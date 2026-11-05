@@ -8,23 +8,52 @@ const overlaps = (a: string, b: string) =>
   a === '' || b === '' || a === b || a.startsWith(b + '/') || b.startsWith(a + '/')
 interface Request {
   paths: string[]
+  at: number
   enter(): void
+}
+const busy = new Set<PathCoordinator>()
+export function pathCoordinationSnapshot() {
+  return [...busy].slice(0, 16).map((gate) => gate.snapshot())
 }
 
 /** Atomic multi-path leases. Overlapping waiters are FIFO; unrelated paths never wait for them. */
 export class PathCoordinator {
+  constructor(private readonly kind = 'placement') {}
   private readonly active = new Set<Request>()
   private readonly waiting: Request[] = []
+  snapshot() {
+    const now = Date.now()
+    const rows = (requests: Iterable<Request>) =>
+      Array.from(requests)
+        .slice(0, 8)
+        .map((row) => ({ paths: row.paths.slice(0, 4), elapsedMs: now - row.at }))
+    return { kind: this.kind, active: rows(this.active), waiting: rows(this.waiting) }
+  }
   run<T>(
     paths: readonly string[],
     work: () => Promise<T>,
-    assertHeld: () => void = () => {}
+    assertHeld: () => void = () => {},
+    signal?: AbortSignal
   ): Promise<T> {
     const keys = [...new Set(paths.map((path) => caseKey(path).replace(/\/+$/, '')))].sort()
     return new Promise<T>((resolve, reject) => {
+      const cancelled = () =>
+        signal?.reason instanceof Error
+          ? signal.reason
+          : new DOMException('Sync placement cancelled', 'AbortError')
+      const cancel = () => {
+        const index = this.waiting.indexOf(request)
+        if (index < 0) return // Active work retains exclusion until it really settles.
+        this.waiting.splice(index, 1)
+        signal?.removeEventListener('abort', cancel)
+        reject(cancelled())
+        this.dispatch()
+      }
       const request: Request = {
         paths: keys,
+        at: Date.now(),
         enter: () => {
+          signal?.removeEventListener('abort', cancel)
           this.active.add(request)
           void (async () => {
             try {
@@ -54,7 +83,13 @@ export class PathCoordinator {
           })()
         },
       }
+      if (signal?.aborted) {
+        reject(cancelled())
+        return
+      }
       this.waiting.push(request)
+      busy.add(this)
+      signal?.addEventListener('abort', cancel, { once: true })
       this.dispatch()
     })
   }
@@ -71,6 +106,7 @@ export class PathCoordinator {
       this.waiting.splice(this.waiting.indexOf(request), 1)
       request.enter()
     }
+    if (!this.active.size && !this.waiting.length) busy.delete(this)
   }
 }
 

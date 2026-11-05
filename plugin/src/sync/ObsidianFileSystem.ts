@@ -2565,13 +2565,24 @@ export class ObsidianFileSystem implements FileSystem {
         if (!(error instanceof RecoveryHeld)) throw error
         // The writer must release its path lease before the edit can finish.
         // Reinspect the journal only after leaving recovery's root lease.
-        await waitForAdapterWrite(error.path)
+        this.listPhase('recovery: live backup settlement')
+        await waitForAdapterWrite(error.path, this.runIndexSignal ?? this.indexWaitSignal?.())
       }
     }
   }
   private async recoverOnce(): Promise<void> {
+    const signal = this.runIndexSignal ?? this.indexWaitSignal?.()
+    signal?.throwIfAborted()
     this.runtimeFence?.assertOwned()
-    await finishRetainedWrites(this.app, this.recoveryOwner, () => this.runtimeFence?.assertOwned())
+    this.listPhase('recovery: retained copies and placement lease')
+    await finishRetainedWrites(
+      this.app,
+      this.recoveryOwner,
+      () => this.runtimeFence?.assertOwned(),
+      signal
+    )
+    signal?.throwIfAborted()
+    this.listPhase('recovery: journal scope')
     if (
       this.scopedRoot() &&
       [
@@ -2593,8 +2604,11 @@ export class ObsidianFileSystem implements FileSystem {
         'io',
         'Sync recovery outside this connection is required; local files were kept'
       )
+    this.listPhase('recovery: conditional files')
     await this.recoverConditionalFiles()
+    signal?.throwIfAborted()
     this.runtimeFence?.assertOwned()
+    this.listPhase('recovery: installation acknowledgements')
     await this.retireSupersededPrivateSummaryIntents()
     if (this.ledger?.readCommittedEntries) {
       const paths = (await this.journal.currentEntries())
@@ -2614,9 +2628,11 @@ export class ObsidianFileSystem implements FileSystem {
       !(this.native?.archiveBackup && (await this.journal.currentVaultRecovered()).length)
     )
       return
+    this.listPhase('recovery: writer placement lease')
     await pathCoordinatorOf(this.app.vault).run(
       [''],
       async () => {
+        this.listPhase('recovery: writer journal')
         // Recovery can touch journal-owned paths not known until its asynchronous inspection.
         const release = this.externalCoordination.beginEngineMutation([''])
         try {
@@ -2642,11 +2658,18 @@ export class ObsidianFileSystem implements FileSystem {
           release()
         }
       },
-      () => this.runtimeFence?.assertOwned()
+      () => this.runtimeFence?.assertOwned(),
+      signal
     )
     // Recovery itself can preserve a displaced inode; finish its private archive
     // before the retained-byte safety check in this same startup.
-    await finishRetainedWrites(this.app, this.recoveryOwner, () => this.runtimeFence?.assertOwned())
+    this.listPhase('recovery: final retained copies')
+    await finishRetainedWrites(
+      this.app,
+      this.recoveryOwner,
+      () => this.runtimeFence?.assertOwned(),
+      signal
+    )
   }
 
   /** Private removal metadata has no server ledger row to acknowledge an anonymous install. */

@@ -1,4 +1,5 @@
 import { guardedVaultAdapter } from './vaultPathLinks'
+import { waitForSyncRead } from './syncTaskBudget'
 import type { App, DataAdapter } from 'obsidian'
 import { EngineError } from '@abele/sync-sdk/core'
 import { caseKey } from '@abele/sync-sdk/protocol'
@@ -23,13 +24,23 @@ export class RecoveryHeld extends Error {
     super('scan held while a journalled replacement has a live backup')
   }
 }
-export async function waitForAdapterWrite(path: string): Promise<void> {
-  while (inFlight.has(path))
-    await new Promise<void>((resolve) => {
-      let waiters = inFlightWaiters.get(path)
-      if (!waiters) inFlightWaiters.set(path, (waiters = new Set()))
-      waiters.add(resolve)
+export async function waitForAdapterWrite(path: string, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted()
+  while (inFlight.has(path)) {
+    let wake!: () => void
+    let waiters = inFlightWaiters.get(path)
+    if (!waiters) inFlightWaiters.set(path, (waiters = new Set()))
+    const done = new Promise<void>((resolve) => {
+      wake = resolve
+      waiters.add(wake)
     })
+    try {
+      await waitForSyncRead(done, signal)
+    } finally {
+      waiters.delete(wake)
+      if (!waiters.size && inFlightWaiters.get(path) === waiters) inFlightWaiters.delete(path)
+    }
+  }
 }
 function releaseInFlight(path: string): void {
   inFlight.delete(path)
@@ -217,7 +228,7 @@ export class VaultWriter {
     if (this.deps.native && (await this.there(entry.temp))) {
       const remove = async () => {
         await this.disk.remove(entry.temp)
-        await this.deps.native!.syncPath(entry.temp, true)
+        await this.deps.native.syncPath(entry.temp, true)
       }
       if (this.deps.retireAlias) await this.deps.retireAlias(entry, remove)
       else await remove()

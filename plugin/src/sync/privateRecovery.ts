@@ -15,11 +15,13 @@ import { z } from 'zod'
 export async function finishRetainedWrites(
   app: App,
   owner?: string,
-  assertCurrent: () => void = () => {}
+  assertCurrent: () => void = () => {},
+  signal?: AbortSignal
 ): Promise<void> {
   return pathCoordinatorOf(app.vault).run(
     [''],
     async () => {
+      signal?.throwIfAborted()
       const journal = new WriteJournal(app, assertCurrent, owner)
       // Departure already fenced the writer and preserved its private bytes. A
       // retired installation is evidence, not an installation that may be replayed.
@@ -145,7 +147,8 @@ export async function finishRetainedWrites(
         await showPrivateRecoveryNotice(view)
       }
     },
-    assertCurrent
+    assertCurrent,
+    signal
   )
 }
 

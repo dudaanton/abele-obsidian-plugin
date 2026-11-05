@@ -1,5 +1,11 @@
 import { waitForSyncRead } from './syncTaskBudget'
-import { boundedNativeOperations, NativeReadTimeout } from './nativeReadDeadline'
+import {
+  boundedNativeOperations,
+  boundedNativeRead,
+  NativeReadTimeout,
+  NATIVE_READ_DEADLINE_MS,
+} from './nativeReadDeadline'
+import { observePortableIo } from './portableIoDiagnostics'
 import { directEntryDurability, entryEffect } from './directEntryDurability'
 import { desktopFileIdentity } from './desktopFileIdentity'
 import { inheritHostStorage } from './hostSyncStorage'
@@ -1951,7 +1957,9 @@ function mobileGuard(adapter: DataAdapter): DataAdapter {
         for (const path of args.slice(0, key === 'rename' || key === 'copy' ? 2 : 1))
           await assertVaultPath(target, pathArgument(path))
         const invoke = () =>
-          engineAdapterMethod(target, key, value).apply(adapterEngineReceiver(target), args)
+          observePortableIo(String(key), pathArgument(args[0]), () =>
+            engineAdapterMethod(target, key, value).apply(adapterEngineReceiver(target), args)
+          )
         return ['write', 'writeBinary', 'mkdir', 'rename', 'copy', 'remove', 'rmdir'].includes(
           String(key)
         )
@@ -1962,7 +1970,11 @@ function mobileGuard(adapter: DataAdapter): DataAdapter {
                 .map(pathArgument),
               invoke
             )
-          : invoke()
+          : ['read', 'readBinary', 'readBinaryPrefix', 'stat', 'exists', 'list'].includes(
+                String(key)
+              )
+            ? boundedNativeRead(Promise.resolve(invoke()), 'mobile adapter ' + String(key))
+            : invoke()
       }
       methods.set(key, { source: value, wrapped })
       return wrapped
@@ -2472,16 +2484,28 @@ export function checkedVaultPort(
       // Install before draining: a new writer must either finish before our lease,
       // or queue behind it, including writers starting between drainage and acquire.
       adapterPathGate(raw)
+      const started = Date.now()
       for (;;) {
         options.ready()
+        if (Date.now() - started >= NATIVE_READ_DEADLINE_MS)
+          throw new NativeReadTimeout('checked publication save settlement')
         const file = vault.getAbstractFileByPath(path) as
           | (TFile & { saving?: PromiseLike<unknown> | boolean })
           | null
         const queue = raw.promise,
           saving = file?.saving
-        await queue
+        // Waiting before publication is read-only. Abandon this waiter, never the
+        // host's queue or its pending writer, when the host loses an acknowledgement.
+        await boundedNativeRead(
+          observePortableIo('publication host queue', path, () => queue),
+          'checked publication host queue'
+        )
         if (saving === true) await new Promise<void>((resolve) => timers.setTimeout(resolve, 10))
-        else if (saving) await saving
+        else if (saving)
+          await boundedNativeRead(
+            observePortableIo('publication editor save', path, () => saving),
+            'checked publication editor save'
+          )
         options.ready()
         if (saving !== true && raw.promise === queue && file?.saving === saving) return
       }
@@ -2576,7 +2600,7 @@ export function adapterEngineReceiver(adapter: object): object {
 export function adapterPathGate(adapter: object): PathCoordinator {
   const existing = gates.get(adapter)
   if (existing) return existing.locks
-  const locks = new PathCoordinator(),
+  const locks = new PathCoordinator('adapter'),
     methods = new Map<string, Method>()
   const view = new Proxy(adapter, {
     get(target, key) {
