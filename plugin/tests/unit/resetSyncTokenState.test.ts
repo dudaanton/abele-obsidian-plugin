@@ -59,6 +59,7 @@ const resetCases = [
   { retry: false, durable: true, orphan: false, retained: true },
   { retry: false, durable: true, orphan: false, retained: 'missing' },
   { retry: false, durable: true, orphan: false, cleanup: true },
+  { retry: false, durable: true, orphan: false, cleanup: 'interrupted-install' },
   { retry: false, durable: true, orphan: false, cleanup: 'blocked' },
   { retry: false, durable: true, orphan: false, cleanup: 'decision' },
   { retry: false, durable: true, orphan: false, cleanup: 'captured-decision' },
@@ -259,7 +260,27 @@ it.each(resetCases)(
       },
     } as unknown as Plugin
     const oldHost = Reflect.get(plugin, 'tokenEngines')
-    if (cleanup === 'captured-decision') {
+    if (cleanup === 'interrupted-install') {
+      const scoped = connectionJournalApp(plugin.app, id)
+      const journal = new WriteJournal(scoped, undefined, id)
+      const temp = '.obsidian/plugins/abele/sync-staging/.abele-receipt-sample-interrupted.tmp'
+      await vault.adapter.writeBinary(
+        temp,
+        new TextEncoder().encode('unpublished incoming bytes').buffer
+      )
+      await journal.persist(() =>
+        journal.add({
+          target: 'Notes/incoming.md',
+          temp,
+          conditionalReceipt: 'sample-interrupted',
+          replacementSha: 'a'.repeat(64),
+        })
+      )
+      await ledger.setMeta(
+        'pull-write:sample-file',
+        JSON.stringify({ receiptId: 'sample-interrupted' })
+      )
+    } else if (cleanup === 'captured-decision') {
       const files = new ObsidianFileSystem(plugin.app, { journalOwner: record.id })
       const have = await files.fingerprint('Notes/retained.bin')
       const base = {
@@ -433,6 +454,14 @@ it.each(resetCases)(
       expect(close).toHaveBeenCalledTimes(retry === true ? 2 : 1)
       expect(close).toHaveBeenCalledWith(false)
       expect(Reflect.get(plugin, 'tokenPoolResetStage')).toBe('complete')
+      if (cleanup === 'interrupted-install') {
+        expect(
+          await vault.adapter.read(
+            '.obsidian/plugins/abele/sync-recovery/.abele-receipt-sample-interrupted.tmp'
+          )
+        ).toBe('unpublished incoming bytes')
+        expect(await new WriteJournal(plugin.app).currentEntries()).toEqual([])
+      }
       if (retained) {
         const [copy] = await new WriteJournal(plugin.app).currentRecovered()
         expect(copy.archived).toBe(true)

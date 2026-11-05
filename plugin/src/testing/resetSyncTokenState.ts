@@ -5,6 +5,8 @@ import { recoverPendingPullWrites, recoverRemovals, sha256 } from '@abele/sync-s
 import { LocalFolderPlacement } from '../sync/localFolderPlacement'
 import { ObsidianFileSystem } from '../sync/ObsidianFileSystem'
 import { connectionJournalApp } from '../sync/connectionScope'
+import { connectionInspectionApp, vaultDisk, connectionAdapter } from '../sync/vaultPathLinks'
+import { connectionPrivateRoot } from '../sync/connectionPaths'
 import { TokenEngines } from '../sync/tokenEngines'
 import type { TokenUi } from '../sync/tokenUi'
 import { IndexedDbStateStore } from '../sync/IndexedDbStateStore'
@@ -23,6 +25,7 @@ import {
   recoverOrphanPrivateArtifacts,
   requireExternalEnrollmentSafety,
   requireExternalLifecycleSafety,
+  settleStoppedInstallationsForDeletion,
 } from '../sync/external/pluginSafety'
 import { decodeExternalDocument, EXTERNAL_STATE_KEY } from '../sync/external/state'
 import { stagingDirectory } from '../sync/stagingDirectory'
@@ -231,7 +234,35 @@ async function performResetSyncTokenState(
               }
               found = await inspectExistingLedger(window.indexedDB, name)
             }
-            if (found) assertDiscardableSyncLedger(found.metadata)
+            if (found) {
+              const record = ui.registry.records().find((one) => one.ledgerId === name)
+              if (record) {
+                // Explicit reset has drained this owner. Preserve interrupted incoming
+                // bytes before erasing the ledger which owns their installation receipt.
+                const root =
+                  record.scope?.kind === 'folder'
+                    ? (record.localRoot ?? record.scope.path)
+                    : undefined
+                const app = connectionJournalApp(plugin.app, record.id)
+                const view =
+                  root && root !== '/'
+                    ? connectionInspectionApp(
+                        app,
+                        connectionAdapter(
+                          vaultDisk(app.vault),
+                          root,
+                          connectionPrivateRoot(record.id)
+                        ),
+                        root,
+                        connectionPrivateRoot(record.id)
+                      )
+                    : app
+                await stage('retaining stopped installations', () =>
+                  settleStoppedInstallationsForDeletion(view, () => {})
+                )
+              }
+              assertDiscardableSyncLedger(found.metadata)
+            }
             const raw = found?.metadata.get('plugin:' + EXTERNAL_STATE_KEY)
             if (raw == null) continue
             if (typeof raw !== 'string') throw new Error('Pool external journal requires recovery')
