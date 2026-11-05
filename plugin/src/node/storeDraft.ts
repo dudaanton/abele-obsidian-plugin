@@ -1,6 +1,20 @@
 /** Copy-on-write JSON data. Reading an untouched branch allocates no payload copy. */
 const drafts = new WeakMap<object, { finish: () => unknown }>()
 
+/** Compare validated JSON projections without serializing their potentially large output. */
+export function sameStoredValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false
+  if (Array.isArray(left) !== Array.isArray(right)) return false
+  if (Array.isArray(left) && Array.isArray(right) && left.length !== right.length) return false
+  const keys = Object.keys(left)
+  if (keys.length !== Object.keys(right).length) return false
+  return keys.every(
+    (key) =>
+      Object.hasOwn(right, key) && sameStoredValue(Reflect.get(left, key), Reflect.get(right, key))
+  )
+}
+
 export function frozen<T>(value: T): T {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value)))
@@ -8,6 +22,12 @@ export function frozen<T>(value: T): T {
     Object.freeze(value)
   }
   return value
+}
+
+/** Resolve a draft revision without cloning ordinary mutable callers (which stay uncached). */
+export function snapshotOf<T>(value: T): T {
+  if (!value || typeof value !== 'object') return value
+  return (drafts.get(value)?.finish() ?? value) as T
 }
 
 /** Detach callback results and assigned objects from transaction proxies and caller ownership. */

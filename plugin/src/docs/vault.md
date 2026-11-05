@@ -17,6 +17,8 @@ section. Note-body blocks are exported regardless of this setting.
 
 The node client's local store retains `nodePathIntents` for accepted `workspace.create`
 requests, including their operation ID, original parameters and typed workspace/job result.
+The workspace/job result is JSON-encoded inside the existing string result field; folder
+creation keeps its path string there. The mutation boundary decodes the typed receipt on reuse.
 Reopening the dialog resumes that receipt instead of allocating a new creation operation.
 The intent is released only after the successful job is reconciled to its exact catalogue
 worktree and that target is selected. Failed or uncertain reconciliation keeps the receipt;
@@ -1522,7 +1524,15 @@ on the daemon; successful edits retain before/after Diff text in the ordinary ch
 `node_propose_edit` remains a separate device-local draft, not an immediate disk writer.
 The existing device-local node client database also retains `chatMutations`: immutable requests,
 operation IDs, executing-chat identity, pairing authority, before/after text and known receipts.
-These records do not travel with a chat. Pending/unknown mutations survive a disconnect or restart;
+These records do not travel with a chat. Mutation intents, drafts, letters, execution receipts and
+other growing maps use individual keyed rows with revision manifests rather than the shared metadata
+blob. Existing blobs migrate in one atomic, batched transaction: an interrupted migration leaves the
+original data intact and retries on the next access. Settled, receipted mutation images use a lossless
+prefix/suffix delta; exact before/after images and requests remain available for retry and inspection.
+This storage compaction never restores files. The rewind dialog uses its own change journal and still
+requires an explicit confirmation to restore files. Rollback-compatible delegation snapshots reuse equivalent keyed rows, so other handles do not
+repeatedly import them as legacy data. A legacy writer’s actual edits still migrate.
+Pending/unknown mutations survive a disconnect or restart;
 explicit exact-request retry uses the same ID and cannot rebind it to changed arguments.
 
 Chats are `.abchat` files under the chat folder, one JSON record per line. While one is being

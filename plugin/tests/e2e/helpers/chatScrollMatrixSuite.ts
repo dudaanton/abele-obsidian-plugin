@@ -14,7 +14,7 @@ import { withNativeInput } from './nativeInput'
 const available = isObsidianRunning() && hasTestApi()
 import { inputProbe, script, states, type Report } from './chatScrollMatrix'
 // Optional focused reruns keep the unfiltered matrix as the final qualification.
-export function chatScrollMatrixSuite(filter?: string) {
+export function chatScrollMatrixSuite(filter?: string, frameBudgetMs?: number, idleMs = 0) {
   const selected = (phone: boolean, size: string, state: string) =>
     !filter || new RegExp(filter).test(`${phone ? 'touch' : 'wheel'}/${size}/${state}`)
 
@@ -72,13 +72,16 @@ export function chatScrollMatrixSuite(filter?: string) {
                   async () =>
                     JSON.parse(
                       await evalLong(
-                        script(size, state, phone),
+                        script(size, state, phone, idleMs),
                         phone && size === 'long' && state === 'text' ? 330_000 : 300_000
                       )
                     ) as Report
                 )
               const result = await probe()
               console.log('scroll-matrix', JSON.stringify({ phone, size, state, ...result }))
+              if (frameBudgetMs !== undefined)
+                expect.soft(result.maxInputFrameMs).toBeLessThanOrEqual(frameBudgetMs)
+              if (idleMs) expect.soft(result.idleLongTasks).toEqual([])
               expect.soft(result.error).toBeUndefined()
               expect.soft(result.rows).toHaveLength(13)
               if (size === 'short') expect.soft(result.initialPages).toBeLessThanOrEqual(1)

@@ -1,4 +1,5 @@
 import { shotDir } from './shots'
+import { visibleChatAnchor } from './visibleChatAnchor'
 
 export const states = ['idle', 'text', 'running-tool', 'finished-tool', 'finished-reply'] as const
 const shots = shotDir('abele-phone')
@@ -6,7 +7,8 @@ const shots = shotDir('abele-phone')
 /** Fail setup promptly if native input is not reaching this window, before measuring the chat. */
 export const inputProbe = (phone: boolean) => `(async () => {
   const wc = require('@electron/remote').getCurrentWebContents()
-  const attached = wc.debugger.isAttached(), el = document.createElement('div')
+  const debuggerApi = wc.debugger
+  const attached = debuggerApi.isAttached(), el = document.createElement('div')
   const chat = [...document.querySelectorAll('.abele-ai-chat__messages')].find(e => e.getClientRects().length)
   const rect = chat?.getBoundingClientRect() || { left: 30, top: 112, width: 330, height: 562 }
   const x = rect.left + 8, y = rect.top + rect.height / 2
@@ -21,9 +23,9 @@ export const inputProbe = (phone: boolean) => `(async () => {
   for (const type of ['touchstart', 'touchmove', 'touchend', 'wheel'])
     el.addEventListener(type, record, { passive: true })
   try {
-    if (!attached) wc.debugger.attach('1.3')
+    if (!attached) debuggerApi.attach('1.3')
     document.body.append(el); el.scrollTop = 10000
-    const cdp = (method, params) => wc.debugger.sendCommand(method, params)
+    const cdp = (method, params) => debuggerApi.sendCommand(method, params)
     ${
       phone
         ? `await cdp('Emulation.setTouchEmulationEnabled', { enabled: true })
@@ -34,12 +36,12 @@ export const inputProbe = (phone: boolean) => `(async () => {
     }
     await new Promise(r => setTimeout(r, 120))
     await cdp('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })`
-        : `await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY: 120 })`
+        : `await debuggerApi.sendCommand('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY: 120 })`
     }
     await new Promise(r => setTimeout(r, 400))
     const moved = el.scrollTop - 10000, beforeFast = el.scrollTop
     phase = 'fast-small'
-    await wc.debugger.sendCommand('Input.synthesizeScrollGesture', { x, y, yDistance: -600,
+    await debuggerApi.sendCommand('Input.synthesizeScrollGesture', { x, y, yDistance: -600,
       speed: 6000, gestureSourceType: ${JSON.stringify(phone ? 'touch' : 'mouse')}, preventFling: true })
     await new Promise(r => setTimeout(r, 100))
     const fastMoved = el.scrollTop - beforeFast
@@ -79,8 +81,8 @@ export const inputProbe = (phone: boolean) => `(async () => {
       devicePixelRatio, viewportScale: visualViewport?.scale, inputs })
   } finally {
     el.remove()
-    ${phone ? "await wc.debugger.sendCommand('Emulation.setTouchEmulationEnabled', { enabled: false })" : ''}
-    if (!attached && wc.debugger.isAttached()) wc.debugger.detach()
+    ${phone ? "await debuggerApi.sendCommand('Emulation.setTouchEmulationEnabled', { enabled: false })" : ''}
+    if (!attached && debuggerApi.isAttached()) debuggerApi.detach()
   }
 })()`
 
@@ -222,6 +224,8 @@ interface Row {
   gestures?: { receivedInputs: number }[]
 }
 export interface Report {
+  maxInputFrameMs: number
+  idleLongTasks?: number[]
   error?: string
   rows: Row[]
   streamMs: number
@@ -234,7 +238,7 @@ export interface Report {
 
 // A scripted SSE provider and an inert, controllable tool exercise the ordinary session path.
 // Neither model credentials nor a real tool executor are used.
-export const script = (size: string, state: string, phone: boolean) => `(async () => {
+export const script = (size: string, state: string, phone: boolean, idleMs = 0) => `(async () => {
   const size = ${JSON.stringify(size)}, state = ${JSON.stringify(state)}, phone = ${phone}
   // Hundreds of native gestures include deliberate settle waits; this is a harness
   // budget, independent of the pixel and direction invariants checked below.
@@ -248,7 +252,8 @@ export const script = (size: string, state: string, phone: boolean) => `(async (
   const path = 'sample-scroll-matrix-' + crypto.randomUUID() + '.abchat'
   const tabs = [...chats.tabOrder.value], active = chats.activeTabId.value
   const realFetch = window.fetch
-  const report = { rows: [], streamMs: 0, evicted: false, initialPages: 0 }
+  const report = { rows: [], streamMs: 0, evicted: false, initialPages: 0, maxInputFrameMs: 0 }
+  let previousInputFrame
   const box = () => [...document.querySelectorAll('.abele-ai-chat__messages')].find(e => e.getClientRects().length)
   const item = id => box()?.querySelector('[data-message-id="' + id + '"]')
   const until = async fn => {
@@ -260,8 +265,9 @@ export const script = (size: string, state: string, phone: boolean) => `(async (
     throw Error('Condition timed out: ' + fn.toString())
   }
   const wc = require('@electron/remote').getCurrentWebContents()
-  const attached = wc.debugger.isAttached()
-  const cdp = (method, params) => wc.debugger.sendCommand(method, params)
+  const debuggerApi = wc.debugger
+  const attached = debuggerApi.isAttached()
+  const cdp = (method, params) => debuggerApi.sendCommand(method, params)
   const capture = async phase => {
     if (size !== 'long') return
     const image = await wc.capturePage()
@@ -322,17 +328,14 @@ export const script = (size: string, state: string, phone: boolean) => `(async (
   records.push({ k: 'msg', id: tail, parentId: 'm' + (count - 1), role: 'tool-call', content: '',
     toolName: 'read', toolParams: { path: 'Samples/tail.md' }, toolResult: 'Tail sample output.\\n'.repeat(80),
     toolStatus: 'approved', timestamp: 1700000400000 })
-  const visibleAnchor = () => {
-    const el = box(), top = el.getBoundingClientRect().top
-    const block = [...el.querySelectorAll('.abele-markdown > *')].find(e => e.getClientRects().length &&
-      e.getBoundingClientRect().top >= top && e.getBoundingClientRect().top < top + el.clientHeight)
-    if (block) return block
-    return [...el.querySelectorAll('[data-message-id], .abele-ai-chat__streaming-content p')]
-      .find(e => e.getBoundingClientRect().bottom > top + 20)
-  }
+  const visibleAnchor = () => (${visibleChatAnchor.toString()})(box())
   const offset = e => e.getBoundingClientRect().top - box().getBoundingClientRect().top
   const sample = () => {
     if (stop) return
+    const now = performance.now()
+    if (gestureActive && previousInputFrame !== undefined)
+      report.maxInputFrameMs = Math.max(report.maxInputFrameMs, now - previousInputFrame)
+    previousInputFrame = gestureActive ? now : undefined
     const el = box()
     if (el && row) {
       measureFollowingOrigin?.()
@@ -505,7 +508,7 @@ export const script = (size: string, state: string, phone: boolean) => `(async (
     window.addEventListener('touchmove', nativeInput, { capture: true, passive: true })
     window.addEventListener('touchstart', nativeInput, { capture: true, passive: true })
     window.addEventListener('touchend', nativeInput, { capture: true, passive: true })
-    if (!attached) wc.debugger.attach('1.3')
+    if (!attached) debuggerApi.attach('1.3')
     if (phone) await cdp('Emulation.setTouchEmulationEnabled', { enabled: true })
     if (app.vault.getAbstractFileByPath(path)) throw Error('Sample path occupied')
     file = await app.vault.create(path, [{ v: 2, k: 'meta', type: 'abele-chat', title: 'Sample scroll matrix',
@@ -604,6 +607,15 @@ export const script = (size: string, state: string, phone: boolean) => `(async (
     }
     row.bottomGap = box().scrollHeight - box().scrollTop - box().clientHeight
     await capture('following')
+    if (${idleMs}) {
+      const tasks = [];
+      const observer = new PerformanceObserver(list => tasks.push(...list.getEntries().map(entry => entry.duration)));
+      try {
+        observer.observe({ type: 'longtask' });
+        await wait(${idleMs});
+        report.idleLongTasks = tasks;
+      } finally { observer.disconnect() }
+    }
     begin('one screen up')
     for (let n = 0; n < 3; n++) await gesture(-box().clientHeight * 0.3)
     await hold()
@@ -749,7 +761,7 @@ export const script = (size: string, state: string, phone: boolean) => `(async (
     if (buttonDown) await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 1, y: 1, button: 'left', clickCount: 1 })
     if (keyDown) await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'End', code: 'End', windowsVirtualKeyCode: 35 })
     if (phone) await cdp('Emulation.setTouchEmulationEnabled', { enabled: false })
-    if (!attached && wc.debugger.isAttached()) wc.debugger.detach()
+    if (!attached && debuggerApi.isAttached()) debuggerApi.detach()
   }
   return JSON.stringify(report)
 })()`

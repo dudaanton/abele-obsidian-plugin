@@ -36,7 +36,7 @@ import { RequestsService } from '@/requests/RequestsService'
 import { openRequestTab } from '@/requests/actions'
 import { openRequestsView } from '@/requests/views'
 import { chatCodeSelection, insertCodeSelection } from '@/views/codeSelectionHost'
-import { NodeService } from '@/node/NodeService'
+import { NodeConnection, NodeService } from '@/node/NodeService'
 import { nodeErrorFixtureState } from './nodeErrorsFixture'
 import { AgentsService } from '@/agents/AgentsService'
 import { NodePathService } from '@/node/NodePathService'
@@ -56,8 +56,16 @@ import {
   nodeSessionCalls,
 } from './nodeSessionScreen'
 import { NodeClientStore } from '@/node/NodeClientStore'
+import { NodeChatPresenter } from '@/node/NodeChatPresenter'
+import { PromptSchema } from '@abele/node-protocol'
 import { NodeDeviceKeyStore } from '@/node/NodeDeviceKeyStore'
-import { generateIdentity, fingerprint, signProof, verifyProof } from '@abele/channel-protocol'
+import {
+  generateIdentity,
+  fingerprint,
+  signProof,
+  verifyProof,
+  responseSchema,
+} from '@abele/channel-protocol'
 import { pairedLoopbackTransport } from './nodePairedTransport'
 import { giveObsidianChatAccess } from '@/ai/tools/node/owner'
 const nodePairingCrypto = { generateIdentity, fingerprint, signProof, verifyProof }
@@ -326,6 +334,9 @@ interface AbeleTestApi {
   codeSelectionAdapters: { chat: typeof chatCodeSelection; note: typeof insertCodeSelection }
   ChatService: typeof ChatService
   NodeClientStore: typeof NodeClientStore
+  NodeConnection: typeof NodeConnection
+  NodeChatPresenter: typeof NodeChatPresenter
+  nodePromptAnswerSchema: () => typeof PromptSchema
   NodeService: typeof NodeService
   nodeErrorFixtureState: typeof nodeErrorFixtureState
   AgentsService: typeof AgentsService
@@ -1003,6 +1014,9 @@ export function exposeTestApi(plugin: Plugin): void {
     codeSelectionAdapters: { chat: chatCodeSelection, note: insertCodeSelection },
     ChatService,
     NodeClientStore,
+    NodeConnection,
+    NodeChatPresenter,
+    nodePromptAnswerSchema: () => responseSchema(PromptSchema),
     NodeService,
     nodeErrorFixtureState,
     AgentsService,

@@ -41,12 +41,12 @@ export function useChatRenderWindow<T>(
   const reset = () => {
     range.value = { first: oldest(total.value, pageSize), last: total.value }
   }
-  const showOlder = () => {
-    const first = oldest(start.value, pageSize)
+  const showOlder = (budget = pageSize) => {
+    const first = oldest(start.value, Math.max(1, Math.min(pageSize, budget)))
     range.value = { first, last: Math.min(end.value, newest(first, capacity)) }
   }
-  const showNewer = () => {
-    const last = newest(end.value, pageSize)
+  const showNewer = (budget = pageSize) => {
+    const last = newest(end.value, Math.max(1, Math.min(pageSize, budget)))
     range.value = { first: Math.max(start.value, oldest(last, capacity)), last }
   }
   const expandOlder = () => {

@@ -14,13 +14,14 @@ import {
 import { z } from 'zod'
 import type { NodeClientState, NodeClientStore } from './NodeClientStore'
 import { openWindow, catchUp } from './sessionWindow'
-import { reduceTranscript } from './NodeTranscriptReducer'
+import { cardTranscript } from './cardTranscript'
 import { pendingOwnerPrompts, promptAnswerStates } from './promptAnswers'
 import { t } from '@/i18n'
 import { nodeErrorDetails } from './errorWords'
 import { uncertainReceiptError } from './clientRecords'
 import { commandFolder } from './commandPresentation'
 import { delegationBranchLabel } from './delegation'
+import { frozen, plain, sameStoredValue, snapshotOf } from './storeDraft'
 const ContextRunSchema = IntegrationContextRunSchema.or(CommandContextRunSchema)
 const RunSchema = ContextRunSchema.or(ManagerRunSchema)
 type Run = ManagerRun | CommandContextRun | IntegrationContextRun
@@ -73,6 +74,67 @@ export const ManagerOperationSchema = z
   })
   .strict()
 export type ManagerOperation = z.infer<typeof ManagerOperationSchema>
+const StoredRunSchema = responseSchema(RunSchema)
+type ParsedRun = { success: true; data: Run } | { success: false }
+const notRun: ParsedRun = { success: false }
+const runReceipts = new WeakMap<object, ParsedRun>()
+function parsedRun(receipt: NodeClientState['results'][string] | undefined) {
+  receipt = snapshotOf(receipt)
+  const cached = receipt && Object.isFrozen(receipt) ? runReceipts.get(receipt) : undefined
+  if (cached) return cached
+  const value = receipt?.result
+  const parsed = value === undefined ? notRun : StoredRunSchema.safeParse(value)
+  // Projections need only a negative match, not a retained validation-error graph
+  // for every unrelated or refused operation in the history.
+  const result: ParsedRun = parsed.success ? { success: true, data: frozen(parsed.data) } : notRun
+  if (receipt && Object.isFrozen(receipt)) runReceipts.set(receipt, result)
+  return result
+}
+const parentOperations = new WeakMap<object, Map<string, [string, ManagerOperation][]>>()
+function operationsFor(operations: NodeClientState['managerOperations'], parent: string) {
+  operations = snapshotOf(operations)
+  if (!operations) return []
+  let index = Object.isFrozen(operations) ? parentOperations.get(operations) : undefined
+  if (!index) {
+    index = new Map()
+    for (const entry of Object.entries(operations)) {
+      const rows = index.get(entry[1].parent) ?? []
+      rows.push(entry)
+      index.set(entry[1].parent, rows)
+    }
+    if (Object.isFrozen(operations)) parentOperations.set(operations, index)
+  }
+  return index.get(parent) ?? []
+}
+type OperationRequest = NonNullable<NodeClientState['operationRequests']>[string]
+const executionRequests = new WeakMap<
+  object,
+  Map<string, Map<string, [string, OperationRequest][]>>
+>()
+function executionRequestsFor(
+  requests: NodeClientState['operationRequests'],
+  parent: string,
+  run: string
+) {
+  requests = snapshotOf(requests)
+  if (!requests) return []
+  let index = Object.isFrozen(requests) ? executionRequests.get(requests) : undefined
+  if (!index) {
+    index = new Map()
+    for (const entry of Object.entries(requests)) {
+      if (!/^(command|integration)\.context\.v1\.execute$/.test(entry[1].method)) continue
+      const params = entry[1].params as Record<string, unknown>
+      if (typeof params.parent_chat_id !== 'string' || typeof params.run_id !== 'string') continue
+      let runs = index.get(params.parent_chat_id)
+      if (!runs) index.set(params.parent_chat_id, (runs = new Map()))
+      const rows = runs.get(params.run_id) ?? []
+      rows.push(entry)
+      runs.set(params.run_id, rows)
+    }
+    if (Object.isFrozen(requests)) executionRequests.set(requests, index)
+  }
+  return index.get(parent)?.get(run) ?? []
+}
 function retainedRun(entry: ManagerOperation, receipt: Run, recover = false): Run {
   // A durable receipt replaces local transport uncertainty, never a newer node status.
   if (entry.run?.session_id === 'unsubmitted-command') {
@@ -84,6 +146,51 @@ function retainedRun(entry: ManagerOperation, receipt: Run, recover = false): Ru
   }
   return entry.run ?? receipt
 }
+const projectedRuns = new WeakMap<
+  ManagerOperation,
+  {
+    base: Run
+    events: NodeClientState['events'][string]
+    run: Run
+  }
+>()
+function projectRun(
+  entry: ManagerOperation,
+  run: Run,
+  events: NodeClientState['events'][string]
+): Run {
+  entry = snapshotOf(entry)
+  run = snapshotOf(run)
+  events = snapshotOf(events)
+  const immutable = Object.isFrozen(entry) && Object.isFrozen(run) && Object.isFrozen(events)
+  const previous = immutable ? projectedRuns.get(entry) : undefined
+  if (previous?.base === run && previous.events === events) return previous.run
+  const base = run
+  for (const event of events) {
+    const data = event.data as Record<string, unknown>
+    if (data.run_id !== run.run_id || event.seq <= (entry.observedSeq ?? 0)) continue
+    if (event.type === 'command.updated') {
+      const updated = runUpdate(data, run)
+      if (updated.success) run = updated.data
+    } else if (
+      event.type === 'command.output' &&
+      typeof data.text === 'string' &&
+      (data.stream === 'stdout' || data.stream === 'stderr')
+    ) {
+      const stream = data.stream
+      const joined = run[stream] + data.text
+      const tail = outputTail(joined, Number(entry.params.output_bytes ?? 16384))
+      run = {
+        ...run,
+        [stream]: tail.text,
+        [`${stream}_truncated`]: run[`${stream}_truncated`] || tail.truncated,
+      }
+    }
+  }
+  if (immutable) projectedRuns.set(entry, { base, events, run: frozen(run) })
+  return run
+}
+
 export type ManagerMethod = 'command.v1.run' | 'command.v1.cancel' | 'git.v1.integrate'
 const Description = z.object({
   capabilities: z.object({ capabilities: z.record(z.string(), z.object({ status: z.string() })) }),
@@ -441,10 +548,11 @@ export class NodeManagerController {
   private async ownedContext(parent: string, session: string, run: string) {
     return this.store.read(
       (s) =>
-        Object.entries(s.managerOperations ?? {}).flatMap(([operation, entry]) => {
-          const parsed = responseSchema(ContextRunSchema).safeParse(s.results[operation]?.result)
+        operationsFor(s.managerOperations, parent).flatMap(([operation, entry]) => {
+          const parsed = parsedRun(s.results[operation])
           return entry.parent === parent &&
             parsed.success &&
+            'context_id' in parsed.data &&
             parsed.data.session_id === session &&
             parsed.data.run_id === run
             ? [{ operation, run: parsed.data }]
@@ -509,15 +617,20 @@ export class NodeManagerController {
     const entries = await this.store.transaction((s) => {
       for (const [operation, entry] of Object.entries(s.managerOperations ?? {})) {
         if (entry.run?.session_id !== 'unsubmitted-command') continue
-        const receipt = responseSchema(RunSchema).safeParse(s.results[operation]?.result)
+        const receipt = parsedRun(s.results[operation])
         if (receipt.success) retainedRun(entry, receipt.data, true)
       }
-      return Object.entries(s.managerOperations ?? {}).filter(
-        ([, entry]) => !entry.notified && !entry.stopped && entry.method !== 'command.v1.cancel'
-      )
+      return Object.entries(s.managerOperations ?? {})
+        .filter(
+          ([, entry]) => !entry.notified && !entry.stopped && entry.method !== 'command.v1.cancel'
+        )
+        .map(([operation, entry]) => [operation, { parent: entry.parent }] as const)
     })
+    const parentCards = await this.cardsForParents([
+      ...new Set(entries.map(([, entry]) => entry.parent)),
+    ])
     for (const [operation, entry] of entries) {
-      const card = (await this.cards(entry.parent)).find((card) => card.operation === operation)
+      const card = parentCards[entry.parent].find((card) => card.operation === operation)
       if (!card || ['pending_approval', 'running'].includes(card.run.state)) continue
       if (
         wake(
@@ -526,7 +639,7 @@ export class NodeManagerController {
         )
       )
         await this.store.transaction((s) => {
-          s.managerOperations![operation].notified = true
+          s.managerOperations[operation].notified = true
         })
     }
   }
@@ -675,20 +788,20 @@ export class NodeManagerController {
           throw new Error('Run does not belong to this parent chat')
         return entry.run
       })
-    const owned = await this.store.read((s) =>
-      Object.entries(s.managerOperations ?? {}).some(([id, entry]) => {
-        const receipt = responseSchema(RunSchema).safeParse(s.results[id]?.result)
-        return (
-          entry.parent === parent &&
+    const { owned, before } = await this.store.read((s) => ({
+      before: s.cursors[session] ?? 0,
+      owned: operationsFor(s.managerOperations, parent).flatMap(([id, entry]) => {
+        const receipt = parsedRun(s.results[id])
+        return entry.parent === parent &&
           receipt.success &&
           receipt.data.session_id === session &&
           receipt.data.run_id === run
-        )
-      })
-    )
+          ? [receipt.data]
+          : []
+      })[0],
+    }))
     if (!owned) throw new Error('Run does not belong to this parent chat')
-    const before = await this.store.read((s) => s.cursors[session] ?? 0)
-    const context = await this.ownedContext(parent, session, run)
+    const context = 'context_id' in owned ? { run: owned } : undefined
     if (context) await this.enableContexts(contextKind(context.run))
     let status = responseSchema(RunSchema).parse(
       await this.client.request(
@@ -706,8 +819,9 @@ export class NodeManagerController {
         const update = runUpdate(event.data, status)
         if (update.success && update.data.run_id === run) status = update.data
       }
-      for (const [operation, entry] of Object.entries(s.managerOperations ?? {})) {
-        const receipt = responseSchema(RunSchema).safeParse(s.results[operation]?.result)
+      for (const [operation] of operationsFor(plain(s.managerOperations), parent)) {
+        const entry = s.managerOperations[operation]
+        const receipt = parsedRun(s.results[operation])
         if (
           entry.parent === parent &&
           receipt.success &&
@@ -715,7 +829,7 @@ export class NodeManagerController {
           receipt.data.session_id === session
         ) {
           retainedRun(entry, status, true)
-          entry.run = status
+          if (!sameStoredValue(entry.run, status)) entry.run = status
           entry.observedSeq = s.cursors[session] ?? 0
         }
       }
@@ -744,14 +858,30 @@ export class NodeManagerController {
   }
   async restore() {
     if (!this.client.connected) return
-    const entries = await this.store.transaction((s) =>
+    const entries = await this.store.read((s) =>
       Object.entries(s.managerOperations ?? {}).flatMap(([operation, entry]) => {
-        const receipt = responseSchema(RunSchema).safeParse(s.results[operation]?.result)
+        const receipt = parsedRun(s.results[operation])
         return receipt.success && entry.method !== 'command.v1.cancel'
-          ? [{ parent: entry.parent, run: retainedRun(entry, receipt.data, true) }]
+          ? [
+              {
+                operation,
+                parent: entry.parent,
+                run: retainedRun(entry, receipt.data),
+                recover: entry.run?.session_id === 'unsubmitted-command',
+              },
+            ]
           : []
       })
     )
+    if (entries.some((entry) => entry.recover))
+      await this.store.transaction((s) => {
+        for (const candidate of entries) {
+          if (!candidate.recover) continue
+          const entry = s.managerOperations?.[candidate.operation]
+          const receipt = parsedRun(s.results[candidate.operation])
+          if (entry && receipt.success) retainedRun(entry, receipt.data, true)
+        }
+      })
     for (const entry of entries) {
       try {
         const session = entry.run.session_id
@@ -774,117 +904,104 @@ export class NodeManagerController {
     }
   }
   async cards(parent: string) {
-    return this.store.read((s) =>
-      Object.entries(s.managerOperations ?? {}).flatMap(([operation, entry]) => {
-        if (entry.parent !== parent || entry.method === 'command.v1.cancel') return []
-        const receipt = responseSchema(RunSchema).safeParse(s.results[operation]?.result)
-        if (!receipt.success && !entry.run) return []
-        let run = receipt.success ? retainedRun(entry, receipt.data) : entry.run!
-        if (run.session_id === 'unsubmitted-command' && run.state === 'pending_approval')
-          run = { ...run, state: 'failed' }
-        const display = entry.request ?? entry.params
-        const events = s.events[run.session_id] ?? []
-        for (const event of events) {
-          const data = event.data as Record<string, unknown>
-          if (data.run_id !== run.run_id || event.seq <= (entry.observedSeq ?? 0)) continue
-          if (event.type === 'command.updated') {
-            const updated = runUpdate(data, run)
-            if (updated.success) run = updated.data
-          } else if (
-            event.type === 'command.output' &&
-            typeof data.text === 'string' &&
-            (data.stream === 'stdout' || data.stream === 'stderr')
-          ) {
-            const stream = data.stream
-            const joined = run[stream] + data.text
-            const tail = outputTail(joined, Number(entry.params.output_bytes ?? 16384))
-            run = {
-              ...run,
-              [stream]: tail.text,
-              [`${stream}_truncated`]: run[`${stream}_truncated`] || tail.truncated,
-            }
-          }
-        }
-        const transcript = reduceTranscript(events)
-        const prompts = new Map(
-          (this.pendingPrompts.get(run.run_id) ?? []).map((prompt) => [prompt.prompt_id, prompt])
-        )
-        if (entry.fallback?.state === 'pending')
-          prompts.set(entry.fallback.prompt_id, entry.fallback)
-        if ('approval' in run && run.approval) {
-          const approval = responseSchema(PromptSchema).parse(run.approval)
-          prompts.set(approval.prompt_id, approval)
-        }
-        for (const prompt of transcript.prompts) {
-          if (prompt.state === 'pending') prompts.set(prompt.prompt_id, prompt)
-          else prompts.delete(prompt.prompt_id)
-        }
-        const requestedFolder = typeof display.cwd === 'string' ? display.cwd : ''
-        const targetPath = typeof display.target_path === 'string' ? display.target_path : ''
-        const fullFolder =
-          targetPath && !requestedFolder.startsWith('/')
-            ? [targetPath.replace(/\/$/, ''), requestedFolder].filter(Boolean).join('/')
-            : requestedFolder
-        return [
-          {
-            operation,
-            placementParams: entry.request
-              ? Object.fromEntries(
-                  Object.entries(entry.request).filter(
-                    ([key]) => !['target_label', 'target_path'].includes(key)
-                  )
+    return this.store.read((s) => this.cardsOf(s, parent))
+  }
+  async cardsForParents(parents: string[], snapshot?: NodeClientState) {
+    const project = (s: NodeClientState) =>
+      Object.fromEntries(parents.map((parent) => [parent, this.cardsOf(s, parent)]))
+    return snapshot ? project(snapshot) : this.store.read(project)
+  }
+  private cardsOf(s: NodeClientState, parent: string) {
+    return operationsFor(s.managerOperations, parent).flatMap(([operation, entry]) => {
+      if (entry.parent !== parent || entry.method === 'command.v1.cancel') return []
+      const receipt = parsedRun(s.results[operation])
+      if (!receipt.success && !entry.run) return []
+      let run = receipt.success ? retainedRun(entry, receipt.data) : entry.run
+      if (run.session_id === 'unsubmitted-command' && run.state === 'pending_approval')
+        run = { ...run, state: 'failed' }
+      const display = entry.request ?? entry.params
+      const events = s.events[run.session_id] ?? []
+      run = projectRun(entry, run, events)
+      const transcript = cardTranscript(events)
+      const prompts = new Map(
+        (this.pendingPrompts.get(run.run_id) ?? []).map((prompt) => [prompt.prompt_id, prompt])
+      )
+      if (entry.fallback?.state === 'pending') prompts.set(entry.fallback.prompt_id, entry.fallback)
+      if ('approval' in run && run.approval) {
+        const approval = responseSchema(PromptSchema).parse(run.approval)
+        prompts.set(approval.prompt_id, approval)
+      }
+      for (const prompt of transcript.prompts) {
+        if (prompt.state === 'pending') prompts.set(prompt.prompt_id, prompt)
+        else prompts.delete(prompt.prompt_id)
+      }
+      const requestedFolder = typeof display.cwd === 'string' ? display.cwd : ''
+      const targetPath = typeof display.target_path === 'string' ? display.target_path : ''
+      const fullFolder =
+        targetPath && !requestedFolder.startsWith('/')
+          ? [targetPath.replace(/\/$/, ''), requestedFolder].filter(Boolean).join('/')
+          : requestedFolder
+      return [
+        {
+          operation,
+          placementParams: entry.request
+            ? Object.fromEntries(
+                Object.entries(entry.request).filter(
+                  ([key]) => !['target_label', 'target_path'].includes(key)
+                )
+              )
+            : undefined,
+          command: typeof display.command === 'string' ? display.command : undefined,
+          argv: Array.isArray(display.argv)
+            ? display.argv.filter((v): v is string => typeof v === 'string')
+            : undefined,
+          folder:
+            ('approval' in run && run.approval
+              ? ((run.approval.input as Record<string, unknown> | undefined)?.cwd as
+                  | string
+                  | undefined)
+              : undefined) ??
+            (fullFolder
+              ? fullFolder
+              : typeof display.worktree_id === 'string'
+                ? display.worktree_id
+                : typeof display.workspace_id === 'string'
+                  ? display.workspace_id
+                  : typeof display.project_id === 'string'
+                    ? display.project_id
+                    : undefined),
+          folderLabel:
+            typeof display.target_label === 'string'
+              ? commandFolder(
+                  typeof display.cwd === 'string' ? display.cwd : '',
+                  typeof display.target_path === 'string' ? display.target_path : undefined,
+                  display.target_label
                 )
               : undefined,
-            command: typeof display.command === 'string' ? display.command : undefined,
-            argv: Array.isArray(display.argv)
-              ? display.argv.filter((v): v is string => typeof v === 'string')
-              : undefined,
-            folder:
-              ('approval' in run && run.approval
-                ? ((run.approval.input as Record<string, unknown> | undefined)?.cwd as
-                    | string
-                    | undefined)
-                : undefined) ??
-              (fullFolder
-                ? fullFolder
-                : typeof display.worktree_id === 'string'
-                  ? display.worktree_id
-                  : typeof display.workspace_id === 'string'
-                    ? display.workspace_id
-                    : typeof display.project_id === 'string'
-                      ? display.project_id
-                      : undefined),
-            folderLabel:
-              typeof display.target_label === 'string'
-                ? commandFolder(
-                    typeof display.cwd === 'string' ? display.cwd : '',
-                    typeof display.target_path === 'string' ? display.target_path : undefined,
-                    display.target_label
-                  )
-                : undefined,
-            justification: entry.justification,
-            title:
-              typeof display.command === 'string'
-                ? display.command
-                : Array.isArray(display.argv)
-                  ? display.argv
-                      .filter((value): value is string => typeof value === 'string')
-                      .join(' ')
-                  : typeof display.source_branch === 'string' &&
-                      typeof display.target_branch === 'string'
-                    ? `${display.source_branch} → ${display.target_branch}`
-                    : 'git.v1.integrate',
-            run,
-            prompts: [...prompts.values()].filter(
-              (p) =>
-                run.state === 'pending_approval' &&
-                p.prompt_id === run.prompt_id &&
-                p.state === 'pending'
-            ),
-            answers: {
-              ...promptAnswerStates(s, run.session_id),
-              ...Object.fromEntries(
-                Object.entries(s.operationRequests ?? {}).flatMap(([id, request]) => {
+          justification: entry.justification,
+          title:
+            typeof display.command === 'string'
+              ? display.command
+              : Array.isArray(display.argv)
+                ? display.argv
+                    .filter((value): value is string => typeof value === 'string')
+                    .join(' ')
+                : typeof display.source_branch === 'string' &&
+                    typeof display.target_branch === 'string'
+                  ? `${display.source_branch} → ${display.target_branch}`
+                  : 'git.v1.integrate',
+          run,
+          prompts: [...prompts.values()].filter(
+            (p) =>
+              run.state === 'pending_approval' &&
+              p.prompt_id === run.prompt_id &&
+              p.state === 'pending'
+          ),
+          answers: {
+            ...promptAnswerStates(s, run.session_id),
+            ...Object.fromEntries(
+              executionRequestsFor(s.operationRequests, parent, run.run_id).flatMap(
+                ([id, request]) => {
                   const p = request.params as Record<string, unknown>
                   const pending = s.outbox.some((e) => e.operation_id === id)
                   if (
@@ -908,12 +1025,12 @@ export class NodeManagerController {
                       },
                     ],
                   ]
-                })
-              ),
-            },
+                }
+              )
+            ),
           },
-        ]
-      })
-    )
+        },
+      ]
+    })
   }
 }

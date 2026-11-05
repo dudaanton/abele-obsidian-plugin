@@ -77,7 +77,7 @@ it.each(onPhone() ? ['phone'] : ['desktop', 'phone emulation'])(
           input('stop-input','Read a long sample.');start('stop-input');
           append('pi.tool.call',{...scope,tool_use_id:'sample-read',name:'read',input:{path:'sample.txt'}});
           append('pi.message.final',{...scope,message_id:'stop-answer',message:{role:'assistant',content:[],stopReason:'error',errorMessage:'provider_error'}});
-          append('turn.completed',{run_id:scope.run_id,input_ids:['stop-input'],outcome:'interrupted'});await publish();
+          append('turn.completed',{run_id:scope.run_id,input_ids:['stop-input'],outcome:'interrupted',terminal_reason:'stopped_by_owner'});await publish();
           await until(()=>root().textContent.includes('Stopped by you'));
           const stopped=!root().textContent.includes('The model request failed')&&!p.messages.value.some(m=>m.error);
           const scroll=root().querySelector('.abele-ai-chat__messages');scroll.scrollTop=scroll.scrollHeight;await wait(80);await shot('node-chat-stopped');

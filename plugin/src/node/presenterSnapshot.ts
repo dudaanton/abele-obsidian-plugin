@@ -1,4 +1,5 @@
 import type { NodeClientState } from './NodeClientStore'
+import { promptAnswerStates } from './promptAnswers'
 
 /** A presentation owns only its session's plain data, never store accessors or their closure. */
 export function presenterSnapshot(
@@ -47,5 +48,11 @@ export function presenterSnapshot(
     const id = (event.data as { artifact_id?: string })?.artifact_id
     if (id && state.artifactData?.[id]) artifactData[id] = { ...state.artifactData[id] }
   }
-  return { history, letters, receipts, artifactData }
+  return {
+    history,
+    letters,
+    receipts,
+    artifactData,
+    answers: promptAnswerStates({ results: state.results, outbox: state.outbox ?? [] }, session),
+  }
 }

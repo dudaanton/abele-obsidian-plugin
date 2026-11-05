@@ -23,6 +23,7 @@ import { requireDelegationScope, scopedPlainCommandRoot } from '@/ai/tools/node/
 import { NodeRequestActivity, nodeRequestWaitMs } from './NodeRequestActivity'
 import { nodeLogAvailable } from './nodeLogCapability'
 import { pruneNodeDatabases } from './pruneNodeDatabases'
+import { sameStoredValue } from './storeDraft'
 
 RequestChannel.backgroundActive = () => mobileBackground.active
 RequestChannel.debug = (...args) => console.debug(...args)
@@ -214,6 +215,8 @@ export class NodeConnection {
       }
   }
 
+  private publishedDelegationNode?: string
+
   refreshDelegations(force = true): Promise<void> {
     if (this.refreshingDelegations) return this.refreshingDelegations
     if (!force && !this.delegationDirty && !this.delegationActive) return Promise.resolve()
@@ -223,7 +226,9 @@ export class NodeConnection {
         await this.delegation.restore(force)
         await this.manager.restore()
       } finally {
-        const { parents, pendingManager } = await this.store.read((s) => ({
+        const { snapshot, nodeId, parents, pendingManager } = await this.store.read((s) => ({
+          snapshot: s,
+          nodeId: s.node_id,
           parents: [...new Set(Object.values(s.managerOperations ?? {}).map((e) => e.parent))],
           pendingManager: Object.values(s.managerOperations ?? {}).some(
             (entry) =>
@@ -233,17 +238,19 @@ export class NodeConnection {
               )
           ),
         }))
-        const managerCards = Object.fromEntries(
-          await Promise.all(
-            parents.map(async (parent) => [parent, await this.manager.cards(parent)] as const)
-          )
-        )
-        const cards = await this.delegation.snapshot()
+        const managerCards = await this.manager.cardsForParents(parents, snapshot)
+        const cards = await this.delegation.snapshot(snapshot)
         if (!this.disposed) {
-          this.managerCards.value = managerCards
-          this.delegationCards.value = cards
-          const nodeId = await this.store.read((s) => s.node_id)
-          if (nodeId) AgentsService.getInstance().setDelegations(nodeId, cards)
+          // An idle refresh must not invalidate every subscriber to the agents list
+          // or rerender an open chat just because its projection objects are fresh.
+          if (!sameStoredValue(this.managerCards.value, managerCards))
+            this.managerCards.value = managerCards
+          const changed = !sameStoredValue(this.delegationCards.value, cards)
+          if (changed) this.delegationCards.value = cards
+          if (nodeId && (changed || this.publishedDelegationNode !== nodeId)) {
+            AgentsService.getInstance().setDelegations(nodeId, cards)
+            this.publishedDelegationNode = nodeId
+          }
           const { ChatService } = await import('@/ai/ChatService')
           await this.delegation.wakeDelivered(cards, (parent, id, notice) => {
             const session = ChatService.getInstance()
@@ -291,8 +298,8 @@ export class NodeConnection {
         this.tools.label
       )
       this.delegation.obsidianSnapshot = (parent, provider) =>
-        this.obsidian!.delegationSnapshot(parent, provider)
-      this.delegation.configureChildTools = (session) => this.obsidian!.adoptSession(session)
+        this.obsidian.delegationSnapshot(parent, provider)
+      this.delegation.configureChildTools = (session) => this.obsidian.adoptSession(session)
     }
   }
 
@@ -690,7 +697,7 @@ export class NodeService {
         backgroundAudio: mobileBackground.active,
       })
       await client.connect()
-      const admittedNodeId = await store.transaction((state) => state.node_id!)
+      const admittedNodeId = await store.transaction((state) => state.node_id)
       if (expectedNodeId && admittedNodeId !== expectedNodeId)
         throw new Error('node_identity_mismatch')
       if (!current()) throw new Error('local_discovery_cancelled')
@@ -743,7 +750,7 @@ export class NodeService {
       label,
       url: device.endpoint,
       ...(target.url !== device.endpoint ? { transportUrl: target.url } : {}),
-      expectedNodeId: nodeId!,
+      expectedNodeId: nodeId,
       profile: 'paired-wss-v1',
       installationId: target.installation_id,
       nodeFingerprint: target.node_fingerprint,
@@ -760,7 +767,7 @@ export class NodeService {
       connection = previous
       await connection.connect()
     } else {
-      connection = new NodeConnection(client, store, { nodeId: nodeId!, label })
+      connection = new NodeConnection(client, store, { nodeId: nodeId, label })
       this.connections.set(id, connection)
     }
     this.nodes.value = this.registry.list()
@@ -768,7 +775,7 @@ export class NodeService {
     connection.start()
     const enrollment = claimedEnrollment(device)
     if (enrollment) await this.deviceKeys.finishEnrollment(nodeId, enrollment).catch(() => {})
-    return this.nodes.value.find((node) => node.id === id)!
+    return this.nodes.value.find((node) => node.id === id)
   }
 
   /** Invitation secrets stay in device-local IndexedDB for lost-response recovery. */
@@ -802,7 +809,7 @@ export class NodeService {
     }
     this.nodes.value = this.registry.list()
     AgentsService.getInstance().setNodes(this.nodes.value)
-    return this.nodes.value.find((n) => n.id === id)!
+    return this.nodes.value.find((n) => n.id === id)
   }
 
   async deviceFingerprint(nodeId: string): Promise<string> {

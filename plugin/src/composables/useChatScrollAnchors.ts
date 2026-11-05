@@ -327,6 +327,9 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
   let floorOwner = 0
 
   const releaseFloor = (container: HTMLElement) => {
+    // Repeated holds after release must not rewrite class/style attributes: a
+    // redundant class removal still invalidates style before the next geometry read.
+    if (!container.classList.contains(FLOOR_CLASS)) return
     floorOwner++
     container.classList.remove(FLOOR_CLASS)
     container.style.removeProperty(FLOOR_VAR)

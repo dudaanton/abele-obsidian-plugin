@@ -273,3 +273,15 @@ describe('bounded chat window edges', () => {
     }
   )
 })
+
+// BUG: Smaller native batches still lose input distance during fast page swaps.
+it.fails('limits a native edge reveal while retaining the full mounted window', () => {
+  const { scroll, box } = open()
+  const before = scroll.olderCount.value
+  box.scrollTop = 0
+  scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: -100 }))
+  const revealed = before - scroll.olderCount.value
+  expect(revealed).toBeGreaterThan(0)
+  expect(revealed).toBeLessThanOrEqual(10)
+  expect(scroll.visibleMessages.value).toHaveLength(90)
+})

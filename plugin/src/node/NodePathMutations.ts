@@ -18,7 +18,7 @@ interface PathIntent {
   id: string
   method: string
   params: unknown
-  result?: unknown
+  result?: string
 }
 type IntentState = ClientState & { nodePathIntents?: Record<string, PathIntent> }
 
@@ -64,7 +64,12 @@ export class NodePathMutations {
       return (intents[key] ??= { id: crypto.randomUUID(), method, params })
     })
     if (intent.method !== method) throw new UiError(uiMessage('streamBError.d7e2b0292d'))
-    if (retainResult && intent.result !== undefined) return intent.result as T
+    if (retainResult && intent.result !== undefined)
+      return (
+        method === 'workspace.create'
+          ? responseSchema(WorkspaceJobResultSchema).parse(JSON.parse(intent.result))
+          : intent.result
+      ) as T
     let result: T
     try {
       result = await send(intent.id, intent.params)
@@ -86,7 +91,11 @@ export class NodePathMutations {
     await this.client.store.transaction((raw) => {
       const intents = (raw as IntentState).nodePathIntents
       if (intents?.[key]?.id !== intent.id) return
-      if (retainResult) intents[key].result = result
+      if (retainResult)
+        intents[key].result =
+          method === 'workspace.create'
+            ? JSON.stringify(responseSchema(WorkspaceJobResultSchema).parse(result))
+            : (result as string)
       else delete intents[key]
     })
     return result

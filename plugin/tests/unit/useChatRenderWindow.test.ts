@@ -112,3 +112,29 @@ describe('bounded chat rendering', () => {
     expect(window.visible.value.length).toBeLessThanOrEqual(90)
   })
 })
+
+it('splits edge reveals into smaller batches while preserving initial pages and capacity', () => {
+  const messages = ref(rows(200))
+  const window = useChatRenderWindow(
+    () => messages.value,
+    () => false,
+    30,
+    90
+  )
+  expect(window.visible.value).toHaveLength(30)
+  const before = window.start.value
+  window.showOlder(10)
+  expect(window.start.value).toBe(before - 10)
+  expect(window.visible.value).toHaveLength(40)
+  window.showOlder()
+  expect(window.start.value).toBe(before - 40)
+  for (let i = 0; i < 30; i++) window.showOlder(10)
+  expect(window.start.value).toBe(0)
+  expect(window.visible.value).toHaveLength(90)
+  const end = window.end.value
+  window.showNewer(10)
+  expect(window.end.value).toBe(end + 10)
+  for (let i = 0; i < 30; i++) window.showNewer(10)
+  expect(window.end.value).toBe(200)
+  expect(window.visible.value).toHaveLength(90)
+})

@@ -13,6 +13,35 @@ import { fakeChatSession } from '../helpers/fakeChatSession'
 
 const advance = useFakeClock()
 
+// BUG: Deferring correction still loses native input distance in live page swaps.
+it.fails('batches markdown mutations into the next frame before measuring layout', async () => {
+  const { box, measure } = await open()
+  await advance(100)
+  measure.mockClear()
+  for (let i = 0; i < 10; i++) {
+    box.lastElementChild!.append(document.createElement('span'))
+    await advance(0)
+  }
+  expect(measure).not.toHaveBeenCalled()
+  await advance(17)
+  expect(measure).toHaveBeenCalled()
+})
+
+// BUG: Layout-observer correction still causes native direction reversals.
+it.fails(
+  'settles dirty markdown in the layout observer before waiting for another frame',
+  async () => {
+    const { box, measure, resized } = await open()
+    await advance(100)
+    measure.mockClear()
+    box.lastElementChild!.append(document.createElement('span'))
+    await advance(0)
+    expect(measure).not.toHaveBeenCalled()
+    resized()
+    expect(measure).toHaveBeenCalled()
+  }
+)
+
 it('keeps following when content layout reports a scroll before its resize', async () => {
   const { box, scroll, grow } = await open()
   // A folded tool row expands before its ResizeObserver callback is delivered.
@@ -344,7 +373,7 @@ async function open() {
   let extra = 0
   let top = 0
   let height = 800
-  const contentHeight = () => box.children.length * 100 + extra
+  const contentHeight = vi.fn(() => box.children.length * 100 + extra)
   Object.defineProperties(box, {
     clientHeight: { get: () => height },
     scrollHeight: { get: contentHeight },
@@ -369,6 +398,11 @@ async function open() {
     await nextTick()
   }
   return {
+    measure: contentHeight,
+    resized: () => {
+      for (const observer of observers)
+        if (observer.targets.has(box.lastElementChild!)) observer.callback()
+    },
     box,
     scroll,
     grow,

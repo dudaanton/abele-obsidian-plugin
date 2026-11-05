@@ -2,8 +2,8 @@ import { expect, it, vi } from 'vitest'
 import { NodeManagerController } from '@/node/NodeManagerController'
 import type { NodeClient } from '@abele/node-client'
 import { NodeClientStore } from '@/node/NodeClientStore'
-import { plain } from '@/node/storeDraft'
-import { IDBFactory } from 'fake-indexeddb'
+import { frozen, plain, storeDraft } from '@/node/storeDraft'
+import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
 const receipt = {
   run_id: 'sample-run',
   prompt_id: 'sample-prompt',
@@ -15,6 +15,144 @@ const receipt = {
   stdout_truncated: false,
   stderr_truncated: false,
 }
+
+it('reuses parsed receipts through unchanged transaction drafts during status polling', async () => {
+  const inspect = vi.fn(() => receipt)
+  const state = frozen({
+    cursors: {},
+    events: {},
+    outbox: [],
+    results: {
+      'sample-operation': {
+        get result() {
+          return inspect()
+        },
+      },
+    },
+    managerOperations: {
+      'sample-operation': { parent: 'sample-parent', method: 'command.v1.run', params: {} },
+    },
+  })
+  const store = {
+    read: vi.fn(async (look: (value: unknown) => unknown) => look(state)),
+    transaction: async (work: (value: unknown) => unknown) => work(storeDraft(state).value),
+  }
+  const controller = new NodeManagerController(
+    { connected: true, request: async () => receipt } as never,
+    store as never
+  )
+  await controller.cards('sample-parent')
+  inspect.mockClear()
+  store.read.mockClear()
+  await controller.status('sample-parent', receipt.session_id, receipt.run_id)
+  await controller.status('sample-parent', receipt.session_id, receipt.run_id)
+  expect(inspect).not.toHaveBeenCalled()
+  expect(store.read).toHaveBeenCalledTimes(2)
+})
+
+it('indexes execution-answer history instead of revisiting it for every card refresh', async () => {
+  const inspect = vi.fn(() => ({
+    parent_chat_id: 'sample-other',
+    run_id: 'sample-other-run',
+    choice: 'allow',
+  }))
+  const state = frozen({
+    cursors: {},
+    events: {},
+    outbox: [],
+    results: { 'sample-operation': { result: receipt } },
+    managerOperations: {
+      'sample-operation': { parent: 'sample-parent', method: 'command.v1.run', params: {} },
+    },
+    operationRequests: Object.fromEntries(
+      Array.from({ length: 3000 }, (_, i) => [
+        'sample-request-' + i,
+        {
+          method: 'command.context.v1.execute',
+          get params() {
+            return inspect()
+          },
+        },
+      ])
+    ),
+  })
+  const controller = new NodeManagerController(
+    {} as never,
+    {
+      read: async (look: (value: unknown) => unknown) => look(state),
+    } as never
+  )
+  await controller.cards('sample-parent')
+  inspect.mockClear()
+  await controller.cards('sample-parent')
+  expect(inspect).not.toHaveBeenCalled()
+})
+
+it.each([false, true])(
+  'reuses unchanged journal projections (run update: %s)',
+  async (updateRun) => {
+    const inspect = vi.fn(() => (updateRun ? 'command.updated' : 'sample.unknown'))
+    const state = frozen({
+      cursors: {},
+      outbox: [],
+      events: {
+        'sample-session': [
+          {
+            seq: 1,
+            stream_id: 'sample-session',
+            actor: { kind: 'node' },
+            at: '2028-01-01T00:00:00Z',
+            data: updateRun ? receipt : {},
+            get type() {
+              return inspect()
+            },
+          },
+        ],
+      },
+      results: { 'sample-operation': { result: receipt } },
+      managerOperations: {
+        'sample-operation': { parent: 'sample-parent', method: 'command.v1.run', params: {} },
+      },
+    })
+    const controller = new NodeManagerController(
+      {} as never,
+      {
+        read: async (look: (value: unknown) => unknown) => look(state),
+      } as never
+    )
+    await controller.cards('sample-parent')
+    expect(inspect).toHaveBeenCalled()
+    inspect.mockClear()
+    await controller.cards('sample-parent')
+    expect(inspect).not.toHaveBeenCalled()
+  }
+)
+
+it('does not rewrite an unchanged manager status response', async () => {
+  const f = fixture()
+  try {
+    await f.store.transaction((state) => {
+      state.managerOperations = {
+        'sample-operation': { parent: 'sample-parent', method: 'command.v1.run', params: {} },
+      }
+      state.results['sample-operation'] = { result: receipt }
+    })
+    f.client.request.mockResolvedValue(receipt)
+    await f.controller.status('sample-parent', receipt.session_id, receipt.run_id)
+    const put = vi.spyOn(IDBObjectStore.prototype, 'put')
+    const stringify = vi.spyOn(JSON, 'stringify')
+    try {
+      await f.controller.status('sample-parent', receipt.session_id, receipt.run_id)
+      expect(put.mock.calls.length).toBe(0)
+      expect(stringify.mock.calls.length).toBe(0)
+    } finally {
+      put.mockRestore()
+      stringify.mockRestore()
+    }
+  } finally {
+    f.store.close()
+  }
+})
 
 it('marks a known refusal delivered so failed admissions can be retained within the history limit', async () => {
   const f = fixture()
@@ -552,4 +690,41 @@ it('requires the integration capability and preserves rebase conflicts without r
   })
   expect(f.client.flush).toHaveBeenCalledTimes(1)
   f.store.close()
+})
+
+it('reuses run and transcript projections through immutable transaction backing revisions', async () => {
+  const { contextualNodeHistory } = await import('../fixtures/contextualNodeHistory.mjs')
+  const state =
+    contextualNodeHistory() as unknown as import('@/node/NodeClientStore').NodeClientState
+  const inspect = vi.fn(() => 'Sample stdout')
+  state.events['sample-session-0'] = [
+    {
+      kind: 'event',
+      node_id: 'sample-node',
+      stream_id: 'sample-session-0',
+      seq: 1,
+      type: 'command.output',
+      actor: { kind: 'node' },
+      at: '2026-01-01T00:00:00.000Z',
+      data: {
+        run_id: 'sample-operation-0',
+        stream: 'stdout',
+        get text() {
+          return inspect()
+        },
+      },
+    },
+  ]
+  const base = frozen(state)
+  const controller = new NodeManagerController(
+    { connected: false } as never,
+    {
+      read: async (look: (state: unknown) => unknown) => look(storeDraft(base).value),
+    } as never
+  )
+  await controller.cardsForParents(['sample-parent-0', 'sample-parent-1'])
+  inspect.mockClear()
+  for (let i = 0; i < 5; i++)
+    await controller.cardsForParents(['sample-parent-0', 'sample-parent-1'])
+  expect(inspect.mock.calls.length).toBe(0)
 })

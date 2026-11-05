@@ -345,25 +345,34 @@ export class NodeChatPresenter implements ChatPresentationSession {
         this.dirty = false
         const client = this.connection.client
         const draftRevision = this.draftRevision
-        const { history, pending, rejected, artifactData, receipts, draft, firstKept, letters } =
-          await readStore(client.store, (raw) => {
-            const state = raw
-            const own = presenterSnapshot(state, this.reference.sessionId, [
-              ...this.visibleEvents.values(),
-              ...this.older.value,
-            ])
-            return {
-              ...own,
-              draft: state.chatDrafts?.[this.reference.sessionId],
-              firstKept:
-                state.events[this.reference.sessionId]?.[0]?.seq ??
-                (state.cursors[this.reference.sessionId] ?? 0) + 1,
-              pending: state.outbox,
-              rejected: Object.entries(own.receipts)
-                .filter(([, r]) => r.error && r.input?.sessionId === this.reference.sessionId)
-                .map(([id, r]) => ({ id, text: r.input.text, error: r.error })),
-            }
-          })
+        const {
+          history,
+          pending,
+          rejected,
+          artifactData,
+          receipts,
+          draft,
+          firstKept,
+          letters,
+          answers,
+        } = await readStore(client.store, (raw) => {
+          const state = raw
+          const own = presenterSnapshot(state, this.reference.sessionId, [
+            ...this.visibleEvents.values(),
+            ...this.older.value,
+          ])
+          return {
+            ...own,
+            draft: state.chatDrafts?.[this.reference.sessionId],
+            firstKept:
+              state.events[this.reference.sessionId]?.[0]?.seq ??
+              (state.cursors[this.reference.sessionId] ?? 0) + 1,
+            pending: state.outbox,
+            rejected: Object.entries(own.receipts)
+              .filter(([, r]) => r.error && r.input?.sessionId === this.reference.sessionId)
+              .map(([id, r]) => ({ id, text: r.input.text, error: r.error })),
+          }
+        })
         if (this.destroyed) return
         if (!this.draftLoaded || (this.draftRevision === 0 && !this.draft.value.text && draft)) {
           this.draftLoaded = true
@@ -375,10 +384,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
             this.restoringDraft = false
           }
         }
-        this.answers.value = promptAnswerStates(
-          { outbox: pending, results: receipts },
-          this.reference.sessionId
-        )
+        this.answers.value = answers
         const latest = this.visibleHead
         const first = firstKept
         // A burst can overtake a device window between draws. Read the missing interval

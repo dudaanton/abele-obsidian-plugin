@@ -3,6 +3,7 @@ import { FrameCodec } from '@abele/channel-protocol'
 import { PromptSchema, validateParams } from '@abele/node-protocol'
 import type { ClientState } from '@abele/node-client'
 import type { NodeClientState } from './NodeClientStore'
+import { snapshotOf } from './storeDraft'
 
 export interface PromptAnswerState {
   choice: 'allow' | 'deny'
@@ -11,32 +12,55 @@ export interface PromptAnswerState {
   value?: string
 }
 
+// Store snapshots are immutable and replaced only when their row revision changes.
+// Drafts resolve to immutable revisions; ordinary mutable callers bypass these caches.
+const receiptAnswers = new WeakMap<object, NodeClientState['results'][string]['answer']>()
+const answerIndexes = new WeakMap<object, Map<string, Record<string, PromptAnswerState>>>()
+function receiptAnswer(receipt: NodeClientState['results'][string]) {
+  if (Object.isFrozen(receipt) && receiptAnswers.has(receipt)) return receiptAnswers.get(receipt)
+  const legacy = receipt.answer ? undefined : responseSchema(PromptSchema).safeParse(receipt.result)
+  const identity =
+    receipt.answer ??
+    (legacy?.success && legacy.data.state === 'resolved' && legacy.data.choice
+      ? {
+          sessionId: legacy.data.session_id,
+          promptId: legacy.data.prompt_id,
+          choice: legacy.data.choice,
+          ...(typeof legacy.data.value === 'string' ? { value: legacy.data.value } : {}),
+        }
+      : undefined)
+  if (Object.isFrozen(receipt)) receiptAnswers.set(receipt, identity)
+  return identity
+}
+
 /** Installation-local durable answer identity, independent of any mounted card. */
 export function promptAnswerStates(
   state: Pick<NodeClientState, 'outbox' | 'results'>,
   sessionId: string
 ): Record<string, PromptAnswerState> {
-  const answers: Record<string, PromptAnswerState> = {}
-  for (const receipt of Object.values(state.results)) {
-    const legacy = responseSchema(PromptSchema).safeParse(receipt.result)
-    const identity =
-      receipt.answer ??
-      (legacy.success && legacy.data.state === 'resolved' && legacy.data.choice
-        ? {
-            sessionId: legacy.data.session_id,
-            promptId: legacy.data.prompt_id,
-            choice: legacy.data.choice,
-            ...(typeof legacy.data.value === 'string' ? { value: legacy.data.value } : {}),
-          }
-        : undefined)
-    if (identity?.sessionId === sessionId)
+  // An unchanged transaction draft has the same immutable backing collection.
+  // Resolve it before indexing; proxy identities are replaced on every transaction.
+  const results = snapshotOf(state.results)
+  let index = Object.isFrozen(results) ? answerIndexes.get(results) : undefined
+  if (!index) {
+    index = new Map()
+    for (const receipt of Object.values(results)) {
+      const identity = receiptAnswer(receipt)
+      if (!identity) continue
+      let answers = index.get(identity.sessionId)
+      if (!answers) index.set(identity.sessionId, (answers = {}))
       answers[identity.promptId] = {
         choice: identity.choice,
         ...(identity.value !== undefined ? { value: identity.value } : {}),
         state: receipt.error ? 'rejected' : 'answered',
         ...(receipt.error ? { error: receipt.error } : {}),
       }
+    }
+    if (Object.isFrozen(results)) answerIndexes.set(results, index)
   }
+  const answers = Object.fromEntries(
+    Object.entries(index.get(sessionId) ?? {}).map(([id, answer]) => [id, { ...answer }])
+  )
   for (const entry of state.outbox) {
     if (entry.method !== 'prompt.answer') continue
     const p = entry.params as Record<string, unknown>

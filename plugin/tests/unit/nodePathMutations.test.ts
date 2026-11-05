@@ -7,6 +7,35 @@ import { IDBFactory } from 'fake-indexeddb'
 import { WorktreePageSchema } from '@abele/node-protocol'
 
 describe('owner folder intents', () => {
+  it('retains a creation receipt through the persistent store without changing its string result format', async () => {
+    const factory = new IDBFactory()
+    const store = new NodeClientStore('sample-create-receipt', factory)
+    const reopened = new NodeClientStore('sample-create-receipt', factory)
+    const createWorkspace = vi.fn(async () => ({
+      workspace_id: 'sample-workspace',
+      job_id: 'sample-job',
+    }))
+    try {
+      const first = await new NodePathMutations({
+        store,
+        nodePath: { createWorkspace } as never,
+      }).create('sample-project', 'sample-topic', 'HEAD')
+      expect(await store.read((s) => typeof Object.values(s.nodePathIntents!)[0].result)).toBe(
+        'string'
+      )
+      store.close()
+      const second = await new NodePathMutations({
+        store: reopened,
+        nodePath: { createWorkspace } as never,
+      }).create('sample-project', 'sample-topic', 'HEAD')
+      expect(second).toEqual(first)
+      expect(createWorkspace).toHaveBeenCalledOnce()
+    } finally {
+      store.close()
+      reopened.close()
+    }
+  })
+
   it('reuses an accepted creation when Create is pressed again from a reopened dialog', async () => {
     const createWorkspace = vi.fn(async () => ({
       workspace_id: 'sample-created-workspace',

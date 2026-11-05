@@ -13,7 +13,7 @@ import { ClientArtifacts } from './clientArtifacts'
 import { ClientRecords, RECORD_FIELDS, pruneSettledRecords } from './clientRecords'
 import { NodeLetterSchema, activeNodeLetters, type NodeLetter } from './nodeChatLetters'
 import type { ObsidianExecutionReceipt } from './NodeObsidianExecutor'
-import { frozen, plain, storeDraft } from './storeDraft'
+import { frozen, plain, sameStoredValue, storeDraft } from './storeDraft'
 
 export interface NodeClientState extends ClientState {
   nodeLetters?: Record<string, NodeLetter>
@@ -201,6 +201,7 @@ export class NodeClientStore implements ClientStore {
     const state = frozen(readState(await get('state')))
     return { revision, state, delegation: state.delegation }
   }
+
   private readonly journal = new ClientJournal()
   private readonly artifacts = new ClientArtifacts()
   private readonly records = new ClientRecords((field, value) => {
@@ -209,7 +210,7 @@ export class NodeClientStore implements ClientStore {
       return
     }
     StateSchema.shape[field].parse({ record: value })
-    if (field === 'operationRequests') {
+    if (field === 'operationRequests' || field === 'nodePathIntents') {
       const request = value as { method: string; params: unknown }
       validateParams(request.method, request.params)
     }
@@ -228,7 +229,7 @@ export class NodeClientStore implements ClientStore {
         if (!db.objectStoreNames.contains('client')) db.createObjectStore('client')
         if (!db.objectStoreNames.contains('journal')) db.createObjectStore('journal')
         if (event.oldVersion === 1) {
-          const tx = request.transaction!
+          const tx = request.transaction
           const legacy = tx.objectStore('client').get('state')
           legacy.onsuccess = () => {
             try {
@@ -318,16 +319,18 @@ export class NodeClientStore implements ClientStore {
       const keepAlive = () => {
         if (!pending) return
         if (finish) {
+          const save = finish
+          finish = undefined
           try {
-            finish()
-            pending = false
+            save()
           } catch (error) {
             failure = error
             pending = false
             tx.abort()
+            return
           }
-          return
         }
+        if (!pending) return
         const request = store.count('state')
         request.onsuccess = keepAlive
       }
@@ -408,52 +411,71 @@ export class NodeClientStore implements ClientStore {
               }
               delete state.turnDrafts?.[id]
             }
-            if (records.changed()) pruneSettledRecords(state)
+            if (records.edited() && records.changed()) pruneSettledRecords(state)
             // An awaited callback may finish in a timer/network task, where IndexedDB is
             // inactive even with pending requests. Commit in the next count success handler.
             finish = () => {
-              journal!.save()
-              artifacts!.save()
-              const recordsChanged = records!.changed()
-              const delegationChanged = records!.delegationChanged()
+              journal.save()
+              artifacts.save()
+              const recordsChanged = records.changed()
+              executionIntent = records.changed('obsidianExecutions')
+              const delegationChanged = records.delegationChanged()
               const delegation =
-                delegationChanged || !metadata!.delegation
-                  ? records!.delegationSnapshot()
-                  : metadata!.delegation
-              records!.save()
-              const next = draft.finish()
-              const changed = [...new Set([...Object.keys(next), ...Object.keys(base)])].filter(
-                (key) => next[key as keyof NodeClientState] !== base[key as keyof NodeClientState]
-              )
-              for (const key of changed) {
-                const schema = StateSchema.shape[key as keyof typeof StateSchema.shape]
-                if (!schema) throw new Error('Invalid node metadata field')
-                schema.parse(next[key as keyof NodeClientState])
+                delegationChanged || !metadata.delegation
+                  ? records.delegationSnapshot()
+                  : metadata.delegation
+              const saveMetadata = () => {
+                const next = draft.finish()
+                const changed = [...new Set([...Object.keys(next), ...Object.keys(base)])].filter(
+                  (key) =>
+                    !sameStoredValue(
+                      next[key as keyof NodeClientState],
+                      base[key as keyof NodeClientState]
+                    )
+                )
+                for (const key of changed) {
+                  const schema = StateSchema.shape[key as keyof typeof StateSchema.shape]
+                  if (!schema) throw new Error('Invalid node metadata field')
+                  schema.parse(next[key as keyof NodeClientState])
+                }
+                if (changed.includes('outbox'))
+                  for (const entry of next.outbox) validateParams(entry.method, entry.params)
+                if (changed.includes('nodePathIntents'))
+                  for (const entry of Object.values(next.nodePathIntents ?? {}))
+                    validateParams(entry.method, entry.params)
+                intent = changed.some((key) => key !== 'cursors') || recordsChanged
+                executionIntent ||= next.obsidianExecutions !== base.obsidianExecutions
+                const migrated =
+                  !!base.artifactData ||
+                  RECORD_FIELDS.some((field) => Object.keys(base[field] ?? {}).length)
+                if (changed.length || migrated || !metadata.revision || delegationChanged) {
+                  const revision = crypto.randomUUID()
+                  const saved = frozen({
+                    ...metadataOf(next),
+                    events: {},
+                    results: {},
+                  }) as NodeClientState
+                  // Keep a rollback-readable snapshot on writes; idle callbacks use only
+                  // the compact cached metadata and per-record revision manifests.
+                  store.put({ ...saved, delegation }, 'state')
+                  store.put(revision, 'state-revision')
+                  metadata = { revision, state: saved, delegation }
+                }
+                pending = false
               }
-              if (changed.includes('outbox'))
-                for (const entry of next.outbox) validateParams(entry.method, entry.params)
-              if (changed.includes('nodePathIntents'))
-                for (const entry of Object.values(next.nodePathIntents ?? {}))
-                  validateParams(entry.method, entry.params)
-              intent = changed.some((key) => key !== 'cursors') || recordsChanged
-              executionIntent = next.obsidianExecutions !== base.obsidianExecutions
-              const migrated =
-                !!base.artifactData ||
-                !!base.delegation ||
-                RECORD_FIELDS.some((field) => Object.keys(base[field] ?? {}).length)
-              if (draft.changed() || migrated || !metadata!.revision || delegationChanged) {
-                const revision = crypto.randomUUID()
-                const saved = frozen({
-                  ...metadataOf(next),
-                  events: {},
-                  results: {},
-                }) as NodeClientState
-                // Keep a rollback-readable snapshot on writes; idle callbacks use only
-                // the compact cached metadata and per-record revision manifests.
-                store.put({ ...saved, delegation }, 'state')
-                store.put(revision, 'state-revision')
-                metadata = { revision, state: saved, delegation }
-              }
+              const saving = records.save()
+              if (!saving) saveMetadata()
+              else
+                void saving
+                  .then(() => {
+                    // Batched writes resume metadata in an active request callback.
+                    finish = saveMetadata
+                  })
+                  .catch((error: unknown) => {
+                    failure = error
+                    pending = false
+                    tx.abort()
+                  })
             }
           } catch (error) {
             failure = error

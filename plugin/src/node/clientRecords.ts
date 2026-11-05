@@ -1,13 +1,23 @@
 import type { NodeClientState } from './NodeClientStore'
-import { frozen, plain, storeDraft } from './storeDraft'
+import { frozen, plain, sameStoredValue, storeDraft } from './storeDraft'
 import { sha256 } from '@noble/hashes/sha256'
 import { bytesToHex } from '@noble/hashes/utils'
+import { packMutation, unpackMutation } from './mutationRecord'
+import type { NodeMutationRecord } from '@/ai/tools/node/mutations'
 
 export const RECORD_FIELDS = [
   'results',
   'operationRequests',
   'managerOperations',
   'delegationTasks',
+  'chatMutations',
+  'fileDrafts',
+  'chatDrafts',
+  'turnDrafts',
+  'nodePathIntents',
+  'nodeLetters',
+  'obsidianExecutions',
+  'obsidianSessions',
 ] as const
 type Field = (typeof RECORD_FIELDS)[number]
 type Snapshot = { revision: string; value: unknown; toolsRef?: string }
@@ -21,20 +31,27 @@ const read = <T>(request: IDBRequest<T>): Promise<T> =>
 export class ClientRecords {
   private snapshots = new Map<string, Snapshot>()
   private toolSnapshots = new Map<string, unknown>()
+  private collections = new Map<Field, Record<string, unknown>>()
+  private collectionLegacy = new Map<Field, unknown>()
   constructor(private readonly validate: (field: Field, value: unknown) => void) {}
 
   async load(tx: IDBTransaction, state: NodeClientState, readonly = false) {
     const store = tx.objectStore('client')
-    const sharedManifest = ((await read(store.get('record-revisions'))) ?? {}) as Record<
-      string,
-      string
-    >
-    const taskManifest = ((await read(store.get('delegation-revisions'))) ?? {}) as Record<
-      string,
-      string
-    >
-    const manifest = { ...sharedManifest, ...taskManifest }
-    const snapshots = new Map<string, Snapshot>()
+    const manifestOf = async (key: string) =>
+      ((await read(store.get(key))) ?? {}) as Record<string, string>
+    const [sharedManifest, taskManifest, extraManifest] = await Promise.all([
+      manifestOf('record-revisions'),
+      manifestOf('delegation-revisions'),
+      manifestOf('extra-record-revisions'),
+    ])
+    const manifest = Object.assign(sharedManifest, taskManifest, extraManifest)
+    const keys = Object.keys(manifest)
+    const previousSnapshots = this.snapshots
+    let snapshots = previousSnapshots
+    const editSnapshots = () => {
+      if (snapshots === previousSnapshots) snapshots = new Map(previousSnapshots)
+      return snapshots
+    }
     const tools = new Map(this.toolSnapshots)
     const loadingTools = new Map<string, Promise<unknown>>()
     const toolSnapshot = (reference: string) => {
@@ -50,73 +67,85 @@ export class ClientRecords {
       }
       return loading
     }
-    await Promise.all(
-      Object.entries(manifest).map(async ([key, revision]) => {
-        const cached = this.snapshots.get(key)
-        if (cached?.revision === revision) snapshots.set(key, cached)
-        else {
+    const changedFields = new Set<Field>()
+    const pending: Promise<void>[] = []
+    for (const key of keys) {
+      const revision = manifest[key]
+      const cached = previousSnapshots.get(key)
+      if (cached?.revision !== revision) {
+        const field = RECORD_FIELDS.find((field) => key.startsWith(`record:${field}:`))
+        if (!field) throw new Error('Invalid node record collection')
+        changedFields.add(field)
+        pending.push(
+          (async () => {
+            let value: unknown = await read(store.get(key))
+            let reference: string | undefined
+            if (
+              field === 'delegationTasks' &&
+              value &&
+              typeof value === 'object' &&
+              'toolsRef' in value
+            ) {
+              const { toolsRef, ...task } = value as {
+                toolsRef: string
+                request: Record<string, unknown>
+              }
+              reference = toolsRef
+              value = {
+                ...task,
+                request: { ...task.request, obsidian_tools: await toolSnapshot(toolsRef) },
+              }
+            }
+            if (field === 'chatMutations') value = unpackMutation(value)
+            this.validate(field, value)
+            editSnapshots().set(key, { revision, value: frozen(value), toolsRef: reference })
+          })()
+        )
+      }
+    }
+    if (pending.length || keys.length !== previousSnapshots.size)
+      for (const key of previousSnapshots.keys()) {
+        if (!Object.hasOwn(manifest, key)) {
           const field = RECORD_FIELDS.find((field) => key.startsWith(`record:${field}:`))
-          if (!field) throw new Error('Invalid node record collection')
-          let value: unknown = await read(store.get(key))
-          let reference: string | undefined
-          if (
-            field === 'delegationTasks' &&
-            value &&
-            typeof value === 'object' &&
-            'toolsRef' in value
-          ) {
-            const { toolsRef, ...task } = value as {
-              toolsRef: string
-              request: Record<string, unknown>
-            }
-            reference = toolsRef
-            value = {
-              ...task,
-              request: { ...task.request, obsidian_tools: await toolSnapshot(toolsRef) },
-            }
-          }
-          this.validate(field, value)
-          snapshots.set(key, { revision, value: frozen(value), toolsRef: reference })
+          changedFields.add(field)
+          editSnapshots().delete(key)
         }
-      })
-    )
+      }
+    await Promise.all(pending)
     const collections = RECORD_FIELDS.map((field) => {
       const legacy = (field === 'delegationTasks' ? state.delegation?.tasks : state[field]) as
         | Record<string, unknown>
         | undefined
-      const records: Record<string, unknown> = {}
-      const touched = new Map<string, ReturnType<typeof storeDraft>>()
       const prefix = `record:${field}:`
-      // Preserve persisted insertion order even when cached rows load before disk rows.
-      // Retention evicts the oldest settled records, not the fastest reads.
-      for (const key of Object.keys(manifest)) {
-        if (!key.startsWith(prefix)) continue
-        if (field === 'delegationTasks' && legacy) continue
-        if (legacy && Object.hasOwn(legacy, key.slice(prefix.length))) continue
-        const snapshot = snapshots.get(key)!
-        const id = key.slice(prefix.length)
-        Object.defineProperty(records, id, {
-          configurable: true,
-          enumerable: true,
-          get: () => {
-            if (readonly) return snapshot.value
-            if (!touched.has(id)) touched.set(id, storeDraft(snapshot.value as object))
-            return touched.get(id)!.value
-          },
-          set: readonly
-            ? undefined
-            : (value) => {
-                Object.defineProperty(records, id, {
-                  value,
-                  writable: true,
-                  enumerable: true,
-                  configurable: true,
-                })
-              },
-        })
+      const cached = this.collections.get(field)
+      const hasLegacy = !!legacy && Object.keys(legacy).length > 0
+      const legacySnapshot =
+        hasLegacy || (field === 'delegationTasks' && legacy) ? plain(legacy) : undefined
+      let records = cached
+      if (
+        !records ||
+        changedFields.has(field) ||
+        this.collectionLegacy.get(field) !== legacySnapshot
+      ) {
+        const values: Record<string, unknown> = {}
+        // Manifest order also determines retention order.
+        for (const key of keys) {
+          if (!key.startsWith(prefix)) continue
+          if (field === 'delegationTasks' && legacy) continue
+          if (legacy && Object.hasOwn(legacy, key.slice(prefix.length))) continue
+          values[key.slice(prefix.length)] = snapshots.get(key).value
+        }
+        for (const [id, value] of Object.entries(legacy ?? {})) {
+          const retained = snapshots.get(prefix + id)?.value
+          const current = plain(value)
+          // Rollback-compatible snapshots can be read by another handle without
+          // becoming fresh writes. Actual legacy edits still replace their rows.
+          values[id] = retained && sameStoredValue(retained, current) ? retained : current
+        }
+        records = frozen(values)
       }
-      for (const [id, value] of Object.entries(legacy ?? {})) records[id] = value
-      let current = records
+      const draft = storeDraft(records)
+      let current = readonly ? records : draft.value
       Object.defineProperty(state, field, {
         configurable: true,
         enumerable: true,
@@ -128,11 +157,19 @@ export class ClientRecords {
             },
       })
       if (readonly) Object.freeze(records)
-      return { field, prefix, records, touched, current: () => current }
+      return {
+        field,
+        prefix,
+        records,
+        draft,
+        legacy: hasLegacy,
+        legacySnapshot,
+        current: () => current,
+      }
     })
     const delegation = {
       get tasks() {
-        return state.delegationTasks!
+        return state.delegationTasks
       },
     }
     if (readonly) Object.freeze(delegation)
@@ -146,94 +183,141 @@ export class ClientRecords {
             state.delegationTasks = value?.tasks ?? {}
           },
     })
+    const savedFields = new Set<Field>()
     const changes = () =>
       collections.flatMap((collection) => {
-        const { prefix, records, touched } = collection
-        const current = collection.current()
+        const { prefix, records, draft } = collection
+        const source = collection.current()
+        if (
+          !collection.legacy &&
+          (source === records || (source === draft.value && !draft.changed()))
+        )
+          return []
+        const current = plain(source)
         const changes: { key: string; value?: unknown; deleted?: boolean }[] = []
         for (const key of snapshots.keys()) {
           if (key.startsWith(prefix) && !Object.hasOwn(current, key.slice(prefix.length)))
             changes.push({ key, deleted: true })
         }
         for (const id of Object.keys(current)) {
-          const accessor = current === records && Object.getOwnPropertyDescriptor(records, id)?.get
-          if (accessor && !touched.get(id)?.changed()) continue
           const key = prefix + id,
-            value = accessor ? touched.get(id)!.finish() : plain(current[id])
-          if (!snapshots.has(key) || value !== snapshots.get(key)!.value)
+            value = current[id]
+          if (!snapshots.has(key) || !sameStoredValue(value, snapshots.get(key).value))
             changes.push({ key, value })
         }
         return changes
       })
     return {
-      changed: () => changes().length > 0,
+      edited: () =>
+        collections.some(
+          (collection) =>
+            collection.draft.changed() ||
+            (collection.current() !== collection.records &&
+              collection.current() !== collection.draft.value)
+        ),
+      changed: (field?: Field) =>
+        changes().some((change) => !field || change.key.startsWith(`record:${field}:`)),
       delegationChanged: () =>
         changes().some((change) => change.key.startsWith('record:delegationTasks:')),
-      delegationSnapshot: () => frozen(plain({ tasks: state.delegation!.tasks })),
+      delegationSnapshot: () => frozen(plain({ tasks: state.delegation.tasks })),
       save: () => {
         const updates = changes()
-        for (const update of updates) {
-          if (update.deleted) {
-            store.delete(update.key)
-            snapshots.delete(update.key)
-            delete manifest[update.key]
-          } else {
-            const field = RECORD_FIELDS.find((field) => update.key.startsWith(`record:${field}:`))!
-            this.validate(field, update.value)
-            const revision = crypto.randomUUID()
-            manifest[update.key] = revision
-            let stored = update.value
-            let cachedValue = update.value
-            let reference: string | undefined
-            if (field === 'delegationTasks') {
-              const task = update.value as NonNullable<NodeClientState['delegationTasks']>[string]
-              const snapshot = task.request.obsidian_tools
-              if (snapshot) {
-                const toolsRef =
-                  'delegation-tools:' +
-                  bytesToHex(sha256(new TextEncoder().encode(JSON.stringify(snapshot))))
-                reference = toolsRef
-                if (!tools.has(toolsRef)) {
-                  store.put(snapshot, toolsRef)
-                  tools.set(toolsRef, frozen(snapshot))
-                }
-                const { obsidian_tools: _tools, ...request } = task.request
-                stored = { ...task, request, toolsRef }
-                cachedValue = {
-                  ...task,
-                  request: { ...task.request, obsidian_tools: tools.get(toolsRef) },
+        if (!updates.length) return
+        for (const update of updates) savedFields.add(update.key.split(':')[1] as Field)
+        return (async () => {
+          for (const [index, update] of updates.entries()) {
+            // Large legacy image migrations remain one atomic transaction, but each
+            // small batch yields through IndexedDB before cloning the next payloads.
+            if (index && index % 4 === 0) await read(store.count('state'))
+            if (update.deleted) {
+              store.delete(update.key)
+              editSnapshots().delete(update.key)
+              delete manifest[update.key]
+            } else {
+              const field = RECORD_FIELDS.find((field) => update.key.startsWith(`record:${field}:`))
+              this.validate(field, update.value)
+              const revision = crypto.randomUUID()
+              manifest[update.key] = revision
+              let stored = update.value
+              let cachedValue = update.value
+              let reference: string | undefined
+              if (field === 'delegationTasks') {
+                const task = update.value as NonNullable<NodeClientState['delegationTasks']>[string]
+                const snapshot = task.request.obsidian_tools
+                if (snapshot) {
+                  const toolsRef =
+                    'delegation-tools:' +
+                    bytesToHex(sha256(new TextEncoder().encode(JSON.stringify(snapshot))))
+                  reference = toolsRef
+                  if (!tools.has(toolsRef)) {
+                    store.put(snapshot, toolsRef)
+                    tools.set(toolsRef, frozen(snapshot))
+                  }
+                  const { obsidian_tools: _tools, ...request } = task.request
+                  stored = { ...task, request, toolsRef }
+                  cachedValue = {
+                    ...task,
+                    request: { ...task.request, obsidian_tools: tools.get(toolsRef) },
+                  }
                 }
               }
+              if (field === 'chatMutations') stored = packMutation(stored as NodeMutationRecord)
+              store.put(stored, update.key)
+              editSnapshots().set(update.key, {
+                revision,
+                value: frozen(cachedValue),
+                toolsRef: reference,
+              })
             }
-            store.put(stored, update.key)
-            snapshots.set(update.key, { revision, value: frozen(cachedValue), toolsRef: reference })
           }
-        }
-        if (updates.length) {
-          const referenced = new Set([...snapshots.values()].map((snapshot) => snapshot.toolsRef))
-          for (const reference of tools.keys())
-            if (!referenced.has(reference)) {
-              store.delete(reference)
-              tools.delete(reference)
-            }
-          // Older clients reject unknown collections in their shared manifest.
-          store.put(
-            Object.fromEntries(
-              Object.entries(manifest).filter(([key]) => !key.startsWith('record:delegationTasks:'))
-            ),
-            'record-revisions'
-          )
-          store.put(
-            Object.fromEntries(
-              Object.entries(manifest).filter(([key]) => key.startsWith('record:delegationTasks:'))
-            ),
-            'delegation-revisions'
-          )
-        }
+          if (updates.length) {
+            const referenced = new Set([...snapshots.values()].map((snapshot) => snapshot.toolsRef))
+            for (const reference of tools.keys())
+              if (!referenced.has(reference)) {
+                store.delete(reference)
+                tools.delete(reference)
+              }
+            // Older clients reject unknown collections in their shared manifest.
+            store.put(
+              Object.fromEntries(
+                Object.entries(manifest).filter(([key]) =>
+                  ['results', 'operationRequests', 'managerOperations'].some((field) =>
+                    key.startsWith(`record:${field}:`)
+                  )
+                )
+              ),
+              'record-revisions'
+            )
+            store.put(
+              Object.fromEntries(
+                Object.entries(manifest).filter(([key]) =>
+                  key.startsWith('record:delegationTasks:')
+                )
+              ),
+              'delegation-revisions'
+            )
+            store.put(
+              Object.fromEntries(
+                Object.entries(manifest).filter(
+                  ([key]) =>
+                    !['results', 'operationRequests', 'managerOperations', 'delegationTasks'].some(
+                      (field) => key.startsWith(`record:${field}:`)
+                    )
+                )
+              ),
+              'extra-record-revisions'
+            )
+          }
+        })()
       },
       committed: () => {
         this.snapshots = snapshots
         this.toolSnapshots = tools
+        for (const collection of collections) {
+          if (savedFields.has(collection.field)) this.collections.delete(collection.field)
+          else this.collections.set(collection.field, collection.records)
+          this.collectionLegacy.set(collection.field, collection.legacySnapshot)
+        }
       },
     }
   }
@@ -302,7 +386,7 @@ export function pruneSettledRecords(state: NodeClientState): void {
       request: { method: operation.method, params: operation.params },
       managerParent: operation.parent,
     }
-    delete state.managerOperations![id]
+    delete state.managerOperations[id]
   }
   const protectedIds = new Set([
     ...state.outbox.map((entry) => entry.operation_id),

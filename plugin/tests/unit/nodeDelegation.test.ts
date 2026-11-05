@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { IDBFactory } from 'fake-indexeddb'
+import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
 import type {
   NodeClient,
   Delegation,
@@ -43,6 +43,33 @@ const task = {
   title: 'Sample task',
   text: 'Review parser',
 }
+it.each([false, true])(
+  'does not rewrite recovered delegation receipts or unchanged status (connected: %s)',
+  async (connected) => {
+    const f = fixture()
+    try {
+      await f.controller.create('parent', task)
+      await f.store.transaction((state) => {
+        const entry = Object.values(state.delegation!.tasks)[0]
+        state.results['sample-create'] = {
+          request: { method: 'delegation.create', params: entry.request },
+          result: entry.child,
+        }
+      })
+      f.client.connected = connected
+      await f.controller.restore()
+      const put = vi.spyOn(IDBObjectStore.prototype, 'put')
+      try {
+        await f.controller.restore()
+        expect(put.mock.calls.length).toBe(0)
+      } finally {
+        put.mockRestore()
+      }
+    } finally {
+      f.store.close()
+    }
+  }
+)
 it.each(['completed', 'failed', 'cancelled', 'unknown', 'stopped'] as const)(
   'does not poll a %s task again without a mailbox change',
   async (state) => {

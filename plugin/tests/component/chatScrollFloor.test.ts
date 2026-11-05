@@ -73,6 +73,41 @@ describe('the floor under a changing conversation', () => {
     expect(container.scrollTop).toBe(520)
   })
 
+  it('corrects the anchor before releasing a floor that prevents native clamping', () => {
+    const { container, anchors } = conversation(1)
+    let top = 900,
+      limit = 1200,
+      documentTop = 1000
+    const maximum = () => (container.classList.contains(FLOOR) ? 1200 : limit)
+    Object.defineProperty(container, 'scrollTop', {
+      get: () => (top = Math.min(top, maximum())),
+      set: (value) => {
+        top = Math.min(value, maximum())
+      },
+    })
+    container.children[0].getBoundingClientRect = () =>
+      ({
+        top: documentTop - container.scrollTop,
+        bottom: documentTop + 100 - container.scrollTop,
+      }) as DOMRect
+    anchors.captureAnchor()
+    documentTop = 600
+    limit = 600
+    anchors.holdAnchor()
+    expect(container.scrollTop).toBe(500)
+  })
+
+  it('does not invalidate styles when a held anchor has already released its floor', () => {
+    const { container, anchors } = conversation(1)
+    anchors.captureAnchor()
+    anchors.holdAnchor()
+    const remove = vi.spyOn(container.classList, 'remove')
+    const removeProperty = vi.spyOn(container.style, 'removeProperty')
+    for (let i = 0; i < 20; i++) anchors.holdAnchor()
+    expect(remove).not.toHaveBeenCalled()
+    expect(removeProperty).not.toHaveBeenCalled()
+  })
+
   it('does not accumulate layout polling when reader gestures replace a floor', async () => {
     const { container, anchors } = conversation(1)
     const measure = vi

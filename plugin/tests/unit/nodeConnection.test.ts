@@ -1,4 +1,6 @@
 import { expect, it, vi } from 'vitest'
+import { IDBFactory } from 'fake-indexeddb'
+import { NodeClientStore } from '@/node/NodeClientStore'
 import { NodeConnection, NodeService } from '@/node/NodeService'
 import { NodePathService } from '@/node/NodePathService'
 import { NodePathModel } from '@/node/NodePathModel'
@@ -731,5 +733,77 @@ it('keeps a connection banner until an already admitted peer answers again', asy
     expect(connection.healthEpoch.value).toBeGreaterThan(epoch)
   } finally {
     connection.destroy()
+  }
+})
+
+it('uses one committed snapshot for the connection card overview', async () => {
+  const store = new NodeClientStore('sample-overview', new IDBFactory())
+  const connection = new NodeConnection(
+    { connected: true, disconnect: async () => {} } as never,
+    store
+  )
+  vi.spyOn(connection.manager, 'restore').mockResolvedValue()
+  vi.spyOn(connection.delegation, 'restore').mockResolvedValue()
+  vi.spyOn(connection.manager, 'wakeDelivered').mockResolvedValue()
+  vi.spyOn(connection.delegation, 'wakeDelivered').mockResolvedValue()
+  const chats = vi
+    .spyOn(ChatService, 'getInstance')
+    .mockReturnValue({ getAllSessions: () => [] } as never)
+  const read = vi.spyOn(store, 'read')
+  try {
+    await connection.refreshDelegations()
+    expect(read).toHaveBeenCalledOnce()
+    expect(connection.managerCards.value).toEqual({})
+    expect(connection.delegationCards.value).toEqual({})
+  } finally {
+    connection.destroy()
+    chats.mockRestore()
+  }
+})
+
+it('does not republish identical node cards or invalidate their reactive identities on idle refresh', async () => {
+  const store = new NodeClientStore('sample-idle-publication', new IDBFactory())
+  await store.transaction((state) => {
+    state.node_id = 'sample-node'
+  })
+  const connection = new NodeConnection(
+    { connected: true, disconnect: async () => {} } as never,
+    store
+  )
+  const publish = vi.fn()
+  const agents = vi
+    .spyOn(AgentsService, 'getInstance')
+    .mockReturnValue({ setDelegations: publish } as never)
+  const chats = vi
+    .spyOn(ChatService, 'getInstance')
+    .mockReturnValue({ getAllSessions: () => [] } as never)
+  let title = 'sample title'
+  vi.spyOn(connection.manager, 'restore').mockResolvedValue()
+  vi.spyOn(connection.delegation, 'restore').mockResolvedValue()
+  vi.spyOn(connection.manager, 'wakeDelivered').mockResolvedValue()
+  vi.spyOn(connection.delegation, 'wakeDelivered').mockResolvedValue()
+  vi.spyOn(connection.manager, 'cardsForParents').mockImplementation(async () => ({
+    'sample-parent': [{ title, run: { state: 'running' } } as never],
+  }))
+  vi.spyOn(connection.delegation, 'snapshot').mockImplementation(async () => ({
+    'sample-parent': [{ title, state: 'completed' } as never],
+  }))
+  try {
+    await connection.refreshDelegations()
+    const managerCards = connection.managerCards.value
+    const delegationCards = connection.delegationCards.value
+    await connection.refreshDelegations()
+    expect(connection.managerCards.value).toBe(managerCards)
+    expect(connection.delegationCards.value).toBe(delegationCards)
+    expect(publish).toHaveBeenCalledOnce()
+    title = 'changed title'
+    await connection.refreshDelegations()
+    expect(connection.managerCards.value).not.toBe(managerCards)
+    expect(connection.delegationCards.value).not.toBe(delegationCards)
+    expect(publish).toHaveBeenCalledTimes(2)
+  } finally {
+    connection.destroy()
+    agents.mockRestore()
+    chats.mockRestore()
   }
 })

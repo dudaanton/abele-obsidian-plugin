@@ -14,6 +14,7 @@ import {
 } from './expectedTarget'
 import type { NodeClientStore, NodeClientState } from './NodeClientStore'
 import { readStore } from './NodeClientStore'
+import { snapshotOf, sameStoredValue } from './storeDraft'
 import { requireGrantFreeDelegation } from './delegationCapability'
 import {
   DelegationTaskInputSchema,
@@ -26,7 +27,7 @@ import {
 } from './delegation'
 import { delegatable, nodeProviders, providerAvailable } from './providers'
 import { pendingOwnerPrompts, promptAnswerStates } from './promptAnswers'
-import { reduceTranscript } from './NodeTranscriptReducer'
+import { cardTranscript } from './cardTranscript'
 import { openWindow, catchUp } from './sessionWindow'
 import {
   ownerPermissionPatch,
@@ -35,6 +36,29 @@ import {
   legacyProviderRefusal,
   delegatedPermissionMode,
 } from './toolPermissions'
+
+const StoredDelegationSchema = responseSchema(DelegationSchema)
+const StoredSendSchema = responseSchema(DelegationSendResultSchema)
+const recoveredChildren = new WeakMap<object, ReturnType<typeof StoredDelegationSchema.safeParse>>()
+const recoveredSends = new WeakMap<object, ReturnType<typeof StoredSendSchema.safeParse>>()
+function childReceipt(receipt: NodeClientState['results'][string]) {
+  const snapshot = snapshotOf(receipt)
+  let parsed = recoveredChildren.get(snapshot)
+  if (!parsed) {
+    parsed = StoredDelegationSchema.safeParse(snapshot.result)
+    if (Object.isFrozen(snapshot)) recoveredChildren.set(snapshot, parsed)
+  }
+  return parsed
+}
+function sendReceipt(receipt: NodeClientState['results'][string]) {
+  const snapshot = snapshotOf(receipt)
+  let parsed = recoveredSends.get(snapshot)
+  if (!parsed) {
+    parsed = StoredSendSchema.safeParse(snapshot.result)
+    if (Object.isFrozen(snapshot)) recoveredSends.set(snapshot, parsed)
+  }
+  return parsed
+}
 
 /** Child-authored text is quoted data, including any attempted quote/block delimiters. */
 function developerData(value: string): string {
@@ -132,7 +156,7 @@ export class NodeDelegationController {
       const page = await this.client.listProjects(after)
       if (!page.length) break
       projects.push(...page.map(({ project_id, root_path }) => ({ project_id, root_path })))
-      const next = page.at(-1)!.project_id
+      const next = page.at(-1).project_id
       if (next === after) throw new Error('Node project pagination did not advance')
       after = next
     }
@@ -335,7 +359,7 @@ export class NodeDelegationController {
             task.input.project_id === project &&
             task.child?.workspace_id
         )
-        .map((task) => task.child!)
+        .map((task) => task.child)
     )
     if (!children.length) return
     let workspace = target
@@ -393,7 +417,7 @@ export class NodeDelegationController {
     const status = await this.client.delegationStatus(id)
     await this.observeTarget(id, status.session_id)
     await this.store.transaction((s) => {
-      const task = Object.values(storage(s).tasks).find((t) => t.child?.delegation_id === id)!
+      const task = Object.values(storage(s).tasks).find((t) => t.child?.delegation_id === id)
       task.status = status
     })
     const canRead = true
@@ -472,10 +496,10 @@ export class NodeDelegationController {
     // A follow-up starts another turn in the same child. Do not retain the previous
     // terminal projection or cancellation waiter while its new mailbox catches up.
     await this.store.transaction((s) => {
-      const task = Object.values(storage(s).tasks).find((t) => t.child?.delegation_id === id)!
+      const task = Object.values(storage(s).tasks).find((t) => t.child?.delegation_id === id)
       delete task.status
-      Object.assign(task.child!, { tool_permissions: readToolPermissions(status) })
-      task.child!.state = 'running'
+      Object.assign(task.child, { tool_permissions: readToolPermissions(status) })
+      task.child.state = 'running'
       task.cancelled = false
       task.cancelSettled = false
       task.awaitingResult = !this.stoppedParents.has(parent)
@@ -522,7 +546,7 @@ export class NodeDelegationController {
       for (const receipt of Object.values(s.results)) {
         const method = receipt.request?.method
         if (method === 'delegation.send') {
-          const reply = responseSchema(DelegationSendResultSchema).safeParse(receipt.result)
+          const reply = sendReceipt(receipt)
           const params = receipt.request?.params as { delegation_id?: string } | undefined
           const task = Object.values(local.tasks).find(
             (t) => t.child?.delegation_id === params?.delegation_id
@@ -557,10 +581,15 @@ export class NodeDelegationController {
           }
         }
         if (method === 'delegation.create') {
-          const child = responseSchema(DelegationSchema).safeParse(receipt.result)
+          const child = childReceipt(receipt)
           if (child.success) {
             const task = local.tasks[child.data.delegation_key]
-            if (task && !task.cancelSettled && task.parentId === child.data.parent_id)
+            if (
+              task &&
+              !task.cancelSettled &&
+              task.parentId === child.data.parent_id &&
+              !sameStoredValue(task.child, child.data)
+            )
               task.child = child.data
           }
         }
@@ -587,7 +616,7 @@ export class NodeDelegationController {
       await Promise.all(
         children.map(async (child) => {
           const current = await this.store.read((s) => {
-            const task = s.delegation!.tasks[child.delegation_key]
+            const task = s.delegation.tasks[child.delegation_key]
             return task.ownerStopped ? 'stopped' : (task.status?.state ?? child.state)
           })
           const changed = this.changedTasks.delete(child.delegation_id)
@@ -601,7 +630,10 @@ export class NodeDelegationController {
               await this.observeTarget(child.delegation_id, child.session_id, true)
             await this.store.transaction((s) => {
               const task = storage(s).tasks[child.delegation_key]
-              if (!task.status || status.session_head_seq >= task.status.session_head_seq)
+              if (
+                (!task.status || status.session_head_seq >= task.status.session_head_seq) &&
+                !sameStoredValue(task.status, status)
+              )
                 task.status = status
             })
           } catch {
@@ -709,7 +741,7 @@ export class NodeDelegationController {
         .map(([key, task]) => ({
           key,
           parent: task.parentId,
-          id: task.child!.delegation_id,
+          id: task.child.delegation_id,
           notified: task.notifiedAttention,
         }))
     )
@@ -760,13 +792,14 @@ export class NodeDelegationController {
     }
   }
 
-  async snapshot(): Promise<Record<string, DelegationCard[]>> {
-    return readStore(this.store, (s) => {
+  async snapshot(snapshot?: NodeClientState): Promise<Record<string, DelegationCard[]>> {
+    const project = (s: NodeClientState) => {
       const parents = new Set(Object.values(s.delegation?.tasks ?? {}).map((t) => t.parentId))
       return Object.fromEntries(
         [...parents].map((parent) => [parent, this.projectCards(s, parent)])
       )
-    })
+    }
+    return snapshot ? project(snapshot) : readStore(this.store, project)
   }
   /** Replaceable projection: replay never appends a second parent message/result. */
   cards(parent: string): Promise<DelegationCard[]> {
@@ -826,7 +859,7 @@ export class NodeDelegationController {
         }
         const canRead = !!child
         const transcript = canRead
-          ? reduceTranscript((s.events[child.session_id] ?? []).slice(-400))
+          ? cardTranscript(s.events[child.session_id] ?? [], 400)
           : undefined
         const pending = new Map<string, Prompt>(
           (canRead && child ? (this.pendingPrompts.get(child.session_id) ?? []) : []).map(
@@ -872,7 +905,7 @@ export class NodeDelegationController {
           promptDiffs: transcript?.promptDiffs,
           answers: child ? promptAnswerStates(s, child.session_id) : {},
           warnings: canRead
-            ? (s.events[child!.session_id] ?? [])
+            ? (s.events[child.session_id] ?? [])
                 .filter((e) => e.type === 'pi.extension.warning')
                 .slice(-5)
                 .map((e) => {
