@@ -8,6 +8,7 @@ import { quarantineLocalOnlyJournal, retireLocalOnlyLedger } from './localOnlyJo
 import { connectionAdapter, connectionInspectionApp, connectionJournalApp } from './connectionScope'
 import { connectionPrivateRoot, withinRoot } from './connectionPaths'
 import { vaultDisk, releaseVaultPathGuard } from './vaultPathLinks'
+import { NativeReadTimeout } from './nativeReadDeadline'
 import { Platform, type App, type EventRef } from 'obsidian'
 import { caseKey, ErrorCodeSchema } from '@abele/sync-sdk/protocol'
 import { retainedCopyCovered } from './retainedCopyCoverage'
@@ -578,7 +579,10 @@ export class TokenEngines {
     }
     console.debug('[Abele Sync failure]', id, failure)
     this.ui.publish(id, {
-      error: connectionError(error, !this.ui.runtimes.has(id)),
+      error:
+        error instanceof NativeReadTimeout
+          ? [failure.stage, error.message].filter(Boolean).join(': ')
+          : connectionError(error, !this.ui.runtimes.has(id)),
       failure,
       inspection: undefined,
     })

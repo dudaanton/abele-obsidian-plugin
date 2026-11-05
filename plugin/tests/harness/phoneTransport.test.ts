@@ -48,11 +48,21 @@ it('the page job executes once and refuses a replacement load before mutating it
   phoneEval('++window.mutations', 1000)
   const code = exec.mock.calls[1][1].at(-1)
   const evaluate = new Function('window', 'performance', `return ${code}`)
-  const page = { __abelePhoneLoadIdentity: identity, mutations: 0 }
-  await Promise.all([evaluate(page, { timeOrigin: 123 }), evaluate(page, { timeOrigin: 123 })])
+  // The serialized action now records lifecycle evidence through Window APIs.
+  // Give both synthetic loads their own browser surfaces, rather than omitting
+  // window.performance while supplying only the global performance argument.
+  const makePage = (timeOrigin: number) =>
+    Object.assign(new EventTarget(), {
+      performance: { timeOrigin, getEntriesByType: () => [] },
+      document: Object.assign(new EventTarget(), { visibilityState: 'visible' }),
+      sessionStorage: { getItem: () => null, setItem: () => {} },
+      mutations: 0,
+    })
+  const page = Object.assign(makePage(123), { __abelePhoneLoadIdentity: identity })
+  await Promise.all([evaluate(page, page.performance), evaluate(page, page.performance)])
   expect(page.mutations).toBe(1)
-  const replacement = { mutations: 0 }
-  const reply = await evaluate(replacement, { timeOrigin: 456 })
+  const replacement = makePage(456)
+  const reply = await evaluate(replacement, replacement.performance)
   expect(replacement.mutations).toBe(0)
   expect(reply.identity.timeOrigin).toBe(456)
   expect(reply.answer).toBeUndefined()

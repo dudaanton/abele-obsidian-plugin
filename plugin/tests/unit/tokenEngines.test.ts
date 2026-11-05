@@ -2028,7 +2028,9 @@ it('names and bounds a stalled inspection and retains its startup timings', asyn
       total: 1,
     })
     await vi.advanceTimersByTimeAsync(120001)
-    expect(registry.records()[0].status).toBe('error')
+    // The direct host read now has its own retryable deadline, before the
+    // overall inspection deadline. Keep the named stage and explicit retry proof.
+    expect(registry.records()[0].status).toBe('offline')
     expect(ui.activity.value[id].error).toContain('Checking the vault')
     expect(ui.activity.value[id].startupTimings).toEqual(
       expect.arrayContaining([

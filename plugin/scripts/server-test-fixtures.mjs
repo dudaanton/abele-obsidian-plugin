@@ -19,6 +19,9 @@ export const serverTestFixtures = {
     'productionSharingBuild',
     'nativeStoppedScopedRestart',
     'nativeLargePull',
+    'directoryDeletionExchange',
+    'mobileConflictExchange',
+    'nativeSyncedRestart',
   ]
     .map((name) => `tests/integration/${name}.test.ts`)
     .concat('tests/unit/syncLiveServer.test.ts'),

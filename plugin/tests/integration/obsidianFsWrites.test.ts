@@ -17,7 +17,7 @@ import {
   type FileInfo,
 } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
-import { JOURNAL_KEY } from '@/sync/vaultWrites'
+import { JOURNAL_KEY, WriteJournal } from '@/sync/vaultWrites'
 import { pathCoordinatorOf } from '@/sync/pathCoordinator'
 import { RuntimeFence } from '@/sync/external/recovery'
 import { BoundedVaultIo } from '@/sync/boundedVaultIo'
@@ -637,7 +637,13 @@ describe('ObsidianFileSystem writes on the desktop', () => {
     expect(outcome).toBe('settled')
     await held
     expect(read(await disk.read('Note.md'))).toBe('local edit')
-    expect(await app.vault.adapter.exists(backup)).toBe(true)
+    // Recovery now completes the durable private archive, rather than leaving
+    // the old staging locator unfinished and blocking the next enrollment.
+    const recovered = await new WriteJournal(app).currentRecovered()
+    expect(recovered).toHaveLength(1)
+    expect(recovered[0]).toMatchObject({ target: 'Note.md', archived: true })
+    expect(await app.vault.adapter.exists(backup)).toBe(false)
+    expect(await app.vault.adapter.read(recovered[0].backup)).toBe('retained old bytes')
   })
 
   it('publishes the complete file once after retaining the displaced inode', async () => {

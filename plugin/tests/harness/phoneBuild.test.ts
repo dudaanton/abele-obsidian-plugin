@@ -117,8 +117,11 @@ it.each([
   'replaced API',
   'unfinished page job',
   'plugin loader busy',
-])('does not accept %s as an installed build', async (change) => {
-  await expect(installedProbe(change)).resolves.toBe(false)
+  'leftover sync recovery',
+])('checks installed build evidence for %s without discarding recovery', async (change) => {
+  // Build identity and recovery safety are separate checks. Ordinary readiness
+  // must preserve recovery bytes; only the guarded reset can settle their owners.
+  await expect(installedProbe(change)).resolves.toBe(change === 'leftover sync recovery')
 })
 it('recognizes a verified installed build while preserving leftover sync recovery', async () => {
   await expect(installedProbe('leftover sync recovery')).resolves.toBe(true)

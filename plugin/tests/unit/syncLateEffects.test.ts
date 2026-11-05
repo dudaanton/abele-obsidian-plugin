@@ -107,11 +107,23 @@ async function repairCut(native: boolean, cut?: number) {
   return trace
 }
 
-it.each([false, true])(
-  'recovers both versions after every repair await (native=%s)',
-  async (native) => {
+it.each(
+  [false, true].flatMap((native) => {
+    // Preserve every continuation cut and the five-second case limit. Native
+    // deadline/identity wrappers add continuations; partition the full matrix.
+    const shards = native ? 16 : 1
+    return Array.from({ length: shards }, (_, shard) => ({ native, shard, shards }))
+  })
+)(
+  'recovers both versions after every repair await (native=$native, shard=$shard)',
+  async ({ native, shard, shards }) => {
     const baseline = await repairCut(native)
-    for (let cut = 0; cut < baseline.length; cut++) await repairCut(native, cut)
+    let checked = 0
+    for (let cut = shard; cut < baseline.length; cut += shards) {
+      await repairCut(native, cut)
+      checked++
+    }
+    expect(checked).toBeGreaterThan(0)
     console.debug('[two-version repair crash cuts]', { native, cuts: baseline.length })
   }
 )

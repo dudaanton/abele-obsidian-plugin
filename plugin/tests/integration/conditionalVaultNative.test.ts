@@ -5,7 +5,7 @@ import { CONDITIONAL_RETENTION_MS, type ConditionalFileHost } from '@/sync/condi
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { sha256, retainRemoval } from '@abele/sync-sdk/core'
+import { sha256, prepareRemovalCohort } from '@abele/sync-sdk/core'
 import { PRIVATE_REMOVAL_FILES } from '@/sync/privateRemovalFileSystem'
 import { requireExternalEnrollmentSafety } from '@/sync/external/pluginSafety'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
@@ -82,17 +82,30 @@ it('finishes private summary receipts after delete everywhere, bulk restore and 
   const retained = raw[PRIVATE_REMOVAL_FILES]()
   const bytes = new TextEncoder().encode('sample restored bytes')
   const sha = await sha256(bytes)
+  const operations = []
   for (const path of ['a.md', 'b.md']) {
     await fs.writeFile(join(root, path), bytes)
     const info = await raw.stat(path)
-    expect(
-      await retainRemoval(retained, {
-        path,
-        expected: { size: bytes.length, mtime: info!.mtime, sha },
-        effect: { kind: 'remove' },
-      })
-    ).toBe(true)
-    expect(await raw.stat(path)).toBeNull()
+    operations.push({
+      path,
+      expected: { size: bytes.length, mtime: info!.mtime, sha },
+      effect: { kind: 'remove' as const },
+    })
+  }
+  // Native Delete everywhere uses one borrowed retention cohort, not repeated
+  // standalone captures. Exercise that production path; standalone retention
+  // and summary replacement remain covered separately.
+  const cohort = await prepareRemovalCohort(
+    retained,
+    operations.map((operation) => ({ operation }))
+  )
+  try {
+    for (const operation of operations) {
+      expect(await cohort.retain(operation)).toBe(true)
+      expect(await raw.stat(operation.path)).toBeNull()
+    }
+  } finally {
+    await cohort.close()
   }
   // A server bulk restore installs the public versions; only those versions have
   // SDK ledger rows. Private summary publications never receive such an ACK.
@@ -100,11 +113,13 @@ it('finishes private summary receipts after delete everywhere, bulk restore and 
     await raw.writeAtomic(path, bytes, 1000)
     await raw.acknowledgeWrites([{ path, sha }] as never)
   }
-  Object.assign(window, {
-    setTimeout: globalThis.setTimeout.bind(globalThis),
-    clearTimeout: globalThis.clearTimeout.bind(globalThis),
-    setInterval: globalThis.setInterval.bind(globalThis),
-    clearInterval: globalThis.clearInterval.bind(globalThis),
+  // The native renderer fixture exposes configurable timer getters so fake
+  // timers stay observable. Replace those descriptors instead of assigning them.
+  Object.defineProperties(window, {
+    setTimeout: { configurable: true, value: globalThis.setTimeout.bind(globalThis) },
+    clearTimeout: { configurable: true, value: globalThis.clearTimeout.bind(globalThis) },
+    setInterval: { configurable: true, value: globalThis.setInterval.bind(globalThis) },
+    clearInterval: { configurable: true, value: globalThis.clearInterval.bind(globalThis) },
   })
   const unwatch = raw.watch(() => {})
   unwatch()

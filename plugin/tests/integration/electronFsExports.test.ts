@@ -7,6 +7,13 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import { desktopNodeFs } from '@/sync/vaultPathLinks'
 import { Platform } from 'obsidian'
 
+// A desktop renderer has bound Window timers even when its Node module exports
+// are default-only; deadline wrappers must see the same host in this fixture.
+const rendererTimers = () => ({
+  setTimeout: globalThis.setTimeout.bind(globalThis),
+  clearTimeout: globalThis.clearTimeout.bind(globalThis),
+})
+
 afterEach(() => {
   vi.doUnmock('node:fs')
   vi.resetModules()
@@ -27,8 +34,9 @@ it.each([true, false])(
     vi.resetModules()
     const { guardedVaultAdapter } = await import('@/sync/vaultPathLinks')
     vi.stubGlobal('window', {
+      ...rendererTimers(),
       require: vi.fn((name: string) => {
-        expect(name).toBe('fs')
+        expect(['fs', 'original-fs']).toContain(name)
         return {
           ...actual,
           constants: available ? actual.constants : { ...actual.constants, O_NOFOLLOW: undefined },
@@ -49,7 +57,7 @@ it.each([true, false])(
       const disk = guardedVaultAdapter(app.vault.adapter)
       if (!available) {
         await expect(disk.read('sample.md')).rejects.toThrow(
-          "accessor: window.require('fs'); missing: constants.O_NOFOLLOW"
+          "accessor: window.require('original-fs'); missing: constants.O_NOFOLLOW"
         )
         return
       }
@@ -67,12 +75,19 @@ it.each([true, false])(
   }
 )
 
-it('returns the actual desktop module through window.require', async () => {
+it('preserves desktop module exports through the cached observed original port', async () => {
   const actual = await vi.importActual<typeof import('node:fs')>('node:fs')
   const require = vi.fn(() => actual)
   vi.stubGlobal('window', { require })
-  expect(desktopNodeFs()).toBe(actual)
-  expect(require).toHaveBeenCalledExactlyOnceWith('fs')
+  const port = desktopNodeFs()
+  expect(require).toHaveBeenCalledExactlyOnceWith('original-fs')
+  // Instrumentation wraps promises without replacing native constants or sync
+  // methods. Repeated access to the same module reuses that observed facade.
+  expect(port.constants).toBe(actual.constants)
+  expect(port.lstatSync).toBe(actual.lstatSync)
+  expect(port.promises).not.toBe(actual.promises)
+  expect(typeof port.promises.open).toBe('function')
+  expect(desktopNodeFs()).toBe(port)
 })
 
 it('keeps native reads and mutations available in desktop phone UI mode', async () => {
@@ -82,7 +97,7 @@ it('keeps native reads and mutations available in desktop phone UI mode', async 
   vi.spyOn(runtime, 'isMobile', 'get').mockReturnValue(true)
   expect(runtime.isDesktopApp).toBe(true)
   const { guardedVaultAdapter } = await import('@/sync/vaultPathLinks')
-  vi.stubGlobal('window', { require: vi.fn(() => actual) })
+  vi.stubGlobal('window', { ...rendererTimers(), require: vi.fn(() => actual) })
   const root = await fs.mkdtemp(join(tmpdir(), 'sample-desktop-phone-ui-'))
   try {
     await fs.writeFile(join(root, 'sample.md'), 'sample')
@@ -116,11 +131,13 @@ it.each(['absent', 'throws', 'missing keys', 'mobile'])(
     }
     const missing = {
       absent: 'window.require',
-      throws: 'fs module (require failed)',
+      throws: 'original-fs module (require failed)',
       'missing keys': 'constants.O_RDONLY',
       mobile: 'desktop runtime',
     }[scenario]
-    expect(() => desktopNodeFs()).toThrow("accessor: window.require('fs'); missing: " + missing)
+    expect(() => desktopNodeFs()).toThrow(
+      "accessor: window.require('original-fs'); missing: " + missing
+    )
     if (scenario === 'mobile') expect(require).not.toHaveBeenCalled()
   }
 )

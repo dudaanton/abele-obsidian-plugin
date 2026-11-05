@@ -3,24 +3,20 @@ import { nativeDiagnostics, nativeIoSnapshot, nativeSyscalls } from '@/sync/nati
 import { ExchangeTrace } from '@/sync/exchangeTrace'
 import { deferred } from '../helpers/deferred'
 
-it('identifies the original filesystem promise port separately from the desktop module wrapper', async () => {
+it('records the original port identity supplied by the guarded filesystem boundary', async () => {
   const original = { lstat: async () => ({ size: 3 }) }
-  vi.stubGlobal('window', {
-    require: (name: string) => ({ promises: name === 'original-fs' ? original : {} }),
-  })
-  try {
-    await nativeSyscalls(original, 'path-validation').lstat()
-    const snapshot = Reflect.get(new ExchangeTrace().snapshot(), 'nativeLstat')
-    expect(snapshot.recent).toContainEqual(
-      expect.objectContaining({
-        source: 'host-original-fs.promises',
-        site: 'path-validation',
-        outcome: 'fulfilled',
-      })
-    )
-  } finally {
-    vi.unstubAllGlobals()
-  }
+  const identify = vi.fn(() => 'host-original-fs.promises' as const)
+  await nativeSyscalls(original, 'path-validation', identify).lstat()
+  await nativeSyscalls(original, 'path-validation', identify).lstat()
+  expect(identify).toHaveBeenCalledExactlyOnceWith(original)
+  const snapshot = Reflect.get(new ExchangeTrace().snapshot(), 'nativeLstat')
+  expect(snapshot.recent).toContainEqual(
+    expect.objectContaining({
+      source: 'host-original-fs.promises',
+      site: 'path-validation',
+      outcome: 'fulfilled',
+    })
+  )
 })
 
 it('distinguishes an issued lstat promise from its eventual rejection without losing settlement', async () => {

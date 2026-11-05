@@ -7,10 +7,11 @@ const pending = {
 let nextCall = 0
 const syscallPorts = new WeakMap<object, Map<string, object>>()
 const measuredPorts = new WeakSet<object>()
+export type NativeLstatSource = 'host-fs.promises' | 'host-original-fs.promises' | 'adapter'
 type LstatRecord = {
   id: number
   path: string | null
-  source: 'host-fs.promises' | 'host-original-fs.promises' | 'adapter'
+  source: NativeLstatSource
   site: string
   startedAt: number
   returnedAt: number | null
@@ -57,22 +58,19 @@ export function nativeIoSnapshot() {
 }
 
 /** Observe the Node promise API and its returned handles without patching shared modules. */
-export function nativeSyscalls<T extends object>(host: T, site = 'unspecified'): T {
+export function nativeSyscalls<T extends object>(
+  host: T,
+  site = 'unspecified',
+  identify?: (host: object) => NativeLstatSource
+): T {
   if (measuredPorts.has(host)) return host
   let ports = syscallPorts.get(host)
   if (!ports) syscallPorts.set(host, (ports = new Map()))
   const cached = ports.get(site)
   if (cached) return cached as T
-  let source: LstatRecord['source'] = 'adapter'
-  try {
-    // Identity evidence only: this neither probes nor changes the host API.
-    if (typeof window !== 'undefined') {
-      if (window.require('fs').promises === host) source = 'host-fs.promises'
-      else if (window.require('original-fs').promises === host) source = 'host-original-fs.promises'
-    }
-  } catch {
-    /* Portable and synthetic ports have no desktop module. */
-  }
+  // The guarded filesystem boundary owns module access. Diagnostics receives
+  // its identity classifier and invokes it only when a port is first observed.
+  const source = identify?.(host) ?? 'adapter'
   const wrapped = nativeDiagnostics(host, () => {}, 'syscall', { source, site })
   ports.set(site, wrapped)
   measuredPorts.add(wrapped)

@@ -3,6 +3,19 @@ import { Notice } from 'obsidian'
 import { t } from '@/i18n'
 
 export const NATIVE_READ_DEADLINE_MS = 15000
+function nativeDeadline(expire: () => void): () => void {
+  if (typeof window !== 'undefined') {
+    const host = window
+    const timer = host.setTimeout(expire, NATIVE_READ_DEADLINE_MS)
+    return () => host.clearTimeout(timer)
+  }
+  // Portable adapters also run in clients without a DOM. Keep their read bounds
+  // without turning a missing window into an apparent content mismatch.
+  const start = setTimeout.bind(undefined)
+  const cancel = clearTimeout.bind(undefined)
+  const timer = start(expire, NATIVE_READ_DEADLINE_MS)
+  return () => cancel(timer)
+}
 export class NativeReadTimeout extends EngineError {
   readonly retryable = true
   constructor(operation: string, uncertain = false) {
@@ -30,15 +43,15 @@ export function boundedNativeRead<T>(
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     let expired = false
-    const timer = window.setTimeout(() => {
+    const cancelTimer = nativeDeadline(() => {
       expired = true
       const error = new NativeReadTimeout(operation, uncertain)
       expiredOperation?.(error)
       reject(error)
-    }, NATIVE_READ_DEADLINE_MS)
+    })
     void work.then(
       (value) => {
-        window.clearTimeout(timer)
+        cancelTimer()
         if (expired) {
           // No continuation may use a handle acquired after its consumer has left.
           if (late) {
@@ -53,7 +66,7 @@ export function boundedNativeRead<T>(
         } else resolve(value)
       },
       (error) => {
-        window.clearTimeout(timer)
+        cancelTimer()
         if (!expired)
           reject(error instanceof Error ? error : new Error('Native read failed', { cause: error }))
       }
@@ -130,7 +143,7 @@ export function boundedNativeOperations<T extends object>(port: T, scope: string
             !(kind === 'open' && readOnlyOpen(args[1]))
           const work = Promise.resolve(value.apply(host, args))
           if (mutation) {
-            const timer = window.setTimeout(() => {
+            const cancelTimer = nativeDeadline(() => {
               failure = new NativeReadTimeout(kind, true)
               let held = uncertainScopes.get(scope)
               const first = !held?.size
@@ -146,9 +159,9 @@ export function boundedNativeOperations<T extends object>(port: T, scope: string
                   )
                 }
               }
-            }, NATIVE_READ_DEADLINE_MS)
+            })
             const finish = () => {
-              window.clearTimeout(timer)
+              cancelTimer()
               settled()
             }
             // Never race this promise against a deadline: rejection would release

@@ -124,6 +124,13 @@ it('cancels a recovery scan queued behind another connection without entering it
   const app = buildFakeVault([]),
     held = deferred<void>(),
     abort = new AbortController()
+  // Empty recovery no longer needs a vault-wide lease. Queue an actual owned
+  // retained copy so this case still proves cancellation of a required lease.
+  const backup = '.obsidian/plugins/abele/sync-staging/.abele-sync-abcdefgh.old'
+  await app.vault.adapter.mkdir('.obsidian/plugins/abele/sync-staging')
+  await app.vault.adapter.write(backup, 'retained sample')
+  const journal = new WriteJournal(app)
+  await journal.persist(() => journal.preserve({ target: 'Shared/sample.md', backup }))
   const gate = pathCoordinatorOf(app.vault)
   const writer = gate.run(['Shared/sample.md'], () => held.promise)
   const fs = new ObsidianFileSystem(app as never, { indexWaitSignal: () => abort.signal })

@@ -4,22 +4,32 @@ import * as fs from 'node:fs'
 import { expect, it, vi } from 'vitest'
 import type { DataAdapter } from 'obsidian'
 import { desktopNodeFs, guardedVaultAdapter, mutationCheckedAdapter } from '@/sync/vaultPathLinks'
+import { nativeLstatSnapshot } from '@/sync/nativeDiagnostics'
 import { NATIVE_READ_DEADLINE_MS } from '@/sync/nativeReadDeadline'
 
 it('uses original filesystem promises even when the patched host lstat never settles', async () => {
   const original = vi.fn(async () => ({ size: 3 }))
   const patched = vi.fn(() => new Promise(() => {}))
+  const originalPort = { ...fs.promises, lstat: original }
+  const patchedPort = { ...fs.promises, lstat: patched }
   Object.defineProperty(window, 'require', {
     configurable: true,
     value: (name: string) => ({
       ...fs,
-      promises: { ...fs.promises, lstat: name === 'original-fs' ? original : patched },
+      promises: name === 'original-fs' ? originalPort : patchedPort,
     }),
   })
   const answer = desktopNodeFs().promises.lstat('/sample-vault')
   expect(original).toHaveBeenCalledOnce()
   expect(patched).not.toHaveBeenCalled()
   expect(await answer).toMatchObject({ size: 3 })
+  expect(nativeLstatSnapshot().recent).toContainEqual(
+    expect.objectContaining({
+      source: 'host-original-fs.promises',
+      site: 'no-follow-open',
+      outcome: 'fulfilled',
+    })
+  )
 })
 
 it('puts checked private opens on the original leaf while preserving authorization', async () => {

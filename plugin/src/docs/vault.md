@@ -293,6 +293,15 @@ A retained folder's `ready` marker certifies its completed durable handoff, so l
 does not repeat destination fsyncs for settled copies.
 Mismatches are restored without replacing an occupied name, using a visible conflict
 copy when necessary. Retained reviews survive restart and prevent disconnect until resolved.
+Native buffered-write receipt reviews are settled on startup by restoring the captured
+local inode (or a visible conflict copy if its name is occupied). The complete owned object,
+including incoming bytes, allocation, original intent and restoration plans, moves to
+`conditional/recovered/<archive-id>`. A `retiring/<receipt>.json` record with `reviewArchive`
+durably owns this handoff until the move and pointer cleanup finish; restart resumes it.
+These archives are preserved indefinitely, outside automatic retention eviction. Their
+incoming payload has no durable seal and is never certified as an installed file or blindly
+published. The SDK can retry from server state after recovery. Other unresolved reviews
+and malformed or conflicting ownership evidence still refuse startup and departure.
 Absence-only buffered writes use an owned installation-journal record with `conditionalReceipt`,
 `target`, `temp` and `replacementSha`; native receipt proof retains the installed inode reference
 until ledger completion. The record and private data are discarded only on explicit receipt

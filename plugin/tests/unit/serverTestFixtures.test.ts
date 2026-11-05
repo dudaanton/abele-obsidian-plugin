@@ -44,7 +44,12 @@ describe('server-backed fast-tier fixture gate', () => {
   it('skips only the files that require an absent fixture', () => {
     const skipped = missingServerTests({})
     // The native suffix-stream benchmark is also backed by the pinned server.
-    expect(skipped).toHaveLength(17)
+    // These consumers also import the pinned server helpers. They must join
+    // test:server rather than fail collection when that fixture is absent.
+    expect(skipped).toHaveLength(20)
+    expect(skipped).toContain('tests/integration/directoryDeletionExchange.test.ts')
+    expect(skipped).toContain('tests/integration/mobileConflictExchange.test.ts')
+    expect(skipped).toContain('tests/integration/nativeSyncedRestart.test.ts')
     expect(skipped).toContain('tests/integration/nativeLargePull.test.ts')
     expect(skipped).toContain('tests/integration/nativeStoppedScopedRestart.test.ts')
     expect(skipped).toContain('tests/integration/serverDeleteServer.test.ts')

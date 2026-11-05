@@ -18,7 +18,9 @@ it('keeps the pending-write guard active with fake timers, accepting only cancel
   )
   const output = stripVTControlCharacters(run.stdout + run.stderr)
   expect(run.status, output).toBe(1)
-  expect(output).toContain('1 failed | 2 passed')
+  // Every supported producer must still fail; formatting fewer unrelated timer
+  // stacks must never bypass either function or class-method detection.
+  expect(output).toContain('6 failed | 2 passed')
   expect(output).toContain('1 delayed write(s) still waiting')
   expect(output).toContain('left pending')
 }, 30_000)

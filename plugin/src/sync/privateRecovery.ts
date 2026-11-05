@@ -18,11 +18,21 @@ export async function finishRetainedWrites(
   assertCurrent: () => void = () => {},
   signal?: AbortSignal
 ): Promise<void> {
+  signal?.throwIfAborted()
+  const journal = new WriteJournal(app, assertCurrent, owner)
+  // An empty archive queue has no path effect to serialize. In particular it
+  // must not block an unrelated editor save behind a vault-wide placement lease.
+  if (
+    !(await journal.currentEntries()).some(
+      (entry) => entry.retiredGeneration === 'server-deletion' && entry.conditionalReceipt
+    ) &&
+    !(await journal.currentUnfinishedRecovered()).length
+  )
+    return
   return pathCoordinatorOf(app.vault).run(
     [''],
     async () => {
       signal?.throwIfAborted()
-      const journal = new WriteJournal(app, assertCurrent, owner)
       // Departure already fenced the writer and preserved its private bytes. A
       // retired installation is evidence, not an installation that may be replayed.
       // Complete this conversion before inspecting unfinished recovered rows: a

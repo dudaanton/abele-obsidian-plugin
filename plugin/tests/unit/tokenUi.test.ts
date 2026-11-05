@@ -819,3 +819,17 @@ it('syncs surviving items without running a paused item', async () => {
   await ui.sync('sample-set')
   expect(sync.mock.calls).toEqual([['live-record']])
 })
+
+it('refuses an entirely paused item set before discovery or exchange', async () => {
+  const { ui } = setup()
+  vi.spyOn(ui.itemSets.store, 'get').mockReturnValue({
+    items: [{ recordId: 'sample-paused-record', paused: true }],
+  } as never)
+  const refresh = vi.spyOn(ui.itemSets, 'refresh').mockResolvedValue(false)
+  const sync = vi
+    .spyOn(ui as unknown as { syncRecord(id: string): Promise<void> }, 'syncRecord')
+    .mockResolvedValue()
+  await expect(ui.sync('sample-set')).rejects.toThrow(/paused/i)
+  expect(refresh).not.toHaveBeenCalled()
+  expect(sync).not.toHaveBeenCalled()
+})

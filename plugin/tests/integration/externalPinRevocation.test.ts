@@ -17,7 +17,9 @@ it.each(['verification', 'removal preservation'])(
         if (pauseAt === 'verification') await pause()
       },
       async () => {
-        if (++captures === 2 && pauseAt === 'removal preservation') await pause()
+        // The owned removal hook runs once before the exclusive reservation;
+        // the reserved conditional port must not capture the same bytes again.
+        if (++captures === 1 && pauseAt === 'removal preservation') await pause()
       },
       async () => {
         throw new Error('offline')
@@ -36,6 +38,7 @@ it.each(['verification', 'removal preservation'])(
         { status: 'fulfilled', value: { status: 'pinned', reclaimedBytes: 0 } },
       ])
       await pinSettled
+      expect(captures).toBe(1)
       expect(remove.mock.calls.filter(([path]) => path === s.path)).toEqual([])
       expect(await s.app.vault.adapter.exists(s.path)).toBe(true)
       expect(await s.app.vault.adapter.read(s.path)).toBe('sample original bytes')

@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { expect, it } from 'vitest'
 import { SyncDriver } from '../e2e/helpers/syncDriver'
+import { startupScanProgress } from '../e2e/helpers/startupWait'
 it('connect waits for Ready with a successful first sync instead of private runtime bookkeeping', async () => {
   const driver = new SyncDriver(() => {
     throw new Error('No live vault')
@@ -41,6 +42,7 @@ it('connect waits for Ready with a successful first sync instead of private runt
     'modal',
     'typeInto',
     'waitForStartup',
+    'startupScanProgress',
     'closeSettings',
     `return (async()=>{${code}})()`
   )(
@@ -57,6 +59,7 @@ it('connect waits for Ready with a successful first sync instead of private runt
       observed = read()
       if (!observed.ready) throw new Error('Ready product rejected')
     },
+    startupScanProgress,
     async () => {}
   )
   expect(observed?.ready).toBe(true)

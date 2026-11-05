@@ -1309,6 +1309,20 @@ export class TokenUi {
     )
       throw new Error(SCOPE_DELETED)
     if (this.itemSets.store.get(id)) {
+      const selected = this.itemSets.store
+        .get(id)
+        .items.filter((item) => item.recordId && !item.detached)
+      const paused = new Set(
+        this.registry
+          .records()
+          .filter((record) => record.paused)
+          .map((record) => record.id)
+      )
+      if (
+        selected.length &&
+        selected.every((item) => item.paused || paused.has(item.recordId ?? ''))
+      )
+        throw new Error('Sync connection is paused')
       const affected = new Set([
         id,
         ...(this.itemSets.store
@@ -1446,10 +1460,14 @@ export class TokenUi {
         selective: one.selective,
       }
     const before = JSON.stringify(identity(record))
-    this.runtimes.get(id)?.assertCurrent?.()
+    const runtime = this.runtimes.get(id)
+    // Keep the departure attempt's original claim across drain/inspection.
+    // Looking it up again can validate a successor and forget its connection.
+    const assertCurrent = () => runtime?.assertCurrent?.()
+    assertCurrent()
     await this.prepareDisconnect(id)
     await this.connectionChangeGuard(id)
-    this.runtimes.get(id)?.assertCurrent?.()
+    assertCurrent()
     const current = this.registry.records().find((one) => one.id === id)
     if (JSON.stringify(identity(current)) !== before)
       throw new Error('Connection changed while disconnecting')

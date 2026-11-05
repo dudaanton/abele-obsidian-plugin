@@ -10,7 +10,12 @@ import { directEntryDurability, entryEffect } from './directEntryDurability'
 import { desktopFileIdentity } from './desktopFileIdentity'
 import { inheritHostStorage } from './hostSyncStorage'
 import { crossesSymlink } from './symlinkChain'
-import { diagnosticOrigin, nativeDiagnostics, nativeSyscalls } from './nativeDiagnostics'
+import {
+  diagnosticOrigin,
+  nativeDiagnostics,
+  nativeSyscalls as recordNativeSyscalls,
+  type NativeLstatSource,
+} from './nativeDiagnostics'
 import { TFile, TFolder } from 'obsidian'
 import { Platform } from 'obsidian'
 import { sha256 } from '@noble/hashes/sha2'
@@ -50,7 +55,9 @@ export function vaultPathKey(vault: Vault): (path: string) => string {
     if (!base)
       key = caseKey // Non-native hosts retain the core's conservative fallback.
     else {
-      const fs = desktopNodeFs()
+      // Name policy is a synchronous volume probe. It does not open guarded
+      // content handles and must not require the asynchronous I/O capability.
+      const fs = desktopOriginalModule()
       // A private, exclusively allocated directory on this very volume avoids guessing
       // from OS defaults, pre-existing names, hard links or content identity.
       const directory = fs.mkdtempSync(
@@ -231,6 +238,7 @@ function rootAccess(adapter: DataAdapter & LinkAdapter) {
     native:
       native &&
       boundedNativeOperations(nativeSyscalls(native, 'path-validation'), full?.('') ?? ''),
+    nativeOrigin: native,
     full,
     // Keep ownership/cache identity on the original port, not the diagnostic wrapper.
     pin: native && full ? pinnedRoot(native, full('')) : undefined,
@@ -267,6 +275,22 @@ const GUARDED = Symbol('sync guarded filesystem')
 const adapterOrigins = new WeakMap<DataAdapter, DataAdapter>()
 const nativeOrigins = new WeakMap<object, object>()
 const checkedNativePort = Symbol('checked-native-port')
+
+/** Identity evidence belongs at the raw-module boundary, never in diagnostics. */
+function nativeSource(host: object): NativeLstatSource {
+  try {
+    if (typeof window !== 'undefined') {
+      if (window.require('fs').promises === host) return 'host-fs.promises'
+      if (window.require('original-fs').promises === host) return 'host-original-fs.promises'
+    }
+  } catch {
+    // Portable and synthetic ports have no desktop module.
+  }
+  return 'adapter'
+}
+function nativeSyscalls<T extends object>(host: T, site: string): T {
+  return recordNativeSyscalls(host, site, nativeSource)
+}
 
 /** Substitute only an identified ambient module; decorated policy ports keep their checks. */
 function originalNativeLeaf<T extends object>(port: T): T {
@@ -766,14 +790,14 @@ export function vaultDisk(vault: Pick<Vault, 'adapter'>): DataAdapter {
 export function releaseVaultPathGuard(vault: Pick<Vault, 'adapter'>): void {
   const origin = adapterOrigins.get(vault.adapter) ?? vault.adapter
   const access = rootAccess(origin)
-  if (access.native && access.full) rootPins.get(access.native)?.delete(access.full(''))
+  if (access.nativeOrigin && access.full) rootPins.get(access.nativeOrigin)?.delete(access.full(''))
   adapters.delete(origin)
 }
 
 const measuredDesktopModules = new WeakMap<object, typeof import('node:fs')>()
 
 /** Use the renderer's real Node module; a dynamic import becomes a browser shim. */
-export function desktopNodeFs(): typeof import('node:fs') {
+function desktopOriginalModule(): typeof import('node:fs') {
   const unavailable = (missing: string[]) =>
     new EngineError(
       'io',
@@ -789,6 +813,11 @@ export function desktopNodeFs(): typeof import('node:fs') {
   } catch {
     throw unavailable(['original-fs module (require failed)'])
   }
+  return module
+}
+
+export function desktopNodeFs(): typeof import('node:fs') {
+  const module = desktopOriginalModule()
   const missing: string[] = []
   for (const key of [
     'O_RDONLY',
@@ -809,7 +838,11 @@ export function desktopNodeFs(): typeof import('node:fs') {
     if (typeof module?.promises?.[key as keyof typeof module.promises] !== 'function')
       missing.push('promises.' + key)
   if (typeof module?.lstatSync !== 'function') missing.push('lstatSync')
-  if (missing.length) throw unavailable(missing)
+  if (missing.length)
+    throw new EngineError(
+      'io',
+      `Native no-follow opens are unavailable (accessor: window.require('original-fs'); missing: ${missing.join(', ')})`
+    )
   let measured = measuredDesktopModules.get(module)
   if (!measured) {
     measured = new Proxy(module, {

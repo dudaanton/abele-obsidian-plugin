@@ -76,7 +76,10 @@ it('a failed inspection retains its live runtime claim and Disconnect can be ret
     .mockRejectedValueOnce(new Error('sample transient read failure'))
   await expect(s.built.ui.disconnect(s.id)).rejects.toThrow('sample transient read failure')
   expect(s.keys.size).toBe(1)
-  expect(s.built.ui.runtimes.has(s.id)).toBe(true)
+  // Disconnect drains the engine before inspecting bytes. A failed inspection
+  // keeps the original ownership claim and credential, not a running engine.
+  expect(s.built.ui.runtimes.has(s.id)).toBe(false)
+  expect(s.built.store.permitsEngineEffects).toBe(true)
   read.mockRestore()
   await s.built.ui.disconnect(s.id)
   expect(s.keys.size).toBe(0)

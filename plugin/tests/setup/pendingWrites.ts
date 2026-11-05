@@ -26,6 +26,35 @@ const WRITE_BEHIND = [
 const pending = new Map<unknown, string>()
 const realClear = globalThis.clearTimeout
 
+function writeTimerStack(): string | undefined {
+  const error = new Error()
+  const format = Error.prepareStackTrace
+  let frames: NodeJS.CallSite[] | undefined
+  try {
+    // Classify raw V8 origins before Vite resolves source maps for every native
+    // deadline timer. Format the full diagnostic only for a write producer.
+    Error.prepareStackTrace = (_, trace) => trace
+    const trace: unknown = error.stack
+    if (Array.isArray(trace)) frames = trace
+  } finally {
+    Error.prepareStackTrace = format
+  }
+  if (!frames) {
+    const stack = String(error.stack ?? '')
+    return WRITE_BEHIND.some((frame) => frame.test(stack)) ? stack : undefined
+  }
+  const origins = frames
+    .map(
+      (frame) =>
+        `${frame.getTypeName() ?? ''}.${frame.getMethodName() ?? ''} ${frame.getFunctionName() ?? ''}`
+    )
+    .join('\n')
+  if (!WRITE_BEHIND.some((pattern) => pattern.test(origins))) return
+  return format
+    ? String(format(error, frames))
+    : frames.map((frame) => '    at ' + frame).join('\n')
+}
+
 /** Reinstall after opting into fake timers so the delayed-write guarantee is not bypassed. */
 export function trackWriteTimers(): () => void {
   const set = globalThis.setTimeout
@@ -34,9 +63,8 @@ export function trackWriteTimers(): () => void {
   const windowClear = typeof window !== 'undefined' ? window.clearTimeout : undefined
 
   function patchedSet(this: unknown, handler: unknown, ...rest: unknown[]) {
-    const stack = new Error().stack ?? ''
-    const tracked = WRITE_BEHIND.some((frame) => frame.test(stack))
-    if (!tracked || typeof handler !== 'function') {
+    const stack = writeTimerStack()
+    if (!stack || typeof handler !== 'function') {
       return (set as (...args: unknown[]) => unknown).call(this, handler, ...rest)
     }
     const id: unknown = (set as (...args: unknown[]) => unknown).call(

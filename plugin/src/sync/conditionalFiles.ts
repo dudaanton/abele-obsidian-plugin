@@ -89,7 +89,7 @@ const missing = (error: unknown) =>
   (error as { code?: string })?.code === 'ENOENT' ||
   /^ENOENT\b/.test((error as { message?: string })?.message ?? '')
 
-const operationRevisions = new WeakMap<Set<string>, { value: number }>()
+const operationRevisions = new WeakMap<Set<string>, { value: number; review: number }>()
 /** A listing interrupted by a local effect is retried before any entries are published. */
 export class ScanInterrupted extends Error {}
 export class ConditionalEntryActive extends Error {
@@ -97,9 +97,9 @@ export class ConditionalEntryActive extends Error {
     super('conditional entry is active; retry cleanup later')
   }
 }
-function revisionOf(active: Set<string>): { value: number } {
+function revisionOf(active: Set<string>): { value: number; review: number } {
   let revision = operationRevisions.get(active)
-  if (!revision) operationRevisions.set(active, (revision = { value: 0 }))
+  if (!revision) operationRevisions.set(active, (revision = { value: 0, review: 0 }))
   return revision
 }
 
@@ -159,6 +159,7 @@ export class ConditionalFiles {
       : null
   }
   private readonly lateRepairs = new Set<Promise<void>>()
+  private reviewsInspected?: number
   private readonly fallback = new MemoryRetention()
   private migration?: { paths: string[]; at: number }
   private softWarning = false
@@ -749,8 +750,14 @@ export class ConditionalFiles {
     const intent = folder + '/intent.json'
     const durableControl =
       this.durableIntents.has(intent) && !!(await this.host.sameObject?.(source, intent))
-    await this.host.capture(source, parent + '/' + id + '.json')
-    await this.flushMove(source, parent + '/' + id + '.json', durableControl)
+    try {
+      await this.host.capture(source, parent + '/' + id + '.json')
+      await this.flushMove(source, parent + '/' + id + '.json', durableControl)
+    } finally {
+      // A lost acknowledgement can still have created a review. Every view of
+      // this vault shares the epoch; cached absence never outlives that effect.
+      if (!successful) revisionOf(this.host.active).review++
+    }
     this.durableIntents.delete(intent)
   }
   private async repairIntent(folder: string, id: string) {
@@ -1393,7 +1400,99 @@ export class ConditionalFiles {
         }
       }
     }
+    const reviews = h.root + '/review'
+    // Only the native tier can settle these records. Once inspected, ordinary
+    // scans need no private-area probe until this owner publishes another review.
+    if (
+      h.sameObject &&
+      h.restoreDirectory &&
+      this.reviewsInspected !== revision.review &&
+      (await h.stat(reviews))
+    ) {
+      for (const pointer of (await h.list(reviews)).files) {
+        const id = idOf(pointer.slice(reviews.length + 1).replace(/\.json$/, ''))
+        const key = h.root + '/' + id
+        if (h.active.has(key)) continue
+        h.active.add(key)
+        revision.value++
+        try {
+          await this.settleNativeWriteReview(id)
+        } catch (error) {
+          failed ??= error
+          console.debug('[abele-sync] conditional review remains pending', pointer, error)
+        } finally {
+          h.active.delete(key)
+          revision.value++
+        }
+      }
+    }
+    if (!failed && !h.active.size) this.reviewsInspected = revision.review
     if (failed) throw new EngineError('io', 'conditional recovery remains pending', failed)
+  }
+  private async settleNativeWriteReview(id: string, partialMarker = false): Promise<boolean> {
+    const h = this.host,
+      folder = h.root + '/objects/' + id
+    // Native buffered writes can be cut before their complete marker. Recovery
+    // restores the victim, but the incoming bytes have no durable payload seal.
+    // Preserve the entire object rather than treating those bytes as installed.
+    if (!h.sameObject || !h.restoreDirectory) return false
+    const intent = JSON.parse(
+      new TextDecoder().decode(await h.read(folder + '/intent.json'))
+    ) as Intent
+    if (intent.kind !== 'write' || !intent.receipt || intent.checked) return false
+    h.validate(intent.path)
+    if (intent.destination !== intent.path || intent.data !== folder + '/data')
+      throw new EngineError('io', 'conditional review ownership changed')
+    h.check()
+    // A review pointer alone is not proof that the current occupant still owns
+    // the captured inode. Reuse its restoration plan, or preserve a sibling copy.
+    await this.restore(folder + '/victim', intent.path, true)
+    const archive = h.root + '/recovered/' + crypto.randomUUID()
+    await h.mkdir(h.root + '/retiring')
+    if (partialMarker) {
+      // No archive move can precede the fully written, flushed marker. The
+      // intact source and review still own every byte while it is rewritten.
+      await h.remove(h.root + '/retiring/' + id + '.json')
+      await h.flush(h.root + '/retiring/' + id + '.json', true)
+    }
+    await this.record(h.root + '/retiring/' + id + '.json', { reviewArchive: archive })
+    await this.finishReviewArchive(id, archive)
+    return true
+  }
+  private async finishReviewArchive(id: string, archive: string): Promise<void> {
+    const h = this.host,
+      folder = h.root + '/objects/' + id,
+      parent = h.root + '/recovered'
+    if (
+      typeof archive !== 'string' ||
+      !archive.startsWith(parent + '/') ||
+      !/^[a-zA-Z0-9-]{1,128}$/.test(archive.slice(parent.length + 1))
+    )
+      throw new EngineError('io', 'invalid conditional recovery archive')
+    h.check()
+    h.resumeNamespace?.([folder, archive])
+    const source = await h.stat(folder),
+      destination = await h.stat(archive)
+    if ((source && source.type !== 'folder') || (destination && destination.type !== 'folder'))
+      throw new EngineError('io', 'conditional recovery archive is not a directory')
+    if (source && destination) throw new EngineError('io', 'conditional recovery archive occupied')
+    if (!source && !destination) throw new EngineError('io', 'conditional recovery archive missing')
+    if (source) {
+      if (!h.restoreDirectory)
+        throw new EngineError('io', 'exclusive recovery archival unavailable')
+      await h.mkdir(parent)
+      await h.restoreDirectory(folder, archive)
+    }
+    await h.flush(archive, true)
+    await h.flush(folder, true)
+    // Both payloads, the intent and restoration plans now have a durable home.
+    // No archived payload is quota-evicted or used as an installation receipt.
+    for (const area of ['active', 'completed', 'review', 'retiring']) {
+      const pointer = h.root + '/' + area + '/' + id + '.json'
+      if (await h.stat(pointer)) await h.remove(pointer)
+      await h.flush(pointer, true)
+    }
+    console.debug('[abele-sync] interrupted write preserved in recovery archive', id)
   }
   async installed(receipt: string, path: string, sha: string): Promise<boolean> {
     const h = this.host
@@ -1432,13 +1531,23 @@ export class ConditionalFiles {
       id = idOf(receipt),
       folder = h.root + '/objects/' + id
     const marker = h.root + '/retiring/' + id + '.json'
-    let state: { intent?: Intent } | undefined
+    let state: { intent?: Intent; reviewArchive?: string } | undefined
     if (await h.stat(marker)) {
       try {
         state = JSON.parse(new TextDecoder().decode(await h.read(marker)))
       } catch (error) {
         if (!(error instanceof SyntaxError)) throw error
+        if (
+          (await h.stat(h.root + '/review/' + id + '.json')) &&
+          (await h.stat(folder + '/intent.json')) &&
+          (await this.settleNativeWriteReview(id, true))
+        )
+          return
       }
+    }
+    if (state?.reviewArchive !== undefined) {
+      await this.finishReviewArchive(id, state.reviewArchive)
+      return
     }
     if (!state) {
       let intent: Intent | undefined

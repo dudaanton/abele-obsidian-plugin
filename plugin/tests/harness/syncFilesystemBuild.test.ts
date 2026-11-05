@@ -7,6 +7,9 @@ it('builds the guarded filesystem without a bundled or shimmed Node filesystem',
   const result = await build({
     configFile: false,
     logLevel: 'silent',
+    // Match production resolution for the native deadline notice translator.
+    // Keep that real dependency in the bundle so the no-shim check stays strict.
+    resolve: { alias: { '@': resolve('src') } },
     build: {
       write: false,
       minify: false,
@@ -26,6 +29,7 @@ it('builds the guarded filesystem without a bundled or shimmed Node filesystem',
   const code = chunks.map((chunk) => chunk.code).join('\n')
   expect(code).not.toMatch(/node:fs|__vite-browser-external|browserExternal/)
   expect(code).toMatch(/window\.require\(["']fs["']\)/)
+  expect(code).toMatch(/window\.require\(["']original-fs["']\)/)
   expect(
     chunks
       .flatMap((chunk) => Object.keys(chunk.modules))
