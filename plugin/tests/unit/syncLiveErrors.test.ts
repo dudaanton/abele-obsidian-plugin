@@ -8,6 +8,52 @@ vi.mock('../e2e/helpers/syncVault', () => ({
   waitFor: async (_label: string, check: () => unknown) => check(),
 }))
 
+it('keeps a confidential connect alive while its scan advances without transfer progress', async () => {
+  vi.useFakeTimers()
+  let reads = 0
+  const driver = new SyncDriver(
+    () =>
+      ({
+        evalAwaitPrivate: (code: string) => {
+          if (!code.includes('return {result:')) return null
+          reads++
+          return {
+            result: reads >= 400 ? { ok: true, value: 'sample' } : null,
+            snapshot: {
+              connections: [
+                {
+                  id: 'sample',
+                  startupTimings: [] as unknown[],
+                  engine: {
+                    exchange: {
+                      scanProgress: {
+                        phase: 'yielding files',
+                        samples: [
+                          {
+                            operation: 'adapter stat',
+                            paths: ['sample-' + Math.floor(reads / 10) + '.md'],
+                          },
+                        ],
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          }
+        },
+      }) as never
+  )
+  try {
+    const connected = driver.connect('PRIVATE-TOKEN')
+    void connected.catch(() => {})
+    await vi.advanceTimersByTimeAsync(45000)
+    await expect(connected).resolves.toBe('sample')
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 it('fails a confidential connect stuck at known 0/0 and reports the safe stall reason', async () => {
   vi.useFakeTimers()
   const driver = new SyncDriver(
@@ -16,12 +62,12 @@ it('fails a confidential connect stuck at known 0/0 and reports the safe stall r
         evalAwaitPrivate: (code: string) =>
           code.includes('return {result:')
             ? {
-                result: null,
+                result: null as null,
                 snapshot: {
                   connections: [
                     {
                       id: 'sample',
-                      startupTimings: [],
+                      startupTimings: [] as unknown[],
                       transfer: {
                         stage: 'Downloading',
                         completed: 0,

@@ -1,6 +1,71 @@
 import { expect, it } from 'vitest'
-import { waitForStartup, STARTUP_WAIT, startupWaitFailure } from '../e2e/helpers/startupWait'
+import {
+  waitForStartup,
+  STARTUP_WAIT,
+  startupWaitFailure,
+  startupScanProgress,
+} from '../e2e/helpers/startupWait'
 import { firstFolderBudget, FIRST_FOLDER_STALL_MS } from '../helpers/smallPullBounds'
+
+it.each([false, true])(
+  'accepts advancing scan paths while transfer and startup counters stay fixed (browser=%s)',
+  async (browser) => {
+    const progress = browser
+      ? (new Function(STARTUP_WAIT + ';return startupScanProgress')() as typeof startupScanProgress)
+      : startupScanProgress
+    let now = 0
+    await waitForStartup(
+      () => ({
+        ready: now >= 45000,
+        progress: JSON.stringify(
+          progress({
+            phase: 'yielding files',
+            samples: [
+              { operation: 'adapter stat', paths: ['sample-' + Math.floor(now / 1000) + '.md'] },
+            ],
+          })
+        ),
+      }),
+      30000,
+      async () => {
+        now += 1000
+      },
+      () => now,
+      90000
+    )
+    expect(now).toBe(45000)
+  }
+)
+
+it('still detects repeated I/O on one path even while timestamps and operation names change', async () => {
+  let now = 0
+  await expect(
+    waitForStartup(
+      () => ({
+        ready: false,
+        progress: JSON.stringify(
+          startupScanProgress({
+            phase: 'yielding files',
+            samples: [
+              {
+                operation: now % 2000 ? 'adapter stat' : 'adapter readBinary',
+                paths: ['sample.md'],
+                at: now,
+              },
+            ],
+          })
+        ),
+      }),
+      30000,
+      async () => {
+        now += 1000
+      },
+      () => now,
+      90000
+    )
+  ).rejects.toThrow('progress stalled')
+  expect(now).toBe(30000)
+})
 
 it.each([false, true])(
   'fails unchanged known 0/0 transfer progress (browser=%s)',

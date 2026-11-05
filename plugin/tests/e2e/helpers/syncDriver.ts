@@ -1,7 +1,12 @@
 import type { VaultCli } from './obsidianCli'
 import { waitFor } from './syncVault'
 import { captureSyncFailure, captureSyncProgress, SYNC_SNAPSHOT } from './syncDiagnostics'
-import { STARTUP_WAIT, waitForStartup, startupWaitFailure } from './startupWait'
+import {
+  STARTUP_WAIT,
+  waitForStartup,
+  startupWaitFailure,
+  startupScanProgress,
+} from './startupWait'
 import { onPhone } from './target'
 import { TOKEN_HOST_READY } from './tokenHostReady'
 import { SHARE_SET_PICKER } from './shareSetPicker'
@@ -152,6 +157,7 @@ export class SyncDriver {
             connections: {
               id: string
               startup?: { stage: string; completed: number; total: number }
+              engine?: { exchange?: { scanProgress?: Parameters<typeof startupScanProgress>[0] } }
               startupTimings?: unknown[]
               inspection?: { completed: number; total: number }
               transfer?: { stage: string; completed: number; total?: number; bytes?: number }
@@ -175,6 +181,7 @@ export class SyncDriver {
               one.transfer?.completed,
               one.transfer?.total,
               one.transfer?.bytes,
+              startupScanProgress(one.engine?.exchange?.scanProgress),
             ])
           ),
         }
@@ -245,7 +252,7 @@ export class SyncDriver {
       'connect by token',
       // A previous cycle may have failed while a watcher retry is already running.
       // Only terminal states fail the wait; success still requires a completed sync.
-      `const before=new Set(svc.rows.value.map(one=>one.id)); const root=await openSyncTab(); await press(root,'Connect…'); await poll(()=>modal('Connect to a server')); const box=modal('Connect to a server'); ${qrImage ? `const picture=await (await fetch(${JSON.stringify(qrImage)})).blob();const files=new DataTransfer();files.items.add(new File([picture],'access.png',{type:'image/png'}));const input=box.querySelector('input[type=file]');input.files=files.files;input.dispatchEvent(new input.ownerDocument.defaultView.Event('change',{bubbles:true}));await poll(()=>box.querySelector('input[placeholder="Paste your token"]').value===${JSON.stringify(token)})` : `typeInto(box.querySelector('input[placeholder="Paste your token"]'),${JSON.stringify(token)})`}; await press(box,'Connect'); await poll(()=>!modal('Connect to a server')); const added=svc.rows.value.find(one=>!before.has(one.id)); if(!added) throw new Error('No connection added'); await waitForStartup(()=>{const current=app.plugins.plugins.abele.tokenEngines, ui=current.ui, row=ui.rows.value.find(one=>one.id===added.id), activity=ui.connectionActivity(added.id)||{}, phase=activity.startup, engine=current.live.get(added.id)?.engine.status;const trace=current.live.get(added.id)?.trace, io=trace?.requests?.[(trace.requestNext+trace.requests.length-1)%trace.requests.length];const ready=row?.status==='idle'&&engine?.state==='idle'&&!!engine.lastSyncAt&&!engine.lastError&&(!phase||phase.outcome==='complete');return {ready,progress:JSON.stringify([row?.status,engine?.state,!!engine?.lastSyncAt,phase?.stage,phase?.completed,phase?.total,phase?.outcome,activity.startupTimings?.length,activity.inspection?.completed,activity.inspection?.total,activity.transfer?.stage,activity.transfer?.completed,activity.transfer?.total,activity.transfer?.bytes,io?.startedAt,trace?.requestNext]),error:ready?undefined:(["error","needs-token","scope_updating","scope_unavailable","paused"].includes(row?.status)||engine?.state==="error"||engine?.state==="paused")?(activity.error||engine?.lastError||"Connection entered "+(row?.status??engine?.state??"an unavailable state")+" before its first successful sync"):undefined}},${this.startupStallMs},undefined,undefined,${timeoutMs}); await closeSettings(); return added.id`,
+      `const before=new Set(svc.rows.value.map(one=>one.id)); const root=await openSyncTab(); await press(root,'Connect…'); await poll(()=>modal('Connect to a server')); const box=modal('Connect to a server'); ${qrImage ? `const picture=await (await fetch(${JSON.stringify(qrImage)})).blob();const files=new DataTransfer();files.items.add(new File([picture],'access.png',{type:'image/png'}));const input=box.querySelector('input[type=file]');input.files=files.files;input.dispatchEvent(new input.ownerDocument.defaultView.Event('change',{bubbles:true}));await poll(()=>box.querySelector('input[placeholder="Paste your token"]').value===${JSON.stringify(token)})` : `typeInto(box.querySelector('input[placeholder="Paste your token"]'),${JSON.stringify(token)})`}; await press(box,'Connect'); await poll(()=>!modal('Connect to a server')); const added=svc.rows.value.find(one=>!before.has(one.id)); if(!added) throw new Error('No connection added'); await waitForStartup(()=>{const current=app.plugins.plugins.abele.tokenEngines, ui=current.ui, row=ui.rows.value.find(one=>one.id===added.id), activity=ui.connectionActivity(added.id)||{}, phase=activity.startup, engine=current.live.get(added.id)?.engine.status;const trace=current.live.get(added.id)?.trace, io=trace?.requests?.[(trace.requestNext+trace.requests.length-1)%trace.requests.length];const ready=row?.status==='idle'&&engine?.state==='idle'&&!!engine.lastSyncAt&&!engine.lastError&&(!phase||phase.outcome==='complete');return {ready,progress:JSON.stringify([row?.status,engine?.state,!!engine?.lastSyncAt,phase?.stage,phase?.completed,phase?.total,phase?.outcome,activity.startupTimings?.length,activity.inspection?.completed,activity.inspection?.total,activity.transfer?.stage,activity.transfer?.completed,activity.transfer?.total,activity.transfer?.bytes,io?.startedAt,trace?.requestNext,startupScanProgress(trace?.scanProgress)]),error:ready?undefined:(["error","needs-token","scope_updating","scope_unavailable","paused"].includes(row?.status)||engine?.state==="error"||engine?.state==="paused")?(activity.error||engine?.lastError||"Connection entered "+(row?.status??engine?.state??"an unavailable state")+" before its first successful sync"):undefined}},${this.startupStallMs},undefined,undefined,${timeoutMs}); await closeSettings(); return added.id`,
       true,
       timeoutMs,
       false,

@@ -26,7 +26,15 @@ export async function waitForStartup(
     await pause()
   }
 }
-export const STARTUP_WAIT = `const waitForStartup = ${waitForStartup.toString()};`
+/** Repeated I/O or timestamps on the same path are not forward progress. */
+export function startupScanProgress(scan?: {
+  phase?: string
+  samples?: readonly { operation?: string; paths?: readonly string[]; at?: number }[]
+}): unknown[] {
+  const sample = scan?.samples?.at(-1)
+  return [scan?.phase, sample?.paths]
+}
+export const STARTUP_WAIT = `const waitForStartup = ${waitForStartup.toString()}; const startupScanProgress = ${startupScanProgress.toString()};`
 
 /** A confidential connect may expose this fixed reason, never the evaluator's private detail. */
 export function startupWaitFailure(error: unknown): string | undefined {
