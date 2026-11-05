@@ -40,6 +40,7 @@ interface NavigationReport {
   sharedOnce: boolean
   discussionSearch: boolean
   unavailable: boolean
+  foldedRunTarget: boolean
 }
 
 const script = (layout: string) => `(async () => {
@@ -48,6 +49,13 @@ const script = (layout: string) => `(async () => {
   const chats = window.__abeleTest.ChatService.getInstance()
   const comments = window.__abeleTest.CommentService.getInstance()
   const path = 'sample-navigation.abchat'
+  const foldedQuestion = { k: 'msg', id: 'fold-question', parentId: 'tool-sample', role: 'user', content: 'Read the sample file repeatedly', timestamp: 1700000009000 }
+  const foldedCalls = Array.from({ length: 120 }, (_, i) => ({
+    k: 'msg', id: 'fold-read-' + i, parentId: i ? 'fold-read-' + (i - 1) : 'fold-question',
+    role: 'tool-call', content: '', toolName: 'read', toolParams: { path: 'sample.md' },
+    toolResult: 'Folded sample read ' + i, toolStatus: 'approved', timestamp: 1700000010000 + i,
+  }))
+  const foldedReply = { k: 'msg', id: 'fold-reply', parentId: 'fold-read-119', role: 'assistant', content: 'Folded sample summary', timestamp: 1700000010200 }
   const dirs = [], files = [], report = {}
   const evidence = window.__navigationProbe = {path,generation:performance.timeOrigin,phase:'setup',report}
   const phase = name => { evidence.phase = name; console.info('Navigation phase', name) }
@@ -118,7 +126,8 @@ const script = (layout: string) => `(async () => {
     const owned = header?.v === meta.v && header?.type === meta.type && header?.title === meta.title && header?.created === meta.created &&
       records.every(record => rows.some(row => Object.entries(record).every(([key,value]) => row[key] === value))) &&
       rows.filter(row => row.k === 'msg').every(row => records.some(record => record.id === row.id) ||
-        row.id === 'tool-sample' && row.parentId === 'a299' && row.toolName === 'read' && row.toolResult === 'A sample liner' && row.thinking === 'A sample liner')
+        row.id === 'tool-sample' && row.parentId === 'a299' && row.toolName === 'read' && row.toolResult === 'A sample liner' && row.thinking === 'A sample liner' ||
+        [foldedQuestion, ...foldedCalls, foldedReply].some(record => Object.entries(record).every(([key,value]) => JSON.stringify(row[key]) === JSON.stringify(value))))
     if (!owned) throw Error('Navigation path is occupied by an unowned file')
     for (const [id, note] of [['navd02', comments.commentPath('navd01')], ['navd01', path]]) {
       const file = app.vault.getAbstractFileByPath(comments.commentPath(id))
@@ -282,6 +291,27 @@ const script = (layout: string) => `(async () => {
     // The search/jump cannot have selected the alternate answer. Account for the explicit
     // synthetic append above, which alone changed the leaf.
     report.selectedBranch = owner.messages.value.some(m => m.id === 'other') ? 'other' : report.beforeBranch
+    phase('navigation inside a large folded run')
+    for (const record of [foldedQuestion, ...foldedCalls, foldedReply]) {
+      const message = { ...record }
+      delete message.k
+      owner.appendChatMessage(message)
+    }
+    owner.updateVisibleMessages()
+    await open(); await choose('To the latest'); await until(() => item('fold-reply'))
+    await open()
+    const foldedSearch = modal().querySelector('input')
+    foldedSearch.value = 'Folded sample read 110'
+    foldedSearch.dispatchEvent(new Event('input', { bubbles: true }))
+    await until(() => modal().querySelector('.search-result-file-match'))
+    modal().querySelector('.search-result-file-match').click()
+    report.foldedRunTarget = await holds(() => {
+      const target = item('fold-read-110')
+      if (!target?.querySelector('[data-find-part="result"]')) return false
+      const rect = target.getBoundingClientRect(), viewport = box().getBoundingClientRect()
+      return rect.top >= viewport.top && rect.top < viewport.bottom
+    })
+    await capture('navigation-folded-run-target')
     phase('complete')
     return JSON.stringify(report)
   } finally {
@@ -406,6 +436,7 @@ describe.skipIf(!available)('current-branch chat navigation', () => {
       expect(result.sharedOnce).toBe(true)
       expect(result.discussionSearch).toBe(true)
       expect(result.unavailable).toBe(true)
+      expect(result.foldedRunTarget).toBe(true)
     },
     180_000
   )

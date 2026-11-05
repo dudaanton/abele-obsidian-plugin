@@ -1662,10 +1662,11 @@ const revealMessage = async (
   if (session.value !== s || generation !== revealing) return
   const index = messages.value.findIndex((m) => m.id === messageId)
   if (index < 0) return
-  // A few before it too, so it does not sit flush against the top with nothing to scroll to.
-  showMessagesFrom(Math.max(0, index - REVEAL_CONTEXT))
   // A call folded in a run of the agent's work opens with it.
   showInRun(messageId)
+  // Budget the expanded run before trimming can evict the destination. A few messages
+  // before it keep it clear of the top edge with room to scroll.
+  showMessagesFrom(Math.max(0, index - REVEAL_CONTEXT))
   await nextTick()
   const el = messagesContainer.value
   const target = el?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`)

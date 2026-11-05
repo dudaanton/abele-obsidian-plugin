@@ -57,7 +57,8 @@ export function useChatRenderWindow<T>(
   }
   const showFrom = (index: number) => {
     const target = Math.max(0, Math.min(Math.floor(index), Math.max(0, total.value - 1)))
-    if (target >= start.value && target < end.value) return
+    if (target >= start.value && target < end.value && cost(start.value, end.value) <= capacity)
+      return
     range.value = { first: target, last: newest(target, capacity) }
   }
 

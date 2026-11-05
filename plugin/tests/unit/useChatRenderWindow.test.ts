@@ -5,6 +5,24 @@ import { useChatRenderWindow } from '@/composables/useChatRenderWindow'
 const rows = (count: number) => Array.from({ length: count }, (_, i) => `sample-${i}`)
 
 describe('bounded chat rendering', () => {
+  it('rebudgets an already mounted destination after a folded run opens', async () => {
+    const messages = rows(122)
+    const expanded = ref(false)
+    const window = useChatRenderWindow(
+      () => messages,
+      () => false,
+      30,
+      90,
+      (start, end) => (expanded.value ? end - start : Math.min(3, end - start))
+    )
+    expect(window.start.value).toBe(0)
+    expanded.value = true
+    window.showFrom(107)
+    await nextTick()
+    expect(window.visible.value).toContain('sample-110')
+    expect(window.end.value - window.start.value).toBeLessThanOrEqual(90)
+  })
+
   it('keeps a completed reply mounted below a reader until the window is full', () => {
     const messages = ref(rows(2))
     const window = useChatRenderWindow(

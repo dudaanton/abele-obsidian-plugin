@@ -512,6 +512,43 @@ describe('navigation in the chat header', () => {
     )
   })
 
+  it('keeps a late call mounted when revealing it opens a large folded run', async () => {
+    const rows = ref<ChatMessage[]>([
+      { id: 'q', role: 'user', content: 'Read the sample plan', timestamp: 1 },
+      ...Array.from(
+        { length: 120 },
+        (_, i): ChatMessage => ({
+          id: `read-${i}`,
+          role: 'tool-call',
+          content: '',
+          toolName: 'read',
+          toolParams: { path: 'sample.md' },
+          toolResult: `Sample read ${i}`,
+          toolStatus: 'approved',
+          timestamp: i + 2,
+        })
+      ),
+      { id: 'reply', role: 'assistant', content: 'Sample summary', timestamp: 122 },
+    ])
+    const session = fakeChatSession({ messages: rows, kind: 'chat' })
+    const service = ChatService.getInstance()
+    vi.spyOn(service, 'ensureInitialized').mockImplementation(() => {})
+    vi.spyOn(service, 'activeSession', 'get').mockReturnValue({ value: session } as never)
+    wrapper = mount(AiChat, { attachTo: document.body })
+    await flushPromises()
+    await wrapper.find('.abele-ai-chat__navigation').trigger('click')
+    const input = root().querySelector('input')!
+    input.value = 'Sample read 110'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await flushPromises()
+    root().querySelector<HTMLElement>('.search-result-file-match')!.click()
+    await pause(100)
+    expect(wrapper.find('[data-message-id="read-110"]').exists()).toBe(true)
+    expect(wrapper.find('[data-message-id="read-110"] [data-find-part="result"]').text()).toBe(
+      'Sample read 110'
+    )
+  })
+
   it('opens beside find and mounts an old question without switching the current branch', async () => {
     const rows = ref<ChatMessage[]>(
       Array.from({ length: 100 }, (_, i) => ({
