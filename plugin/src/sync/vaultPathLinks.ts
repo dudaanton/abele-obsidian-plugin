@@ -1,4 +1,10 @@
 import { waitForSyncRead } from './syncTaskBudget'
+import {
+  boundedNativeRead,
+  boundedNativeMetadata,
+  boundedNativeReader,
+  NativeReadTimeout,
+} from './nativeReadDeadline'
 import { directEntryDurability, entryEffect } from './directEntryDurability'
 import { desktopFileIdentity } from './desktopFileIdentity'
 import { inheritHostStorage } from './hostSyncStorage'
@@ -43,7 +49,7 @@ export function vaultPathKey(vault: Vault): (path: string) => string {
     if (!base)
       key = caseKey // Non-native hosts retain the core's conservative fallback.
     else {
-      const fs = window.require('fs') as typeof import('node:fs')
+      const fs = desktopNodeFs()
       // A private, exclusively allocated directory on this very volume avoids guessing
       // from OS defaults, pre-existing names, hard links or content identity.
       const directory = fs.mkdtempSync(
@@ -220,7 +226,7 @@ function rootAccess(adapter: DataAdapter & LinkAdapter) {
   const native = (port && (nativeOrigins.get(port) ?? port)) as LinkAdapter['fsPromises']
   const full = origin.getFullPath?.bind(origin)
   return {
-    native: native && nativeSyscalls(native, 'path-validation'),
+    native: native && boundedNativeMetadata(nativeSyscalls(native, 'path-validation')),
     full,
     // Keep ownership/cache identity on the original port, not the diagnostic wrapper.
     pin: native && full ? pinnedRoot(native, full('')) : undefined,
@@ -750,7 +756,7 @@ export function desktopNodeFs(): typeof import('node:fs') {
   const unavailable = (missing: string[]) =>
     new EngineError(
       'io',
-      `Native no-follow opens are unavailable (accessor: window.require('fs'); missing: ${missing.join(', ')})`
+      `Native no-follow opens are unavailable (accessor: window.require('original-fs'); missing: ${missing.join(', ')})`
     )
   // isDesktop/isMobile describe the UI and change under desktop phone emulation.
   if (!Platform.isDesktopApp) throw unavailable(['desktop runtime'])
@@ -758,9 +764,9 @@ export function desktopNodeFs(): typeof import('node:fs') {
     throw unavailable(['window.require'])
   let module: typeof import('node:fs')
   try {
-    module = window.require('fs') as typeof import('node:fs')
+    module = window.require('original-fs') as typeof import('node:fs')
   } catch {
-    throw unavailable(['fs module (require failed)'])
+    throw unavailable(['original-fs module (require failed)'])
   }
   const missing: string[] = []
   for (const key of [
@@ -788,7 +794,7 @@ export function desktopNodeFs(): typeof import('node:fs') {
     measured = new Proxy(module, {
       get(target, key) {
         return key === 'promises'
-          ? nativeSyscalls(target.promises, 'no-follow-open')
+          ? boundedNativeMetadata(nativeSyscalls(target.promises, 'no-follow-open'))
           : Reflect.get(target, key)
       },
     })
@@ -808,9 +814,11 @@ async function openNoFollow(
   const desktop = desktopNodeFs()
   // A checked port carries the lease down to the native leaf. Ordinary adapters
   // still obtain native opens from the desktop module, never an adapter override.
-  const fs = (
-    Reflect.get(raw, checkedNativePort) ? raw : desktop.promises
-  ) as typeof import('node:fs/promises')
+  const fs = boundedNativeMetadata(
+    (Reflect.get(raw, checkedNativePort)
+      ? raw
+      : desktop.promises) as typeof import('node:fs/promises')
+  )
   const constants = desktop.constants
   // Fail closed if the runtime cannot supply the native no-follow flag. Do not
   // substitute zero or guessed platform values: post-open identity checks remain
@@ -858,9 +866,9 @@ async function openNoFollow(
       if (mode & constants.O_EXCL) throw error
       handle = await fs.open(path, opening & ~constants.O_CREAT)
     }
-  } else handle = await fs.open(path, opening)
+  } else handle = await boundedNativeRead(fs.open(path, opening), 'open', (late) => late.close())
   try {
-    const opened = await handle.stat()
+    const opened = await boundedNativeRead(handle.stat(), 'stat')
     const linked = await fs.lstat(path)
     if (
       !Number.isSafeInteger(opened.dev) ||
@@ -876,9 +884,16 @@ async function openNoFollow(
         throw new EngineError('io', 'Native parent identity changed during open')
     }
     if (mode & constants.O_TRUNC) await handle.truncate(0)
-    return handle
+    return mode &
+      (constants.O_WRONLY |
+        constants.O_RDWR |
+        constants.O_CREAT |
+        constants.O_TRUNC |
+        constants.O_APPEND)
+      ? handle
+      : boundedNativeReader(handle)
   } catch (error) {
-    await handle.close()
+    await boundedNativeRead(handle.close(), 'close')
     throw error
   }
 }
@@ -1606,7 +1621,9 @@ export async function guardedNativeMutation<T>(
 }
 const rootPins = new WeakMap<object, Map<string, RootPin>>()
 function pinnedRoot(native: object, logical: string): RootPin | undefined {
-  const io = nativeSyscalls(native as typeof import('node:fs/promises'), 'root-pin')
+  const io = boundedNativeMetadata(
+    nativeSyscalls(native as typeof import('node:fs/promises'), 'root-pin')
+  )
   if (!io.realpath || !io.lstat || !io.open) return undefined
   let roots = rootPins.get(native)
   if (!roots) rootPins.set(native, (roots = new Map()))
@@ -1619,9 +1636,19 @@ function pinnedRoot(native: object, logical: string): RootPin | undefined {
       throw new VaultRootChangedError()
     return { path: path.replace(/\\/g, '/').replace(/\/+$/, ''), dev: stat.dev, ino: stat.ino }
   }
-  const initial = capture()
+  let initial: Promise<RootIdentity> | undefined
+  const first = () => {
+    if (initial === undefined) {
+      const work = capture()
+      initial = work
+      void work.catch((error) => {
+        if (error instanceof NativeReadTimeout && initial === work) initial = undefined
+      })
+    }
+    return initial
+  }
+  void first()
   let stopped: Error | undefined
-  void initial.catch(() => {})
   const pin = {
     stop: (error: Error) => {
       stopped = error
@@ -1629,7 +1656,7 @@ function pinnedRoot(native: object, logical: string): RootPin | undefined {
     verify: async () => {
       if (stopped) throw stopped
       try {
-        const pinned = await initial,
+        const pinned = await first(),
           current = await capture()
         if (
           pinned.path !== current.path ||
@@ -1638,7 +1665,8 @@ function pinnedRoot(native: object, logical: string): RootPin | undefined {
         )
           throw new VaultRootChangedError()
         return pinned
-      } catch {
+      } catch (error) {
+        if (error instanceof NativeReadTimeout) throw error
         throw new VaultRootChangedError()
       }
     },
