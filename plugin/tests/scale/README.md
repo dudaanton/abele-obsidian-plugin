@@ -11,6 +11,24 @@ remove generated vaults, and release resources even if the transport disappears.
 supervisor writes a lease file containing `{"pid":12345,"exclusive":true}`. The runner
 checks its liveness; this file is a contract with the supervisor, not a security boundary.
 
+### Outer launcher binding preflight
+
+For a registry-based desktop host, use `deployAppLauncher` from `app-launcher.mjs`
+to install the portable `launch-app.py` in the owned run directory. Supply the host's
+absolute executable and registry locations; these stay in the run's `app-launcher.json`.
+The launcher derives its workspace from its own deployed file, never a previous run's
+literal path. The runtime configuration's `app` must name that file, `leaseFile` must
+name that workspace's `lease.json`, and every vault must be under its `mount` directory.
+
+Before reserving the app, call `verifyAppLauncher(runRoot, configPath)` with a planned
+configuration inside that run directory, including those fields. It verifies deployed
+helper bytes before executing `--check-binding`; an old helper could otherwise ignore
+that argument and start the app. Check mode neither requires a live lease/mounted vault
+nor changes the registry or starts the executable. Retain the returned binding receipt.
+The guardian supplies the actual mounted vault names, live lease and deadlines later;
+the same binding checks run again before normal registry activation and app execution.
+This no-app check complements the real-host onload-end and profiler-ack gate.
+
 ## Targeted two-device probe
 
 Build the scenario with `qualificationScenario('targeted')` from
