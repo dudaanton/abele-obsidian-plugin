@@ -1,4 +1,6 @@
 import { mobileLargeFileGate } from './mobileLargeFileGate'
+import { mobileBridgeRead } from './mobileBridgeRead'
+import { NativeReadTimeout } from './nativeReadDeadline'
 import { nativeChunkPort } from './vaultPathLinks'
 import { guardedVaultAdapter, ensureVaultDirectory } from './vaultPathLinks'
 import type { DataAdapter, Stat } from 'obsidian'
@@ -23,7 +25,7 @@ import {
 } from './mobileWholeRead'
 import { stagingDirectory, reserveStagingPath } from './stagingDirectory'
 import { makeParents } from './vaultFolders'
-import { SyncTaskBudget } from './syncTaskBudget'
+import { SyncTaskBudget, waitForSyncRead } from './syncTaskBudget'
 
 interface MobileFiles {
   readFile(options: { path: string; offset: number; length: number }): Promise<{ data: string }>
@@ -70,11 +72,13 @@ function readMobileChunk(
   signal?.throwIfAborted()
   const options = { path, offset, length }
   trace({ step: 'call', method: 'readFile', options })
-  return files.readFile(options).then((result) => {
-    trace({ step: 'result', method: 'readFile', result })
-    signal?.throwIfAborted()
-    return decode(result.data, length)
-  })
+  return mobileBridgeRead('readFile', path, () => files.readFile(options), signal).then(
+    (result) => {
+      trace({ step: 'result', method: 'readFile', result })
+      signal?.throwIfAborted()
+      return decode(result.data, length)
+    }
+  )
 }
 
 interface WriteReceipt {
@@ -260,7 +264,11 @@ export class BoundedVaultIo {
       this.capabilitySignature = inputs
     }
     const pending = (this.rangedMobile ??= this.runMobileProbe())
-    const result = await pending
+    const result = await pending.catch((error) => {
+      // A lost bridge answer is transient, not proof that ranges are unsupported.
+      if (this.rangedMobile === pending) this.rangedMobile = undefined
+      throw error
+    })
     if (this.rangedMobile !== pending) return this.mobile()
     this.resourceMobile = result.resource
     this.streamMobile = result.stream
@@ -364,7 +372,7 @@ export class BoundedVaultIo {
       created = true
       const absolute = this.mobilePath(path)
       trace({ step: 'call', method: 'stat', options: { path: absolute } })
-      const stat = await files.stat({ path: absolute })
+      const stat = await mobileBridgeRead('stat', absolute, () => files.stat({ path: absolute }))
       trace({ step: 'result', method: 'stat', result: stat })
       const bytes = await readMobileChunk(files, absolute, 1, 2, undefined, trace)
       trace({ step: 'result', method: 'ranged-read', bytes: Array.from(bytes) })
@@ -374,6 +382,7 @@ export class BoundedVaultIo {
     } catch (error) {
       trace({ step: 'error', message: error instanceof Error ? error.message : String(error) })
       console.debug('[abele-sync] native filesystem ranges unavailable', error)
+      if (error instanceof NativeReadTimeout) throw error
       return null
     } finally {
       try {
@@ -406,7 +415,7 @@ export class BoundedVaultIo {
     const handle = raw.open && raw.fullPath ? await raw.open(raw.fullPath(path), 'r') : null
     // Keep inline allocations small; the larger legacy ceiling is not an inline-read budget.
     const small = original.size <= 4 * 1024 * 1024
-    const access = handle || small ? null : await this.mobile()
+    const access = handle || small ? null : await waitForSyncRead(this.mobile(), signal)
     const files = access?.files
     const resource = access && this.resourceMobile
     const sequential =

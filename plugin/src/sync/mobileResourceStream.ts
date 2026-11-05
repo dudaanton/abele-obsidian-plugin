@@ -8,6 +8,7 @@ import { makeParents } from './vaultFolders'
 import type { ProbeEvent } from './mobileSequentialSource'
 import { SyncTaskBudget } from './syncTaskBudget'
 import { cachedResourceRanges } from './mobileCachedRanges'
+import { NativeReadTimeout } from './nativeReadDeadline'
 
 /** Consume the bounded producer supplied by cachedResourceRanges. A plain host
  * response stream alone does not prove bounded native memory. Keep one input
@@ -194,6 +195,7 @@ export async function probeResourceStream(
     return { open }
   } catch (error) {
     trace({ step: 'error', method: 'resource-stream', message: String(error) })
+    if (error instanceof NativeReadTimeout) throw error
     return null
   } finally {
     window.clearTimeout(timer)

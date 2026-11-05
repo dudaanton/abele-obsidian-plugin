@@ -1,4 +1,6 @@
 import { trackMobileAllocation } from './mobileAllocationEvidence'
+import { mobileBridgeRead } from './mobileBridgeRead'
+import { waitForSyncRead } from './syncTaskBudget'
 import { EngineError, MAX_CHUNK_BYTES } from '@abele/sync-sdk/core'
 import { sha256 } from '@noble/hashes/sha2'
 import { bytesToHex } from '@noble/hashes/utils'
@@ -60,21 +62,32 @@ export function cachedResourceRanges(adapter: DataAdapter, fetcher: typeof fetch
       try {
         await files.mkdir({ path: namespace, directory: 'CACHE', recursive: true })
       } catch (error) {
-        if ((await files.stat({ path: namespace, directory: 'CACHE' })).type !== 'directory')
+        if (
+          (
+            await mobileBridgeRead('stat', namespace, () =>
+              files.stat({ path: namespace, directory: 'CACHE' })
+            )
+          ).type !== 'directory'
+        )
           throw error
       }
-      const inventory = await files.readdir({ path: namespace, directory: 'CACHE' })
+      const inventory = await mobileBridgeRead('readdir', namespace, () =>
+        files.readdir({ path: namespace, directory: 'CACHE' })
+      )
       for (const entry of inventory.files) {
         const name = typeof entry === 'string' ? entry : entry.name
         if (!fileName.test(name)) continue
         const path = namespace + '/' + name
         if (!owned.has(path)) await remove(path)
       }
-    })())
+    })().catch((error) => {
+      prepared = undefined
+      throw error
+    }))
   return {
     response: async (path: string, size: number, signal?: AbortSignal | null) => {
       signal?.throwIfAborted()
-      await prepare()
+      await waitForSyncRead(prepare(), signal ?? undefined)
       const id = bytesToHex(crypto.getRandomValues(new Uint8Array(16)))
       const alias = namespace + '/read-' + id + '.mp4'
       owned.add(alias)
@@ -110,9 +123,27 @@ export function cachedResourceRanges(adapter: DataAdapter, fetcher: typeof fetch
           meter.copyFinished(copied ? size : 0)
         }
         signal?.throwIfAborted()
-        if ((await files.stat({ path: alias, directory: 'CACHE' })).size !== size)
+        if (
+          (
+            await mobileBridgeRead(
+              'stat',
+              alias,
+              () => files.stat({ path: alias, directory: 'CACHE' }),
+              signal ?? undefined
+            )
+          ).size !== size
+        )
           throw new EngineError('conflict', 'Disposable read copy changed size')
-        const uri = new URL((await files.getUri({ path: alias, directory: 'CACHE' })).uri)
+        const uri = new URL(
+          (
+            await mobileBridgeRead(
+              'getUri',
+              alias,
+              () => files.getUri({ path: alias, directory: 'CACHE' }),
+              signal ?? undefined
+            )
+          ).uri
+        )
         if (uri.protocol !== 'file:') throw new EngineError('io', 'Local cache URI unavailable')
         const resource = new URL(resourceUrl(adapter, path))
         resource.pathname = '/_capacitor_file_' + uri.pathname

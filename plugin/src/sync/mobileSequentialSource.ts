@@ -1,4 +1,7 @@
 import { guardedVaultAdapter } from './vaultPathLinks'
+import { mobileBridgeRead } from './mobileBridgeRead'
+import { waitForSyncRead } from './syncTaskBudget'
+import { NativeReadTimeout, NATIVE_READ_DEADLINE_MS } from './nativeReadDeadline'
 import { nativeChunkPort } from './vaultPathLinks'
 import type { DataAdapter } from 'obsidian'
 import { stagingDirectory, reserveStagingPath } from './stagingDirectory'
@@ -121,8 +124,8 @@ function sequentialSource(
     const heartbeat = () => {
       window.clearTimeout(timer)
       timer = window.setTimeout(
-        () => stop(new EngineError('io', 'Native filesystem stream did not finish')),
-        30000
+        () => stop(new NativeReadTimeout('mobile bridge readFileInChunks')),
+        NATIVE_READ_DEADLINE_MS
       )
     }
     heartbeat()
@@ -214,7 +217,7 @@ function sequentialSource(
           : null
     }
     if (filled === length) return bytes
-    if (running && position > offset + filled) await completion
+    if (running && position > offset + filled) await waitForSyncRead(completion, signal)
     signal?.throwIfAborted()
     if (closed || failure) throw failure ?? new EngineError('io', 'Sequential source closed')
     const reading = new Promise<void>((resolve, reject) => {
@@ -287,7 +290,7 @@ export async function probeSequentialFiles(
       try {
         const options = paths[index]
         trace({ step: 'call', method: 'stat', options })
-        const result = await files.stat(options)
+        const result = await mobileBridgeRead('stat', options.path, () => files.stat(options))
         trace({ step: 'result', method: 'stat', result })
         if (result.size !== bytes.length) throw new Error('Native path size mismatch')
         source = sequentialSource(files, options, bytes.length, 4096, trace)
@@ -303,6 +306,7 @@ export async function probeSequentialFiles(
         }
       } catch (error) {
         trace({ step: 'error', message: error instanceof Error ? error.message : String(error) })
+        if (error instanceof NativeReadTimeout) throw error
       } finally {
         await source?.close()
       }
@@ -310,6 +314,7 @@ export async function probeSequentialFiles(
     return null
   } catch (error) {
     trace({ step: 'error', message: error instanceof Error ? error.message : String(error) })
+    if (error instanceof NativeReadTimeout) throw error
     return null
   } finally {
     try {
