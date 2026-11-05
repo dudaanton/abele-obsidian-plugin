@@ -42,6 +42,117 @@ function open(height = 4000) {
 }
 
 describe('bounded chat window edges', () => {
+  it.each([-1, 1])('prefetches wheel pages before the next large delta: %s', (direction) => {
+    const { scroll, box } = open()
+    box.scrollTop = 2000
+    scroll.onMessagesScroll()
+    scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: direction }))
+    const before =
+      direction < 0 ? scroll.visibleMessages.value[0]?.id : scroll.visibleMessages.value.at(-1)?.id
+    box.scrollTop = direction < 0 ? 500 : 2500
+    scroll.onMessagesScroll()
+    const after =
+      direction < 0 ? scroll.visibleMessages.value[0]?.id : scroll.visibleMessages.value.at(-1)?.id
+    expect(after).not.toBe(before)
+  })
+  it.each([-1, 1])(
+    'does not reverse reader direction after a layout clamp during reveal: %s',
+    async (direction) => {
+      const { scroll, box } = open()
+      if (direction < 0) scroll.loadOlder()
+      else {
+        box.scrollTop = 3200
+        scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: 10 }))
+      }
+      const before =
+        direction < 0
+          ? scroll.visibleMessages.value[0]?.id
+          : scroll.visibleMessages.value.at(-1)?.id
+      scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: direction * 10 }))
+      box.scrollTop = direction < 0 ? 3200 : 0
+      scroll.onMessagesScroll()
+      await advance(80)
+      const after =
+        direction < 0
+          ? scroll.visibleMessages.value[0]?.id
+          : scroll.visibleMessages.value.at(-1)?.id
+      expect(after).toBe(before)
+    }
+  )
+  it.each([-1, 1])(
+    'does not page the opposite edge when the reader moves away from it: %s',
+    (direction) => {
+      const { scroll, box } = open()
+      box.scrollTop = direction < 0 ? 3100 : 100
+      const before =
+        direction < 0
+          ? scroll.visibleMessages.value.at(-1)?.id
+          : scroll.visibleMessages.value[0]?.id
+      scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: direction * 10 }))
+      box.scrollTop += direction * 10
+      scroll.onMessagesScroll()
+      const after =
+        direction < 0
+          ? scroll.visibleMessages.value.at(-1)?.id
+          : scroll.visibleMessages.value[0]?.id
+      expect(after).toBe(before)
+    }
+  )
+  it('does not infer touch paging direction from a zero-distance layout scroll', () => {
+    const { scroll, box } = open()
+    box.scrollTop = 2000
+    scroll.onMessagesScroll()
+    scroll.fingerOn(new Event('touchstart'))
+    const before = scroll.visibleMessages.value.at(-1)?.id
+    scroll.onMessagesScroll()
+    expect(scroll.visibleMessages.value.at(-1)?.id).toBe(before)
+  })
+  it.each([-1, 1])(
+    'prefetches in the touch direction between coalesced input events: %s',
+    (direction) => {
+      const { scroll, box } = open()
+      scroll.onMessagesScroll()
+      scroll.fingerOn(new Event('touchstart'))
+      const before =
+        direction < 0
+          ? scroll.visibleMessages.value[0]?.id
+          : scroll.visibleMessages.value.at(-1)?.id
+      box.scrollTop = direction < 0 ? 500 : 2500
+      scroll.onMessagesScroll()
+      const after =
+        direction < 0
+          ? scroll.visibleMessages.value[0]?.id
+          : scroll.visibleMessages.value.at(-1)?.id
+      expect(after).not.toBe(before)
+    }
+  )
+  it.each([-500, 500])('loads before a large touch delta crosses a virtual edge: %s', (delta) => {
+    const { scroll, box } = open()
+    const before =
+      delta < 0 ? scroll.visibleMessages.value[0]?.id : scroll.visibleMessages.value.at(-1)?.id
+    const touch = (type: string, clientY: number) => {
+      const event = new Event(type)
+      Object.defineProperty(event, 'touches', { value: [{ clientY }] })
+      return event
+    }
+    box.scrollTop = 1000
+    scroll.fingerOn(touch('touchstart', 600))
+    box.scrollTop = delta < 0 ? 400 : 2800
+    scroll.fingerOn(touch('touchmove', 600 - delta))
+    const after =
+      delta < 0 ? scroll.visibleMessages.value[0]?.id : scroll.visibleMessages.value.at(-1)?.id
+    expect(after).not.toBe(before)
+  })
+  it.each([-500, 500])('loads before a large wheel delta crosses a virtual edge: %s', (delta) => {
+    const { scroll, box } = open()
+    const before =
+      delta < 0 ? scroll.visibleMessages.value[0]?.id : scroll.visibleMessages.value.at(-1)?.id
+    box.scrollTop = delta < 0 ? 400 : 2800
+    scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: delta }))
+    const after =
+      delta < 0 ? scroll.visibleMessages.value[0]?.id : scroll.visibleMessages.value.at(-1)?.id
+    expect(after).not.toBe(before)
+  })
   it.each(['during', 'after'])(
     'keeps every marker page when browser clamping reports the bottom %s reveal',
     async (when) => {

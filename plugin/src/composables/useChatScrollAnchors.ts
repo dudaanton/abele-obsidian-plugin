@@ -23,17 +23,24 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
    * height arrives afterwards and shoves the view down. Holding one element still is immune to
    * that, however late and however often the heights change.
    */
-  let anchor: { el: HTMLElement; offset: number } | null = null
+  let anchor: { el: HTMLElement; offset: number; at?: number } | null = null
 
   /** Takes the topmost rendered message as the anchor: the page is revealed above it. */
   const captureAnchor = () => {
     const container = messagesContainer.value
     const top = container?.getBoundingClientRect().top ?? 0
     const first =
-      Array.from(container?.querySelectorAll<HTMLElement>('.abele-chat-msg') ?? []).find(
-        (el) => el.getBoundingClientRect().bottom > top
-      ) ?? container?.querySelector<HTMLElement>('.abele-chat-msg')
+      Array.from(
+        container?.querySelectorAll<HTMLElement>('.abele-chat-msg, .abele-chat-run.is-collapsed') ??
+          []
+      ).find((el) => el.getBoundingClientRect().bottom > top) ??
+      container?.querySelector<HTMLElement>('.abele-chat-msg, .abele-chat-run.is-collapsed')
     anchor = container && first ? { el: first, offset: offsetOf(first, container) } : null
+    if (container && anchor) {
+      anchor.at = anchor.offset + container.scrollTop
+      container.classList.add('abele-ai-chat__messages_steady')
+      holdFloor(container)
+    }
   }
 
   /** Puts the anchor back where it was, whatever has grown around it since. */
@@ -42,12 +49,20 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     if (!container || !anchor) return
     if (!anchor.el.isConnected) {
       anchor = null
+      if (!steady) container.classList.remove('abele-ai-chat__messages_steady')
+      releaseFloor(container)
       return
     }
 
-    const drift = offsetOf(anchor.el, container) - anchor.offset
-    if (Math.abs(drift) < 1) return
-    scrollContainerTo(container, container.scrollTop + drift, 'message-anchor')
+    // Compensate layout alone. Compositor movement since capture is reader input,
+    // and must survive a page swap even before its scroll event reaches the listener.
+    const at = offsetOf(anchor.el, container) + container.scrollTop
+    const drift =
+      anchor.at === undefined ? offsetOf(anchor.el, container) - anchor.offset : at - anchor.at
+    anchor.at = at
+    if (Math.abs(drift) >= 1)
+      scrollContainerTo(container, container.scrollTop + drift, 'message-anchor')
+    releaseFloor(container)
   }
 
   /**
@@ -93,11 +108,15 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     // The chat can be in a popped-out window, whose frames and clock are not the main one's.
     const win = el.win
     const until = win.performance.now() + ANCHOR_HOLD_MS
+    const held = anchor
     const hold = () => {
-      if (!anchor) return
+      if (!held || anchor !== held) return
       holdAnchor()
       if (win.performance.now() < until) nextFrame(win, hold)
-      else anchor = null
+      else {
+        anchor = null
+        if (!steady) el.classList.remove('abele-ai-chat__messages_steady')
+      }
     }
     nextFrame(win, hold)
   }
@@ -242,7 +261,7 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     if (steady)
       console.debug('[chat-scroll] release reading anchor', { scrollTop: container?.scrollTop })
     steady = null
-    container?.classList.remove('abele-ai-chat__messages_steady')
+    if (!anchor) container?.classList.remove('abele-ai-chat__messages_steady')
   }
 
   /** Takes back out of the scroll whatever moved the block since it was last looked at. */
@@ -305,8 +324,10 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
   const FLOOR_CLASS = 'abele-ai-chat__messages_floor'
   const FLOOR_VAR = '--abele-chat-floor'
   let floorUntil = 0
+  let floorOwner = 0
 
   const releaseFloor = (container: HTMLElement) => {
+    floorOwner++
     container.classList.remove(FLOOR_CLASS)
     container.style.removeProperty(FLOOR_VAR)
   }
@@ -330,8 +351,9 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     container.classList.add(FLOOR_CLASS)
     floorUntil = win.performance.now() + STEADY_MS
     if (!fresh) return
+    const owner = ++floorOwner
     const check = () => {
-      if (!container.classList.contains(FLOOR_CLASS)) return
+      if (owner !== floorOwner || !container.classList.contains(FLOOR_CLASS)) return
       const want = parseFloat(container.style.getPropertyValue(FLOOR_VAR)) || 0
       // A chat left with no messages (a new one, or another opened in its place) has nothing
       // to hold a place in, and its floor would only scroll its greeting out of sight.
@@ -339,7 +361,7 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
         closed ||
         win.performance.now() > floorUntil ||
         contentEnd(container) >= want - 1 ||
-        !container.querySelector('.abele-chat-msg')
+        !container.querySelector('.abele-chat-msg, .abele-chat-run')
       )
         releaseFloor(container)
       else nextFrame(win, check)
@@ -377,8 +399,9 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
       clientHeight: container.clientHeight,
     })
     container.classList.add('abele-ai-chat__messages_steady')
+    const held = steady
     const hold = () => {
-      if (!steady) return
+      if (steady !== held) return
       holdSteady()
       if (steady) nextFrame(win, hold)
     }
@@ -410,6 +433,10 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     },
     set anchor(value) {
       anchor = value
+      messagesContainer.value?.classList.toggle(
+        'abele-ai-chat__messages_steady',
+        !!anchor || !!steady
+      )
     },
   }
 }

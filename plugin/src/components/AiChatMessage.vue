@@ -493,6 +493,8 @@ import type { SelectionMenuItem } from '@/scripting/selectionMenuScripts'
 
 const props = defineProps<{
   message: ChatMessage
+  /** Restores the reader's detail choice when a bounded history window remounts this message. */
+  detailsInitiallyOpen?: boolean
   readOnlyHistory?: boolean
   /** Provider-native actions compose the ordinary message menu without enabling vault edits. */
   extendActions?: (menu: Menu) => void
@@ -537,6 +539,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  (e: 'details-expanded', messageId: string, expanded: boolean): void
   (e: 'create-branch', messageId: string): void
   (e: 'clone-chat', messageId: string): void
   (e: 'switch-branch', messageId: string): void
@@ -794,7 +797,8 @@ const branchFromHere = () => {
   emit('create-branch', props.message.id)
 }
 
-const expanded = ref(false)
+const expanded = ref(props.detailsInitiallyOpen ?? false)
+watch(expanded, (open) => emit('details-expanded', props.message.id, open), { flush: 'sync' })
 const thinking = ref<InstanceType<typeof ChatThinking>>()
 
 /**

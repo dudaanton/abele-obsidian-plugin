@@ -152,6 +152,7 @@
         @scroll="onMessagesScroll"
         @wheel.passive="readerTakesOver"
         @touchstart.passive="fingerOn"
+        @touchmove.passive="fingerOn"
         @touchend.passive="fingerOff"
         @touchcancel.passive="fingerOff"
         @mousedown="readerTakesOver"
@@ -192,7 +193,7 @@
 
         <template
           v-for="block in blocks"
-          :key="block.kind === 'run' ? `run:${block.id}` : block.message.id"
+          :key="block.kind === 'run' ? `run:${runKey(block.id)}` : block.message.id"
         >
           <ChatToolRun
             v-if="block.kind === 'run'"
@@ -206,7 +207,7 @@
             @node-access="onNodeAccess"
           >
             <template #results>
-              <ChatToolImage v-for="msg in block.calls" :key="msg.id" :message="msg" />
+              <ChatToolImage v-for="msg in runImages.get(block.id)" :key="msg.id" :message="msg" />
             </template>
             <AiChatMessage
               v-for="msg in block.messages"
@@ -249,7 +250,7 @@
         />
 
         <!-- Streaming indicator -->
-        <div v-if="isStreaming" class="abele-ai-chat__streaming">
+        <div v-if="isStreaming && !hasNewer" class="abele-ai-chat__streaming">
           <ChatThinking
             v-if="streamingThinking"
             class="abele-ai-chat__streaming-thinking"
@@ -610,6 +611,8 @@ import ChatOutlineDialog from './chatOutline/ChatOutlineDialog.vue'
 import { navigationTitle } from '@/ai/chatNavigation'
 import { branchSwitches, newBranchAfter } from '@/ai/chatBranches'
 import { callState, chatBlocks, type ChatBlock } from '@/ai/toolRuns'
+import { chatRenderCost } from '@/ai/chatRenderCost'
+import { toolImage } from '@/ai/chatArtifacts'
 import ChatToolRun from './ChatToolRun.vue'
 import ChatToolImage from './chat/ChatToolImage.vue'
 import ChatThinking from './ChatThinking.vue'
@@ -809,6 +812,16 @@ const runForks = (block: ChatBlock) =>
         .find((count) => count > 1)
     : undefined
 const blocks = computed(() => chatBlocks(visibleMessages.value))
+const runImages = computed(
+  () =>
+    new Map(
+      blocks.value.flatMap((block) =>
+        block.kind === 'run'
+          ? [[block.id, block.calls.filter((call) => toolImage(call))] as const]
+          : []
+      )
+    )
+)
 const nodePlacements = computed(() => {
   const parentId = session.value?.delegationParentId
   if (!parentId) return nodeCardPlacement(blocks.value, messages.value)
@@ -827,33 +840,63 @@ const nodePlacements = computed(() => {
   return nodeCardPlacement(blocks.value, messages.value, { parentId, operations })
 })
 const runChoice = reactive(new Map<string, boolean>())
+const messageDetails = reactive(new Set<string>())
 const runsShowing = reactive(new Set<string>())
+const currentFindId = ref<string>()
+const fullBlocks = computed(() => chatBlocks(messages.value))
+const runKeys = computed(() => {
+  const keys = new Map<string, string>()
+  for (const block of fullBlocks.value)
+    if (block.kind === 'run') for (const message of block.messages) keys.set(message.id, block.id)
+  return keys
+})
+const runKey = (id: string) => runKeys.value.get(id) ?? id
 watch(
   [() => session.value?.id, () => attachmentOwner.value?.version],
   () => {
     runChoice.clear()
+    messageDetails.clear()
     runsShowing.clear()
   },
   { flush: 'sync' }
 )
+const runStates = computed(
+  () =>
+    new Map(
+      fullBlocks.value.flatMap((block) =>
+        block.kind === 'run'
+          ? [
+              [
+                block.id,
+                runChoice.get(block.id) ??
+                  (runsShowing.has(block.id) ||
+                    block.calls.some(
+                      (c) => callState(c) === 'running' || c.toolStatus === 'pending'
+                    ) ||
+                    block.messages.some((m) => m.id === currentFindId.value)),
+              ] as const,
+            ]
+          : []
+      )
+    )
+)
 const runOpen = (block: Extract<ChatBlock, { kind: 'run' }>) =>
-  runChoice.get(block.id) ??
-  (runsShowing.has(block.id) ||
-    block.calls.some((c) => callState(c) === 'running' || c.toolStatus === 'pending') ||
-    block.messages.some((m) => m.id === find.current.value?.messageId))
-const setRunOpen = (id: string, open: boolean) => runChoice.set(id, open)
+  runStates.value.get(runKey(block.id)) ?? false
+const renderCost = computed(() => chatRenderCost(messages.value, runOpen))
+const setRunOpen = (id: string, open: boolean) => runChoice.set(runKey(id), open)
 const showInRun = (messageId: string): boolean => {
   const run = blocks.value.find(
     (b): b is Extract<ChatBlock, { kind: 'run' }> =>
       b.kind === 'run' && b.messages.some((m) => m.id === messageId)
   )
   if (!run || runOpen(run)) return false
-  runChoice.delete(run.id)
-  runsShowing.add(run.id)
+  runChoice.delete(runKey(run.id))
+  runsShowing.add(runKey(run.id))
   return true
 }
 
 const messageProps = (msg: ChatMessage) => ({
+  detailsInitiallyOpen: messageDetails.has(msg.id),
   message:
     answerCheck.value?.id === msg.id
       ? {
@@ -903,6 +946,10 @@ const thoughtBeingWritten = computed(() => {
   return last?.role === 'assistant' && last.thinking && !last.content.trim() ? last.id : null
 })
 const messageHandlers = {
+  'details-expanded': (id: string, expanded: boolean) => {
+    if (expanded) messageDetails.add(id)
+    else messageDetails.delete(id)
+  },
   'clone-chat': (id: string) => onCloneChat(id),
   'create-branch': (id: string) => onCreateBranch(id),
   'switch-branch': (id: string) => onSwitchBranch(id),
@@ -1536,6 +1583,7 @@ const pendingPromptUserVars = ref<TemplateVariable[]>([])
 
 const composing = ref(false)
 const scroll = useChatScroll({
+  windowCost: (start, end) => renderCost.value(start, end),
   messagesContainer,
   messages,
   streamingContent,
@@ -1545,6 +1593,7 @@ const scroll = useChatScroll({
 })
 const {
   visibleMessages,
+  hasNewer,
   olderCount,
   showMessagesFrom,
   resetWindow,
@@ -1664,6 +1713,13 @@ const find = useChatFind({
   // A reader taken to a match is reading back, not following the end.
   holdInView,
 })
+watch(
+  () => find.current.value?.messageId,
+  (id) => {
+    currentFindId.value = id
+  },
+  { flush: 'sync', immediate: true }
+)
 
 const {
   navigationOpen,

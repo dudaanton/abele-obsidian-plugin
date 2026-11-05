@@ -37,6 +37,7 @@ interface EarlierReport {
   shortFits: boolean
   shortReachedStart: boolean
   shortMarkerGone: boolean
+  shortTailPresent: boolean
 }
 
 const script = (layout: string) => `(async () => {
@@ -184,8 +185,8 @@ const script = (layout: string) => `(async () => {
 
     // A page too short to scroll: the earlier pages come by themselves.
     await openAsHistory(fixtures[2])
-    // Automatic older paging can evict the tail before the next poll. Observe the
-    // active fixture and its rendered messages rather than requiring its tail to stay mounted.
+    // Observe the fixture while automatic paging settles, then require both ends of
+    // this physically short conversation to remain mounted.
     const shortIsOpen = () => chats.activeSession.value?.currentChatFile.value?.path === fixtures[2].path && box()?.querySelector('[data-message-id^="s"]')
     if (!(await until(shortIsOpen))) throw Error('The short sample chat did not open')
     await settle()
@@ -195,6 +196,7 @@ const script = (layout: string) => `(async () => {
     report.shortMarkerGone = await until(() => !marker(), 6000)
     await settle()
     report.shortReachedStart = !!item('s0')
+    report.shortTailPresent = !!item('s121')
     await capture('short')
   } catch (e) { report.error = String(e?.message || e) }
   finally {
@@ -311,6 +313,7 @@ describe.skipIf(!available)('earlier messages of a chat', () => {
       expect(result.shortFits).toBe(true)
       expect(result.shortMarkerGone).toBe(true)
       expect(result.shortReachedStart).toBe(true)
+      expect(result.shortTailPresent).toBe(true)
     },
     240_000
   )

@@ -78,6 +78,14 @@ it('resolves a short exact block ahead of a different block with the same prefix
   expect(box.scrollTop).toBe(1000)
 })
 
+it('retains the paragraph offset when rendering replaces its node', () => {
+  const { box, root, block, anchors } = open('Sample paragraph retained across rendering')
+  root.replaceChildren(block('Sample paragraph retained across rendering', 1140))
+  anchors.holdSteady()
+  expect(box.scrollTop).toBe(1100)
+  expect(anchors.keepingReader).toBe(true)
+})
+
 it('does not resolve into a different markdown root of the same tool row', () => {
   const { box, root, message, block, anchors } = open('Sample shared paragraph')
   const other = document.createElement('div')

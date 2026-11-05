@@ -81,6 +81,33 @@ afterEach(() => {
 const mounted = (wrapper: ReturnType<typeof mount>) =>
   wrapper.findAllComponents(AiChatMessage).length
 
+it('keeps expanded tool details when paging away and back', async () => {
+  messages.value = conversation(120)
+  messages.value[119] = {
+    ...messages.value[119],
+    role: 'tool-call',
+    content: '',
+    toolName: 'read',
+    toolParams: { path: 'Samples/tool.md' },
+    toolStatus: 'approved',
+    toolResult: 'Sample long tool result.\n'.repeat(80),
+  }
+  const wrapper = mountChat()
+  await nextTick()
+  await wrapper.get('.abele-chat-run > .tree-item-self').trigger('click')
+  const details = () => wrapper.get('.abele-chat-msg[data-message-id="m120"] .abele-chat-msg__icon')
+  await details().trigger('click')
+  expect(details().attributes('aria-expanded')).toBe('true')
+  for (let i = 0; i < 3; i++) {
+    await wrapper.get('.abele-ai-chat__older button').trigger('click')
+    await advance(80)
+  }
+  expect(wrapper.find('.abele-chat-msg[data-message-id="m120"]').exists()).toBe(false)
+  await wrapper.get('.abele-ai-chat__messages').trigger('keydown', { key: 'End' })
+  await advance(80)
+  expect(details().attributes('aria-expanded')).toBe('true')
+})
+
 describe('a conversation longer than a page', () => {
   const LENGTH = DEFAULT_TAIL_PAGE_SIZE * 3
   initialConversation(LENGTH)
@@ -122,6 +149,11 @@ describe('scrolling back', () => {
 
     // happy-dom lays nothing out, so the scroll position is set rather than performed.
     Object.defineProperty(container.element, 'scrollTop', { value: 0, writable: true })
+    Object.defineProperties(container.element, {
+      clientHeight: { value: 800, configurable: true },
+      scrollHeight: { value: 3000, configurable: true },
+    })
+    container.element.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -100 }))
     await container.trigger('scroll')
     await nextTick()
 
@@ -269,7 +301,7 @@ describe('the view while older messages are being revealed', () => {
 
   // Every way a reader starts scrolling for themselves: the wheel, a finger, the keys, and
   // taking hold of the scrollbar, which is a press on the container and nothing else.
-  it.each(['wheel', 'touchstart', 'keydown', 'mousedown'])(
+  it.each(['wheel', 'touchstart', 'touchmove', 'keydown', 'mousedown'])(
     'lets the reader scroll away with the %s while the revealed messages are still growing',
     async (input) => {
       messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
@@ -278,6 +310,10 @@ describe('the view while older messages are being revealed', () => {
       const container = wrapper.find('.abele-ai-chat__messages')
 
       model.setHeights(100)
+      if (input === 'touchmove') {
+        model.scrollTo(1000)
+        await container.trigger('touchstart')
+      }
       model.scrollTo(0)
       await container.trigger('scroll')
       await nextTick()
@@ -298,6 +334,34 @@ describe('the view while older messages are being revealed', () => {
       await advance(100)
 
       expect(model.container.scrollTop).toBe(2000)
+    }
+  )
+
+  it.each(['wheel', 'keydown', 'touchmove'])(
+    'accepts %s over the earlier-messages marker while a page hold is active',
+    async (input) => {
+      messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
+      const wrapper = mountAttached()
+      const model = layoutModel(wrapper)
+      const container = wrapper.get('.abele-ai-chat__messages')
+      model.setHeights(100)
+      model.scrollTo(0)
+      await container.trigger('scroll')
+      await nextTick()
+      model.setHeights(100)
+      await advance(60)
+      const marker = wrapper.get('.abele-ai-chat__older button')
+      if (input === 'touchmove') await marker.trigger('touchstart')
+      model.scrollTo(2000)
+      await marker.trigger(input, input === 'wheel' ? { deltaY: -100 } : { key: 'PageUp' })
+      await advance(100)
+      expect(model.container.scrollTop).toBe(2000)
+      if (input === 'touchmove') {
+        await marker.trigger('touchend')
+        await container.trigger('keydown', { key: 'End' })
+        await advance(80)
+        expect(model.container.scrollTop).toBeGreaterThan(2000)
+      }
     }
   )
 
@@ -336,6 +400,33 @@ describe('the view while older messages are being revealed', () => {
  * many are held back was the only thing on screen about them — not something to press.
  */
 describe('reaching the messages held back', () => {
+  it('keeps both ends of a physically short collapsed tool history mounted', async () => {
+    messages.value = conversation(122).map((message, index) =>
+      index > 0 && index < 121
+        ? {
+            ...message,
+            role: 'tool-call',
+            content: '',
+            toolName: 'read',
+            toolParams: { path: 'Samples/shared.md' },
+            toolStatus: 'approved',
+            toolResult: 'Sample result',
+          }
+        : message
+    ) as ChatMessage[]
+    const wrapper = mountAttached()
+    const model = layoutModel(wrapper)
+    model.setHeights(10)
+    await advance(500)
+    model.setHeights(10)
+    await advance(300)
+    expect(wrapper.find('[data-message-id="m1"]').exists()).toBe(true)
+    expect(wrapper.find('.abele-ai-chat__older').exists()).toBe(false)
+    expect(wrapper.find('[data-message-id="m122"]').exists()).toBe(true)
+    expect(wrapper.findAllComponents({ name: 'ChatToolImage' })).toHaveLength(0)
+    expect(wrapper.findAllComponents(AiChatMessage).length).toBeLessThan(5)
+  })
+
   it('reveals the previous page from the marker, which is a button', async () => {
     messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
     const wrapper = mountAttached()

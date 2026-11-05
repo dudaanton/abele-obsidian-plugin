@@ -4,7 +4,7 @@
  * left with no messages — a new one, or another opened in its place — has no place to hold, and
  * a floor there only scrolls its greeting out of sight: it is let go at once.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, ref } from 'vue'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { useChatScrollAnchors } from '@/composables/useChatScrollAnchors'
@@ -53,6 +53,66 @@ function conversation(messages: number) {
 }
 
 describe('the floor under a changing conversation', () => {
+  it('preserves native movement occurring between a page capture and layout correction', () => {
+    const { container, anchors } = conversation(1)
+    const message = container.children[0] as HTMLElement
+    let documentTop = 500
+    container.scrollTop = 100
+    message.getBoundingClientRect = () =>
+      ({
+        top: documentTop - container.scrollTop,
+        bottom: documentTop + 100 - container.scrollTop,
+      }) as DOMRect
+    anchors.captureAnchor()
+    container.scrollTop += 80
+    documentTop += 300
+    anchors.holdAnchor()
+    expect(container.scrollTop).toBe(480)
+    container.scrollTop += 40
+    anchors.holdAnchor()
+    expect(container.scrollTop).toBe(520)
+  })
+
+  it('does not accumulate layout polling when reader gestures replace a floor', async () => {
+    const { container, anchors } = conversation(1)
+    const measure = vi
+      .spyOn(container.children[0], 'getBoundingClientRect')
+      .mockReturnValue({ top: 0, bottom: 100, height: 100 } as DOMRect)
+    anchors.steadyReader()
+    measure.mockClear()
+    await advance(64)
+    const baseline = measure.mock.calls.length
+    for (let i = 0; i < 20; i++) {
+      anchors.releaseReader()
+      anchors.steadyReader()
+    }
+    measure.mockClear()
+    await advance(64)
+    expect(measure.mock.calls.length).toBeLessThanOrEqual(baseline + 2)
+  })
+  it('anchors a viewport containing only folded tool runs', async () => {
+    const { container, anchors } = conversation(1)
+    const run = container.children[0] as HTMLElement
+    run.className = 'abele-chat-run is-collapsed'
+    run.getBoundingClientRect = () => ({ top: 0, bottom: 100 }) as DOMRect
+    anchors.captureAnchor()
+    expect(anchors.anchor?.el).toBe(run)
+    anchors.steadyReader()
+    await advance(60)
+    expect(container.classList.contains(FLOOR)).toBe(true)
+  })
+  it('keeps a later page hold when an earlier hold reaches its deadline', async () => {
+    const { container, anchors } = conversation(2)
+    anchors.anchor = { el: container.children[0] as HTMLElement, offset: 0 }
+    anchors.holdAnchorAWhile(container)
+    await advance(1000)
+    const later = { el: container.children[1] as HTMLElement, offset: 0 }
+    anchors.anchor = later
+    anchors.holdAnchorAWhile(container)
+    await advance(600)
+    expect(anchors.anchor).toBe(later)
+  })
+
   it('is let go at once when the conversation holds no messages', async () => {
     const { container, anchors } = conversation(0)
     anchors.steadyReader()
