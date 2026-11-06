@@ -184,6 +184,12 @@ export class TokenItemSets implements ShareSetSource {
     return record?.scope?.kind === 'folder' && record.scope.path === '/'
   }
   private progressState(record?: TokenConnectionRecord): ConnectionItem['state'] {
+    if (record?.paused && record.status !== 'paused') {
+      const error = this.ui.activity.value[record.id]?.error
+      return error
+        ? { kind: 'error', reason: error }
+        : { kind: 'syncing', completed: 0, total: 0, totalKnown: false }
+    }
     return record && connectionBusy(record, this.ui.activity.value[record.id])
       ? { kind: 'syncing', completed: 0, total: 0, totalKnown: false }
       : { kind: 'synced' }
@@ -199,7 +205,10 @@ export class TokenItemSets implements ShareSetSource {
           id: 'scope:' + id,
           kind: record.scope.kind,
           path: record.localRoot ?? record.scope.path,
-          state: record.paused ? { kind: 'paused' } : this.progressState(record),
+          state:
+            record.paused && record.status === 'paused'
+              ? { kind: 'paused' }
+              : this.progressState(record),
         },
         ...departed,
       ]
@@ -215,7 +224,7 @@ export class TokenItemSets implements ShareSetSource {
           ...this.counts.get(item.id),
           state: item.detached
             ? { kind: 'detached' }
-            : item.paused
+            : item.paused && (!row || row.status === 'paused')
               ? { kind: 'paused' }
               : row?.rootIssue?.kind === 'server-renamed'
                 ? { kind: 'moved', to: row.rootIssue.to }

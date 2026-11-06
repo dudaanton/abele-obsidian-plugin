@@ -36,6 +36,150 @@ import { deferred } from '../helpers/deferred'
 import { PreparedUploads } from '@/sync/preparedUploads'
 import { AbeleError, ERROR_CODES } from '@abele/sync-sdk/protocol'
 import { RetainedShareCopies } from '@/sync/retainedShareCopies'
+import { DirectEntryDurability } from '@/sync/directEntryDurability'
+
+it('bounds a stuck pause waiter without releasing the engine slot or acknowledging paused', async () => {
+  const wire = await server('Notes/sample.md', '')
+  const entered = deferred<void>(),
+    release = deferred<void>()
+  const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+    settleDurability: () => release.promise,
+  })
+  vi.useFakeTimers()
+  const mutation = one.runtime.engine.runExclusive(async () => {
+    entered.resolve()
+    await release.promise
+  })
+  try {
+    await entered.promise
+    const pause = one.runtime.pause(true)
+    const refused = expect(pause).rejects.toMatchObject({ code: 'offline', retryable: true })
+    await vi.advanceTimersByTimeAsync(1999)
+    await refused
+    expect(one.runtime.statusWithQuiet().state).not.toBe('paused')
+    let nextStarted = false
+    const next = one.runtime.engine.runExclusive(async () => {
+      nextStarted = true
+    })
+    await Promise.resolve()
+    expect(nextStarted).toBe(false)
+    release.resolve()
+    await mutation
+    await next
+    expect(nextStarted).toBe(true)
+    await one.runtime.pause(true)
+    expect(one.runtime.statusWithQuiet().state).toBe('paused')
+  } finally {
+    release.resolve()
+    await mutation
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
+it('acknowledges pause only after queued directory durability and its yielded ancestors finish', async () => {
+  const wire = await server('Notes/sample.md', '')
+  const durability = new DirectEntryDurability()
+  const entered = deferred<void>(),
+    release = deferred<void>()
+  const statuses: string[] = []
+  const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+    settleDurability: () => durability.settled(),
+    changed: (status) => statuses.push(status.state),
+  })
+  const paths = Array.from({ length: 32 }, (_, i) => `notes/folder-${i}/file.md`)
+  durability.resume(paths)
+  let acknowledged = false
+  const barriers = paths.map((path) =>
+    durability.flushAncestors(path, async () => {
+      expect(acknowledged).toBe(false)
+      entered.resolve()
+      await release.promise
+    })
+  )
+  try {
+    await entered.promise
+    const pause = one.runtime.pause(true).then(() => {
+      acknowledged = true
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(acknowledged).toBe(false)
+    expect(one.runtime.statusWithQuiet().state).not.toBe('paused')
+    expect(statuses).not.toContain('paused')
+    release.resolve()
+    await pause
+    await Promise.all(barriers)
+    expect(one.runtime.statusWithQuiet().state).toBe('paused')
+    expect(statuses.at(-1)).toBe('paused')
+  } finally {
+    release.resolve()
+    await Promise.allSettled(barriers)
+    await one.runtime.close()
+  }
+})
+
+it.each(['adapter', 'public operation'] as const)(
+  'joins an issued %s before it can enqueue its directory barriers during pause',
+  async (kind) => {
+    const ordinary = new ObsidianFileSystem(buildFakeVault([]))
+    const durability = new DirectEntryDurability()
+    const entered = deferred<void>(),
+      release = deferred<void>()
+    let acknowledged = false
+    const flushed: string[] = []
+    const write = async () => {
+      entered.resolve()
+      await release.promise
+      durability.resume(['notes/nested/sample.md'])
+      await durability.flushAncestors('notes/nested/sample.md', async (directory) => {
+        expect(acknowledged).toBe(false)
+        flushed.push(directory)
+      })
+    }
+    const mutation: Promise<void> =
+      kind === 'adapter'
+        ? Reflect.get(ordinary, 'withScanMutation').call(
+            ordinary,
+            ['notes/nested/sample.md'],
+            write
+          )
+        : (async () => {
+            const done: () => void = Reflect.get(ordinary, 'beginEngineMutation').call(ordinary, [
+              'notes/nested/sample.md',
+            ])
+            try {
+              await write()
+            } finally {
+              done()
+            }
+          })()
+    const wire = await server('Notes/sample.md', '')
+    const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+      settleDurability: async () => {
+        await ordinary.settleMutations()
+        await durability.settled()
+      },
+    })
+    try {
+      await entered.promise
+      const pause = one.runtime.pause(true).then(() => {
+        acknowledged = true
+      })
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(acknowledged).toBe(false)
+      release.resolve()
+      await pause
+      await mutation
+      expect(flushed).toEqual(['notes/nested', 'notes', ''])
+    } finally {
+      release.resolve()
+      await mutation
+      await one.runtime.close()
+    }
+  }
+)
 
 it('uses the native borrowed cohort for departure notification while keeping shared bytes in place', async () => {
   const wire = await server('Notes/sample.md', 'kept shared bytes')

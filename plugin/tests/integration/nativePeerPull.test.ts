@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { TFolder, type App } from 'obsidian'
 import { IDBFactory } from 'fake-indexeddb'
-import { pull, ExpectedWrites, sha256 } from '@abele/sync-sdk/core'
+import { pull, ExpectedWrites, sha256, type FileSystem } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { HostSyncStorage } from '@/sync/hostSyncStorage'
@@ -70,6 +70,7 @@ for (const fault of [
   'install-fingerprint-invalidated',
   'second-ledger-abort',
   'acknowledgement-reads',
+  'acknowledgement-parent-race',
 ] as const)
   it(
     `bounds native peer installation persistence and retained payloads by a batch (${fault})`,
@@ -95,7 +96,7 @@ for (const fault of [
           : 2048
         : fault.startsWith('install-fingerprint-single')
           ? 1
-          : fault === 'acknowledgement-reads'
+          : fault === 'acknowledgement-reads' || fault === 'acknowledgement-parent-race'
             ? 32
             : fault === 'batch-tail'
               ? 65
@@ -319,6 +320,7 @@ for (const fault of [
           storage: host,
           ledger: state,
           ...(fault === 'acknowledgement-reads' ||
+          fault === 'acknowledgement-parent-race' ||
           fault === 'directory-interruption' ||
           fault === 'path-candidates'
             ? { prepareStartupInventory: async () => {} }
@@ -351,6 +353,55 @@ for (const fault of [
             : {}),
         })
       let files = makeFiles()
+      if (fault === 'acknowledgement-parent-race') {
+        const candidates = files.trustedPathCandidates!
+        let creating: Promise<void> | undefined
+        let placing = false
+        const install = Symbol.for('abele.sync.install-batch-v1')
+        const batch = Reflect.get(files, install).bind(files)
+        Object.defineProperty(files, install, {
+          configurable: true,
+          value: (
+            items: unknown,
+            work: (fs: FileSystem, flush: () => Promise<void>) => Promise<unknown>
+          ) =>
+            batch(items, async (fs: FileSystem, flush: () => Promise<void>) => {
+              placing = true
+              try {
+                return await work(fs, flush)
+              } finally {
+                placing = false
+              }
+            }),
+        })
+        Object.defineProperty(files, 'trustedPathCandidates', {
+          configurable: true,
+          value: {
+            lookup: async (directory: string, name: string) => {
+              const rows = await candidates.lookup(directory, name)
+              if (
+                placing &&
+                directory === '' &&
+                name === 'Notes' &&
+                rows?.length === 0 &&
+                !creating
+              ) {
+                // A sibling placement creates the shared parent after this lookup
+                // captured its absence, before the resolver's live validation.
+                creating = Reflect.get(files, 'makeParents').call(
+                  files,
+                  'Notes/Section 0/Sample 0.bin'
+                )
+              }
+              return rows
+            },
+            lstat: async (path: string) => {
+              if (path === 'Notes') await creating
+              return candidates.lstat(path)
+            },
+          },
+        })
+      }
       state.observeCommittedEntries((entries) => files.acknowledgeWrites(entries))
       let directoryCalls = 0,
         directoryItems = 0,
@@ -617,7 +668,9 @@ for (const fault of [
         // Indexed hosts run pull inside the engine's inventory pass, including
         // publication proofs for parents that the host has not indexed yet.
         const run = () =>
-          directoryCase || fault === 'acknowledgement-reads'
+          directoryCase ||
+          fault === 'acknowledgement-reads' ||
+          fault === 'acknowledgement-parent-race'
             ? Reflect.get(files, Symbol.for('abele.sync.inventory-pass-v1')).call(
                 files,
                 async () => {
@@ -1130,7 +1183,7 @@ for (const fault of [
           expect(directoryCalls).toBeLessThanOrEqual(4)
           expect(directoryItems).toBeLessThanOrEqual(count * 4)
         }
-        if (fault === 'acknowledgement-reads')
+        if (fault === 'acknowledgement-reads' || fault === 'acknowledgement-parent-race')
           expect(contentReads, 'pull acknowledgement must reuse installed transfer bytes').toBe(0)
         if (count >= 33000) {
           await collectHeap()

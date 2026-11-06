@@ -89,6 +89,46 @@ for (const kind of ['file', 'symlink', 'directory'] as const)
     }
   })
 
+it.each(['file', 'symlink', 'directory'] as const)(
+  'still refuses a replaced indexed parent while the inventory revision changes (%s)',
+  async (kind) => {
+    const one = await fixture()
+    try {
+      await one.files[Symbol.for('abele.sync.inventory-pass-v1')](async () => {
+        await LocalPaths.forPath(one.files, 'Notes/Folder/K.md')
+        const candidates = one.files.trustedPathCandidates!
+        await disk.rename(join(one.root, 'Notes/Folder'), join(one.root, 'Retained'))
+        if (kind === 'file') await disk.writeFile(join(one.root, 'Notes/Folder'), 'sample')
+        else if (kind === 'symlink')
+          await disk.symlink(join(one.root, 'Retained'), join(one.root, 'Notes/Folder'))
+        else await disk.mkdir(join(one.root, 'Notes/Folder'))
+        let checks = 0
+        Object.defineProperty(one.files, 'trustedPathCandidates', {
+          configurable: true,
+          value: {
+            lookup: candidates.lookup,
+            lstat: async (path: string) => {
+              if (path === 'Notes/Folder') {
+                checks++
+                Reflect.get(one.files, 'recordInventoryChange').call(
+                  one.files, Reflect.get(one.files, 'inventory'), 'Other/sample.md'
+                )
+              }
+              return candidates.lstat(path)
+            },
+          },
+        })
+        await expect(LocalPaths.forPath(one.files, 'Notes/Folder/K.md')).rejects.toThrow()
+        expect(checks).toBeGreaterThan(0)
+        // A retry re-runs the same live checks; it never loops through interference.
+        expect(checks).toBeLessThanOrEqual(2)
+      })
+    } finally {
+      await one.close()
+    }
+  }
+)
+
 it('returns unsupported for unindexed and hidden parents, preserving fallback', async () => {
   const one = await fixture()
   try {

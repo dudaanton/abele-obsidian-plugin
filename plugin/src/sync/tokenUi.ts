@@ -1403,10 +1403,17 @@ export class TokenUi {
         if (!item.detached) await this.itemSets.pauseItem(id, item.id, paused)
       return
     }
-    this.registry.setPaused(id, paused)
+    // Save intent before affecting the engine; status acknowledges durability.
+    const runtime = this.runtimes.get(id)
+    this.registry.setPaused(id, paused, { settling: paused && !!runtime })
     await this.registry.flush()
     this.refresh()
-    await this.runtimes.get(id)?.pause(paused)
+    await runtime?.pause(paused)
+    if (paused && runtime) {
+      this.registry.setStatus(id, 'paused')
+      await this.registry.flush()
+      this.refresh()
+    }
     if (!paused) await this.resumeStartupStop(id)
   }
   async resumeStartupStop(id: string): Promise<void> {

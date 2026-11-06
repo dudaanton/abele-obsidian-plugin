@@ -9,6 +9,7 @@ import { connectionAdapter, connectionInspectionApp, connectionJournalApp } from
 import { connectionPrivateRoot, withinRoot } from './connectionPaths'
 import { vaultDisk, releaseVaultPathGuard } from './vaultPathLinks'
 import { NativeReadTimeout } from './nativeReadDeadline'
+import { directEntryDurability } from './directEntryDurability'
 import { Platform, type App, type EventRef } from 'obsidian'
 import { caseKey, ErrorCodeSchema } from '@abele/sync-sdk/protocol'
 import { retainedCopyCovered } from './retainedCopyCoverage'
@@ -1287,6 +1288,10 @@ export class TokenEngines {
           WebSocket: socketOf(this.deps),
           paths: { scriptsFolder: this.scriptsFolder, configRoots: [this.app.vault.configDir] },
           paused: current.paused,
+          settleDurability: async () => {
+            await ordinary.settleMutations()
+            await directEntryDurability(vaultDisk(this.app.vault)).settled()
+          },
           rootIssue: current.rootIssue,
           serverRoot: current.serverRoot,
           serverRootChanged: (path) => this.ui.registry.setServerRoot(record.id, path),

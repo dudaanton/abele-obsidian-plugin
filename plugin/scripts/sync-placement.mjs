@@ -822,6 +822,24 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
       } else if (file.endsWith('/localPaths.js')) {
         code = replaceOnce(
           code,
+          '    static async forPath(fs, path, state) {',
+          `    static async forPath(fs, path, state) {
+        // A sibling may create a parent between index absence and live lstat.
+        // Retry only a read-only collision against a changed host revision; all
+        // physical spelling and identity checks run again before any effect.
+        const revision = fs[Symbol.for('abele.sync.local-change-revision-v1')];
+        const before = revision?.call(fs);
+        try { return await LocalPaths.forPathOnce(fs, path, state); }
+        catch (error) {
+          if (!(error instanceof AbeleError) || error.code !== 'path_taken' ||
+              before === undefined || revision.call(fs) === before) throw error;
+          return LocalPaths.forPathOnce(fs, path, state);
+        }
+    }
+    static async forPathOnce(fs, path, state) {`
+        )
+        code = replaceOnce(
+          code,
           'const inventory = await LocalPaths.read(fs, state, opts);\n    await inventory.rememberDirectories(state, opts);',
           `const replayEntries = await additiveReplayEntries(fs, state, opts);
     const inventory = replayEntries === null ? await LocalPaths.read(fs, state, opts) : new LocalPaths();

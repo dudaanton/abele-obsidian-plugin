@@ -451,11 +451,12 @@ export class TokenConnectionRegistry {
       this.write(TOKEN_REGISTRY_KEY, doc)
     }
   }
-  setPaused(localId: string, paused: boolean): void {
+  setPaused(localId: string, paused: boolean, options?: { settling?: boolean }): void {
     const doc = this.document(),
       record = this.record(doc, localId)
     record.paused = paused
-    if (record.status === 'idle' || record.status === 'paused')
+    if (paused && options?.settling) record.status = 'syncing'
+    else if (record.status === 'idle' || record.status === 'paused')
       record.status = paused ? 'paused' : 'idle'
     this.write(TOKEN_REGISTRY_KEY, doc)
   }

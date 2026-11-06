@@ -78,6 +78,7 @@ import { LocalFolderPlacement, LocalPlacementError } from './localFolderPlacemen
 import { verifyFolderSet, type FolderEntries } from './verifyFolderSet'
 import { tokenScope } from './v2/client'
 import { RetainedShareCopies } from './retainedShareCopies'
+import { boundedNativeRead } from './nativeReadDeadline'
 import type { ConnectionItem } from './shareSets'
 import { UploadQuietPeriod } from './uploadQuietPeriod'
 import type { SyncStartupPhase } from './startupTimeline'
@@ -113,6 +114,8 @@ export interface TokenEngineOptions {
     selective: SelectiveSettings
   ): Promise<{ key: string; ignore: PathMatcher; localCandidates?: readonly string[] }>
   paused?: boolean
+  /** Wait for already-issued namespace barriers, including yielded ancestor chains. */
+  settleDurability?(): Promise<void>
   serverRoot?: string
   serverRootChanged?(path: string): void
   rootIssue?: ScopeRootIssue
@@ -254,6 +257,17 @@ export class TokenEngineRuntime
       ...(this.fatalFailure !== undefined && !this.userPaused
         ? { state: 'error' as const, lastError: connectionError(this.fatalFailure) }
         : {}),
+      ...(this.pausePending
+        ? { state: 'syncing' as const }
+        : this.pauseFailure !== undefined
+          ? {
+              state: 'offline' as const,
+              lastError:
+                this.pauseFailure instanceof Error
+                  ? this.pauseFailure.message
+                  : connectionError(this.pauseFailure),
+            }
+          : {}),
       pending: Math.max(status.pending, this.quiet.pending),
       ...(waitingFiles ? { waitingFiles, waiting: waitingFiles.length } : {}),
     }
@@ -2873,6 +2887,9 @@ export class TokenEngineRuntime
   }
   private fatalFailure: unknown
   private userPaused = false
+  private pausePending = false
+  private pauseFailure: unknown
+  private pauseDrain: Promise<void> | undefined
   private runFailure: unknown
   /** Inspect on host resume without retrying held decisions or bypassing upload pacing. */
   async inspect(watchGap = true): Promise<void> {
@@ -3190,9 +3207,31 @@ export class TokenEngineRuntime
   }
   async pause(paused: boolean): Promise<void> {
     this.assertHeld()
+    if (this.pauseDrain !== undefined) {
+      if (paused) return this.pauseDrain
+      await this.pauseDrain.catch(() => {})
+    }
     this.userPaused = paused
-    if (paused) this.pauseEngine()
-    else {
+    this.pauseFailure = undefined
+    if (paused) {
+      this.pausePending = true
+      this.pauseEngine()
+      // Cancellation stops producers. Join issued mutations and their barriers;
+      // an abandoned read or network probe must not hold up a durable pause.
+      const work = Promise.resolve().then(() => this.options.settleDurability?.())
+      const drain = boundedNativeRead(work, 'pause durability', undefined, undefined, false, 1500)
+      this.pauseDrain = drain
+      try {
+        await drain
+      } catch (error) {
+        this.pauseFailure = error
+        throw error
+      } finally {
+        this.pausePending = false
+        this.pauseDrain = undefined
+        this.options.changed(this.engine.status)
+      }
+    } else {
       this.renewIndexWait()
       this.fatalFailure = undefined
       this.runFailure = undefined

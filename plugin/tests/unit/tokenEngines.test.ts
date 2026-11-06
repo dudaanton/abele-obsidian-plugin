@@ -586,8 +586,115 @@ it.each(['folder', 'group'] as const)(
   }
 )
 import { deferred } from '../helpers/deferred'
+import { directEntryDurability } from '@/sync/directEntryDurability'
 
 afterEach(() => vi.restoreAllMocks())
+
+it('counts an issued native file flush before it can queue its ancestor barriers', async () => {
+  const root = await nativeFs.realpath(
+    await nativeFs.mkdtemp(join(tmpdir(), 'sample-pause-flush-'))
+  )
+  const app = buildFakeVault([])
+  const entered = deferred<void>(),
+    release = deferred<void>()
+  const synced: string[] = []
+  const port = {
+    ...nativeFs,
+    open: async (...args: Parameters<typeof nativeFs.open>) => {
+      const handle = await nativeFs.open(...args)
+      return new Proxy(handle, {
+        get(target, key) {
+          if (key === 'sync')
+            return async () => {
+              entered.resolve()
+              await release.promise
+              synced.push(String(args[0]))
+              await target.sync()
+            }
+          const value = Reflect.get(target, key, target)
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      })
+    },
+  }
+  desktopFsPort(port)
+  Object.assign(app.vault.adapter, {
+    fsPromises: port,
+    getFullPath: (path: string) => join(root, path),
+  })
+  await nativeFs.mkdir(join(root, 'notes'))
+  await nativeFs.writeFile(join(root, 'notes/sample.md'), 'sample')
+  const ordinary = new ObsidianFileSystem(app)
+  directEntryDurability(app.vault.adapter).resume(['notes/sample.md'])
+  const native = Reflect.get(ordinary, 'native') as { syncPath(path: string): Promise<void> }
+  const flushing = native.syncPath('notes/sample.md')
+  try {
+    await entered.promise
+    let acknowledged = false
+    const stop = ordinary.settleMutations().then(() => {
+      acknowledged = true
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(acknowledged).toBe(false)
+    release.resolve()
+    await stop
+    await flushing
+    expect(synced).toEqual([join(root, 'notes/sample.md'), join(root, 'notes'), root])
+  } finally {
+    release.resolve()
+    await flushing
+    await nativeFs.rm(root, { recursive: true, force: true })
+  }
+})
+
+it('joins the vault adapter directory barriers before publishing paused through the real host', async () => {
+  const f = inspectionFixture()
+  f.release()
+  const release = deferred<void>(),
+    entered = deferred<void>()
+  let acknowledged = false
+  let barriers: Promise<void>[] = []
+  const flushed: string[] = []
+  try {
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await f.ui.sync(id)
+    const durability = directEntryDurability(f.app.vault.adapter)
+    const paths = Array.from({ length: 32 }, (_, i) => `notes/folder-${i}/nested/file.md`)
+    durability.resume(paths)
+    barriers = paths.map((path) =>
+      durability.flushAncestors(path, async (directory) => {
+        expect(acknowledged).toBe(false)
+        entered.resolve()
+        await release.promise
+        flushed.push(directory)
+      })
+    )
+    await entered.promise
+    const pause = f.ui.pause(id, true).then(() => {
+      acknowledged = true
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(acknowledged).toBe(false)
+    expect(f.registry.records()[0].status).not.toBe('paused')
+    release.resolve()
+    await pause
+    await Promise.all(barriers)
+    expect(f.registry.records()[0].status).toBe('paused')
+    for (let i = 0; i < 32; i++) {
+      expect(flushed).toContain(`notes/folder-${i}/nested`)
+      expect(flushed).toContain(`notes/folder-${i}`)
+    }
+    expect(flushed).toContain('notes')
+    expect(flushed).toContain('')
+  } finally {
+    release.resolve()
+    await Promise.allSettled(barriers)
+    await f.host.close()
+  }
+})
 
 it('inspects kept copies through the host only after the live download is drained', async () => {
   const f = inspectionFixture(false, 'Notes')

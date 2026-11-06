@@ -16,6 +16,82 @@ import { deferred } from '../helpers/deferred'
 import { LocalPlacementError } from '@/sync/localFolderPlacement'
 import { tokenStatus } from '@/sync/tokenStatus'
 
+it.each([false, true])(
+  'persists pause without a drain when no runtime exists (enrolled=%s)',
+  async (enrolled) => {
+    const { ui, registry, data } = setup()
+    if (enrolled) await ui.connect(token)
+    else registry.add()
+    const id = registry.records()[0].id
+    expect(ui.runtimes.size).toBe(0)
+    await ui.pause(id, true)
+    expect(registry.records()[0].paused).toBe(true)
+    expect(registry.records()[0].status).toBe(enrolled ? 'paused' : 'needs-token')
+    const reopened = TokenConnectionRegistry.open({
+      loadLocalStorage: (key) => structuredClone(data.get(key) ?? null),
+      saveLocalStorage: (key, value) => {
+        data.set(key, structuredClone(value))
+      },
+    })
+    expect(reopened.records()[0].paused).toBe(true)
+    await ui.pause(id, false)
+    expect(registry.records()[0].paused).toBe(false)
+  }
+)
+
+it('does not publish a pause acknowledgement before the runtime durability drain', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  registry.setStatus(id, 'idle')
+  const release = deferred<void>(),
+    entered = deferred<void>()
+  ui.runtimes.set(id, {
+    pause: async () => {
+      entered.resolve()
+      await release.promise
+    },
+  } as never)
+  const pause = ui.pause(id, true)
+  try {
+    await entered.promise
+    // The durable intent admits the control action before it reaches the engine.
+    // Only the status acknowledges that already-issued disk work has stopped.
+    expect(registry.records()[0].paused).toBe(true)
+    expect(registry.records()[0].status).toBe('syncing')
+    expect(connectionStatusText(registry.records()[0])).toBe('Syncing')
+    release.resolve()
+    await pause
+    expect(registry.records()[0].paused).toBe(true)
+    expect(registry.records()[0].status).toBe('paused')
+  } finally {
+    release.resolve()
+    await pause
+  }
+})
+
+it('keeps item and scope rows syncing while a saved pause intent is not yet acknowledged', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  registry.setPaused(id, true)
+  registry.setStatus(id, 'syncing')
+  Reflect.get(ui.itemSets, 'departed').set(id, [
+    { id: 'kept', kind: 'file', path: 'notes/kept.md', state: { kind: 'detached' } },
+  ])
+  expect(ui.itemSets.items(id)?.[0].state.kind).toBe('syncing')
+  ui.itemSets.store.create(
+    id,
+    'Sample set',
+    [{ id: 'first', kind: 'folder', scopeId: 'sample-root', path: 'notes' }],
+    { first: id }
+  )
+  ui.itemSets.store.pause(id, 'first', true)
+  expect(ui.itemSets.items(id)?.find((item) => item.id === 'first')?.state.kind).toBe('syncing')
+  registry.setStatus(id, 'paused')
+  expect(ui.itemSets.items(id)?.find((item) => item.id === 'first')?.state.kind).toBe('paused')
+})
+
 it('explains a failed member on its idle connection leader and clears the explanation after recovery', async () => {
   const { ui, registry } = setup()
   await ui.connect(token)

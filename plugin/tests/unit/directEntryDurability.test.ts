@@ -1,6 +1,47 @@
 import { expect, it } from 'vitest'
-import { DirectEntryDurability } from '@/sync/directEntryDurability'
+import { DirectEntryDurability, directEntryDurability } from '@/sync/directEntryDurability'
 import { deferred } from '../helpers/deferred'
+
+it('adopts clean pre-reload durability facts without losing dirty entries or directory proofs', async () => {
+  const legacy = {
+    dirty: new Map([['notes', 3]]),
+    generation: 3,
+    flushing: new Map(),
+    directories: { children: new Map([['notes', { children: new Map() }]]) },
+  }
+  const host = { [Symbol.for('abele.sync.direct-entry-durability-v1')]: legacy }
+  const state = directEntryDurability(host)
+  expect(state.settled).toBeTypeOf('function')
+  expect(state.directoryKnown('notes')).toBe(true)
+  const flushed: string[] = []
+  await state.flushAncestors('notes/sample.md', async (path) => {
+    flushed.push(path)
+  })
+  await state.settled()
+  expect(flushed).toEqual(['notes'])
+  expect(directEntryDurability(host)).toBe(state)
+})
+
+it('keeps pre-reload work intact and refuses adoption until its old directory barriers settle', () => {
+  const legacy = {
+    dirty: new Map([['notes', 3]]),
+    generation: 3,
+    flushing: new Map([['notes', []]]),
+    directories: { children: new Map() },
+  }
+  const host = { [Symbol.for('abele.sync.direct-entry-durability-v1')]: legacy }
+  let failure: unknown
+  try {
+    directEntryDurability(host)
+  } catch (error) {
+    failure = error
+  }
+  expect(failure).toMatchObject({ code: 'offline', retryable: true })
+  expect(host[Symbol.for('abele.sync.direct-entry-durability-v1')]).toBe(legacy)
+  expect(legacy.dirty.get('notes')).toBe(3)
+  legacy.flushing.clear()
+  expect(directEntryDurability(host).settled).toBeTypeOf('function')
+})
 
 it('acknowledges only after direct entry changes are durable, deepest first, across every flush cut', async () => {
   for (let cut = 0; cut <= 3; cut++) {
@@ -99,4 +140,54 @@ it('retains parent existence across child writes, but invalidates moved ancestor
     flushed.push(path)
   })
   expect(flushed).toContain('moved/stages')
+})
+
+it('waits for every yielded ancestor chain before acknowledging a durability stop', async () => {
+  const dirty = new DirectEntryDurability()
+  const entered = deferred<void>(),
+    release = deferred<void>()
+  const paths = Array.from({ length: 32 }, (_, i) => `notes/folder-${i}/nested/file.md`)
+  dirty.resume(paths)
+  let acknowledged = false
+  const flushed: string[] = []
+  const writes = paths.map((path) =>
+    dirty.flushAncestors(path, async (directory) => {
+      expect(acknowledged, 'no barrier may start after the stop acknowledgement').toBe(false)
+      entered.resolve()
+      await release.promise
+      flushed.push(directory)
+    })
+  )
+  const stop = dirty.settled().then(() => {
+    acknowledged = true
+  })
+  await entered.promise
+  expect(acknowledged).toBe(false)
+  release.resolve()
+  await stop
+  await Promise.all(writes)
+  expect(acknowledged).toBe(true)
+  for (let i = 0; i < 32; i++) {
+    expect(flushed).toContain(`notes/folder-${i}/nested`)
+    expect(flushed).toContain(`notes/folder-${i}`)
+  }
+  expect(flushed).toContain('notes')
+  expect(flushed).toContain('')
+})
+
+it('refuses a stop after a failed barrier until that dirty directory is durably retried', async () => {
+  const dirty = new DirectEntryDurability()
+  dirty.changed('notes/sample.md')
+  await expect(
+    dirty.flushAncestors('notes/sample.md', async () => {
+      throw new Error('sample disk failure')
+    })
+  ).rejects.toThrow('sample disk failure')
+  await expect(dirty.settled()).rejects.toThrow('sample disk failure')
+  const retried: string[] = []
+  await dirty.flushAncestors('notes/sample.md', async (directory) => {
+    retried.push(directory)
+  })
+  await dirty.settled()
+  expect(retried).toEqual(['notes'])
 })

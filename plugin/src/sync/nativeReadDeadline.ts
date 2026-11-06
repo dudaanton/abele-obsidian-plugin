@@ -3,17 +3,17 @@ import { Notice } from 'obsidian'
 import { t } from '@/i18n'
 
 export const NATIVE_READ_DEADLINE_MS = 15000
-function nativeDeadline(expire: () => void): () => void {
+function nativeDeadline(expire: () => void, deadlineMs = NATIVE_READ_DEADLINE_MS): () => void {
   if (typeof window !== 'undefined') {
     const host = window
-    const timer = host.setTimeout(expire, NATIVE_READ_DEADLINE_MS)
+    const timer = host.setTimeout(expire, deadlineMs)
     return () => host.clearTimeout(timer)
   }
   // Portable adapters also run in clients without a DOM. Keep their read bounds
   // without turning a missing window into an apparent content mismatch.
   const start = setTimeout.bind(undefined)
   const cancel = clearTimeout.bind(undefined)
-  const timer = start(expire, NATIVE_READ_DEADLINE_MS)
+  const timer = start(expire, deadlineMs)
   return () => cancel(timer)
 }
 export class NativeReadTimeout extends EngineError {
@@ -39,7 +39,8 @@ export function boundedNativeRead<T>(
   operation: string,
   late?: (value: T) => Promise<void>,
   expiredOperation?: (error: NativeReadTimeout) => void,
-  uncertain = false
+  uncertain = false,
+  deadlineMs = NATIVE_READ_DEADLINE_MS
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     let expired = false
@@ -48,7 +49,7 @@ export function boundedNativeRead<T>(
       const error = new NativeReadTimeout(operation, uncertain)
       expiredOperation?.(error)
       reject(error)
-    })
+    }, deadlineMs)
     void work.then(
       (value) => {
         cancelTimer()

@@ -527,7 +527,7 @@ export class ObsidianFileSystem implements FileSystem {
           validate: (path) => this.validateConditionalPath(path),
           parents: (path) => this.makeParents(path),
           publish: async (from, to, signal) => {
-            const release = this.externalCoordination.beginEngineMutation([to])
+            const release = this.beginEngineMutation([to])
             try {
               await this.beforeEngineMutation?.([to])
               signal?.throwIfAborted()
@@ -1921,10 +1921,7 @@ export class ObsidianFileSystem implements FileSystem {
       (await this.io.canReplayStage())
     )
       return this.conditionalFile(operation)
-    const release = this.externalCoordination.beginEngineMutation([
-      operation.path,
-      operation.effect.to,
-    ])
+    const release = this.beginEngineMutation([operation.path, operation.effect.to])
     try {
       const info = await this.stat(operation.path)
       if (
@@ -1950,7 +1947,7 @@ export class ObsidianFileSystem implements FileSystem {
 
   async conditionalFile(operation: ConditionalFileOperation): Promise<boolean> {
     this.runtimeFence?.assertReady()
-    const release = this.externalCoordination.beginEngineMutation([
+    const release = this.beginEngineMutation([
       operation.path,
       ...(operation.effect.kind === 'move' ? [operation.effect.to] : []),
     ])
@@ -2137,7 +2134,10 @@ export class ObsidianFileSystem implements FileSystem {
   private nativeFor(disk: DataAdapter): NativeFs | null {
     const cached = this.nativePorts.get(disk)
     if (cached) return cached
-    const methods = new Map<PropertyKey, (...args: unknown[]) => unknown>()
+    const methods = new Map<
+      PropertyKey,
+      { source: unknown; wrapped: (...args: unknown[]) => unknown }
+    >()
     const raw = nativeOf(
       disk,
       (paths = [], mutation = true) => {
@@ -2163,19 +2163,22 @@ export class ObsidianFileSystem implements FileSystem {
               'restoreDirectoryExclusive',
               'archiveBackup',
               'rmdirEmpty',
+              'syncPath',
+              'syncFile',
             ].includes(String(key))
           )
             return value
-          let wrapped = methods.get(key)
-          if (!wrapped) {
-            wrapped = (...args: unknown[]) => {
-              const count = key === 'archiveBackup' || key === 'rmdirEmpty' ? 1 : 2
-              return this.withScanMutation(args.slice(0, count) as string[], () =>
-                value.apply(target, args)
-              )
-            }
-            methods.set(key, wrapped)
+          const cached = methods.get(key)
+          if (cached?.source === value) return cached.wrapped
+          const wrapped = (...args: unknown[]) => {
+            if (key === 'syncPath' || key === 'syncFile')
+              return this.trackMutation(Promise.resolve(value.apply(target, args)))
+            const count = key === 'archiveBackup' || key === 'rmdirEmpty' ? 1 : 2
+            return this.withScanMutation(args.slice(0, count) as string[], () =>
+              value.apply(target, args)
+            )
           }
+          methods.set(key, { source: value, wrapped })
           return wrapped
         },
       })
@@ -2209,6 +2212,40 @@ export class ObsidianFileSystem implements FileSystem {
     return this.guardedAdapter
   }
 
+  private readonly scanMutationWork = new Set<Promise<unknown>>()
+  private activeEngineMutations = 0
+  private readonly engineMutationStops = new Set<() => void>()
+  private beginEngineMutation(paths: readonly string[]): () => void {
+    const release = this.externalCoordination.beginEngineMutation(paths)
+    this.activeEngineMutations++
+    let active = true
+    return () => {
+      if (!active) return
+      active = false
+      release()
+      if (--this.activeEngineMutations === 0) {
+        for (const stop of this.engineMutationStops) stop()
+        this.engineMutationStops.clear()
+      }
+    }
+  }
+  /** Pause cancels new engine work first; safe reads need not settle here. */
+  async settleMutations(): Promise<void> {
+    while (this.scanMutationWork.size || this.activeEngineMutations) {
+      const pending = [...this.scanMutationWork]
+      if (this.activeEngineMutations)
+        pending.push(new Promise<void>((resolve) => this.engineMutationStops.add(resolve)))
+      await Promise.all(pending)
+    }
+  }
+  private trackMutation<T>(work: Promise<T>, settled?: () => void): Promise<T> {
+    const pending = work.finally(() => {
+      this.scanMutationWork.delete(pending)
+      settled?.()
+    })
+    this.scanMutationWork.add(pending)
+    return pending
+  }
   private withScanMutation<T>(paths: readonly string[], work: () => Promise<T>): Promise<T> {
     const visible = paths.some((path) => this.inventoryVisible(path) && this.withinFileScope(path))
     if (visible) this.scanWatchRevision++
@@ -2218,7 +2255,7 @@ export class ObsidianFileSystem implements FileSystem {
       if (visible) this.scanWatchRevision++
       for (const path of paths) this.noteWatchChange(path)
     }
-    return Promise.resolve(this.withScanCacheMutation(paths, work)).finally(settled)
+    return this.trackMutation(Promise.resolve(this.withScanCacheMutation(paths, work)), settled)
   }
   private withScanCacheMutation<T>(paths: readonly string[], work: () => Promise<T>): Promise<T> {
     const local = storageOf(this.app)
@@ -2247,6 +2284,7 @@ export class ObsidianFileSystem implements FileSystem {
       : undefined
     try {
       await makeParents(this.disk, path, known)
+      this.rememberAvailableParents(folderOf(path).replace(/^\/$/, ''))
     } catch (error) {
       known?.clear()
       throw error
@@ -2634,7 +2672,7 @@ export class ObsidianFileSystem implements FileSystem {
       async () => {
         this.listPhase('recovery: writer journal')
         // Recovery can touch journal-owned paths not known until its asynchronous inspection.
-        const release = this.externalCoordination.beginEngineMutation([''])
+        const release = this.beginEngineMutation([''])
         try {
           this.runtimeFence?.assertOwned()
           const publishedTargets = new Set<string>()
@@ -3920,7 +3958,7 @@ export class ObsidianFileSystem implements FileSystem {
       commit: (signal) =>
         exclusive(async () => {
           signal?.throwIfAborted()
-          const release = this.externalCoordination.beginEngineMutation([entry.target])
+          const release = this.beginEngineMutation([entry.target])
           try {
             await this.beforeEngineMutation?.([entry.target])
             signal?.throwIfAborted()
@@ -4139,7 +4177,7 @@ export class ObsidianFileSystem implements FileSystem {
   async writeAtomic(path: string, bytes: Uint8Array, mtime: number): Promise<void> {
     this.runtimeFence?.assertReady()
     this.writtenStat = null
-    const release = this.externalCoordination.beginEngineMutation([path])
+    const release = this.beginEngineMutation([path])
     try {
       await this.writeUnreserved(path, bytes, mtime)
       // Record only a successful publication. A later local edit must differ from this
@@ -4220,6 +4258,47 @@ export class ObsidianFileSystem implements FileSystem {
       throw new EngineError('conflict', 'File changed before removal')
   }
 
+  /** Successful guarded creation proves membership, not a durable birth identity. */
+  private rememberAvailableParents(parent: string): void {
+    const inventory = this.inventory
+    if (!inventory) return
+    inventory.publishedParents ??= new Set()
+    const parts = parent.split('/')
+    for (let length = 1; length <= parts.length; length++) {
+      const prefix = parts.slice(0, length).join('/')
+      if (
+        !prefix ||
+        !this.inventoryVisible(prefix) ||
+        !this.withinFileScope(prefix) ||
+        inventory.publishedParents.has(prefix)
+      )
+        continue
+      inventory.publishedParents.add(prefix)
+      const containing = folderOf(prefix).replace(/^\/$/, '')
+      inventory.directoryChanges.set(this.pathKey(containing), ++inventory.localRevision)
+      inventory.indexedChildren.delete(containing)
+      const listing = inventory.listings.get(containing)
+      if (listing !== undefined)
+        inventory.listings.set(
+          containing,
+          listing.then((before) => ({
+            files: before.files,
+            folders: [...new Set([...before.folders, prefix])],
+          }))
+        )
+      const children = inventory.children.get(containing)
+      if (children !== undefined)
+        inventory.children.set(
+          containing,
+          children.then((before) =>
+            before.some((one) => one.path === prefix)
+              ? before
+              : [...before, { path: prefix, kind: 'directory' as const }]
+          )
+        )
+    }
+  }
+
   /** Tell the host what the engine changed on disk (`onEngineWrite`). */
   private wrote(paths: readonly string[], known?: 'file' | null): void {
     if (paths.some((path) => this.inventoryVisible(path) && this.withinFileScope(path)))
@@ -4229,38 +4308,7 @@ export class ObsidianFileSystem implements FileSystem {
     for (const path of paths) {
       const parent = known === 'file' ? folderOf(path).replace(/^\/$/, '') : path
       if (known === 'file' && this.inventory) {
-        // Publication proves these parents exist. Expose membership immediately, but batch
-        // their durable birth/identity reads before directory inventory is consumed again.
-        const inventory = this.inventory
-        inventory.publishedParents ??= new Set()
-        const parts = parent.split('/')
-        for (let length = 1; length <= parts.length; length++) {
-          const prefix = parts.slice(0, length).join('/')
-          if (!prefix || !this.withinFileScope(prefix) || inventory.publishedParents.has(prefix))
-            continue
-          inventory.publishedParents.add(prefix)
-          const containing = folderOf(prefix).replace(/^\/$/, '')
-          inventory.indexedChildren.delete(containing)
-          const listing = inventory.listings.get(containing)
-          if (listing !== undefined)
-            inventory.listings.set(
-              containing,
-              listing.then((before) => ({
-                files: before.files,
-                folders: [...new Set([...before.folders, prefix])],
-              }))
-            )
-          const children = inventory.children.get(containing)
-          if (children !== undefined)
-            inventory.children.set(
-              containing,
-              children.then((before) =>
-                before.some((one) => one.path === prefix)
-                  ? before
-                  : [...before, { path: prefix, kind: 'directory' as const }]
-              )
-            )
-        }
+        this.rememberAvailableParents(parent)
       } else {
         void this.rememberInventoryParents(parent).catch((error) =>
           console.debug('[abele-sync] inventory update failed', error)
