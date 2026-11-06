@@ -5,9 +5,11 @@
  * a floor there only scrolls its greeting out of sight: it is let go at once.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defineComponent, h, ref } from 'vue'
+import { defineComponent, h, nextTick, ref } from 'vue'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { useChatScrollAnchors } from '@/composables/useChatScrollAnchors'
+import { useChatScroll } from '@/composables/useChatScroll'
+import type { ChatMessage } from '@/ai/types'
 import { useFakeClock } from '../helpers/fakeClock'
 import { useVault } from '../helpers/testEnv'
 
@@ -22,6 +24,7 @@ afterEach(() => {
   wrapper?.unmount()
   wrapper = undefined
   document.body.replaceChildren()
+  vi.unstubAllGlobals()
 })
 
 /** A conversation box, as tall as it was before the change, holding the messages given. */
@@ -53,6 +56,118 @@ function conversation(messages: number) {
 }
 
 describe('the floor under a changing conversation', () => {
+  it('keeps the complete mutation-observer path free of reads after its first write', async () => {
+    let mutated!: () => void
+    vi.stubGlobal(
+      'MutationObserver',
+      class {
+        constructor(callback: () => void) {
+          mutated = callback
+        }
+        observe() {}
+        disconnect() {}
+      }
+    )
+    const container = document.createElement('div')
+    const message = document.createElement('div')
+    message.className = 'abele-chat-msg'
+    container.append(message)
+    document.body.append(container)
+    let top = 900
+    let documentTop = 1000
+    const events: string[] = []
+    Object.defineProperties(container, {
+      scrollTop: {
+        get: () => {
+          events.push('read scroll')
+          return top
+        },
+        set: (value: number) => {
+          events.push('write scroll')
+          top = value
+        },
+      },
+      scrollHeight: {
+        get: () => {
+          events.push('read range')
+          return 1600
+        },
+      },
+      clientHeight: {
+        get: () => {
+          events.push('read height')
+          return 400
+        },
+      },
+    })
+    container.getBoundingClientRect = () => {
+      events.push('read box')
+      return { top: 0 } as DOMRect
+    }
+    message.getBoundingClientRect = () => {
+      events.push('read anchor')
+      return { top: documentTop - top, bottom: documentTop + 100 - top } as DOMRect
+    }
+    let scroll!: ReturnType<typeof useChatScroll>
+    wrapper = mount(
+      defineComponent({
+        setup() {
+          scroll = useChatScroll({
+            messagesContainer: ref(container),
+            messages: ref(
+              Array.from({ length: 100 }, (_, i) => ({ id: `sample-${i}` })) as ChatMessage[]
+            ),
+            streamingContent: ref(''),
+            streamingThinking: ref(''),
+            isStreaming: ref(false),
+            composing: ref(false),
+          })
+          return () => h('div')
+        },
+      })
+    )
+    scroll.shouldAutoScroll = false
+    scroll.loadOlder()
+    await nextTick()
+    documentTop = 600
+    const remove = container.classList.remove.bind(container.classList)
+    vi.spyOn(container.classList, 'remove').mockImplementation((...names) => {
+      events.push('write class')
+      remove(...names)
+    })
+    events.length = 0
+    mutated()
+    expect(top).toBe(500)
+    const firstWrite = events.findIndex((event) => event.startsWith('write'))
+    expect(firstWrite).toBeGreaterThan(0)
+    expect(events.slice(firstWrite).every((event) => event.startsWith('write'))).toBe(true)
+    expect(events.filter((event) => event === 'read range')).toHaveLength(1)
+    expect(events.filter((event) => event === 'write scroll')).toHaveLength(1)
+  })
+
+  it('cancels the losing frame fallback instead of retaining its callback until timeout', async () => {
+    const { container, anchors } = conversation(0)
+    const before = vi.getTimerCount()
+    const run = vi.fn()
+    anchors.nextFrame(container.win, run)
+    await advance(17)
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(before)
+  })
+
+  it('does not reuse container geometry across layout passes', () => {
+    const { container, anchors } = conversation(1)
+    const message = container.children[0] as HTMLElement
+    let boxTop = 20
+    container.getBoundingClientRect = () => ({ top: boxTop }) as DOMRect
+    message.getBoundingClientRect = () => ({ top: boxTop + 40, bottom: boxTop + 80 }) as DOMRect
+    anchors.anchor = { el: message, offset: 40 }
+    anchors.holdLayout()
+    boxTop += 100
+    anchors.holdLayout()
+    expect(container.scrollTop).toBe(0)
+  })
+
   it('preserves native movement occurring between a page capture and layout correction', () => {
     const { container, anchors } = conversation(1)
     const message = container.children[0] as HTMLElement
@@ -95,6 +210,90 @@ describe('the floor under a changing conversation', () => {
     limit = 600
     anchors.holdAnchor()
     expect(container.scrollTop).toBe(500)
+  })
+
+  it('reads the gap and anchor before correcting scroll and releasing the floor', () => {
+    const { container, anchors } = conversation(30)
+    let top = 900
+    let documentTop = 1000
+    let limit = 1200
+    const events: string[] = []
+    Object.defineProperties(container, {
+      scrollTop: {
+        get: () => {
+          events.push('read scroll')
+          return (top = Math.min(top, container.classList.contains(FLOOR) ? 1200 : limit))
+        },
+        set: (value: number) => {
+          events.push('write scroll')
+          top = Math.min(value, container.classList.contains(FLOOR) ? 1200 : limit)
+        },
+      },
+      clientHeight: {
+        get: () => {
+          events.push('read height')
+          return 400
+        },
+      },
+      scrollHeight: {
+        configurable: true,
+        get: () => {
+          events.push('read range')
+          return 1600
+        },
+      },
+    })
+    const bounds = vi.spyOn(container, 'getBoundingClientRect').mockImplementation(() => {
+      events.push('read box')
+      return { top: 20 } as DOMRect
+    })
+    const message = container.children[0]
+    const measure = vi.spyOn(message, 'getBoundingClientRect').mockImplementation(() => {
+      events.push('read anchor')
+      return { top: 20 + documentTop - top, bottom: 120 + documentTop - top } as DOMRect
+    })
+    const other = vi.spyOn(container.children[1], 'getBoundingClientRect')
+    anchors.captureAnchor()
+    // Releasing the floor before applying -400 would clamp 900 to 600 and
+    // lose another 300 pixels of the reading position during page eviction.
+    documentTop = 600
+    limit = 600
+    events.length = 0
+    measure.mockClear()
+    bounds.mockClear()
+    const remove = container.classList.remove.bind(container.classList)
+    vi.spyOn(container.classList, 'remove').mockImplementation((...names) => {
+      events.push('write class')
+      remove(...names)
+    })
+    let gap = 0
+    anchors.holdLayout((geometry) => {
+      events.push('read gap')
+      gap = geometry.scrollHeight - geometry.scrollTop - geometry.clientHeight
+    })
+    expect(top).toBe(500)
+    expect(gap).toBe(700)
+    expect(container.classList.contains(FLOOR)).toBe(false)
+    const firstWrite = events.findIndex((event) => event.startsWith('write'))
+    expect(firstWrite).toBeGreaterThan(0)
+    expect(events.slice(firstWrite).every((event) => event.startsWith('write'))).toBe(true)
+    expect(events.filter((event) => event === 'write scroll')).toHaveLength(1)
+    expect(events.filter((event) => event === 'read range')).toHaveLength(1)
+    expect(events.filter((event) => event === 'read height')).toHaveLength(1)
+    expect(measure).toHaveBeenCalledTimes(1)
+    expect(bounds).toHaveBeenCalledTimes(1)
+    expect(other).not.toHaveBeenCalled()
+  })
+
+  it('measures an anchor without a saved document position only once', () => {
+    const { container, anchors } = conversation(1)
+    const message = container.children[0] as HTMLElement
+    const measure = vi
+      .spyOn(message, 'getBoundingClientRect')
+      .mockReturnValue({ top: 40, bottom: 80 } as DOMRect)
+    anchors.anchor = { el: message, offset: 40 }
+    anchors.holdAnchor()
+    expect(measure).toHaveBeenCalledTimes(1)
   })
 
   it('does not invalidate styles when a held anchor has already released its floor', () => {

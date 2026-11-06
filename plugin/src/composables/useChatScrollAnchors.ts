@@ -4,9 +4,20 @@ import { onUnmounted, type Ref } from 'vue'
 export const offsetOf = (el: HTMLElement, container: HTMLElement) =>
   el.getBoundingClientRect().top - container.getBoundingClientRect().top
 
+export interface ChatScrollGeometry {
+  scrollTop: number
+  scrollHeight: number
+  clientHeight: number
+}
+
 interface ChatScrollAnchorsOptions {
   messagesContainer: Ref<HTMLElement | null>
-  scrollContainerTo: (el: HTMLElement, top: number, reason: string) => void
+  scrollContainerTo: (
+    el: HTMLElement,
+    top: number,
+    reason: string,
+    measured?: ChatScrollGeometry
+  ) => void
   shouldAutoScroll: () => boolean
   isStreaming?: () => boolean
 }
@@ -28,41 +39,52 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
   /** Takes the topmost rendered message as the anchor: the page is revealed above it. */
   const captureAnchor = () => {
     const container = messagesContainer.value
-    const top = container?.getBoundingClientRect().top ?? 0
-    const first =
-      Array.from(
-        container?.querySelectorAll<HTMLElement>('.abele-chat-msg, .abele-chat-run.is-collapsed') ??
-          []
-      ).find((el) => el.getBoundingClientRect().bottom > top) ??
-      container?.querySelector<HTMLElement>('.abele-chat-msg, .abele-chat-run.is-collapsed')
-    anchor = container && first ? { el: first, offset: offsetOf(first, container) } : null
+    if (!container) {
+      anchor = null
+      return
+    }
+    const top = container.getBoundingClientRect().top
+    anchor = null
+    for (const el of container.querySelectorAll<HTMLElement>(
+      '.abele-chat-msg, .abele-chat-run.is-collapsed'
+    )) {
+      const rect = el.getBoundingClientRect()
+      const candidate = { el, offset: rect.top - top }
+      anchor ??= candidate
+      if (rect.bottom > top) {
+        anchor = candidate
+        break
+      }
+    }
     if (container && anchor) {
       anchor.at = anchor.offset + container.scrollTop
+      const height = container.scrollHeight
       container.classList.add('abele-ai-chat__messages_steady')
-      holdFloor(container)
+      holdFloor(container, height)
     }
   }
 
   /** Puts the anchor back where it was, whatever has grown around it since. */
-  const holdAnchor = () => {
-    const container = messagesContainer.value
-    if (!container || !anchor) return
+  const measureAnchor = (layout: Layout) => {
+    if (!anchor) return
     if (!anchor.el.isConnected) {
       anchor = null
-      if (!steady) container.classList.remove('abele-ai-chat__messages_steady')
-      releaseFloor(container)
+      layout.releaseFloor = true
+      layout.clearClass = !steady
       return
     }
 
     // Compensate layout alone. Compositor movement since capture is reader input,
     // and must survive a page swap even before its scroll event reaches the listener.
-    const at = offsetOf(anchor.el, container) + container.scrollTop
-    const drift =
-      anchor.at === undefined ? offsetOf(anchor.el, container) - anchor.offset : at - anchor.at
+    const offset = layout.offset(anchor.el)
+    const at = offset + layout.before.scrollTop
+    const drift = anchor.at === undefined ? offset - anchor.offset : at - anchor.at
     anchor.at = at
-    if (Math.abs(drift) >= 1)
-      scrollContainerTo(container, container.scrollTop + drift, 'message-anchor')
-    releaseFloor(container)
+    if (Math.abs(drift) >= 1) layout.correct(drift, 'message-anchor')
+    layout.releaseFloor = true
+  }
+  const holdAnchor = () => {
+    if (anchor) holdLayout(undefined, 'anchor')
   }
 
   /**
@@ -75,6 +97,8 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     const once = () => {
       if (done) return
       done = true
+      win.cancelAnimationFrame(frame)
+      win.clearTimeout(timer)
       pendingFrames.delete(cancel)
       run()
     }
@@ -231,10 +255,6 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     return null
   }
 
-  /** Where an element sits in the conversation, whatever the scroll. */
-  const placeOf = (el: HTMLElement, container: HTMLElement) =>
-    offsetOf(el, container) + container.scrollTop
-
   /** The block at the top of the box: the first of a message's rendered blocks still in view. */
   const blockAtTop = (container: HTMLElement): HTMLElement | null => {
     const top = container.getBoundingClientRect().top
@@ -265,11 +285,15 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
   }
 
   /** Takes back out of the scroll whatever moved the block since it was last looked at. */
-  const holdSteady = () => {
-    const container = messagesContainer.value
-    if (!container || !steady) return
+  const measureSteady = (container: HTMLElement, layout: Layout) => {
+    if (!steady) return
+    const end = () => {
+      console.debug('[chat-scroll] release reading anchor', { scrollTop: layout.before.scrollTop })
+      steady = null
+      layout.clearClass = !anchor
+    }
     if (options.shouldAutoScroll()) {
-      endSteady(container)
+      end()
       return
     }
     if (options.isStreaming?.() && !options.shouldAutoScroll())
@@ -279,7 +303,7 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
         expired: true,
         streaming: options.isStreaming?.(),
       })
-      endSteady(container)
+      end()
       return
     }
     if (!container.contains(steady.el) || !steady.el.getClientRects().length) {
@@ -296,17 +320,78 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
       steady.waiting = false
       console.debug('[chat-scroll] resolved reading block', {
         index: steady.key?.index,
-        offset: offsetOf(replacement, container),
+        offset: layout.offset(replacement),
         wantedOffset: steady.offset,
       })
     }
     const { el } = steady
     // Measure the remaining visual drift. Layout may already have moved scrollTop
     // (for example during a host transfer); document-space growth would correct it twice.
-    const moved = offsetOf(el, container) - steady.offset
+    const moved = layout.offset(el) - steady.offset
     // Another hold is putting the reader back already — a page revealed above them.
-    if (!anchor && Math.abs(moved) >= 1)
-      scrollContainerTo(container, container.scrollTop + moved, 'reading-block')
+    if (!anchor && Math.abs(moved) >= 1) layout.correct(moved, 'reading-block')
+  }
+  const holdSteady = () => {
+    if (steady) holdLayout(undefined, 'steady')
+  }
+
+  interface Layout {
+    before: ChatScrollGeometry
+    offset: (el: HTMLElement) => number
+    correct: (delta: number, reason: string) => void
+    releaseFloor: boolean
+    clearClass: boolean
+  }
+
+  /** Read the anchor and range together, then correct scroll before dropping its floor.
+   * The consumer uses the predicted position for its gap; reading layout after removing
+   * the inherited floor style would force a second layout of the freshly mounted page.
+   * Rectangles live only for this pass: a resize or subsequent mutation gets fresh ones.
+   */
+  const holdLayout = (
+    afterMeasure?: (geometry: ChatScrollGeometry) => void,
+    mode: 'anchor' | 'steady' | 'both' = 'both'
+  ) => {
+    const container = messagesContainer.value
+    if (!container) return
+    const before: ChatScrollGeometry = {
+      scrollTop: container.scrollTop,
+      scrollHeight: container.scrollHeight,
+      clientHeight: container.clientHeight,
+    }
+    let top = before.scrollTop
+    let reason: string | undefined
+    let containerTop: number | undefined
+    let measuredElement: HTMLElement | undefined
+    let measuredOffset = 0
+    const layout: Layout = {
+      before,
+      offset(el) {
+        if (measuredElement !== el) {
+          containerTop ??= container.getBoundingClientRect().top
+          measuredOffset = el.getBoundingClientRect().top - containerTop
+          measuredElement = el
+        }
+        return measuredOffset
+      },
+      correct(delta, why) {
+        top = Math.max(
+          0,
+          Math.min(before.scrollTop + delta, before.scrollHeight - before.clientHeight)
+        )
+        reason = why
+      },
+      releaseFloor: false,
+      clearClass: false,
+    }
+    if (mode !== 'steady') measureAnchor(layout)
+    if (mode !== 'anchor') measureSteady(container, layout)
+    afterMeasure?.({ ...before, scrollTop: top })
+    // No geometry reads below this point. The floor must survive the scroll write:
+    // WebKit can clamp synchronously when a page is evicted.
+    if (reason) scrollContainerTo(container, top, reason, before)
+    if (layout.clearClass) container.classList.remove('abele-ai-chat__messages_steady')
+    if (layout.releaseFloor) releaseFloor(container)
   }
 
   /**
@@ -340,23 +425,32 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     const last = container.lastElementChild
     if (!last?.instanceOf(HTMLElement)) return 0
     const pad = parseFloat(container.win.getComputedStyle(container).paddingBottom) || 0
-    return placeOf(last, container) + last.getBoundingClientRect().height + pad
+    return (
+      last.getBoundingClientRect().bottom -
+      container.getBoundingClientRect().top +
+      container.scrollTop +
+      pad
+    )
   }
 
-  const holdFloor = (container: HTMLElement) => {
+  const holdFloor = (container: HTMLElement, height = container.scrollHeight) => {
     const win = container.win
     const fresh = !container.classList.contains(FLOOR_CLASS)
-    const floor = Math.max(
-      container.scrollHeight,
-      parseFloat(container.style.getPropertyValue(FLOOR_VAR)) || 0
-    )
-    container.style.setProperty(FLOOR_VAR, `${floor}px`)
-    container.classList.add(FLOOR_CLASS)
+    const floor = Math.max(height, parseFloat(container.style.getPropertyValue(FLOOR_VAR)) || 0)
+    if (container.style.getPropertyValue(FLOOR_VAR) !== `${floor}px`)
+      container.style.setProperty(FLOOR_VAR, `${floor}px`)
+    if (fresh) container.classList.add(FLOOR_CLASS)
     floorUntil = win.performance.now() + STEADY_MS
     if (!fresh) return
     const owner = ++floorOwner
     const check = () => {
       if (owner !== floorOwner || !container.classList.contains(FLOOR_CLASS)) return
+      // The page hold corrects scroll before releasing this floor. Do not let
+      // this earlier frame callback release it (and dirty layout) ahead of that hold.
+      if (anchor) {
+        nextFrame(win, check)
+        return
+      }
       const want = parseFloat(container.style.getPropertyValue(FLOOR_VAR)) || 0
       // A chat left with no messages (a new one, or another opened in its place) has nothing
       // to hold a place in, and its floor would only scroll its greeting out of sight.
@@ -379,13 +473,17 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     // Apply any layout still pending on the existing block before taking a new
     // measurement for a transition or reader scroll.
     holdSteady()
-    holdFloor(container)
     if (steady) {
+      holdFloor(container)
       steady.until = container.win.performance.now() + STEADY_MS
       return
     }
     const el = blockAtTop(container)
-    if (!el) return
+    const height = container.scrollHeight
+    if (!el) {
+      holdFloor(container, height)
+      return
+    }
     const win = container.win
     steady = {
       el,
@@ -401,6 +499,7 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
       scrollHeight: container.scrollHeight,
       clientHeight: container.clientHeight,
     })
+    holdFloor(container, height)
     container.classList.add('abele-ai-chat__messages_steady')
     const held = steady
     const hold = () => {
@@ -420,6 +519,7 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     },
     captureAnchor,
     holdAnchor,
+    holdLayout,
     holdAnchorAWhile,
     nextFrame,
     steadyReader,

@@ -1,7 +1,7 @@
 import { watch, nextTick, onUnmounted, type Ref } from 'vue'
 import type { ChatMessage } from '@/ai/types'
 import { useChatRenderWindow } from './useChatRenderWindow'
-import { offsetOf, useChatScrollAnchors } from './useChatScrollAnchors'
+import { offsetOf, useChatScrollAnchors, type ChatScrollGeometry } from './useChatScrollAnchors'
 
 export const AUTO_SCROLL_THRESHOLD_PX = 60
 // Integer layout metrics can put the native scroll limit one pixel below their end.
@@ -73,22 +73,32 @@ export function useChatScroll(options: ChatScrollOptions) {
   let bottomGap = 0
 
   /** Scrolls the container, remembering where the browser actually settled. */
-  const scrollContainerTo = (el: HTMLElement, top: number, reason: string) => {
-    const before = el.scrollTop
+  const scrollContainerTo = (
+    el: HTMLElement,
+    top: number,
+    reason: string,
+    measured?: ChatScrollGeometry
+  ) => {
+    const before = measured?.scrollTop ?? el.scrollTop
     el.scrollTop = top
-    codeScrollTop = el.scrollTop
-    observedScrollTop = el.scrollTop
-    bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
-    if (shouldAutoScroll) followedHeight = el.scrollHeight
-    if (Math.abs(el.scrollTop - before) >= 1)
+    // Anchor corrections already measured and clamped the target while the floor
+    // was present. Keep the write phase free of layout reads.
+    const after = measured ? top : el.scrollTop
+    const height = measured?.scrollHeight ?? el.scrollHeight
+    const clientHeight = measured?.clientHeight ?? el.clientHeight
+    codeScrollTop = after
+    observedScrollTop = after
+    bottomGap = height - after - clientHeight
+    if (shouldAutoScroll) followedHeight = height
+    if (Math.abs(after - before) >= 1)
       console.debug('[chat-scroll] correction', {
         reason,
-        delta: el.scrollTop - before,
+        delta: after - before,
         requestedDelta: top - before,
         before,
-        after: el.scrollTop,
-        scrollHeight: el.scrollHeight,
-        clientHeight: el.clientHeight,
+        after,
+        scrollHeight: height,
+        clientHeight,
         bottomGap,
         following: shouldAutoScroll,
         streaming: isStreaming.value,
@@ -142,8 +152,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     shouldAutoScroll: () => shouldAutoScroll,
     isStreaming: () => isStreaming.value,
   })
-  const { captureAnchor, holdAnchor, holdAnchorAWhile, steadyReader, holdSteady, endSteady } =
-    anchors
+  const { captureAnchor, holdAnchorAWhile, steadyReader, endSteady } = anchors
 
   /**
    * The reader taking over, told from their input rather than from a scroll event.
@@ -432,10 +441,11 @@ export function useChatScroll(options: ChatScrollOptions) {
       )
       if (el && target) {
         anchors.anchor = { el: target, offset: place.offset }
-        holdAnchor()
         // Measured here too: a place already in position is not scrolled to, and a keyboard
         // opening next would otherwise keep the distance to the end of the tab just left.
-        bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
+        anchors.holdLayout(({ scrollHeight, scrollTop, clientHeight }) => {
+          bottomGap = scrollHeight - scrollTop - clientHeight
+        })
         holdAnchorAWhile(el)
         return
       }
@@ -625,6 +635,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     const el = messagesContainer.value
     // Hidden under the opened composer: a box of nothing is not a change the reader made.
     if (!el || composing.value) return
+    let heldLayout = false
     if (el.clientHeight !== boxHeight) {
       console.debug('[chat-scroll] box resize', {
         before: boxHeight,
@@ -640,15 +651,19 @@ export function useChatScroll(options: ChatScrollOptions) {
       if (!shouldAutoScroll) {
         // A reply and the composer can change together. The old bottom gap excludes the
         // reply's new height; using it would scroll that height past the reader.
-        if (anchors.anchor) holdAnchor()
-        else if (anchors.keepingReader) holdSteady()
-        else scrollContainerTo(el, el.scrollHeight - el.clientHeight - bottomGap, 'box-resize-gap')
-        bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
+        if (anchors.anchor || anchors.keepingReader) {
+          anchors.holdLayout(keepGapCurrent)
+          heldLayout = true
+        } else {
+          scrollContainerTo(el, el.scrollHeight - el.clientHeight - bottomGap, 'box-resize-gap')
+          bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
+        }
       }
     }
     // A narrower box wraps the text longer; a reader at the end stays at the end.
     doScroll()
-    revealUntilScrollable()
+    if (heldLayout) scheduleReveal(el)
+    else revealUntilScrollable()
   }
 
   /**
@@ -659,11 +674,13 @@ export function useChatScroll(options: ChatScrollOptions) {
    * streamed in since they scrolled. Not while the box itself has changed and its observer has not
    * run yet: the distance from before the change is the one it is to keep.
    */
-  const keepGapCurrent = () => {
+  const keepGapCurrent = (measured?: ChatScrollGeometry) => {
     const el = messagesContainer.value
     if (!el || shouldAutoScroll || fingerDown) return
-    if (boxHeight !== null && el.clientHeight !== boxHeight) return
-    bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight
+    const height = measured?.clientHeight ?? el.clientHeight
+    if (boxHeight !== null && height !== boxHeight) return
+    bottomGap =
+      (measured?.scrollHeight ?? el.scrollHeight) - (measured?.scrollTop ?? el.scrollTop) - height
   }
 
   const observe = (el: HTMLElement) => {
@@ -673,11 +690,11 @@ export function useChatScroll(options: ChatScrollOptions) {
       observeMessageSizes(el)
       // A message that has just rendered its markdown changes the subtree and the layout
       // with it — which is exactly when the anchor needs putting back.
-      holdAnchor()
-      holdSteady()
-      keepGapCurrent()
+      anchors.holdLayout(keepGapCurrent)
       doScroll()
-      revealUntilScrollable()
+      // Floor removal is the last layout write above. Edge discovery belongs to
+      // the next frame, when the browser has laid out that write, not this microtask.
+      scheduleReveal(el)
     })
     mutObserver.observe(el, {
       childList: true,
@@ -704,6 +721,16 @@ export function useChatScroll(options: ChatScrollOptions) {
     anchors.nextFrame(el.win, revealUntilScrollable)
   }
 
+  let revealQueued = false
+  const scheduleReveal = (el: HTMLElement) => {
+    if (revealQueued) return
+    revealQueued = true
+    anchors.nextFrame(el.win, () => {
+      revealQueued = false
+      if (messagesContainer.value === el) revealUntilScrollable()
+    })
+  }
+
   const unobserve = () => {
     mutObserver?.disconnect()
     mutObserver = null
@@ -728,8 +755,9 @@ export function useChatScroll(options: ChatScrollOptions) {
     if (!box) return
     shouldAutoScroll = false
     anchors.anchor = { el, offset }
-    holdAnchor()
-    bottomGap = box.scrollHeight - box.scrollTop - box.clientHeight
+    anchors.holdLayout(({ scrollHeight, scrollTop, clientHeight }) => {
+      bottomGap = scrollHeight - scrollTop - clientHeight
+    })
     holdAnchorAWhile(box)
   }
 
