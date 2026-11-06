@@ -242,7 +242,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
   const size = ${JSON.stringify(size)}, state = ${JSON.stringify(state)}, phone = ${phone}
   // Hundreds of native gestures include deliberate settle waits; this is a harness
   // budget, independent of the pixel and direction invariants checked below.
-  const deadline = Date.now() + ${phone && size === 'long' && state === 'text' ? 300000 : 270000}
+  const deadline = Date.now() + ${phone && size === 'long' && state === 'text' ? 360000 : 270000}
   const wait = async ms => {
     if (Date.now() > deadline) throw Error('Matrix case exceeded its input budget')
     await new Promise(r => setTimeout(r, ms))

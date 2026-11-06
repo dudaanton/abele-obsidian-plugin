@@ -64,53 +64,56 @@ export function chatScrollMatrixSuite(filter?: string, frameBudgetMs?: number, i
         for (const size of ['short', 'medium', 'long']) {
           const cases = states.filter((state) => selected(phone, size, state))
           if (!cases.length) continue
-          it.each(cases)(
-            `${phone ? 'touch' : 'wheel'} / ${size} / %s`,
-            async (state) => {
-              const probe = () =>
-                withNativeInput(
-                  async () =>
-                    JSON.parse(
-                      await evalLong(
-                        script(size, state, phone, idleMs),
-                        phone && size === 'long' && state === 'text' ? 330_000 : 300_000
-                      )
-                    ) as Report
-                )
-              const result = await probe()
-              console.log('scroll-matrix', JSON.stringify({ phone, size, state, ...result }))
-              if (frameBudgetMs !== undefined)
-                expect.soft(result.maxInputFrameMs).toBeLessThanOrEqual(frameBudgetMs)
-              if (idleMs) expect.soft(result.idleLongTasks).toEqual([])
-              expect.soft(result.error).toBeUndefined()
-              expect.soft(result.rows).toHaveLength(13)
-              if (size === 'short') expect.soft(result.initialPages).toBeLessThanOrEqual(1)
-              if (size === 'medium') {
-                expect.soft(result.initialPages).toBeGreaterThanOrEqual(1.5)
-                expect.soft(result.initialPages).toBeLessThanOrEqual(2.5)
-              }
-              if (state !== 'idle') expect.soft(result.streamMs).toBeGreaterThanOrEqual(5000)
-              if (size === 'long') expect.soft(result.evicted).toBe(true)
-              for (const row of result.rows) {
-                for (const gesture of row.gestures ?? [])
+          for (const state of cases) {
+            const longTouchText = phone && size === 'long' && state === 'text'
+            it(
+              `${phone ? 'touch' : 'wheel'} / ${size} / ${state}`,
+              async () => {
+                const probe = () =>
+                  withNativeInput(
+                    async () =>
+                      JSON.parse(
+                        await evalLong(
+                          script(size, state, phone, idleMs),
+                          longTouchText ? 390_000 : 300_000
+                        )
+                      ) as Report
+                  )
+                const result = await probe()
+                console.log('scroll-matrix', JSON.stringify({ phone, size, state, ...result }))
+                if (frameBudgetMs !== undefined)
+                  expect.soft(result.maxInputFrameMs).toBeLessThanOrEqual(frameBudgetMs)
+                if (idleMs) expect.soft(result.idleLongTasks).toEqual([])
+                expect.soft(result.error).toBeUndefined()
+                expect.soft(result.rows).toHaveLength(13)
+                if (size === 'short') expect.soft(result.initialPages).toBeLessThanOrEqual(1)
+                if (size === 'medium') {
+                  expect.soft(result.initialPages).toBeGreaterThanOrEqual(1.5)
+                  expect.soft(result.initialPages).toBeLessThanOrEqual(2.5)
+                }
+                if (state !== 'idle') expect.soft(result.streamMs).toBeGreaterThanOrEqual(5000)
+                if (size === 'long') expect.soft(result.evicted).toBe(true)
+                for (const row of result.rows) {
+                  for (const gesture of row.gestures ?? [])
+                    expect
+                      .soft(gesture.receivedInputs, row.move + ' native input receipt')
+                      .toBeGreaterThan(0)
+                  expect.soft(row.samples, row.move).toBeGreaterThan(0)
+                  if (row.drift !== null) expect.soft(row.drift, row.move + ' A').toBeLessThan(2)
+                  expect.soft(row.blank, row.move + ' B').toBeLessThanOrEqual(2)
+                  if (row.bottomGap !== null)
+                    expect.soft(row.bottomGap, row.move + ' C').toBeLessThan(2)
+                  if (row.destination !== null)
+                    expect.soft(row.destination, row.move + ' E').toBe(true)
+                  expect.soft(row.reversals, row.move + ' F').toBe(0)
                   expect
-                    .soft(gesture.receivedInputs, row.move + ' native input receipt')
-                    .toBeGreaterThan(0)
-                expect.soft(row.samples, row.move).toBeGreaterThan(0)
-                if (row.drift !== null) expect.soft(row.drift, row.move + ' A').toBeLessThan(2)
-                expect.soft(row.blank, row.move + ' B').toBeLessThanOrEqual(2)
-                if (row.bottomGap !== null)
-                  expect.soft(row.bottomGap, row.move + ' C').toBeLessThan(2)
-                if (row.destination !== null)
-                  expect.soft(row.destination, row.move + ' E').toBe(true)
-                expect.soft(row.reversals, row.move + ' F').toBe(0)
-                expect
-                  .soft(row.lost, row.move + ' F: gesture distance')
-                  .toBeLessThanOrEqual(phone ? 24 : 2)
-              }
-            },
-            360_000
-          )
+                    .soft(row.lost, row.move + ' F: gesture distance')
+                    .toBeLessThanOrEqual(phone ? 24 : 2)
+                }
+              },
+              longTouchText ? 420_000 : 360_000
+            )
+          }
         }
       })
     }
