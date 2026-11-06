@@ -2230,13 +2230,27 @@ export class ObsidianFileSystem implements FileSystem {
     }
   }
   /** Pause cancels new engine work first; safe reads need not settle here. */
-  async settleMutations(): Promise<void> {
+  async settleMutations(cancelled = false): Promise<void> {
+    const failures: unknown[] = []
     while (this.scanMutationWork.size || this.activeEngineMutations) {
       const pending = [...this.scanMutationWork]
       if (this.activeEngineMutations)
         pending.push(new Promise<void>((resolve) => this.engineMutationStops.add(resolve)))
-      await Promise.all(pending)
+      // A pause abort can reach one placement while a sibling still owes barriers.
+      // Join every issued operation before handling outcomes; never fail fast here.
+      for (const result of await Promise.allSettled(pending)) {
+        if (result.status !== 'rejected') continue
+        const error: unknown = result.reason
+        if (
+          cancelled &&
+          (error instanceof SyncCancelled ||
+            (error instanceof Error && error.name === 'AbortError'))
+        )
+          continue
+        failures.push(error)
+      }
     }
+    if (failures.length) throw failures[0]
   }
   private trackMutation<T>(work: Promise<T>, settled?: () => void): Promise<T> {
     const pending = work.finally(() => {

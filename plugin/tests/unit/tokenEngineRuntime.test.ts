@@ -38,6 +38,79 @@ import { AbeleError, ERROR_CODES } from '@abele/sync-sdk/protocol'
 import { RetainedShareCopies } from '@/sync/retainedShareCopies'
 import { DirectEntryDurability } from '@/sync/directEntryDurability'
 
+it.each(['item', 'connection'] as const)(
+  'acknowledges %s pause after cancelled work and all sibling barriers drain',
+  async (route) => {
+    const wire = await server('Notes/sample.md', '')
+    const ordinary = new ObsidianFileSystem(buildFakeVault([]))
+    const durability = new DirectEntryDurability()
+    const release = deferred<void>(),
+      cancelled = deferred<void>(),
+      draining = deferred<void>()
+    const ui = tokenUiFixture()
+    const id = ui.registry.records()[0].id
+    let acknowledged = false
+    const barriers: string[] = []
+    const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+      settleDurability: async () => {
+        draining.resolve()
+        await ordinary.settleMutations(true)
+        await durability.settled()
+      },
+    })
+    ui.bind(id, { pause: (paused) => one.runtime.pause(paused) } as never)
+    ui.itemSets.store.create(
+      id,
+      'Sample share',
+      [{ id: 'folder-a', kind: 'folder', scopeId: 'folder-a', path: 'Notes' }],
+      { 'folder-a': id }
+    )
+    // The same abort reason as the real engine pause reaches an in-flight operation.
+    const controller = Reflect.get(one.runtime.engine, 'cancellation') as AbortController
+    controller.signal.addEventListener(
+      'abort',
+      () => {
+        // Cancellation unwinds through async placement work after the drain snapshots it.
+        void draining.promise.then(() => cancelled.reject(controller.signal.reason))
+      },
+      { once: true }
+    )
+    const track = (work: () => Promise<void>): Promise<void> =>
+      Reflect.get(ordinary, 'withScanMutation').call(ordinary, ['Notes/sample.md'], work)
+    const aborted = track(() => cancelled.promise)
+    const handled = aborted.catch(() => {})
+    const sibling = track(async () => {
+      await release.promise
+      durability.resume(['Notes/nested/sample.md'])
+      await durability.flushAncestors('Notes/nested/sample.md', async (directory) => {
+        expect(acknowledged).toBe(false)
+        barriers.push(directory)
+      })
+    })
+    try {
+      const pause = (
+        route === 'item' ? ui.itemSets.pauseItem(id, 'folder-a', true) : ui.pause(id, true)
+      ).then(() => {
+        acknowledged = true
+      })
+      const successful = expect(pause).resolves.toBeUndefined()
+      await handled
+      expect(acknowledged).toBe(false)
+      release.resolve()
+      await successful
+      await sibling
+      expect(barriers).toEqual(['Notes/nested', 'Notes', ''])
+      expect(one.runtime.statusWithQuiet().state).toBe('paused')
+      expect(ui.registry.records()[0]).toMatchObject({ paused: true, status: 'paused' })
+      if (route === 'item') expect(ui.itemSets.store.get(id)?.items[0].paused).toBe(true)
+    } finally {
+      release.resolve()
+      await Promise.allSettled([aborted, sibling])
+      await one.runtime.close()
+    }
+  }
+)
+
 it('bounds a stuck pause waiter without releasing the engine slot or acknowledging paused', async () => {
   const wire = await server('Notes/sample.md', '')
   const entered = deferred<void>(),

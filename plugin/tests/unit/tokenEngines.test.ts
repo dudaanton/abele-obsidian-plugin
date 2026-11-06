@@ -590,6 +590,33 @@ import { directEntryDurability } from '@/sync/directEntryDurability'
 
 afterEach(() => vi.restoreAllMocks())
 
+it.each(['AbortError', 'Error'])(
+  'drains sibling work before reporting an unexpected %s mutation failure',
+  async (name) => {
+    const ordinary = new ObsidianFileSystem(buildFakeVault([]))
+    const failed = deferred<void>(),
+      sibling = deferred<void>()
+    const track = (promise: Promise<void>): Promise<void> =>
+      Reflect.get(ordinary, 'withScanMutation').call(ordinary, ['Notes/sample.md'], () => promise)
+    const one = track(failed.promise),
+      two = track(sibling.promise)
+    const outcome = Promise.allSettled([one, two])
+    let stopped = false
+    const stopping = ordinary.settleMutations(name === 'Error').finally(() => {
+      stopped = true
+    })
+    const error = Object.assign(new Error('sample operation failed'), { name })
+    const refused = expect(stopping).rejects.toBe(error)
+    failed.reject(error)
+    await one.catch(() => {})
+    await Promise.resolve()
+    expect(stopped).toBe(false)
+    sibling.resolve()
+    await refused
+    await outcome
+  }
+)
+
 it('counts an issued native file flush before it can queue its ancestor barriers', async () => {
   const root = await nativeFs.realpath(
     await nativeFs.mkdtemp(join(tmpdir(), 'sample-pause-flush-'))

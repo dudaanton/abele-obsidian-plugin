@@ -1289,7 +1289,7 @@ export class TokenEngines {
           paths: { scriptsFolder: this.scriptsFolder, configRoots: [this.app.vault.configDir] },
           paused: current.paused,
           settleDurability: async () => {
-            await ordinary.settleMutations()
+            await ordinary.settleMutations(true)
             await directEntryDurability(vaultDisk(this.app.vault)).settled()
           },
           rootIssue: current.rootIssue,
