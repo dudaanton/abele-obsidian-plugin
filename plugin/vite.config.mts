@@ -78,6 +78,7 @@ function maplibreAssetsPlugin(prod: boolean) {
 export default defineConfig(async ({ mode }) => {
   const { resolve } = path
   const prod = mode === 'production'
+  const optimized = prod || mode === 'sharing-test'
 
   return {
     resolve: {
@@ -99,7 +100,7 @@ export default defineConfig(async ({ mode }) => {
       },
     },
     define: {
-      'process.env.NODE_ENV': JSON.stringify(prod ? 'production' : 'development'),
+      'process.env.NODE_ENV': JSON.stringify(optimized ? 'production' : 'development'),
       __ABELE_TEST_SHARING__: JSON.stringify(mode === 'sharing-test'),
     },
     plugins: [
@@ -108,7 +109,7 @@ export default defineConfig(async ({ mode }) => {
         source: 'pele/lazy',
         exports: ['renderAsync', 'load', 'parse'],
         target: BUILD_TARGET,
-        minify: prod,
+        minify: optimized,
       }),
       i18nAssetsPlugin(__dirname),
       syncPlacementPlugin(),
@@ -116,8 +117,8 @@ export default defineConfig(async ({ mode }) => {
       singleZodV3Plugin(__dirname),
       hyperFormulaCataloguePlugin(),
       buildArtifactPlugin(path.resolve(__dirname, '..'), mode),
-      vue(),
-      maplibreAssetsPlugin(prod),
+      vue({ isProduction: optimized }),
+      maplibreAssetsPlugin(optimized),
       {
         name: 'abele-optional-node-streams',
         load(id: string) {
@@ -165,7 +166,7 @@ export default defineConfig(async ({ mode }) => {
     esbuild: { legalComments: 'eof' },
     build: {
       target: BUILD_TARGET,
-      minify: prod ? 'esbuild' : false,
+      minify: optimized ? 'esbuild' : false,
       lib: {
         entry: resolve(__dirname, 'src/main.ts'),
         name: 'main',
@@ -204,7 +205,7 @@ export default defineConfig(async ({ mode }) => {
         },
         plugins: [
           replace({
-            'process.env.NODE_ENV': JSON.stringify(prod ? 'production' : 'development'),
+            'process.env.NODE_ENV': JSON.stringify(optimized ? 'production' : 'development'),
           }),
         ],
         external: [

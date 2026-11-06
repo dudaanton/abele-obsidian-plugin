@@ -3,22 +3,34 @@ import { execFileSync } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 
 describe('build compression', () => {
-  it.each(['production', 'development'])('sets the effective minifier for %s', (mode) => {
-    const result = JSON.parse(
-      execFileSync(
-        process.execPath,
-        [
-          '--input-type=module',
-          '-e',
-          `
+  it.each(['production', 'development', 'sharing-test'])(
+    'sets the effective minifier for %s',
+    (mode) => {
+      const result = JSON.parse(
+        execFileSync(
+          process.execPath,
+          [
+            '--input-type=module',
+            '-e',
+            `
       import { loadConfigFromFile } from 'vite'
       const { config } = await loadConfigFromFile({ command: 'build', mode: '${mode}' }, 'vite.config.mts')
-      console.log(JSON.stringify({ minify: config.build.minify, misplaced: 'minify' in config }))
+      console.log(JSON.stringify({ minify: config.build.minify, misplaced: 'minify' in config,
+        environment: JSON.parse(config.define['process.env.NODE_ENV']),
+        testApiFenced: !!config.resolve.alias['@/testing/exposeTestApi'],
+        sharing: JSON.parse(config.define.__ABELE_TEST_SHARING__) }))
     `,
-        ],
-        { encoding: 'utf8' }
+          ],
+          { encoding: 'utf8' }
+        )
       )
-    )
-    expect(result).toEqual({ minify: mode === 'production' ? 'esbuild' : false, misplaced: false })
-  })
+      expect(result).toEqual({
+        minify: mode !== 'development' ? 'esbuild' : false,
+        misplaced: false,
+        environment: mode !== 'development' ? 'production' : 'development',
+        testApiFenced: mode === 'production',
+        sharing: mode === 'sharing-test',
+      })
+    }
+  )
 })

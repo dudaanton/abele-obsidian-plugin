@@ -5,9 +5,9 @@
  * way to reach them — `app.plugins.plugins.abele` only carries Obsidian's own Plugin fields.
  * This module hangs a small, explicit surface off `window` instead.
  *
- * The single call site is guarded by `process.env.NODE_ENV !== 'production'`, which Vite
- * replaces with a string literal at build time, so the guard folds to `false` and this
- * module is dropped entirely from the production bundle.
+ * The call site permits development or the explicit test-build flag. Both are compiled
+ * away in releases; the production module fence also excludes this graph. Test builds
+ * can therefore exercise the production runtime without exposing this API in releases.
  */
 import { EditorView } from '@codemirror/view'
 import { setTestLocale } from './i18nLocale'

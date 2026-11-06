@@ -1,4 +1,8 @@
 import { t, initializeLocale, currentLocale } from '@/i18n'
+declare const __ABELE_TEST_SHARING__: boolean
+const testingBuild =
+  process.env.NODE_ENV !== 'production' ||
+  (typeof __ABELE_TEST_SHARING__ !== 'undefined' && __ABELE_TEST_SHARING__)
 import { initializePluginLocale } from '@/i18n/initialize'
 import { hostLocale } from '@/i18n/obsidianLocale'
 import { registerZen } from '@/zen/registerZen'
@@ -320,9 +324,7 @@ export default class AbelePlugin extends Plugin {
       // Every step below runs on its own: one that throws is named in the console and the rest of
       // the start goes on, instead of leaving the sidebars and everything after it unregistered.
       beginStartup()
-      startupStep('locale', () =>
-        initializeLocale(process.env.NODE_ENV !== 'production' ? 'en' : hostLocale().format)
-      )
+      startupStep('locale', () => initializeLocale(testingBuild ? 'en' : hostLocale().format))
       await startupStepAsync('locale catalog', () =>
         initializePluginLocale(this, currentLocale().format)
       )
@@ -529,12 +531,12 @@ export default class AbelePlugin extends Plugin {
       // Today's exchange rates: the kept table at layout-ready, a new one once a day.
       startupStep('exchange rates', () => startExchangeRates(this))
 
-      // Development builds expose plugin internals to the e2e suite, which drives the app
-      // through `obsidian eval`. Vite inlines NODE_ENV, so in a production build this folds to
+      // Development and explicit test builds expose internals to the e2e suite, which drives
+      // the app through `obsidian eval`. Vite inlines both flags, so a release folds this to
       // `if (false)` and the import is tree-shaken away. It must stay a static import: a
       // dynamic one makes Rollup emit a separate chunk, and the install scripts copy only
       // main.js, which would ship a stub that cannot resolve its own bundle.
-      if (process.env.NODE_ENV !== 'production') {
+      if (testingBuild) {
         exposeTestApi(this)
       }
 
@@ -759,7 +761,7 @@ export default class AbelePlugin extends Plugin {
     GlobalStore.getInstance().destroy()
     AbeleConfig.getInstance().destroy()
     VaultWatcherWrapper.destroy()
-    if (process.env.NODE_ENV !== 'production') {
+    if (testingBuild) {
       delete (window as { __abeleTest?: unknown }).__abeleTest
     }
     releaseVueSetters()
