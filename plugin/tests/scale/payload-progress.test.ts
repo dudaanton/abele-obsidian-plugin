@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { visibilityPayloadProgress, largeFileThroughput } from './payload-progress.mjs'
 import writes from './writes.cjs'

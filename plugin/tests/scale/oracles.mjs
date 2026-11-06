@@ -121,7 +121,7 @@ export function longTaskVerdict(task) {
 
 export function longTaskBudget(tasks) {
   const verdicts = (tasks ?? [])
-    .filter(row => row.durationMs > 50)
+    .filter(row => !Number.isFinite(row.durationMs) || row.durationMs > 50)
     .map(longTaskVerdict)
   return { verdicts, failed: verdicts.filter(row => row.status === 'FAIL').length }
 }

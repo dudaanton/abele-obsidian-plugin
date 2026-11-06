@@ -8,6 +8,10 @@ import {
 } from './qualification-config.mjs'
 import { qualificationEntryBridge, validateQualificationArtifact } from './build.mjs'
 
+it.each(['full', 'targeted'])('collects required reindex function coverage in %s', mode => {
+  expect(qualificationScenario(mode).preciseHashCoverage).toBe(true)
+})
+
 it('prepares full and targeted builds with identical instrumentation, including legacy full input', () => {
   const full = qualificationBuildConfig({ scenarioConfig: { failureDiagnostic: true } })
   const targeted = qualificationBuildConfig({

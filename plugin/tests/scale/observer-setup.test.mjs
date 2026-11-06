@@ -4,7 +4,8 @@ import { test } from 'node:test'
 
 test('qualification vault includes every observer module and config path', async () => {
   const observer = await readFile('plugin/tests/scale/observer.cjs', 'utf8')
-  const driver = await readFile('.scratch/round50/run-qualification.mjs', 'utf8')
+  const driver = await readFile('plugin/tests/scale/run.mjs', 'utf8') +
+    await readFile('plugin/tests/scale/observer-config.mjs', 'utf8')
   for (const [module, key] of [
     ['profile-only.cjs', 'profileOnly'],
     ['metadata-cache.cjs', 'metadataCache'],

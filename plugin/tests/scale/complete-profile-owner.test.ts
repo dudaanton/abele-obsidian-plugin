@@ -7,13 +7,14 @@ const host = { functionName: 'reconcileFileInternal', url: 'app://obsidian.md/ap
 const native = { functionName: 'lstat', url: 'node:internal/original-fs/promises' }
 const program = { functionName: '(program)', url: '' }
 const gc = { functionName: '(garbage collector)', url: '' }
-async function classify(frames: typeof host[], complete = true, sampled = true) {
+async function classify(frames: typeof host[], complete = true, sampled = true, extra: Record<string, unknown>[] = []) {
   const task = { event: 'long-task', device: '0', startedAt: 1000, durationMs: 100 }
   return (await profileSummary([task], [
     { event: 'cpu-profile-ready', device: '0', at: 0 },
     { event: 'plugin-load-mark', device: '0', name: 'abele:onload-end', at: 100 },
     { event: 'cpu-profile', device: '0', path: 'fixture', startedAt: 0, endedAt: 2000,
       clock: { beforeAt: 0, afterAt: 0, timestampMs: 0 } },
+    ...extra,
   ], async () => ({
     startTime: complete ? 0 : 1020000, endTime: 2000000,
     nodes: frames.map((callFrame, index) => ({ id: index + 1, callFrame,
@@ -51,4 +52,17 @@ it('does not infer host ownership from complete coverage with zero samples', asy
   expect(row.owner).toBe('unattributed')
   expect(row.ownershipReason).toBe('no-correlated-samples')
   expect(longTaskVerdict(row).status).toBe('FAIL')
+})
+
+it('does not waive missing samples on external shared-stop evidence', async () => {
+  const evidence = [900, 1000, 1100, 1200].map(at => ({ event: 'host-process-sample', at,
+    processes: [{ pid: 12, parentPid: 1, state: 'T', cpuMs: 20 },
+      { pid: 13, parentPid: 12, state: 'T', cpuMs: 30 }] }))
+  const row = await classify([host], true, false, evidence)
+  expect(row.hostSchedulingEvidence).toMatchObject({ complete: true,
+    reason: 'shared-observed-process-stop', ownershipProof: false })
+  expect(row.owner).toBe('unattributed')
+  expect(longTaskVerdict(row).status).toBe('FAIL')
+  expect((await classify([{ functionName: 'syncStep', url: 'plugin:abele' }], true, true, evidence)).owner)
+    .toBe('ours during sync')
 })

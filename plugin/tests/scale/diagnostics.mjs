@@ -4,6 +4,7 @@ import { SourceMapConsumer } from 'source-map-js'
 import { createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
 import entryLedger from './entry-ledger.cjs'
+import { schedulingEvidence } from './host-timeline.mjs'
 const exec = promisify(execFile)
 function isPluginBundleFrame(frame) {
   const url = frame.url ?? ''
@@ -260,17 +261,26 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
       !ledger.pluginIntervals.some(([start, end]) => at >= start - 1 && latestAt <= end + 1))
     // Whole-interval CPU coverage with samples and no plugin frame proves host
     // ownership, including root-level VM/native samples without an owning parent.
-    // The ledger cannot fill missing CPU coverage or an empty sampled interval.
+    // Missing CPU coverage stays unknown. Measured plugin entries cannot be
+    // erased by VM-only samples or preceding allocation windows.
+    const allocations = gcDominated ? await allocationAttribution(task, captures, load, symbolize) : undefined
+    const measuredPlugin = profileWindowComplete && ledger.complete && ledger.overlapMs > 0
+    // Measured execution cannot be erased by root GC samples or preceding heap
+    // allocations. A heap window cannot establish the owner of later VM work.
+    const unresolvedGcContext = allocations?.complete && gcDominated && counts.unknown
     const owner = scope === 'teardown' ? 'teardown' : scope === 'load' ? 'plugin load' :
-      counts.abele ? 'ours during sync' :
+      counts.abele || measuredPlugin ? 'ours during sync' :
+      unresolvedGcContext ? 'unattributed' :
       attributionPass ? (counts.harness && !counts.unknown && !counts['other-plugin']
         ? 'harness-triggered' : 'host-only') : 'unattributed'
     const ownershipReason = scope !== 'sync' ? `lifecycle-${scope}` :
       counts.abele ? 'sampled-plugin-frame' :
+      measuredPlugin ? 'measured-plugin-entry' :
+      unresolvedGcContext ? 'unresolved-gc-allocation-context' :
       !profileWindowComplete ? 'incomplete-profile-coverage' :
       !frames.length ? 'no-correlated-samples' : 'complete-coverage-no-plugin-frames'
-    const allocations = gcDominated ? await allocationAttribution(task, captures, load, symbolize) : undefined
-    const attributionSource = scope !== 'sync' ? 'Lifecycle boundary' : 'CPU profile'
+    const attributionSource = scope !== 'sync' ? 'Lifecycle boundary' :
+      measuredPlugin && !counts.abele ? 'Measured entry ledger' : 'CPU profile'
     // Preceding allocation samples describe a window, not the cause of a later
     // collection. Keep the split for diagnosis; it never promotes/exempts an
     // owner or resolves a CPU/entry contradiction.
@@ -281,6 +291,8 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
       source: Object.keys(counts).length ? 'sampled' : 'unknown',
       frames,
       owner,
+      hostSchedulingEvidence: schedulingEvidence(task,
+        captures.filter(row => row.event === 'host-process-sample')),
       ownershipReason,
       scope,
       attributionSource,

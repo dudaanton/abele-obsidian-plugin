@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect } from 'vitest'
 import {
   visibilityExperiment,
@@ -10,6 +11,12 @@ import { WireProxy } from './proxy.mjs'
 import { createServer } from 'node:http'
 
 describe('targeted probe', () => {
+  it('keeps the independent strict task gate failing for malformed tasks even in legacy report-only mode', () => {
+    const rows = targetedBudgets({ targeted: { E: { complete: true } },
+      installedFileReadbackBytes: 0, mismatches: [], profileCoverageRequired: true,
+      longTasksReportOnly: true, longTaskAttribution: [{ attributionPass: false }] })
+    expect(rows.find(row => row.name === 'long task ownership and budgets')?.status).toBe('FAIL')
+  })
   it('reports unattributed tasks without failing an explicitly report-only probe', () => {
     const report: any = { targeted: { E: { complete: true } }, installedFileReadbackBytes: 0,
       mismatches: [], profileCoverageRequired: true, longTaskAttribution: [{ attributionPass: false }] }

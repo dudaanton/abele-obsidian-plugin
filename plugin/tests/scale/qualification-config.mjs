@@ -4,7 +4,7 @@ export const qualificationInstrumentation = Object.freeze({
   continuousCpu: true,
   entryLedgerEnabled: true,
   failureDiagnosticEnabled: true,
-  preciseHashCoverage: false,
+  preciseHashCoverage: true,
   strictRestartMeasurement: false,
   heapDiagnostics: false,
   longTasksReportOnly: false,

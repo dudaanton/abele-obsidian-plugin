@@ -182,6 +182,19 @@ checkout without changing its selected commit, then finish the build before star
 
 ### Local or remote server
 
+Qualification profiles enable precise reindex function counters as well as digest
+observation; both coverage receipts are retained. A skipped or incomplete counter
+capture remains a failing reindex proof.
+
+`host-timeline.jsonl` is sampled by the driver outside Electron every 250 ms while
+the instrumented app runs. It records process-tree PID/parent identity, scheduling
+state, cumulative CPU milliseconds, wall/monotonic clocks and machine load, never
+command lines. Each task includes correlated `hostSchedulingEvidence`. Explicit
+shared process stops and external sampling gaps are distinguished from sleeping
+processes. This is diagnostic evidence, not an automatic ownership exemption:
+missing CPU samples still fail, and sampled plugin frames retain precedence.
+Uninstrumented control restarts do not start this sampler.
+
 For a candidate needing a matching core/server implementation, prepare that exact core
 commit on the build host, independently of the plugin checkout:
 

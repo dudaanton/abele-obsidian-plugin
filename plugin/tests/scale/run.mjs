@@ -6,6 +6,7 @@ import { resolve, join, basename, dirname, sep } from 'node:path'
 import { createRequire } from 'node:module'
 import asyncHooks from 'node:async_hooks'
 import liveStartup from './live-startup.cjs'
+import { startHostTimeline } from './host-timeline.mjs'
 import { fileURLToPath } from 'node:url'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
@@ -492,6 +493,7 @@ export async function run(config) {
   const tokenFiles = []
   let serverSession
   let memoryTimer
+  let stopHostTimeline
   let memoryPending = Promise.resolve()
   let appProcess
   let failureMonitor
@@ -649,6 +651,7 @@ export async function run(config) {
     if (appProcess) await appendFile(join(config.output, 'renderer.jsonl'), devices.map((_, index) =>
       JSON.stringify({ event: 'harness-stop-request', device: String(index), at: Date.now(), kind: hard ? 'kill' : 'quit' }) + '\n').join(''))
     clearInterval(memoryTimer)
+    if (stopHostTimeline) { await stopHostTimeline(); stopHostTimeline = undefined }
     await memoryPending
     if (!appProcess) return
     for (const device of devices) {
@@ -699,6 +702,7 @@ export async function run(config) {
     appProcess = spawn(config.app, config.appArgs ?? [], { stdio: 'ignore' })
     appProcess.on('error', () => {})
     const rootPid = appProcess.pid
+    if (!passive) stopHostTimeline = startHostTimeline(rootPid, join(config.output, 'host-timeline.jsonl'))
     let sampling = false
     const sample = () => {
       if (sampling) return
@@ -1723,7 +1727,10 @@ export async function run(config) {
               startedAt: start.at, durationMs: row.at - start.at, source: 'entry ledger' })
         }
       }
-      const qualificationProfiles = await profileSummary(qualificationTasks, [...entries, ...ledgerEntries], loadEvidence,
+      const hostTimeline = (await readFile(join(config.output, 'host-timeline.jsonl'), 'utf8').catch(() => ''))
+        .trim().split('\n').filter(Boolean).map(line => JSON.parse(line))
+      report.hostTimelineSamples = hostTimeline.length
+      const qualificationProfiles = await profileSummary(qualificationTasks, [...entries, ...ledgerEntries, ...hostTimeline], loadEvidence,
         sourceMap ? symbolizerFromMap(sourceMap) : undefined)
       const productionProfiles = await profileSummary(productionTasks, entries, loadEvidence)
       report.longTaskAttribution = tracepointAdjustedTasks(
