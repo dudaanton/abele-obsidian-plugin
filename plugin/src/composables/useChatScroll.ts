@@ -545,7 +545,12 @@ export function useChatScroll(options: ChatScrollOptions) {
     // Layout can move the browser's scroll anchor before ResizeObserver follows
     // the new end. That event does not mean the reader scrolled away. Upward
     // reader input has already disabled following in readerTakesOver.
-    if (shouldAutoScroll && followedHeight !== null && el.scrollHeight !== followedHeight) {
+    if (
+      shouldAutoScroll &&
+      followedHeight !== null &&
+      el.scrollHeight !== followedHeight &&
+      el.scrollTop >= Math.min(observedScrollTop, Math.max(0, el.scrollHeight - el.clientHeight))
+    ) {
       doScroll()
       return
     }
@@ -565,6 +570,10 @@ export function useChatScroll(options: ChatScrollOptions) {
       fingerDown,
     })
     codeScrollTop = null
+    // Scrollbar/accessibility movement need not deliver wheel or touch input.
+    // A scroll distinct from our correction is native movement, including when
+    // streamed growth arrived in the same frame.
+    nativeScrolling = true
     // The reader has taken over; whatever was being held is where they left it.
     anchors.releaseReader()
     bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight

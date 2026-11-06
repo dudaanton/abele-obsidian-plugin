@@ -68,9 +68,10 @@ it.each([
   [false, 480],
   [true, 480],
   [true, 480, true],
+  [true, 480, true, true],
 ] as const)(
   'keeps visible short rows through wide-panel paging (collapsed tools: %s, messages: %s)',
-  async (tools, count, mixed = false) => {
+  async (tools, count, mixed = false, drag = false) => {
     useVault([])
     vi.stubGlobal(
       'ResizeObserver',
@@ -91,22 +92,26 @@ it.each([
         toolResult: 'Done',
       })) as ChatMessage[]
     )
+    const text = ref('')
+    let streamHeight = 0
     const box = ref<HTMLElement | null>(null)
     let scroll!: ReturnType<typeof useChatScroll>
     const rect = (top: number, height: number) =>
       ({ top, bottom: top + height, height, left: 0, right: 1500, width: 1500 }) as DOMRect
     const rowHeight = (el: Element) =>
-      mixed
-        ? [20, 94, 29, 180, 42][
-            Number((el as HTMLElement).dataset.messageId?.split('-').pop() ?? 0) % 5
-          ]
-        : 20
+      el.classList.contains('abele-ai-chat__streaming')
+        ? streamHeight
+        : mixed
+          ? [20, 94, 29, 180, 42][
+              Number((el as HTMLElement).dataset.messageId?.split('-').pop() ?? 0) % 5
+            ]
+          : 20
     let layoutKey = ''
     let contentHeight = 0
     const tops = new Map<Element, number>()
     const layout = () => {
       const el = box.value!
-      const key = `${el.firstElementChild?.getAttribute('data-message-id')}:${el.lastElementChild?.getAttribute('data-message-id')}:${el.childElementCount}`
+      const key = `${el.firstElementChild?.getAttribute('data-message-id')}:${el.lastElementChild?.getAttribute('data-message-id')}:${el.childElementCount}:${streamHeight}`
       if (key === layoutKey) return
       layoutKey = key
       tops.clear()
@@ -130,17 +135,15 @@ it.each([
           scroll = useChatScroll({
             messagesContainer: box,
             messages,
-            streamingContent: ref(''),
+            streamingContent: text,
             streamingThinking: ref(''),
-            isStreaming: ref(false),
+            isStreaming: ref(drag),
             composing: ref(false),
             windowCost: (a, b) => chatRenderCost(messages.value, () => false)(a, b),
           })
           return () =>
-            h(
-              'div',
-              { ref: box },
-              chatBlocks(scroll.visibleMessages.value).map((block) => {
+            h('div', { ref: box }, [
+              ...chatBlocks(scroll.visibleMessages.value).map((block) => {
                 const id = block.kind === 'run' ? block.id : block.message.id
                 return h(
                   'div',
@@ -154,8 +157,21 @@ it.each([
                   },
                   'Sample'
                 )
-              })
-            )
+              }),
+              ...(drag && !scroll.hasNewer.value
+                ? [
+                    h(
+                      'div',
+                      {
+                        key: 'stream',
+                        ref: geometry,
+                        class: 'abele-ai-chat__streaming',
+                      },
+                      text.value
+                    ),
+                  ]
+                : []),
+            ])
         },
       }),
       { attachTo: document.body }
@@ -184,7 +200,7 @@ it.each([
     await nextTick()
     scroll.doScroll()
     await nextTick()
-    const steps = mixed ? 250 : count === 120 ? 16 : 80
+    const steps = drag ? 180 : mixed ? 250 : count === 120 ? 16 : 80
     const journey = [-100, ...Array<number>(steps).fill(-40), ...Array<number>(steps).fill(40)]
     for (const delta of mixed ? [...journey, ...journey, ...journey] : journey) {
       const before = Array.from(el.children)
@@ -193,16 +209,21 @@ it.each([
           return r.bottom > 0 && r.top < 800
         })
         .map((row) => ({ row, top: row.getBoundingClientRect().top }))
-      scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: delta }))
+      if (!drag) scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: delta }))
       const old = el.scrollTop
       el.scrollTop += delta
       const applied = el.scrollTop - old
+      if (drag) {
+        streamHeight += 23
+        text.value += ' chunk'
+      }
       scroll.onMessagesScroll()
       await nextTick()
       if (mixed) {
         vi.advanceTimersByTime(16)
         // A native event can arrive after a frame queues reclaim, before Vue patches.
-        scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: delta }))
+        if (drag) scroll.onMessagesScroll()
+        else scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: delta }))
         await nextTick()
       } else await advance(80)
       expect(el.children.length, 'off-screen rows are reclaimed').toBeLessThanOrEqual(180)
