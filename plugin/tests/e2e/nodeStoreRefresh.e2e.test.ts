@@ -20,8 +20,24 @@ beforeEach(async (context) => {
     await debuggerApi.sendCommand('Profiler.enable');
     await debuggerApi.sendCommand('Profiler.setSamplingInterval', { interval: 500 });
     await debuggerApi.sendCommand('Profiler.start');
+    await debuggerApi.sendCommand('HeapProfiler.startSampling', {
+      samplingInterval: 32768,
+      includeObjectsCollectedByMajorGC: true,
+      includeObjectsCollectedByMinorGC: true
+    });
     await debuggerApi.sendCommand('Performance.enable');
     fixture.profileMetrics = await debuggerApi.sendCommand('Performance.getMetrics');
+    fixture.heapWindows = [];
+    fixture.heapObserver = new MutationObserver(records => {
+      const box = records.find(record => record.type === 'childList' &&
+        record.target.classList?.contains('abele-ai-chat__messages'))?.target;
+      if (!box) return;
+      const rows = box.querySelectorAll('[data-message-id]');
+      // Numeric/string evidence only: never retain a detached message in this probe.
+      fixture.heapWindows.push({ at: performance.now(), usedHeap: performance.memory?.usedJSHeapSize,
+        mounted: rows.length, first: rows[0]?.dataset.messageId, last: rows[rows.length - 1]?.dataset.messageId });
+    });
+    fixture.heapObserver.observe(document.body, { childList: true, subtree: true });
     fixture.longTasks = [];
     fixture.observer = new PerformanceObserver(list => fixture.longTasks.push(...list.getEntries().map(
       entry => ({ start: entry.startTime, duration: entry.duration })
@@ -42,12 +58,17 @@ afterEach(async (context) => {
     const debuggerApi = require('@electron/remote').getCurrentWebContents().debugger;
     try {
       const { profile } = await debuggerApi.sendCommand('Profiler.stop');
+      const { profile: allocations } = await debuggerApi.sendCommand('HeapProfiler.stopSampling');
+      const metricsAfter = await debuggerApi.sendCommand('Performance.getMetrics');
       const fs = require('fs'), directory = ${JSON.stringify(artifacts)};
       fs.mkdirSync(directory, { recursive: true });
-      fs.writeFileSync(directory + '/scroll-profile.json', JSON.stringify({ profile, tasks: fixture.longTasks, metrics: fixture.profileMetrics }));
+      fs.writeFileSync(directory + '/scroll-profile.json', JSON.stringify({ profile, tasks: fixture.longTasks, metrics: fixture.profileMetrics, metricsAfter }));
+      fs.writeFileSync(directory + '/scroll-allocations.json', JSON.stringify(allocations));
+      fs.writeFileSync(directory + '/scroll-heap-windows.json', JSON.stringify(fixture.heapWindows));
       return JSON.stringify({ tasks: fixture.longTasks, refreshMs: fixture.times, error: fixture.error });
     } finally {
       fixture.observer.disconnect();
+      fixture.heapObserver.disconnect();
       if (!fixture.profileAttached) debuggerApi.detach();
     }
   })()`,
@@ -71,8 +92,10 @@ beforeAll(async () => {
         request.onupgradeneeded = () => { request.result.createObjectStore('client'); request.result.createObjectStore('journal') };
         request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
       });
-      const history = (${largeMutationHistory.toString()})();
       await new Promise((resolve, reject) => {
+        // Keep the seed in this short-lived executor. The polling closures below
+        // share the enclosing scope and would retain its original file images.
+        const history = (${largeMutationHistory.toString()})();
         const tx = legacy.transaction('client', 'readwrite');
         tx.objectStore('client').put({ cursors: {}, events: {}, results: {}, outbox: [], chatMutations: history }, 'state');
         tx.objectStore('client').put('sample-legacy-revision', 'state-revision');
