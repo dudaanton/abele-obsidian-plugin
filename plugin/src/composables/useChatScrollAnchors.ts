@@ -45,9 +45,11 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     }
     const top = container.getBoundingClientRect().top
     anchor = null
-    for (const el of container.querySelectorAll<HTMLElement>(
+    const candidates = container.querySelectorAll<HTMLElement>(
       '.abele-chat-msg, .abele-chat-run.is-collapsed'
-    )) {
+    )
+    for (let i = 0; i < candidates.length; i++) {
+      const el = candidates[i]
       const rect = el.getBoundingClientRect()
       const candidate = { el, offset: rect.top - top }
       anchor ??= candidate
