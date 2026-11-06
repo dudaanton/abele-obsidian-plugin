@@ -1,6 +1,7 @@
 import { watch, nextTick, onUnmounted, type Ref } from 'vue'
 import type { ChatMessage } from '@/ai/types'
 import { useChatRenderWindow } from './useChatRenderWindow'
+import { DEFAULT_TAIL_PAGE_SIZE } from './useTailPagedList'
 import { offsetOf, useChatScrollAnchors, type ChatScrollGeometry } from './useChatScrollAnchors'
 
 export const AUTO_SCROLL_THRESHOLD_PX = 60
@@ -33,6 +34,9 @@ export function useChatScroll(options: ChatScrollOptions) {
   } = options
   /** How close to the top counts as asking for the messages above. */
   const LOAD_OLDER_THRESHOLD_PX = 200
+  // Scrolling mounts a small slice, then lets layout/anchoring settle before the
+  // next edge check. Keep the retained window large enough for fast gestures.
+  const SCROLL_REVEAL_COST = 10
   let shouldAutoScroll = true
   let fingerDown = false
   let wheelScrolling = false
@@ -138,10 +142,14 @@ export function useChatScroll(options: ChatScrollOptions) {
     options.windowCost
   )
   const resetWindow = () => {
+    revealGeneration++
+    revealing = false
     leaveMarker()
     resetRenderWindow()
   }
   const showMessagesFrom = (index: number) => {
+    revealGeneration++
+    revealing = false
     leaveMarker()
     showRenderMessagesFrom(index)
   }
@@ -320,6 +328,36 @@ export function useChatScroll(options: ChatScrollOptions) {
       checkEdges(retry ?? direction)
     if (direction === 'older') revealUntilScrollable()
   }
+  let revealGeneration = 0
+  const revealSlices = (el: HTMLElement, direction: 'older' | 'newer') => {
+    const generation = ++revealGeneration
+    let remaining = DEFAULT_TAIL_PAGE_SIZE
+    const step = () => {
+      if (generation !== revealGeneration || anchors.closed) return
+      if (
+        (direction === 'older' && readerDirection > 0) ||
+        (direction === 'newer' && readerDirection < 0)
+      ) {
+        finishReveal(direction)
+        return
+      }
+      captureAnchor()
+      const budget = Math.min(SCROLL_REVEAL_COST, remaining)
+      if (direction === 'older') showOlder(budget)
+      else showNewer(budget)
+      remaining -= budget
+      void nextTick(() => {
+        if (generation !== revealGeneration || anchors.closed) return
+        holdAnchorAWhile(el)
+        anchors.nextFrame(el.win, () => {
+          if (generation !== revealGeneration || anchors.closed) return
+          if (remaining > 0 && (direction === 'older' ? hasOlder.value : hasNewer.value)) step()
+          else finishReveal(direction)
+        })
+      })
+    }
+    step()
+  }
   const loadOlder = (event?: Event, automatic = false) => {
     const el = messagesContainer.value
     if (event?.type === 'click') {
@@ -341,10 +379,14 @@ export function useChatScroll(options: ChatScrollOptions) {
     if (revealing) return refusedEdge('older')
 
     const wasFollowing = shouldAutoScroll
-    if (automatic && !expandOlder()) return
+    if (automatic && !expandOlder(SCROLL_REVEAL_COST)) return
     revealing = true
     if (!automatic) shouldAutoScroll = false
     anchors.releaseReader()
+    if (!automatic && !readingFromMarker && readerDirection !== 0) {
+      revealSlices(el, 'older')
+      return
+    }
     if (!automatic || !wasFollowing) captureAnchor()
     if (!automatic) showOlder()
     void nextTick(() => {
@@ -361,12 +403,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     if (revealing) return refusedEdge('newer')
     revealing = true
     anchors.releaseReader()
-    captureAnchor()
-    showNewer()
-    void nextTick(() => {
-      holdAnchorAWhile(el)
-      anchors.nextFrame(el.win, () => finishReveal('newer'))
-    })
+    revealSlices(el, 'newer')
   }
 
   /**

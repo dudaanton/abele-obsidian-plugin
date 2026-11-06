@@ -49,8 +49,11 @@ export function useChatRenderWindow<T>(
     const last = newest(end.value, Math.max(1, Math.min(pageSize, budget)))
     range.value = { first: Math.max(start.value, oldest(last, capacity)), last }
   }
-  const expandOlder = () => {
-    const first = Math.max(oldest(start.value, pageSize), oldest(end.value, capacity))
+  const expandOlder = (budget = pageSize) => {
+    const first = Math.max(
+      oldest(start.value, Math.max(1, Math.min(pageSize, budget))),
+      oldest(end.value, capacity)
+    )
     if (first >= start.value) return false
     range.value = { first, last: end.value }
     return true

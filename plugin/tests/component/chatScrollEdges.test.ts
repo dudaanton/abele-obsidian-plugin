@@ -42,6 +42,22 @@ function open(height = 4000) {
 }
 
 describe('bounded chat window edges', () => {
+  it.each([-1, 1])('limits one wheel reveal to ten row units: %s', async (direction) => {
+    const { scroll, box } = open()
+    box.scrollTop = direction < 0 ? 100 : 3100
+    const before = new Set(scroll.visibleMessages.value.map((message) => message.id))
+    scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: direction * 10 }))
+    const added = () =>
+      scroll.visibleMessages.value.filter((message) => !before.has(message.id)).length
+    expect(added()).toBeGreaterThan(0)
+    expect(added()).toBeLessThanOrEqual(10)
+    // More input in the same turn cannot mount another slice before the first settles.
+    scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: direction * 10 }))
+    await nextTick()
+    expect(added()).toBeLessThanOrEqual(10)
+    await advance(80)
+    expect(scroll.visibleMessages.value.length).toBeLessThanOrEqual(PAGE * 3)
+  })
   it.each([-1, 1])('prefetches wheel pages before the next large delta: %s', (direction) => {
     const { scroll, box } = open()
     box.scrollTop = 2000
@@ -76,7 +92,8 @@ describe('bounded chat window edges', () => {
         direction < 0
           ? scroll.visibleMessages.value[0]?.id
           : scroll.visibleMessages.value.at(-1)?.id
-      expect(after).toBe(before)
+      // A newer page still has two slices to mount after the first synchronous ten.
+      expect(after).toBe(direction < 0 ? before : String(Number(before) + PAGE - 10))
     }
   )
   it.each([-1, 1])(
@@ -208,11 +225,33 @@ describe('bounded chat window edges', () => {
   it('does not reverse a newer reveal when layout leaves the viewport at the top', async () => {
     const { scroll, box } = open()
     box.scrollTop = 3200
+    const target = String(Number(scroll.visibleMessages.value[0]?.id) + PAGE)
     scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: 100 }))
-    const start = scroll.visibleMessages.value[0]?.id
     box.scrollTop = 0
     await advance(300)
-    expect(scroll.visibleMessages.value[0]?.id).toBe(start)
+    expect(scroll.visibleMessages.value[0]?.id).toBe(target)
+  })
+
+  it('cancels remaining slices when navigation chooses another window', async () => {
+    const { scroll, box } = open()
+    box.scrollTop = 100
+    scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: -10 }))
+    scroll.showMessagesFrom(200)
+    const destination = scroll.visibleMessages.value.map((message) => message.id)
+    box.scrollTop = 1000
+    await advance(200)
+    expect(scroll.visibleMessages.value.map((message) => message.id)).toEqual(destination)
+  })
+
+  it('cancels remaining older slices when the reader reverses direction', async () => {
+    const { scroll, box } = open()
+    box.scrollTop = 100
+    scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: -10 }))
+    const first = scroll.visibleMessages.value[0]?.id
+    box.scrollTop = 1000
+    scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: 10 }))
+    await advance(200)
+    expect(scroll.visibleMessages.value[0]?.id).toBe(first)
   })
 
   it('keeps paging newer when folded messages touch both edges, without oscillating', async () => {
@@ -274,8 +313,7 @@ describe('bounded chat window edges', () => {
   )
 })
 
-// BUG: Smaller native batches still lose input distance during fast page swaps.
-it.fails('limits a native edge reveal while retaining the full mounted window', () => {
+it('limits a native edge reveal while retaining the full mounted window', () => {
   const { scroll, box } = open()
   const before = scroll.olderCount.value
   box.scrollTop = 0
