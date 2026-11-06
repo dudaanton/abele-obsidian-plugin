@@ -310,17 +310,21 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
       end()
       return
     }
-    if (options.isReaderScrolling?.()) {
+    const blockVisible = container.contains(steady.el) && steady.el.getClientRects().length > 0
+    const alreadyHeld = blockVisible && Math.abs(layout.offset(steady.el) - steady.offset) < 1
+    if (options.isReaderScrolling?.() && !alreadyHeld) {
       // Native movement is visible to geometry before its scroll event arrives.
       // Keep that movement, correcting only growth around the reading block.
       // A shorter range can clamp the old position; that part is layout, not input.
+      // A host transfer can also adjust scrollTop while keeping the block exactly
+      // in place. That is already compensated layout, even before scrollend arrives.
       const prior = Math.min(
         steady.scrollTop,
         Math.max(0, layout.before.scrollHeight - layout.before.clientHeight)
       )
       steady.offset -= layout.before.scrollTop - prior
     }
-    if (!container.contains(steady.el) || !steady.el.getClientRects().length) {
+    if (!blockVisible) {
       const replacement = steady.key && resolveBlock(steady.key, container)
       if (!replacement?.getClientRects().length) {
         // Keep the original offset while the renderer's new host is still empty.
