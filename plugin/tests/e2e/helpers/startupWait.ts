@@ -34,7 +34,17 @@ export function startupScanProgress(scan?: {
   const sample = scan?.samples?.at(-1)
   return [scan?.phase, sample?.paths]
 }
-export const STARTUP_WAIT = `const waitForStartup = ${waitForStartup.toString()}; const startupScanProgress = ${startupScanProgress.toString()};`
+/** Only finished exchange work advances this clock, not an active request's age. */
+export function startupExchangeProgress(exchange?: {
+  scanProgress?: Parameters<typeof startupScanProgress>[0]
+  firstSync?: { stages?: readonly { stage: string; completed: number }[] }
+}): unknown[] {
+  return [
+    startupScanProgress(exchange?.scanProgress),
+    exchange?.firstSync?.stages?.map((stage) => [stage.stage, stage.completed]),
+  ]
+}
+export const STARTUP_WAIT = `const waitForStartup = ${waitForStartup.toString()}; const startupScanProgress = ${startupScanProgress.toString()}; const startupExchangeProgress = ${startupExchangeProgress.toString()};`
 
 /** A confidential connect may expose this fixed reason, never the evaluator's private detail. */
 export function startupWaitFailure(error: unknown): string | undefined {

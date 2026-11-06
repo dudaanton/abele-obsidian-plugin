@@ -4,8 +4,71 @@ import {
   STARTUP_WAIT,
   startupWaitFailure,
   startupScanProgress,
+  startupExchangeProgress,
 } from '../e2e/helpers/startupWait'
+import { ExchangeTrace } from '@/sync/exchangeTrace'
 import { firstFolderBudget, FIRST_FOLDER_STALL_MS } from '../helpers/smallPullBounds'
+
+it.each([false, true])(
+  'accepts completing commits, uploads and changes with fixed UI progress (browser=%s)',
+  async (browser) => {
+    const progress = browser
+      ? (new Function(
+          STARTUP_WAIT + ';return startupExchangeProgress'
+        )() as typeof startupExchangeProgress)
+      : startupExchangeProgress
+    const trace = new ExchangeTrace()
+    const operations = ['POST /v2/commit', 'PUT /v2/uploads/sample/part/0', 'GET /v2/changes']
+    let finish = trace.begin(operations[0])
+    // Use the same diagnostic counters the real trace exposes; duration and active
+    // request timestamps are deliberately absent from the progress signature.
+    let now = 0
+    await waitForStartup(
+      () => ({ ready: now >= 45000, progress: JSON.stringify(progress(trace.snapshot())) }),
+      30000,
+      async () => {
+        finish()
+        now += 1000
+        finish = trace.begin(operations[(now / 1000) % operations.length])
+      },
+      () => now,
+      90000
+    )
+    finish()
+    expect(now).toBe(45000)
+  }
+)
+
+it.each([false, true])(
+  'stalls a never-completing request despite changing durations and raw ring positions (browser=%s)',
+  async (browser) => {
+    const progress = browser
+      ? (new Function(
+          STARTUP_WAIT + ';return startupExchangeProgress'
+        )() as typeof startupExchangeProgress)
+      : startupExchangeProgress
+    let now = 0
+    await expect(
+      waitForStartup(
+        () => {
+          const exchange = {
+            firstSync: { stages: [{ stage: 'transfer', completed: 0, durationMs: now }] },
+            active: [{ operation: 'POST /v2/commit', elapsedMs: now }],
+            requestNext: now % 64,
+          }
+          return { ready: false, progress: JSON.stringify(progress(exchange)) }
+        },
+        30000,
+        async () => {
+          now += 1000
+        },
+        () => now,
+        90000
+      )
+    ).rejects.toThrow('progress stalled')
+    expect(now).toBe(30000)
+  }
+)
 
 it.each([false, true])(
   'accepts advancing scan paths while transfer and startup counters stay fixed (browser=%s)',

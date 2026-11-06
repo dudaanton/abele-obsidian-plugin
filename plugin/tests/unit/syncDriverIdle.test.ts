@@ -110,6 +110,62 @@ it.each([true, false])(
 )
 
 describe('waiting for a real sync state snapshot', () => {
+  it.each([true, false])(
+    'counts completed exchange work, never an aging request, in the outer connect wait (advancing=%s)',
+    async (advancing) => {
+      vi.useFakeTimers()
+      const started = Date.now()
+      const cli = {
+        evalAwaitPrivate: (code: string) => {
+          if (!code.includes('snapshot:syncSnapshot()')) return null
+          const elapsed = Date.now() - started
+          return {
+            result: advancing && elapsed >= 45000 ? { ok: true, value: 'sample-connection' } : null,
+            snapshot: {
+              connections: [
+                {
+                  id: 'sample',
+                  transfer: { stage: 'Downloading', completed: 0, bytes: 0 },
+                  engine: {
+                    exchange: {
+                      scanProgress: { phase: 'complete', samples: [] },
+                      firstSync: {
+                        stages: [
+                          {
+                            stage: 'transfer',
+                            completed: 9000 + (advancing ? Math.floor(elapsed / 1000) : 0),
+                            durationMs: elapsed,
+                          },
+                        ],
+                      },
+                      active: [
+                        { operation: 'POST /v2/commit', startedAt: started, elapsedMs: elapsed },
+                      ],
+                    },
+                  },
+                },
+              ],
+            },
+          }
+        },
+      }
+      const capture = vi.spyOn(diagnostics, 'captureSyncFailure').mockReturnValue('sample snapshot')
+      const driver = new SyncDriver(() => cli as never)
+      try {
+        const result = driver.long<string>('connect by token', '', true, 90000, false, true)
+        const checked = advancing
+          ? expect(result).resolves.toBe('sample-connection')
+          : expect(result).rejects.toThrow('Sync startup progress stalled')
+        void checked.catch(() => {})
+        await vi.advanceTimersByTimeAsync(46000)
+        await checked
+      } finally {
+        capture.mockRestore()
+        vi.useRealTimers()
+      }
+    }
+  )
+
   it('keeps the failed sharing condition in confidential diagnostics without exposing the token', async () => {
     const cli = {
       evalAwaitPrivate: () => ({
