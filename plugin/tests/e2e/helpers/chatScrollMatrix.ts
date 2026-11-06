@@ -1,5 +1,6 @@
 import { shotDir } from './shots'
 import { visibleChatAnchor } from './visibleChatAnchor'
+import { traceScrollInput } from './scrollInputTrace'
 
 export const states = ['idle', 'text', 'running-tool', 'finished-tool', 'finished-reply'] as const
 const shots = shotDir('abele-phone')
@@ -278,6 +279,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
   let streamingAt = 0, stop = false, touchDown = false, buttonDown = false, keyDown = false
   const records = []
   const trace = []
+  let dragTrace
   let receivedInputs = 0
   let deliveredDelta = 0, touchY = null
   let measureInputStart, measureFollowingOrigin, measureWheelReceipt, gestureActive = false, boundaryGeometry = null
@@ -691,16 +693,27 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
     if (!phone) {
       const el = box(), rect = el.getBoundingClientRect()
       const x = rect.right - 3, y = rect.bottom - 5
+      dragTrace = (${traceScrollInput.toString()})(el)
+      report.dragTrace = dragTrace.events
+      dragTrace.mark('press-request')
       await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 })
+      dragTrace.mark('press-ack')
       buttonDown = true
       for (let n = 1; n <= 12; n++) {
+        dragTrace.mark('move-request-' + n)
         await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y: y - (rect.height - 25) * n / 12, button: 'left', buttons: 1 })
+        dragTrace.mark('move-ack-' + n)
         await wait(24)
       }
+      dragTrace.mark('release-request')
       await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y: rect.top + 20, button: 'left', clickCount: 1 })
+      dragTrace.mark('release-ack')
       buttonDown = false
     } else await gesture(-box().clientHeight * 0.35)
+    dragTrace?.mark('hold-origin')
     await hold()
+    dragTrace?.mark('hold-end')
+    dragTrace?.stop()
     begin('earlier marker')
     const marker = box().querySelector('.abele-ai-chat__older button')
     if (marker) { marker.click(); await wait(500); await hold() }
@@ -751,6 +764,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
     window.removeEventListener('touchmove', nativeInput, true)
     window.removeEventListener('touchstart', nativeInput, true)
     window.removeEventListener('touchend', nativeInput, true)
+    dragTrace?.stop()
     stop = true; finishInitial = true; finishTool?.(); cancelAnimationFrame(frame)
     require('fs').writeFileSync(${JSON.stringify(shots + '/')} + (phone ? 'touch-' : 'wheel-') + size + '-' + state + '-frames.json', JSON.stringify(trace))
     window.fetch = realFetch
