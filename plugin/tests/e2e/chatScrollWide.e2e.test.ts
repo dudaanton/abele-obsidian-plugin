@@ -33,8 +33,11 @@ it.runIf(isObsidianRunning() && hasTestApi())(
       expect(report.wideSteps.length).toBeGreaterThan(20)
       for (let pass = 0; pass < 3; pass++) {
         for (const delta of [-40, 40]) {
-          expect(report.wideSteps.filter((step: { pass: number; delta: number }) =>
-            step.pass === pass && step.delta === delta).length).toBeGreaterThan(20)
+          expect(
+            report.wideSteps.filter(
+              (step: { pass: number; delta: number }) => step.pass === pass && step.delta === delta
+            ).length
+          ).toBeGreaterThan(20)
         }
       }
       expect(report.missing).toEqual([])

@@ -196,7 +196,8 @@ export function useChatScroll(options: ChatScrollOptions) {
       return ids
     },
   })
-  const { captureAnchor, holdAnchorAWhile, steadyReader, endSteady } = anchors
+  const { beginPageChange, holdAnchorAWhile, steadyReader, endSteady } = anchors
+  watch(visibleMessages, () => anchors.finishPageChange(), { flush: 'post' })
 
   /**
    * The reader taking over, told from their input rather than from a scroll event.
@@ -351,7 +352,7 @@ export function useChatScroll(options: ChatScrollOptions) {
   }
   const finishReveal = (direction: 'older' | 'newer', automatic = false) => {
     if (!readingFromMarker) {
-      if (trimRenderWindow(captureAnchor, direction)) {
+      if (trimRenderWindow(beginPageChange, direction)) {
         const el = messagesContainer.value
         void nextTick(() => {
           holdAnchorAWhile(el)
@@ -400,7 +401,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     revealing = true
     if (!automatic) shouldAutoScroll = false
     anchors.releaseReader()
-    if (!automatic || !wasFollowing) captureAnchor()
+    if (!automatic || !wasFollowing) beginPageChange()
     if (!automatic) showOlder(undefined, !readingFromMarker && el.childElementCount > 0)
     void nextTick(() => {
       if (automatic && wasFollowing) {
@@ -416,7 +417,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     if (revealing) return refusedEdge('newer')
     revealing = true
     anchors.releaseReader()
-    captureAnchor()
+    beginPageChange()
     showNewer(undefined, el.childElementCount > 0)
     void nextTick(() => {
       holdAnchorAWhile(el)
@@ -800,7 +801,7 @@ export function useChatScroll(options: ChatScrollOptions) {
       if (
         !revealing &&
         !readingFromMarker &&
-        trimRenderWindow(captureAnchor, readerDirection < 0 ? 'older' : 'newer')
+        trimRenderWindow(beginPageChange, readerDirection < 0 ? 'older' : 'newer')
       ) {
         revealing = true
         void nextTick(() => {

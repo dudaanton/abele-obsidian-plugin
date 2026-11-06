@@ -101,15 +101,27 @@ it.each([
             Number((el as HTMLElement).dataset.messageId?.split('-').pop() ?? 0) % 5
           ]
         : 20
+    let layoutKey = ''
+    let contentHeight = 0
+    const tops = new Map<Element, number>()
+    const layout = () => {
+      const el = box.value!
+      const key = `${el.firstElementChild?.getAttribute('data-message-id')}:${el.lastElementChild?.getAttribute('data-message-id')}:${el.childElementCount}`
+      if (key === layoutKey) return
+      layoutKey = key
+      tops.clear()
+      contentHeight = 0
+      for (const row of Array.from(el.children)) {
+        tops.set(row, contentHeight)
+        contentHeight += rowHeight(row)
+      }
+    }
     const geometry = (el: unknown) => {
       if (!(el instanceof HTMLElement)) return
-      el.getBoundingClientRect = () =>
-        rect(
-          Array.from(box.value!.children)
-            .slice(0, Array.from(box.value!.children).indexOf(el))
-            .reduce((sum, row) => sum + rowHeight(row), 0) - box.value!.scrollTop,
-          rowHeight(el)
-        )
+      el.getBoundingClientRect = () => {
+        layout()
+        return rect((tops.get(el) ?? 0) - box.value!.scrollTop, rowHeight(el))
+      }
       el.getClientRects = () => [el.getBoundingClientRect()] as unknown as DOMRectList
     }
     wrapper = mount(
@@ -150,11 +162,13 @@ it.each([
     )
     const el = box.value!
     let position = 0
-    const height = () =>
-      Math.max(
-        Array.from(el.children).reduce((sum, row) => sum + rowHeight(row), 0),
+    const height = () => {
+      layout()
+      return Math.max(
+        contentHeight,
         parseFloat(el.style.getPropertyValue('--abele-chat-floor')) || 0
       )
+    }
     Object.defineProperties(el, {
       clientHeight: { get: () => 800 },
       scrollHeight: { get: height },

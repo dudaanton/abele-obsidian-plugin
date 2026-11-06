@@ -37,6 +37,7 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
    * that, however late and however often the heights change.
    */
   let anchor: { el: HTMLElement; offset: number; at?: number; ids?: string[] } | null = null
+  let pageChangePending = false
 
   /** Takes the topmost rendered message as the anchor: the page is revealed above it. */
   const captureAnchor = () => {
@@ -543,11 +544,25 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
   }
 
   return {
+    beginPageChange: () => {
+      captureAnchor()
+      pageChangePending = true
+    },
+    finishPageChange: () => {
+      if (!pageChangePending) return
+      // Vue has patched the range. Measure the surviving row now, before paint,
+      // so the correction is the exact inserted/removed height above that row.
+      holdAnchor()
+      pageChangePending = false
+    },
     releaseReader: () => {
-      anchor = null
+      // Input can arrive between changing the range and patching its DOM. The
+      // document-space anchor preserves that input while compensating the patch.
+      // Dropping it (or its floor) here loses the pending removal's height.
+      if (!pageChangePending) anchor = null
       const container = messagesContainer.value
       endSteady(container)
-      if (container) releaseFloor(container)
+      if (container && !pageChangePending) releaseFloor(container)
     },
     captureAnchor,
     holdAnchor,
