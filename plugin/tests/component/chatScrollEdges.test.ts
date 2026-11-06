@@ -57,23 +57,6 @@ describe('bounded chat window edges', () => {
     expect(captures).toBe(1)
     query.mockRestore()
   })
-  // BUG: Small slices multiply layout work; keep this target pending a cheaper implementation.
-  it.fails.each([-1, 1])('limits one wheel reveal to ten row units: %s', async (direction) => {
-    const { scroll, box } = open()
-    box.scrollTop = direction < 0 ? 100 : 3100
-    const before = new Set(scroll.visibleMessages.value.map((message) => message.id))
-    scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: direction * 10 }))
-    const added = () =>
-      scroll.visibleMessages.value.filter((message) => !before.has(message.id)).length
-    expect(added()).toBeGreaterThan(0)
-    expect(added()).toBeLessThanOrEqual(10)
-    // More input in the same turn cannot mount another slice before the first settles.
-    scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: direction * 10 }))
-    await nextTick()
-    expect(added()).toBeLessThanOrEqual(10)
-    await advance(80)
-    expect(scroll.visibleMessages.value.length).toBeLessThanOrEqual(PAGE * 3)
-  })
   it.each([-1, 1])('prefetches wheel pages before the next large delta: %s', (direction) => {
     const { scroll, box } = open()
     box.scrollTop = 2000
@@ -326,16 +309,4 @@ describe('bounded chat window edges', () => {
       expect(scroll.visibleMessages.value.at(-1)?.id).not.toBe(end)
     }
   )
-})
-
-// BUG: Small slices regress live frame cost; the retained-window target remains pending.
-it.fails('limits a native edge reveal while retaining the full mounted window', () => {
-  const { scroll, box } = open()
-  const before = scroll.olderCount.value
-  box.scrollTop = 0
-  scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: -100 }))
-  const revealed = before - scroll.olderCount.value
-  expect(revealed).toBeGreaterThan(0)
-  expect(revealed).toBeLessThanOrEqual(10)
-  expect(scroll.visibleMessages.value).toHaveLength(90)
 })

@@ -1,4 +1,4 @@
-import { formatTimestamp as originalTimestamp } from '@/helpers/displayFormat'
+import { formatTimestamp as originalTimestamp, timestampTimeZone } from '@/helpers/displayFormat'
 import dayjs, { type Dayjs } from 'dayjs'
 import { currentLocale, dateFormatter, relativeFormatter, numberFormatter, t } from './index'
 
@@ -65,10 +65,10 @@ export function streamBTime(
   }
   const date = new Date(original.datetime),
     now = options.now ?? new Date()
-  const timeZone = options.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+  const timeZone = options.timeZone ?? timestampTimeZone()
   const ordinal = (at: Date) => {
     const parts = Object.fromEntries(
-      new Intl.DateTimeFormat('en', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric' })
+      dateFormatter('en', { timeZone, year: 'numeric', month: 'numeric', day: 'numeric' })
         .formatToParts(at)
         .map((p) => [p.type, p.value])
     )

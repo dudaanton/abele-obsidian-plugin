@@ -1,4 +1,18 @@
+import { dateFormatter } from '@/i18n/format'
+
 export type TimestampValue = string | number | Date | null | undefined
+
+let turnTimeZone: string | undefined
+/** Share host-zone discovery during a render, but observe host changes on the next turn. */
+export function timestampTimeZone(): string {
+  if (turnTimeZone === undefined) {
+    turnTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    queueMicrotask(() => {
+      turnTimeZone = undefined
+    })
+  }
+  return turnTimeZone
+}
 
 /** Presentation only: storage/serialization is deliberately left to the caller. */
 export function formatTimestamp(
@@ -18,8 +32,8 @@ export function formatTimestamp(
   if (value === null || value === undefined || value === '') return unknown
   const date = new Date(value)
   if (!Number.isFinite(date.getTime())) return unknown
-  const timeZone = options.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
-  const formatter = new Intl.DateTimeFormat('en-GB', {
+  const timeZone = options.timeZone ?? timestampTimeZone()
+  const formatter = dateFormatter('en-GB', {
     timeZone,
     year: 'numeric',
     month: '2-digit',

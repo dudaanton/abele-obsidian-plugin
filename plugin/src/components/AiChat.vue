@@ -824,7 +824,7 @@ const runImages = computed(
 )
 const nodePlacements = computed(() => {
   const parentId = session.value?.delegationParentId
-  if (!parentId) return nodeCardPlacement(blocks.value, messages.value)
+  if (!parentId) return nodeCardPlacement(fullBlocks.value)
   const service = NodeService.getInstance()
   const operations = service.nodes.value.flatMap((node) => {
     try {
@@ -837,7 +837,7 @@ const nodePlacements = computed(() => {
       return []
     }
   })
-  return nodeCardPlacement(blocks.value, messages.value, { parentId, operations })
+  return nodeCardPlacement(fullBlocks.value, undefined, { parentId, operations })
 })
 const runChoice = reactive(new Map<string, boolean>())
 const messageDetails = reactive(new Set<string>())
