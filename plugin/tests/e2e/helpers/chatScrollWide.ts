@@ -27,7 +27,14 @@ export function wideScript() {
       throw Error('Wide fixture is not in a sidebar leaf')
     originalSize = wideSplit.size
     wideSplit.setSize(1500)
-    await until(() => box().getBoundingClientRect().width >= 1450 && box().clientHeight >= 800)
+    await until(() => {
+      const r = box().getBoundingClientRect()
+      report.setup = { width: r.width, height: box().clientHeight, left: r.left, top: r.top,
+        sidebar: wideSplit.containerEl.getBoundingClientRect().width, size: wideSplit.size,
+        innerWidth, innerHeight, screenWidth: screen.availWidth, screenHeight: screen.availHeight,
+        windowSize: require('@electron/remote').getCurrentWindow().getContentSize() }
+      return r.width >= 1450 && box().clientHeight >= 800
+    })
     box().scrollTop = box().scrollHeight
     box().dispatchEvent(new Event('scroll'))
   `
@@ -45,6 +52,9 @@ export function wideScript() {
     `
     report.wideSteps = []; report.missing = []; report.wideDrift = 0
     const el = box(), bounds = el.getBoundingClientRect()
+    // Native wheel deltas are device-independent pixels, while row rectangles
+    // use CSS pixels. Preserve a 40 CSS-pixel gesture at the fixture's zoom.
+    const wheelScale = require('@electron/remote').getCurrentWebContents().getZoomFactor()
     report.width = bounds.width; report.height = bounds.height
     report.startGap = el.scrollHeight - el.scrollTop - el.clientHeight
     report.collapsedRuns = el.querySelectorAll('.abele-chat-run.is-collapsed').length
@@ -59,7 +69,7 @@ export function wideScript() {
         .map(e => ({ e, top: e.getBoundingClientRect().top }))
       if (!el.querySelector('.abele-ai-chat__older') && el.scrollTop < 40) break
       const receipt = receivedInputs
-      await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: bounds.left + 100, y: bounds.top + 400, deltaX: 0, deltaY: -40 })
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: bounds.left + 100, y: bounds.top + 400, deltaX: 0, deltaY: -40 * wheelScale })
       await wait(80)
       if (receivedInputs <= receipt) throw Error('Wide wheel input was not received')
       for (const { e, top } of visible) {

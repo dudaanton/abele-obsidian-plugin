@@ -12,7 +12,13 @@ it.runIf(isObsidianRunning() && hasTestApi())(
     const size = evalJson<number[]>(
       "require('@electron/remote').getCurrentWindow().getContentSize()"
     )
+    const zoom = evalJson<number>(
+      "require('@electron/remote').getCurrentWebContents().getZoomFactor()"
+    )
     try {
+      // The display can clamp the native window height. Keep the CSS viewport
+      // large enough for the wide pane without changing gesture or pixel budgets.
+      evalRaw("require('@electron/remote').getCurrentWebContents().setZoomFactor(0.8)")
       evalRaw("require('@electron/remote').getCurrentWindow().setContentSize(2000, 1100)")
       const report = await withNativeInput(async () =>
         JSON.parse(await evalLong(wideScript(), 90_000))
@@ -28,6 +34,7 @@ it.runIf(isObsidianRunning() && hasTestApi())(
       expect(report.missing).toEqual([])
       expect(report.wideDrift).toBeLessThanOrEqual(2)
     } finally {
+      evalRaw(`require('@electron/remote').getCurrentWebContents().setZoomFactor(${zoom})`)
       evalRaw(
         `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]}, ${size[1]})`
       )
