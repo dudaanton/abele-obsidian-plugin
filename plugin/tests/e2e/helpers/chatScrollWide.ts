@@ -73,8 +73,12 @@ export function wideScript() {
       if (delta > 0 && item(tail) && el.scrollHeight - el.scrollTop - el.clientHeight < 40) break
       const receipt = receivedInputs
       await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: bounds.left + 100, y: bounds.top + 400, deltaX: 0, deltaY: delta * wheelScale })
-      await wait(16)
+      // CDP acknowledgement precedes renderer delivery. Await the actual receipt,
+      // without replaying input, then let its default scroll action reach layout.
+      for (let attempt = 0; receivedInputs <= receipt && attempt < 60; attempt++)
+        await wait(16)
       if (receivedInputs <= receipt) throw Error('Wide wheel input was not received')
+      await wait(16)
       for (const { e, top } of visible) {
         if (!e.isConnected) report.missing.push({ step: n, id: e.dataset.messageId })
         else report.wideDrift = Math.max(report.wideDrift, Math.abs(e.getBoundingClientRect().top - top + delta))
