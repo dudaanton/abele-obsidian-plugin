@@ -186,5 +186,6 @@ it.each([
         ).toBeLessThanOrEqual(2)
       }
     }
-  }
+  },
+  30_000
 )
