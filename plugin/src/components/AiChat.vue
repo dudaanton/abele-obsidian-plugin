@@ -2720,6 +2720,8 @@ body.is-phone
 }
 
 .abele-ai-chat__messages {
+  /* The temporary floor must not change descendants' containing block on every page. */
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -2741,10 +2743,6 @@ body.is-phone
 
 /* The scroll range kept from shrinking while a change draws again: see `holdFloor`. Absolutely
    placed, it takes no room among the messages and only reaches down as far as they did. */
-.abele-ai-chat__messages_floor {
-  position: relative;
-}
-
 /* Only the floor pseudo-element consumes this value. Stop its inheritance at
    message roots so page holds do not invalidate every markdown descendant. */
 .abele-ai-chat__messages > * {
