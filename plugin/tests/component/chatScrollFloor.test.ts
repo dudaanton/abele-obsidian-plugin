@@ -56,6 +56,37 @@ function conversation(messages: number) {
 }
 
 describe('the floor under a changing conversation', () => {
+  it('samples position after a range read has applied native layout clamping', () => {
+    const { container, anchors } = conversation(1)
+    const message = container.children[0] as HTMLElement
+    let top = 900
+    Object.defineProperties(container, {
+      scrollTop: {
+        get: () => top,
+        set: (value: number) => {
+          top = value
+        },
+      },
+      scrollHeight: {
+        get: () => {
+          top = Math.min(top, 600)
+          return 1000
+        },
+      },
+      clientHeight: { get: () => 400 },
+    })
+    container.getBoundingClientRect = () => ({ top: 0 }) as DOMRect
+    message.getBoundingClientRect = () => ({ top: 500 - top }) as DOMRect
+    anchors.anchor = { el: message, offset: -400, at: 500 }
+    const measured = vi.fn()
+    anchors.holdLayout(measured)
+    expect(measured).toHaveBeenCalledWith({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 })
+    expect(anchors.anchor?.at).toBe(500)
+    // A second pass must not undo the browser's clamp using a fictitious first drift.
+    anchors.holdLayout(measured)
+    expect(top).toBe(600)
+  })
+
   it('keeps the complete mutation-observer path free of reads after its first write', async () => {
     let mutated!: () => void
     vi.stubGlobal(

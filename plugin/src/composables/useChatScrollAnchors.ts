@@ -357,9 +357,11 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     const container = messagesContainer.value
     if (!container) return
     const before: ChatScrollGeometry = {
-      scrollTop: container.scrollTop,
       scrollHeight: container.scrollHeight,
       clientHeight: container.clientHeight,
+      // Reading the range can apply pending layout and clamp native scrollTop.
+      // The anchor rectangle must use the position after that layout, too.
+      scrollTop: container.scrollTop,
     }
     let top = before.scrollTop
     let reason: string | undefined

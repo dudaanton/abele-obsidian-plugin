@@ -615,12 +615,12 @@ export class NodeManagerController {
   }
   async wakeDelivered(wake: (parent: string, notice: string) => boolean) {
     const entries = await this.store.transaction((s) => {
-      for (const [operation, entry] of Object.entries(s.managerOperations ?? {})) {
+      for (const [operation, entry] of Object.entries(snapshotOf(s.managerOperations ?? {}))) {
         if (entry.run?.session_id !== 'unsubmitted-command') continue
         const receipt = parsedRun(s.results[operation])
-        if (receipt.success) retainedRun(entry, receipt.data, true)
+        if (receipt.success) retainedRun(s.managerOperations[operation], receipt.data, true)
       }
-      return Object.entries(s.managerOperations ?? {})
+      return Object.entries(snapshotOf(s.managerOperations ?? {}))
         .filter(
           ([, entry]) => !entry.notified && !entry.stopped && entry.method !== 'command.v1.cancel'
         )

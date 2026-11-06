@@ -65,6 +65,10 @@ afterEach(async (context) => {
       fs.writeFileSync(directory + '/scroll-profile.json', JSON.stringify({ profile, tasks: fixture.longTasks, metrics: fixture.profileMetrics, metricsAfter }));
       fs.writeFileSync(directory + '/scroll-allocations.json', JSON.stringify(allocations));
       fs.writeFileSync(directory + '/scroll-heap-windows.json', JSON.stringify(fixture.heapWindows));
+      // Other matrix files use the same case name. Preserve this run's trace
+      // beside its profile before a later suite can overwrite the shared artifact.
+      const frames = ${JSON.stringify(shotDir('abele-phone') + '/wheel-long-idle-frames.json')};
+      if (fs.existsSync(frames)) fs.copyFileSync(frames, directory + '/scroll-frames.json');
       return JSON.stringify({ tasks: fixture.longTasks, refreshMs: fixture.times, error: fixture.error });
     } finally {
       fixture.observer.disconnect();

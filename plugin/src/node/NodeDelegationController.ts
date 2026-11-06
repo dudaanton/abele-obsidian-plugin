@@ -543,7 +543,9 @@ export class NodeDelegationController {
           task.awaitingResult = false
           task.parentStopped = true
         }
-      for (const receipt of Object.values(s.results)) {
+      // Receipts are inspected, never edited here. Walking the immutable snapshot
+      // avoids building a child draft for every unrelated retained operation.
+      for (const receipt of Object.values(snapshotOf(s.results))) {
         const method = receipt.request?.method
         if (method === 'delegation.send') {
           const reply = sendReceipt(receipt)

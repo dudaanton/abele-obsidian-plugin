@@ -3,7 +3,38 @@ import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import { promptAnswerStates } from '@/node/promptAnswers'
 import { NodeManagerController } from '@/node/NodeManagerController'
+import { NodeDelegationController } from '@/node/NodeDelegationController'
 import type { NodeClient } from '@abele/node-client'
+
+it('scans unchanged delivery and delegation receipts without constructing child drafts', async () => {
+  const store = new NodeClientStore('sample-receipt-scan', new IDBFactory())
+  try {
+    await store.transaction((s) => {
+      s.results.sample = { error: 'outcome_unknown' }
+      s.managerOperations = {
+        sample: { parent: 'sample-parent', method: 'command.v1.run', params: {} },
+      }
+    })
+    const [receipt, operation] = await store.read((s) => [
+      s.results.sample,
+      s.managerOperations.sample,
+    ])
+    const get = vi.spyOn(Reflect, 'get')
+    try {
+      const client = { connected: false } as NodeClient
+      await new NodeDelegationController(client, store).restore()
+      await new NodeManagerController(client, store).wakeDelivered(() => false)
+      expect(
+        get.mock.calls.filter(([target]) => target === receipt || target === operation)
+      ).toHaveLength(0)
+    } finally {
+      get.mockRestore()
+    }
+    expect(await store.read((s) => s.results.sample)).toBe(receipt)
+  } finally {
+    store.close()
+  }
+})
 
 it('observes a legacy writer clearing its metadata-only receipt collection', async () => {
   const factory = new IDBFactory()

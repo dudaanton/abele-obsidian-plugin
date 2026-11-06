@@ -2745,6 +2745,12 @@ body.is-phone
   position: relative;
 }
 
+/* Only the floor pseudo-element consumes this value. Stop its inheritance at
+   message roots so page holds do not invalidate every markdown descendant. */
+.abele-ai-chat__messages > * {
+  --abele-chat-floor: 0px;
+}
+
 .abele-ai-chat__messages_floor::after {
   content: '';
   position: absolute;
