@@ -5,5 +5,5 @@ import { chatScrollMatrixSuite } from './helpers/chatScrollMatrixSuite'
 targets('desktop')
 chatScrollMatrixSuite(
   process.env.ABELE_SCROLL_MATRIX_FILTER ||
-    'wheel/medium/(text|finished-tool)|wheel/long/idle|touch/long/finished-reply'
+    'wheel/medium/(text|finished-tool)|wheel/long/(idle|text)|touch/long/finished-reply'
 )
