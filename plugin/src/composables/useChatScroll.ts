@@ -1,4 +1,4 @@
-import { watch, nextTick, onUnmounted, type Ref } from 'vue'
+import { computed, watch, nextTick, onUnmounted, type Ref } from 'vue'
 import type { ChatMessage } from '@/ai/types'
 import { useChatRenderWindow } from './useChatRenderWindow'
 import { offsetOf, useChatScrollAnchors, type ChatScrollGeometry } from './useChatScrollAnchors'
@@ -31,6 +31,35 @@ export function useChatScroll(options: ChatScrollOptions) {
     isStreaming,
     composing,
   } = options
+  const messageIndices = computed(() => new Map(messages.value.map((m, i) => [m.id, i])))
+  const retainedRows = () => {
+    const el = messagesContainer.value
+    if (!el || !el.clientHeight) return
+    const viewport = el.getBoundingClientRect()
+    const overscan = el.clientHeight
+    let first = messages.value.length
+    let last = 0
+    for (const row of Array.from(el.querySelectorAll<HTMLElement>('[data-message-id]'))) {
+      const rect = row.getBoundingClientRect()
+      if (
+        rect.bottom <= rect.top ||
+        rect.bottom < viewport.top - overscan ||
+        rect.top > viewport.bottom + overscan
+      )
+        continue
+      const ids = row.dataset.runIds?.split(' ') ?? [row.dataset.messageId]
+      for (const id of ids) {
+        const index = messageIndices.value.get(id)
+        if (index === undefined) continue
+        first = Math.min(first, index)
+        let end = index + 1
+        // Results belong to their call even when the folded run hides their DOM.
+        while (messages.value[end]?.role === 'tool-result') end++
+        last = Math.max(last, end)
+      }
+    }
+    return last > first ? { first, last } : undefined
+  }
   /** How close to the top counts as asking for the messages above. */
   const LOAD_OLDER_THRESHOLD_PX = 200
   let shouldAutoScroll = true
@@ -120,6 +149,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     showOlder,
     expandOlder,
     showNewer,
+    trim: trimRenderWindow,
     reset: resetRenderWindow,
     showFrom: showRenderMessagesFrom,
   } = useChatRenderWindow(
@@ -136,7 +166,8 @@ export function useChatScroll(options: ChatScrollOptions) {
     },
     undefined,
     undefined,
-    options.windowCost
+    options.windowCost,
+    retainedRows
   )
   const resetWindow = () => {
     leaveMarker()
@@ -153,6 +184,17 @@ export function useChatScroll(options: ChatScrollOptions) {
     shouldAutoScroll: () => shouldAutoScroll,
     isStreaming: () => isStreaming.value,
     isReaderScrolling: () => nativeScrolling,
+    messageAnchorIds: (el) => {
+      const id = el.dataset.messageId
+      if (!id) return []
+      const ids = [id]
+      let index = messageIndices.value.get(id)
+      if (index !== undefined && messages.value[index]?.role === 'tool-result') {
+        while (index > 0 && messages.value[index]?.role === 'tool-result') index--
+        if (messages.value[index]?.role === 'tool-call') ids.push(messages.value[index].id)
+      }
+      return ids
+    },
   })
   const { captureAnchor, holdAnchorAWhile, steadyReader, endSteady } = anchors
 
@@ -308,6 +350,16 @@ export function useChatScroll(options: ChatScrollOptions) {
     else if (el.scrollHeight - el.scrollTop - el.clientHeight < LOAD_OLDER_THRESHOLD_PX) loadNewer()
   }
   const finishReveal = (direction: 'older' | 'newer', automatic = false) => {
+    if (!readingFromMarker) {
+      if (trimRenderWindow(captureAnchor, direction)) {
+        const el = messagesContainer.value
+        void nextTick(() => {
+          holdAnchorAWhile(el)
+          anchors.nextFrame(el.win, () => finishReveal(direction, automatic))
+        })
+        return
+      }
+    }
     revealing = false
     const retry = deferredEdge
     deferredEdge = undefined
@@ -349,7 +401,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     if (!automatic) shouldAutoScroll = false
     anchors.releaseReader()
     if (!automatic || !wasFollowing) captureAnchor()
-    if (!automatic) showOlder()
+    if (!automatic) showOlder(undefined, !readingFromMarker && el.childElementCount > 0)
     void nextTick(() => {
       if (automatic && wasFollowing) {
         if (shouldAutoScroll && !fingerDown) doScroll()
@@ -365,7 +417,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     revealing = true
     anchors.releaseReader()
     captureAnchor()
-    showNewer()
+    showNewer(undefined, el.childElementCount > 0)
     void nextTick(() => {
       holdAnchorAWhile(el)
       anchors.nextFrame(el.win, () => finishReveal('newer'))
@@ -528,12 +580,13 @@ export function useChatScroll(options: ChatScrollOptions) {
     // the next page early enough for its markdown to draw before reaching the edge.
     const ahead =
       fingerDown || wheelScrolling
-        ? Math.max(LOAD_OLDER_THRESHOLD_PX, el.clientHeight * 2)
+        ? Math.max(LOAD_OLDER_THRESHOLD_PX, el.clientHeight)
         : LOAD_OLDER_THRESHOLD_PX
     if (moved < 0 && readerDirection <= 0 && el.scrollTop < ahead) loadOlder()
     else if (moved > 0 && readerDirection >= 0 && bottomGap < ahead) loadNewer()
     // Host/accessibility scrolls can arrive without an input event or prior position.
     else if (!moved && !readerDirection && !fingerDown) checkEdges()
+    scheduleReveal(el)
   }
 
   const doScroll = () => {
@@ -730,6 +783,7 @@ export function useChatScroll(options: ChatScrollOptions) {
       // only updates the gap and follows the end (or handles an actual box resize).
       keepGapCurrent()
       onBoxResized()
+      scheduleReveal(el)
     })
     sizeObserver.observe(el)
     observeMessageSizes(el)
@@ -742,7 +796,18 @@ export function useChatScroll(options: ChatScrollOptions) {
     revealQueued = true
     anchors.nextFrame(el.win, () => {
       revealQueued = false
-      if (messagesContainer.value === el) revealUntilScrollable()
+      if (messagesContainer.value !== el) return
+      if (
+        !revealing &&
+        !readingFromMarker &&
+        trimRenderWindow(captureAnchor, readerDirection < 0 ? 'older' : 'newer')
+      ) {
+        revealing = true
+        void nextTick(() => {
+          holdAnchorAWhile(el)
+          anchors.nextFrame(el.win, () => finishReveal(readerDirection < 0 ? 'older' : 'newer'))
+        })
+      } else revealUntilScrollable()
     })
   }
 

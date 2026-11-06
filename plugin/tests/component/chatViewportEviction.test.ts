@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import { useChatScroll } from '@/composables/useChatScroll'
+import { useChatScrollAnchors } from '@/composables/useChatScrollAnchors'
 import type { ChatMessage } from '@/ai/types'
 import { chatBlocks } from '@/ai/toolRuns'
 import { chatRenderCost } from '@/ai/chatRenderCost'
@@ -15,9 +16,60 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-it.each([false, true])(
-  'keeps visible short rows through wide-panel paging (collapsed tools: %s)',
-  async (tools) => {
+it('resolves a page anchor after its host is replaced on a later tick', () => {
+  useVault([])
+  const box = ref<HTMLElement | null>(null)
+  let anchors!: ReturnType<typeof useChatScrollAnchors>
+  wrapper = mount(
+    defineComponent({
+      setup() {
+        anchors = useChatScrollAnchors({
+          messagesContainer: box,
+          shouldAutoScroll: () => false,
+          scrollContainerTo: (el, top) => {
+            el.scrollTop = top
+          },
+        })
+        return () => h('div', { ref: box })
+      },
+    }),
+    { attachTo: document.body }
+  )
+  const el = box.value!
+  el.getBoundingClientRect = () => ({ top: 0, bottom: 800 }) as DOMRect
+  Object.defineProperties(el, {
+    clientHeight: { get: () => 800 },
+    scrollHeight: { get: () => 2000 },
+  })
+  el.scrollTop = 100
+  const row = (at: number) => {
+    const node = document.createElement('div')
+    node.className = 'abele-chat-msg'
+    node.dataset.messageId = 'sample-anchor'
+    node.getBoundingClientRect = () =>
+      ({ top: at - el.scrollTop, bottom: at + 50 - el.scrollTop }) as DOMRect
+    node.getClientRects = () => [node.getBoundingClientRect()] as unknown as DOMRectList
+    el.append(node)
+    return node
+  }
+  const old = row(120)
+  anchors.captureAnchor()
+  old.remove()
+  anchors.holdAnchor()
+  const replacement = row(300)
+  anchors.holdAnchor()
+  expect(replacement.getBoundingClientRect().top).toBe(20)
+  expect(el.scrollTop).toBe(280)
+})
+
+it.each([
+  [false, 120],
+  [true, 120],
+  [false, 480],
+  [true, 480],
+] as const)(
+  'keeps visible short rows through wide-panel paging (collapsed tools: %s, messages: %s)',
+  async (tools, count) => {
     useVault([])
     vi.stubGlobal(
       'ResizeObserver',
@@ -28,7 +80,7 @@ it.each([false, true])(
       }
     )
     const messages = ref(
-      Array.from({ length: 120 }, (_, i) => ({
+      Array.from({ length: count }, (_, i) => ({
         id: `sample-${i}`,
         role: tools && i % 2 ? 'tool-call' : 'assistant',
         content: 'Short sample',
@@ -102,15 +154,20 @@ it.each([false, true])(
       },
     })
     el.getBoundingClientRect = () => rect(0, 800)
-    scroll.showMessagesFrom(30)
+    scroll.showMessagesFrom(count - 90)
     await nextTick()
     scroll.doScroll()
     await nextTick()
-    for (const delta of [-100, ...Array<number>(16).fill(-40), ...Array<number>(16).fill(40)]) {
+    const steps = count === 120 ? 16 : 80
+    for (const delta of [
+      -100,
+      ...Array<number>(steps).fill(-40),
+      ...Array<number>(steps).fill(40),
+    ]) {
       const before = Array.from(el.children)
         .filter((row) => {
           const r = row.getBoundingClientRect()
-          return r.top >= 100 && r.bottom <= 700
+          return r.bottom > 0 && r.top < 800
         })
         .map((row) => ({ row, top: row.getBoundingClientRect().top }))
       scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: delta }))
@@ -120,6 +177,7 @@ it.each([false, true])(
       scroll.onMessagesScroll()
       await nextTick()
       await advance(80)
+      expect(el.children.length, 'off-screen rows are reclaimed').toBeLessThanOrEqual(180)
       for (const { row, top } of before) {
         expect(row.isConnected, 'visible row was evicted').toBe(true)
         expect(

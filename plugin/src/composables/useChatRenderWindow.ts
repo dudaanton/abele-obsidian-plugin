@@ -7,7 +7,8 @@ export function useChatRenderWindow<T>(
   following: (wasAtTail: boolean) => boolean,
   pageSize = DEFAULT_TAIL_PAGE_SIZE,
   capacity = pageSize * 3,
-  cost: (start: number, end: number) => number = (start, end) => end - start
+  cost: (start: number, end: number) => number = (start, end) => end - start,
+  retained?: () => { first: number; last: number } | undefined
 ) {
   if (pageSize < 1 || capacity < pageSize) throw new RangeError('Invalid chat window size')
   const total = computed(() => source().length)
@@ -41,16 +42,46 @@ export function useChatRenderWindow<T>(
   const reset = () => {
     range.value = { first: oldest(total.value, pageSize), last: total.value }
   }
-  const showOlder = (budget = pageSize) => {
+  const showOlder = (budget = pageSize, preserve = !!retained) => {
     const first = oldest(start.value, Math.max(1, Math.min(pageSize, budget)))
-    range.value = { first, last: Math.min(end.value, newest(first, capacity)) }
+    range.value = {
+      first,
+      last: preserve ? end.value : Math.min(end.value, newest(first, capacity)),
+    }
   }
-  const showNewer = (budget = pageSize) => {
+  const showNewer = (budget = pageSize, preserve = !!retained) => {
     const last = newest(end.value, Math.max(1, Math.min(pageSize, budget)))
-    range.value = { first: Math.max(start.value, oldest(last, capacity)), last }
+    range.value = {
+      first: preserve ? start.value : Math.max(start.value, oldest(last, capacity)),
+      last,
+    }
+  }
+  // The caller captures an anchor and invokes this only after layout has settled.
+  // Pixel coverage takes precedence over the work budget for short/folded rows.
+  const trim = (beforeChange: () => void, direction: 'older' | 'newer') => {
+    if (cost(start.value, end.value) <= capacity) return false
+    const keep =
+      retained?.() ??
+      (direction === 'older'
+        ? { first: start.value, last: newest(start.value, capacity) }
+        : { first: oldest(end.value, capacity), last: end.value })
+    const first =
+      direction === 'older'
+        ? Math.max(start.value, oldest(keep.first, pageSize))
+        : Math.max(start.value, Math.min(keep.first, oldest(end.value, capacity)))
+    const last =
+      direction === 'newer'
+        ? Math.min(end.value, newest(keep.last, pageSize))
+        : Math.min(end.value, Math.max(keep.last, newest(first, capacity)))
+    if (first === start.value && last === end.value) return false
+    beforeChange()
+    range.value = { first, last }
+    return true
   }
   const expandOlder = () => {
-    const first = Math.max(oldest(start.value, pageSize), oldest(end.value, capacity))
+    const first = retained
+      ? oldest(start.value, pageSize)
+      : Math.max(oldest(start.value, pageSize), oldest(end.value, capacity))
     if (first >= start.value) return false
     range.value = { first, last: end.value }
     return true
@@ -67,11 +98,18 @@ export function useChatRenderWindow<T>(
     (now, before) => {
       if (now < before || before === 0) reset()
       else if (following(range.value.last === before)) {
-        range.value = { first: Math.max(start.value, oldest(now, capacity)), last: now }
+        const keep = retained?.()
+        range.value = {
+          first: Math.max(start.value, Math.min(keep?.first ?? now, oldest(now, capacity))),
+          last: now,
+        }
       } else if (range.value.last === before) {
         // Completing a streamed reply mounts its message below the reader. Keep that
         // tail visible without moving their start, up to the existing capacity.
-        range.value = { first: start.value, last: newest(start.value, capacity) }
+        range.value = {
+          first: start.value,
+          last: Math.max(end.value, newest(start.value, capacity)),
+        }
       }
     },
     { flush: 'sync' }
@@ -80,7 +118,7 @@ export function useChatRenderWindow<T>(
   watch(
     () => cost(start.value, end.value),
     (value) => {
-      if (value <= capacity) return
+      if (value <= capacity || retained) return
       range.value = following(!hasNewer.value)
         ? { first: oldest(end.value, capacity), last: end.value }
         : { first: start.value, last: newest(start.value, capacity) }
@@ -98,6 +136,7 @@ export function useChatRenderWindow<T>(
     showNewer,
     expandOlder,
     showFrom,
+    trim,
     reset,
   }
 }

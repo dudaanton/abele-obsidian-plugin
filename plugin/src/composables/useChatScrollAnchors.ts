@@ -21,6 +21,7 @@ interface ChatScrollAnchorsOptions {
   shouldAutoScroll: () => boolean
   isStreaming?: () => boolean
   isReaderScrolling?: () => boolean
+  messageAnchorIds?: (el: HTMLElement) => string[]
 }
 
 export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
@@ -35,7 +36,7 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
    * height arrives afterwards and shoves the view down. Holding one element still is immune to
    * that, however late and however often the heights change.
    */
-  let anchor: { el: HTMLElement; offset: number; at?: number } | null = null
+  let anchor: { el: HTMLElement; offset: number; at?: number; ids?: string[] } | null = null
 
   /** Takes the topmost rendered message as the anchor: the page is revealed above it. */
   const captureAnchor = () => {
@@ -60,6 +61,7 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
       }
     }
     if (container && anchor) {
+      anchor.ids = options.messageAnchorIds?.(anchor.el) ?? [anchor.el.dataset.messageId ?? '']
       anchor.at = anchor.offset + container.scrollTop
       const height = container.scrollHeight
       container.classList.add('abele-ai-chat__messages_steady')
@@ -71,10 +73,18 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
   const measureAnchor = (layout: Layout) => {
     if (!anchor) return
     if (!anchor.el.isConnected) {
-      anchor = null
-      layout.releaseFloor = true
-      layout.clearClass = !steady
-      return
+      const ids = anchor.ids ?? []
+      const replacement = Array.from(
+        messagesContainer.value?.querySelectorAll<HTMLElement>('[data-message-id]') ?? []
+      ).find(
+        (el) =>
+          (ids.includes(el.dataset.messageId ?? '') ||
+            el.dataset.runIds?.split(' ').some((id) => ids.includes(id))) &&
+          el.getClientRects().length
+      )
+      if (!replacement) return // The replacement host may mount on a later render tick.
+      anchor.el = replacement
+      console.debug('[chat-scroll] resolved page anchor', { ids })
     }
 
     // Compensate layout alone. Compositor movement since capture is reader input,
