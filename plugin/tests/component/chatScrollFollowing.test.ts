@@ -10,8 +10,83 @@ import type { ChatMessage } from '@/ai/types'
 import { useVault } from '../helpers/testEnv'
 import { useFakeClock } from '../helpers/fakeClock'
 import { fakeChatSession } from '../helpers/fakeChatSession'
+import { script } from '../e2e/helpers/chatScrollMatrix'
+
+vi.mock('../e2e/helpers/shots', () => ({ shotDir: () => 'sample-shots' }))
 
 const advance = useFakeClock()
+
+it.each([false, true])(
+  'measures upward input after slow pre-input streaming growth (receipt only: %s)',
+  async (receiptOnly) => {
+    const { box, scroll, grow } = await open()
+    const anchor = box.children[22] as HTMLElement
+    box.getBoundingClientRect = () => ({ top: 0, bottom: 800 }) as DOMRect
+    anchor.getBoundingClientRect = () =>
+      ({ top: 2200 - box.scrollTop, bottom: 2300 - box.scrollTop }) as DOMRect
+    // Run the matrix's actual origin callbacks against the production scroll composable.
+    // Native input receipt is deliberately delayed while streaming follows new content.
+    const probe = script('long', 'text', false)
+    const originCode = probe.slice(
+      probe.indexOf('    let before, first, olderHeight'),
+      probe.indexOf('    boundaryGeometry = null; gestureActive')
+    )
+    const receiptCode = probe.slice(
+      probe.indexOf('    if (!box()?.contains(event.target))'),
+      probe.indexOf('    const nextY = (event.touches?')
+    )
+    const origin = new Function(
+      'el',
+      'dy',
+      'visibleAnchor',
+      'offset',
+      'item',
+      'session',
+      `
+      let measureInputStart, measureWheelReceipt, measureFollowingOrigin;
+      const box = () => el;
+      ${originCode}
+      return { frame: () => measureFollowingOrigin?.(), receipt: event => { ${receiptCode} },
+        moved: () => at - offset(anchor), room: () => room, updates: originUpdates };
+    `
+    )(
+      box,
+      -20,
+      () => anchor,
+      (el: HTMLElement) => el.getBoundingClientRect().top,
+      () => anchor,
+      { messages: { value: [{ id: 'sample-tail' }] } }
+    )
+    await grow()
+    // A slow frame gives the queued follow enough time to run before DOM input.
+    await advance(80)
+    if (!receiptOnly) origin.frame()
+    const nativeStart = box.scrollTop
+    box.scrollTop -= 20
+    const wheel = new WheelEvent('wheel', { deltaY: -20 })
+    anchor.dispatchEvent(wheel)
+    origin.receipt(wheel)
+    scroll.readerTakesOver(wheel)
+    scroll.onMessagesScroll()
+    expect(box.scrollTop).toBe(nativeStart - 20)
+    expect(origin.moved()).toBe(-20)
+    expect(origin.room()).toBe(nativeStart)
+    // Growth after input may not be dismissed as a new gesture origin.
+    await grow()
+    await advance(80)
+    origin.frame()
+    origin.receipt(wheel)
+    expect(box.scrollTop).toBe(nativeStart - 20)
+    expect(origin.moved()).toBe(-20)
+    expect(origin.updates).toHaveLength(1)
+    // A real correction after input must remain visible to the distance oracle.
+    box.scrollTop += 10
+    origin.frame()
+    origin.receipt(wheel)
+    expect(origin.moved()).toBe(-10)
+    expect(Math.abs(origin.moved() - -20)).toBeGreaterThan(2)
+  }
+)
 
 // BUG: Deferring correction still loses native input distance in live page swaps.
 it.fails('batches markdown mutations into the next frame before measuring layout', async () => {

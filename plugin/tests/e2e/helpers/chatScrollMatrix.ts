@@ -404,6 +404,9 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
       endAtStart = !!item(session.messages.value.at(-1)?.id)
     }
     measure()
+    // Distance available in the requested direction is not the distance to the
+    // live end: an upward gesture starting at the bottom has a large room value.
+    const followingAtStart = endAtStart && el.scrollHeight - el.scrollTop - el.clientHeight < 2
     // Streaming can follow between the CDP request and DOM receipt. That movement
     // predates the reader's input and must not be charged against its travel.
     measureInputStart = ${phone ? 'measure' : 'null'}
@@ -412,24 +415,25 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
     measureWheelReceipt = ${
       phone
         ? 'null'
-        : `room < 2 && item(session.messages.value.at(-1)?.id) ? event => {
+        : `followingAtStart ? event => {
       if (event.type !== 'wheel' || !anchor?.isConnected) return
       const growth = el.scrollHeight - originHeight
       const shift = at - offset(anchor) - event.deltaY
       if (growth > 0 && shift > 0 && Math.abs(growth - shift) < 2) {
         originUpdates.push({ source: 'wheel receipt', shift, growth, deltaY: event.deltaY })
         before += shift; at -= shift
+        if (dy < 0) room = before
       }
     } : null`
     }
     measureFollowingOrigin = ${
       phone
         ? 'null'
-        : `room < 2 && item(session.messages.value.at(-1)?.id) ? () => {
+        : `followingAtStart ? () => {
       const gap = el.scrollHeight - el.scrollTop - el.clientHeight
       if (gap < 2 && el.scrollHeight > originHeight && anchor?.isConnected) {
         originUpdates.push({ before, after: el.scrollTop, heightBefore: originHeight, heightAfter: el.scrollHeight, gap })
-        before = el.scrollTop; at = offset(anchor); room = gap; originHeight = el.scrollHeight
+        before = el.scrollTop; at = offset(anchor); room = dy < 0 ? before : gap; originHeight = el.scrollHeight
       }
     } : null`
     }
