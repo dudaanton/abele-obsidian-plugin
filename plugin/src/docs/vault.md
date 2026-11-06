@@ -3509,6 +3509,12 @@ work, pending sends and owner stop fences. Older cache layouts migrate atomicall
 raising the version-3 database format. Delegation revisions have their own manifest, and
 writes retain an exact legacy-readable task snapshot for rollback. Reopening after an older
 client ran imports its task changes without discarding the retained retry bodies.
+Record rows and their revision maps commit with a small `records-stamp` value. Each
+new handle imports the persisted maps on first access; subsequent unchanged reads use
+the stamp and cached immutable rows without decoding the maps again. Aborted writes
+publish neither a new stamp nor a new in-memory snapshot. Concurrent handles must run
+the same stamped writer protocol; older-format writers are supported before reopening,
+not concurrently with a cached reader. Existing record layouts remain readable.
 Startup removes orphaned registration caches belonging to this vault installation, while
 preserving current registrations and caches whose ownership cannot be established (including
 other installations and legacy paired caches).

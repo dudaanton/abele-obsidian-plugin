@@ -33,19 +33,33 @@ export class ClientRecords {
   private toolSnapshots = new Map<string, unknown>()
   private collections = new Map<Field, Record<string, unknown>>()
   private collectionLegacy = new Map<Field, unknown>()
+  private manifestCache?: {
+    stamp: string | undefined
+    manifest: Record<string, string>
+    keys: string[]
+  }
   constructor(private readonly validate: (field: Field, value: unknown) => void) {}
 
   async load(tx: IDBTransaction, state: NodeClientState, readonly = false) {
     const store = tx.objectStore('client')
+    let stamp = (await read(store.get('records-stamp'))) as string | undefined
+    const cachedManifest = this.manifestCache?.stamp === stamp ? this.manifestCache : undefined
     const manifestOf = async (key: string) =>
       ((await read(store.get(key))) ?? {}) as Record<string, string>
-    const [sharedManifest, taskManifest, extraManifest] = await Promise.all([
-      manifestOf('record-revisions'),
-      manifestOf('delegation-revisions'),
-      manifestOf('extra-record-revisions'),
-    ])
-    const manifest = Object.assign(sharedManifest, taskManifest, extraManifest)
-    const keys = Object.keys(manifest)
+    // Every new handle imports the persisted maps, including unstamped legacy data.
+    // Once open, all writers must use this protocol; record writes and their stamp
+    // commit together under the IndexedDB transaction lock.
+    let manifest: Record<string, string> =
+      cachedManifest?.manifest ??
+      Object.assign(
+        {},
+        ...(await Promise.all([
+          manifestOf('record-revisions'),
+          manifestOf('delegation-revisions'),
+          manifestOf('extra-record-revisions'),
+        ]))
+      )
+    let keys = cachedManifest?.keys ?? Object.keys(manifest)
     const previousSnapshots = this.snapshots
     let snapshots = previousSnapshots
     const editSnapshots = () => {
@@ -69,7 +83,7 @@ export class ClientRecords {
     }
     const changedFields = new Set<Field>()
     const pending: Promise<void>[] = []
-    for (const key of keys) {
+    for (const key of cachedManifest ? [] : keys) {
       const revision = manifest[key]
       const cached = previousSnapshots.get(key)
       if (cached?.revision !== revision) {
@@ -222,7 +236,15 @@ export class ClientRecords {
       delegationSnapshot: () => frozen(plain({ tasks: state.delegation.tasks })),
       save: () => {
         const updates = changes()
-        if (!updates.length) return
+        if (!updates.length) {
+          if (!stamp) {
+            stamp = crypto.randomUUID()
+            store.put(stamp, 'records-stamp')
+          }
+          return
+        }
+        // An aborted transaction must not mutate the last committed cache.
+        manifest = { ...manifest }
         for (const update of updates) savedFields.add(update.key.split(':')[1] as Field)
         return (async () => {
           for (const [index, update] of updates.entries()) {
@@ -307,10 +329,14 @@ export class ClientRecords {
               ),
               'extra-record-revisions'
             )
+            keys = Object.keys(manifest)
+            stamp = crypto.randomUUID()
+            store.put(stamp, 'records-stamp')
           }
         })()
       },
       committed: () => {
+        this.manifestCache = { stamp, manifest, keys }
         this.snapshots = snapshots
         this.toolSnapshots = tools
         for (const collection of collections) {
