@@ -20,6 +20,7 @@ interface ChatScrollAnchorsOptions {
   ) => void
   shouldAutoScroll: () => boolean
   isStreaming?: () => boolean
+  isReaderScrolling?: () => boolean
 }
 
 export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
@@ -181,6 +182,7 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     el: HTMLElement
     key: BlockKey | null
     offset: number
+    scrollTop: number
     until: number
     waiting?: boolean
   } | null = null
@@ -308,6 +310,16 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
       end()
       return
     }
+    if (options.isReaderScrolling?.()) {
+      // Native movement is visible to geometry before its scroll event arrives.
+      // Keep that movement, correcting only growth around the reading block.
+      // A shorter range can clamp the old position; that part is layout, not input.
+      const prior = Math.min(
+        steady.scrollTop,
+        Math.max(0, layout.before.scrollHeight - layout.before.clientHeight)
+      )
+      steady.offset -= layout.before.scrollTop - prior
+    }
     if (!container.contains(steady.el) || !steady.el.getClientRects().length) {
       const replacement = steady.key && resolveBlock(steady.key, container)
       if (!replacement?.getClientRects().length) {
@@ -394,6 +406,7 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     // No geometry reads below this point. The floor must survive the scroll write:
     // WebKit can clamp synchronously when a page is evicted.
     if (reason) scrollContainerTo(container, top, reason, before)
+    if (steady) steady.scrollTop = top
     if (layout.clearClass) container.classList.remove('abele-ai-chat__messages_steady')
     if (layout.releaseFloor) releaseFloor(container)
   }
@@ -493,6 +506,7 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
       el,
       key: blockKey(el, container),
       offset: offsetOf(el, container),
+      scrollTop: container.scrollTop,
       until: win.performance.now() + STEADY_MS,
     }
     console.debug('[chat-scroll] reading anchor', {

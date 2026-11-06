@@ -36,6 +36,7 @@ export function useChatScroll(options: ChatScrollOptions) {
   let shouldAutoScroll = true
   let fingerDown = false
   let wheelScrolling = false
+  let nativeScrolling = false
   let touchY: number | null = null
   let readerDirection = 0
   let sendScrollPending = false
@@ -151,6 +152,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     scrollContainerTo,
     shouldAutoScroll: () => shouldAutoScroll,
     isStreaming: () => isStreaming.value,
+    isReaderScrolling: () => nativeScrolling,
   })
   const { captureAnchor, holdAnchorAWhile, steadyReader, endSteady } = anchors
 
@@ -170,6 +172,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     )
     if (event?.type === 'keydown' && field) return
     if (isMarkerInput(event)) return
+    nativeScrolling = true
     wheelScrolling = event?.type === 'wheel'
     const point = (event as TouchEvent | undefined)?.touches?.[0]
     const touchDelta =
@@ -548,6 +551,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     // Sending leaves the remembered reading position, including holds still running
     // from revealing history or completing a reply. They must not undo this scroll.
     anchors.releaseReader()
+    nativeScrolling = false
     readerDirection = 0
     sendScrollPending = true
     shouldAutoScroll = true
@@ -683,7 +687,18 @@ export function useChatScroll(options: ChatScrollOptions) {
       (measured?.scrollHeight ?? el.scrollHeight) - (measured?.scrollTop ?? el.scrollTop) - height
   }
 
+  let observedContainer: HTMLElement | null = null
+  const onNativeScrollEnd = () => {
+    if (!nativeScrolling) return
+    // Consume any last compositor position before returning to a stationary hold.
+    onMessagesScroll()
+    nativeScrolling = false
+    endSteady(messagesContainer.value)
+    if (!fingerDown && isStreaming.value) steadyReader()
+  }
   const observe = (el: HTMLElement) => {
+    observedContainer = el
+    el.addEventListener('scrollend', onNativeScrollEnd)
     mutObserver = new MutationObserver(() => {
       // Hidden under the opened composer; it is put right when the composer closes.
       if (composing.value) return
@@ -732,6 +747,9 @@ export function useChatScroll(options: ChatScrollOptions) {
   }
 
   const unobserve = () => {
+    observedContainer?.removeEventListener('scrollend', onNativeScrollEnd)
+    observedContainer = null
+    nativeScrolling = false
     mutObserver?.disconnect()
     mutObserver = null
     sizeObserver?.disconnect()

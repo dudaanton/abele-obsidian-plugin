@@ -182,6 +182,67 @@ it('lets subsequent compositor frames of one wheel gesture keep moving the reade
   expect(box.scrollTop).toBe(firstFrame - 80)
 })
 
+it.each([
+  ['wheel', false],
+  ['mousedown', false],
+  ['wheel', true],
+  ['mousedown', true],
+] as const)(
+  'preserves unreported %s movement before the scroll event (block temporarily hidden: %s)',
+  async (type, hidden) => {
+    const { box, scroll } = await open()
+    let growthAbove = 0
+    let visible = true
+    box.getBoundingClientRect = () => ({ top: 0, bottom: 800 }) as DOMRect
+    for (const [index, child] of [...box.children].entries()) {
+      child.getBoundingClientRect = () =>
+        ({
+          top: index * 100 + growthAbove - box.scrollTop,
+          bottom: (index + 1) * 100 + growthAbove - box.scrollTop,
+        }) as DOMRect
+      child.getClientRects = () =>
+        (visible ? [child.getBoundingClientRect()] : []) as unknown as DOMRectList
+    }
+    scroll.readerTakesOver(
+      type === 'wheel' ? new WheelEvent(type, { deltaY: -100 }) : new MouseEvent(type)
+    )
+    box.scrollTop -= 100
+    scroll.onMessagesScroll()
+    // One native gesture spans multiple compositor updates. The stream's mutation
+    // observer can run after scrollTop moves but before the next scroll event.
+    for (const distance of [-80, -40, 60]) {
+      const before = box.scrollTop
+      box.scrollTop += distance
+      growthAbove += 25
+      visible = !hidden
+      box.lastElementChild!.append(document.createElement('span'))
+      await advance(0)
+      if (hidden) {
+        expect(box.scrollTop).toBe(before + distance)
+        visible = true
+        box.lastElementChild!.append(document.createElement('span'))
+        await advance(0)
+      }
+      expect(box.scrollTop).toBe(before + distance + 25)
+      // The animation-frame hold must also preserve a compositor update whose
+      // scroll event has not arrived, even without another DOM mutation.
+      box.scrollTop -= 10
+      await advance(17)
+      expect(box.scrollTop).toBe(before + distance + 15)
+      scroll.onMessagesScroll()
+    }
+    box.dispatchEvent(new Event('scrollend'))
+    const settled = box.scrollTop
+    // After the gesture, a host layout adjustment can already compensate growth.
+    // Returning to a visual hold must not compensate that same change twice.
+    growthAbove += 25
+    box.scrollTop += 25
+    box.lastElementChild!.append(document.createElement('span'))
+    await advance(0)
+    expect(box.scrollTop).toBe(settled + 25)
+  }
+)
+
 it('releases the obsolete scroll range when the reader takes over', async () => {
   const { box, scroll } = await open()
   box.scrollTop -= 100
