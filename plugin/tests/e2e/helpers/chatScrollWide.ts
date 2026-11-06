@@ -63,22 +63,27 @@ export function wideScript() {
     if (!el.contains(document.elementFromPoint(bounds.left + 100, bounds.top + 400)))
       throw Error('Wide wheel target is obscured')
     begin('wide compact upward wheel')
+    for (let pass = 0; pass < 3; pass++) {
+    for (const delta of [-40, 40]) {
     for (let n = 0; n < 250; n++) {
       const visible = [...el.querySelectorAll('.abele-chat-msg, .abele-chat-run.is-collapsed')]
         .filter(e => { const r = e.getBoundingClientRect(); return r.top >= bounds.top + 80 && r.bottom <= bounds.bottom - 80 })
         .map(e => ({ e, top: e.getBoundingClientRect().top }))
-      if (!el.querySelector('.abele-ai-chat__older') && el.scrollTop < 40) break
+      if (delta < 0 && !el.querySelector('.abele-ai-chat__older') && el.scrollTop < 40) break
+      if (delta > 0 && item(tail) && el.scrollHeight - el.scrollTop - el.clientHeight < 40) break
       const receipt = receivedInputs
-      await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: bounds.left + 100, y: bounds.top + 400, deltaX: 0, deltaY: -40 * wheelScale })
-      await wait(80)
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: bounds.left + 100, y: bounds.top + 400, deltaX: 0, deltaY: delta * wheelScale })
+      await wait(16)
       if (receivedInputs <= receipt) throw Error('Wide wheel input was not received')
       for (const { e, top } of visible) {
         if (!e.isConnected) report.missing.push({ step: n, id: e.dataset.messageId })
-        else report.wideDrift = Math.max(report.wideDrift, Math.abs(e.getBoundingClientRect().top - top - 40))
+        else report.wideDrift = Math.max(report.wideDrift, Math.abs(e.getBoundingClientRect().top - top + delta))
       }
-      report.wideSteps.push(n)
+      report.wideSteps.push({ pass, delta, step: n })
     }
-    await capture('wide-compact-upward')
+    }
+    }
+    await capture('wide-compact-multiple-passes')
   ` +
     full.slice(end)
   )
