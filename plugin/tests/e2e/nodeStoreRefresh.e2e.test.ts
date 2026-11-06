@@ -5,9 +5,13 @@ import { chatScrollMatrixSuite } from './helpers/chatScrollMatrixSuite'
 import { idleStoreJournal } from '../fixtures/idleStoreJournal.mjs'
 import { largeMutationHistory } from '../fixtures/largeMutationHistory.mjs'
 import { shotDir } from './helpers/shots'
+import { stopScrollProfilers } from './helpers/stopScrollProfilers.mjs'
 
 targets('desktop')
 const artifacts = shotDir('abele-node-store-refresh')
+// Allocation sampling changes allocation cost and GC timing. Use a separate diagnostic
+// run for it; qualification retains CPU/long-task evidence and the same frame budget.
+const allocationsEnabled = process.env.ABELE_SCROLL_ALLOCATIONS === '1'
 
 beforeEach(async (context) => {
   if (!context.task.name.startsWith('wheel / long')) return
@@ -20,7 +24,8 @@ beforeEach(async (context) => {
     await debuggerApi.sendCommand('Profiler.enable');
     await debuggerApi.sendCommand('Profiler.setSamplingInterval', { interval: 500 });
     await debuggerApi.sendCommand('Profiler.start');
-    await debuggerApi.sendCommand('HeapProfiler.startSampling', {
+    fixture.allocationsEnabled = ${JSON.stringify(allocationsEnabled)};
+    if (fixture.allocationsEnabled) await debuggerApi.sendCommand('HeapProfiler.startSampling', {
       samplingInterval: 32768,
       includeObjectsCollectedByMajorGC: true,
       includeObjectsCollectedByMinorGC: true
@@ -57,12 +62,10 @@ afterEach(async (context) => {
     if (!fixture?.observer) return '{}';
     const debuggerApi = require('@electron/remote').getCurrentWebContents().debugger;
     try {
-      const { profile } = await debuggerApi.sendCommand('Profiler.stop');
-      const { profile: allocations } = await debuggerApi.sendCommand('HeapProfiler.stopSampling');
-      const metricsAfter = await debuggerApi.sendCommand('Performance.getMetrics');
+      const { profile, allocations, timings, metricsAfter } = await (${stopScrollProfilers.toString()})(debuggerApi, fixture.allocationsEnabled);
       const fs = require('fs'), directory = ${JSON.stringify(artifacts)};
       fs.mkdirSync(directory, { recursive: true });
-      fs.writeFileSync(directory + '/scroll-profile.json', JSON.stringify({ profile, tasks: fixture.longTasks, metrics: fixture.profileMetrics, metricsAfter }));
+      fs.writeFileSync(directory + '/scroll-profile.json', JSON.stringify({ profile, tasks: fixture.longTasks, metrics: fixture.profileMetrics, metricsAfter, timings, allocationsEnabled: fixture.allocationsEnabled }));
       fs.writeFileSync(directory + '/scroll-allocations.json', JSON.stringify(allocations));
       fs.writeFileSync(directory + '/scroll-heap-windows.json', JSON.stringify(fixture.heapWindows));
       // Other matrix files use the same case name. Preserve this run's trace
