@@ -189,7 +189,7 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
     let gcSampleMs = 0, totalSampleMs = 0, nonGcPluginMs = 0, ourSampledMs = 0,
       ourSampleCount = 0, correlatedSampleCount = 0
     const pluginFrameTimes = new Map()
-    const intervals = [], pluginSamples = []
+    const intervals = [], pluginSamples = [], sampleIntervals = []
     for (const capture of matches) {
       if (!cache.has(capture.path))
         cache.set(
@@ -244,6 +244,7 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
         if (source === 'abele') pluginSamples.push([at, latestAt])
         const weight = Math.max(0, Math.min(at, task.startedAt + task.durationMs) -
           Math.max(task.startedAt, at - (profile.timeDeltas?.[i] ?? 0) / 1000))
+        sampleIntervals.push([at - weight, at])
         totalSampleMs += weight
         correlatedSampleCount++
         if (source === 'abele') {
@@ -326,6 +327,7 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
       scope,
       attributionSource,
       gcSampleMs, gcDominated, nonGcPluginMs, allocationAttribution: allocations,
+      gcEvidence: { ...gcTaskEvidence(task, captures, sampleIntervals), precedingAllocations: allocations },
       entryLedgerComplete: ledger.complete,
       entryLedgerConflict,
       pluginEntryOverlapMs: ledger.overlapMs,
@@ -446,4 +448,23 @@ export function tracepointAdjustedTasks(tasks, setups) {
       withoutTracepointSetupMs: task.durationMs - covered,
     }
   })
+}
+
+// Report-only union; sampled spans are estimates, GC spans are trace timestamps.
+export function gcTaskEvidence(task, events, sampleIntervals = []) {
+  const start = task.startedAt, end = start + task.durationMs
+  const gc = events.filter(row => row.event === "gc-trace-interval" && row.device === task.device &&
+    row.startedAt < end && row.startedAt + row.durationMs > start)
+  const union = spans => {
+    let total = 0, last = start
+    for (const [a, b] of spans.map(([a, b]) => [Math.max(start, a), Math.min(end, b)]).sort((a, b) => a[0] - b[0])) {
+      total += Math.max(0, b - Math.max(last, a)); last = Math.max(last, b)
+    }
+    return total
+  }
+  const spans = gc.map(row => [row.startedAt, row.startedAt + row.durationMs])
+  const sampledOrGcMs = union([...spans, ...sampleIntervals])
+  return { reportOnly: true, gcMs: gc.length ? union(spans) : null,
+    traceStatus: gc.length ? "observed-events-only" : "no-exact-gc-evidence",
+    intervals: gc, sampledOrGcMs, unexplainedMs: Math.max(0, task.durationMs - sampledOrGcMs) }
 }

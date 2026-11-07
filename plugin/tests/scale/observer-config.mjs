@@ -21,6 +21,8 @@ export function observerDeploymentConfig(config, observer, device, bundle) {
       : {}),
     contentPrefix: config.contentPrefix,
     targeted: config.targeted === true,
+    // Experimental report data: one renderer per browser tracing session.
+    gcTraceEvidence: config.gcTraceEvidence === true && String(config.gcTraceDevice ?? 0) === String(device),
     observeContentReads: false,
     writeObserver: join(observer, 'writes.cjs'),
     reindexObserver: join(observer, 'reindex.cjs'),

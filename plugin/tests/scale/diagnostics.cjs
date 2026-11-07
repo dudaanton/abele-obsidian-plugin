@@ -468,6 +468,8 @@ exports.watch = async function (id, serializedConfig) {
       return file
     },
   }) : undefined
+  const gcTrace = config.gcTraceEvidence ? exports.createGcTrace({ transport, emit, clock,
+    rendererPid: wc.getOSProcessId() }) : undefined
   let coverageId
   let coverageInterval
   const endCoverage = async () => {
@@ -556,6 +558,7 @@ exports.watch = async function (id, serializedConfig) {
         await allocations?.close()
       } finally {
         try {
+          await gcTrace?.close()
           // CPU bytes alone are insufficient: persist their timestamped receipt
           // before a controller can kill the host immediately after export.
           await evidence.flush()
@@ -588,6 +591,7 @@ exports.watch = async function (id, serializedConfig) {
     if (config.continuousCpu) await profiler.poll(Date.now())
     if (config.continuousCpu && !profiler.running()) throw new Error('Profiler start failed')
     await allocations?.start()
+    await gcTrace?.start()
     timer = setInterval(() => {
       void profiler.poll(Date.now())
       void allocations?.poll(Date.now())
@@ -716,5 +720,80 @@ exports.observeSyncTrace = function (trace, emit) {
   trace.log = wrapped
   return () => {
     if (trace.log === wrapped) trace.log = original
+  }
+}
+
+// Opt-in report data. Tracing is browser-wide; filter to this renderer main thread.
+exports.createGcTrace = function ({ transport, emit, clock, rendererPid, timeoutMs = 5000 }) {
+  const types = new Set(["MajorGC", "MinorGC", "V8.GCScavenger", "V8.GCCompactor", "V8.GCFinalizeMC"])
+  const beginnings = new Map()
+  let thread, active = false, finish, dropped = 0, bufferFull = false
+  const pending = []
+  const publish = row => {
+    if (thread === undefined) {
+      if (pending.length < 256) pending.push(row)
+      else dropped++
+    } else if (row.threadId === thread) emit(row)
+  }
+  const number = value => Number.isFinite(value) ? value : null
+  const message = (_event, method, params) => {
+    if (method === "Tracing.bufferUsage") {
+      if (params.percentFull >= 0.99 || params.value >= 0.99) bufferFull = true
+      return
+    }
+    if (method === "Tracing.tracingComplete") { finish?.(!params.dataLossOccurred); return }
+    if (method !== "Tracing.dataCollected") return
+    for (const row of params.value ?? []) {
+      if (row.pid !== rendererPid) continue
+      if (row.ph === "M" && row.name === "thread_name" && row.args?.name === "CrRendererMain") {
+        thread = row.tid
+        for (const saved of pending.splice(0)) publish(saved)
+      }
+      if ((thread !== undefined && row.tid !== thread) || !types.has(row.name)) continue
+      const key = `${row.tid}:${row.name}`
+      if (row.ph === "B") { beginnings.set(key, row); continue }
+      const begin = row.ph === "E" ? beginnings.get(key) : row
+      if (row.ph === "E") beginnings.delete(key)
+      if (!begin || !["X", "E"].includes(row.ph)) continue
+      const duration = row.ph === "E" ? row.ts - begin.ts : row.dur
+      if (!Number.isFinite(begin.ts) || !Number.isFinite(duration) || duration < 0) continue
+      const args = { ...begin.args, ...row.args }
+      publish({ event: "gc-trace-interval", type: row.name, threadId: row.tid,
+        startedAt: (clock.beforeAt + clock.afterAt) / 2 + begin.ts / 1000 - clock.timestampMs,
+        durationMs: duration / 1000, clockUncertaintyMs: (clock.afterAt - clock.beforeAt) / 2,
+        heapBefore: number(args.usedHeapSizeBefore ?? args.data?.usedHeapSizeBefore),
+        heapAfter: number(args.usedHeapSizeAfter ?? args.data?.usedHeapSizeAfter) })
+    }
+  }
+  return {
+    async start() {
+      transport.on("message", message)
+      try {
+        await transport.sendCommand("Tracing.start", { categories: "-*,v8,devtools.timeline",
+          options: "recordContinuously", transferMode: "ReportEvents", bufferUsageReportingInterval: 1000 })
+        active = true
+        emit({ event: "gc-trace-start", reportOnly: true })
+      } catch {
+        transport.removeListener("message", message)
+        emit({ event: "gc-trace-unavailable", kind: "start-rejected" })
+      }
+    },
+    async close() {
+      if (!active) return
+      active = false
+      let timer
+      const completed = new Promise(resolve => {
+        finish = resolve
+        timer = setTimeout(() => resolve(false), timeoutMs)
+      })
+      try { await transport.sendCommand("Tracing.end") } catch { finish(false) }
+      const complete = await completed
+      clearTimeout(timer)
+      transport.removeListener("message", message)
+      emit({ event: "gc-trace-end", complete: complete && beginnings.size === 0 && thread !== undefined && dropped === 0 && !bufferFull,
+        bufferFull,
+        dropped, unmatchedBeginnings: beginnings.size, rendererThreadKnown: thread !== undefined,
+        kind: complete ? "exported" : "export-unavailable" })
+    },
   }
 }
