@@ -923,6 +923,58 @@ it('resumes a folder upload after a multipart interruption with already acknowle
   }
 }, 180_000)
 
+it('coalesces SDK status ticks before the host reads registry or rebuilds activity', async () => {
+  const f = inspectionFixture()
+  const id = f.registry.add()
+  const changed = vi
+    .spyOn(
+      f.host as unknown as {
+        changed(id: string, status: EngineStatus, report?: SyncReport): Promise<void>
+      },
+      'changed'
+    )
+    .mockResolvedValue()
+  const records = vi.spyOn(f.registry, 'records')
+  const progress = Reflect.get(f.host, 'progressChanged').bind(f.host)
+  vi.useFakeTimers()
+  try {
+    // A state transition is visible even when a whole exchange finishes before
+    // the next frame. Only subsequent snapshots of that state are replaceable.
+    progress(id, { state: 'syncing', pending: 0 } as EngineStatus)
+    expect(changed).toHaveBeenCalledExactlyOnceWith(id, { state: 'syncing', pending: 0 }, undefined)
+    changed.mockClear()
+    for (let pending = 0; pending < 1000; pending++)
+      progress(id, { state: 'syncing', pending } as EngineStatus)
+    expect(changed).not.toHaveBeenCalled()
+    expect(records).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(16)
+    expect(changed).toHaveBeenCalledExactlyOnceWith(
+      id,
+      { state: 'syncing', pending: 999 },
+      undefined
+    )
+    progress(id, { state: 'syncing', pending: 1000 } as EngineStatus)
+    progress(id, { state: 'paused', pending: 1000 } as EngineStatus)
+    expect(changed).toHaveBeenLastCalledWith(id, { state: 'paused', pending: 1000 }, undefined)
+    await vi.advanceTimersByTimeAsync(32)
+    expect(changed).toHaveBeenCalledTimes(2)
+    const report = { collisions: [] } as unknown as SyncReport
+    progress(id, { state: 'syncing', pending: 0 } as EngineStatus, report)
+    progress(id, { state: 'syncing', pending: 1 } as EngineStatus, report)
+    expect(changed).toHaveBeenCalledTimes(4)
+    expect(changed).toHaveBeenLastCalledWith(id, { state: 'syncing', pending: 1 }, report)
+    progress(id, { state: 'syncing', pending: 1001 } as EngineStatus)
+    f.ui.cancelProgress()
+  } finally {
+    f.ui.cancelProgress()
+    vi.useRealTimers()
+    f.release()
+    await f.host.close(false)
+  }
+  progress(id, { state: 'syncing', pending: 1002 } as EngineStatus)
+  expect(Reflect.get(f.ui, 'progress').size).toBe(0)
+})
+
 it('publishes progress while the not-synced metadata read is blocked', async () => {
   const f = inspectionFixture()
   f.release()

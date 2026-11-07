@@ -87,6 +87,7 @@ export class TokenEngines {
   private readonly activityEpoch = new Map<string, number>()
   private readonly activityReports = new Map<string, number>()
   private readonly notSyncedReads = new Map<string, Promise<void>>()
+  private readonly progressStates = new Map<string, EngineStatus['state']>()
   private readonly offloadPorts = new Map<
     string,
     Awaited<ReturnType<typeof tokenOffloadConnection>>
@@ -1178,8 +1179,14 @@ export class TokenEngines {
           mobile: Platform.isMobile,
           id: record.id,
           localRoot,
-          comparing: (comparison) => this.ui.publish(record.id, { comparison }),
-          progress: (transfer) => this.ui.publish(record.id, { transfer, comparison: undefined }),
+          comparing: (comparison) =>
+            !this.closed &&
+            this.ui.queueProgress(
+              record.id,
+              () => this.ui.publish(record.id, { comparison }),
+              'transfer'
+            ),
+          progress: (transfer) => !this.closed && this.ui.publishTransfer(record.id, transfer),
           event: (text) => this.ui.recordEvent(record.id, text),
           encoded: this.ui.itemSets.encoded(record),
           item: this.ui.itemSets.store.forRecord(record.id)?.item.id,
@@ -1332,17 +1339,11 @@ export class TokenEngines {
             this.ownSettings?.path ?? `${this.app.vault.configDir}/plugins/abele/data.json`,
           assertHeld: () => fence.assertReady(),
           publicationChanged: () => {
-            if (runtime)
-              void this.changed(record.id, runtime.statusWithQuiet()).catch((error) =>
-                this.failed(record.id, error)
-              )
+            if (runtime) this.progressChanged(record.id, runtime.statusWithQuiet())
           },
           changed: (status, report) => {
-            manager.changed()
             if (report) own.settle()
-            void this.changed(record.id, status, report).catch((error) =>
-              this.failed(record.id, error)
-            )
+            this.progressChanged(record.id, status, report)
           },
           failed: (error) => {
             own.settle()
@@ -1506,10 +1507,12 @@ export class TokenEngines {
         this.retries.delete(record.id)
       },
       close: async () => {
+        this.ui.cancelProgress(record.id)
         await starting?.catch(() => {})
         await draining?.catch(() => {})
         await opening?.catch(() => {})
         await runtime?.close()
+        this.progressStates.delete(record.id)
         this.pending.delete(record.id)
         this.live.delete(record.id)
         this.refreshDestinations()
@@ -1632,8 +1635,25 @@ export class TokenEngines {
       })
     this.notSyncedReads.set(id, read)
   }
+  private progressChanged(id: string, status: EngineStatus, report?: SyncReport): void {
+    if (this.closed) return
+    const previous = this.progressStates.get(id)
+    this.progressStates.set(id, status.state)
+    const publish = () => {
+      void this.changed(id, status, report).catch((error) => this.failed(id, error))
+    }
+    if (!report && status.state === 'syncing' && previous === 'syncing')
+      this.ui.queueProgress(id, publish)
+    else {
+      // Completion reports must all be noticed; pause/error/idle supersede old ticks.
+      this.ui.cancelProgress(id, 'engine')
+      publish()
+    }
+  }
   private async changed(id: string, status: EngineStatus, report?: SyncReport): Promise<void> {
-    if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
+    if (this.closed) return
+    const record = this.ui.registry.records().find((one) => one.id === id)
+    if (!record) return
     if (report)
       void this.ui.itemSets
         .refreshAll((id) => this.live.has(id))
@@ -1641,26 +1661,16 @@ export class TokenEngines {
           if (changed && !this.closed) this.start()
         })
     tokenOffloadsOf(this.app.vault, pathCoordinatorOf(this.app.vault)).changed()
-    if (this.ui.registry.records().find((one) => one.id === id)?.rootIssue) return
-    if (
-      this.ui.registry.records().find((one) => one.id === id)?.state[
-        'abele-sync-token-state:scope-deleted'
-      ]
-    )
-      return
-    if (
-      this.ui.registry.records().find((one) => one.id === id)?.state[
-        'abele-sync-token-state:server-delete'
-      ]
-    )
-      return
+    if (record.rootIssue) return
+    if (record.state['abele-sync-token-state:scope-deleted']) return
+    if (record.state['abele-sync-token-state:server-delete']) return
     const epoch = (this.activityEpoch.get(id) ?? 0) + 1
     this.activityEpoch.set(id, epoch)
     const reportEpoch = (this.activityReports.get(id) ?? 0) + (report ? 1 : 0)
     this.activityReports.set(id, reportEpoch)
     const runtime = this.live.get(id)
     const failureReason = this.ui.activity.value[id]?.error ?? connectionError({ code: 'offline' })
-    if (this.ui.registry.records().find((one) => one.id === id)?.status !== 'needs-token')
+    if (record.status !== 'needs-token' && record.status !== status.state)
       this.ui.registry.setStatus(id, status.state)
     const activity: Parameters<TokenUi['publish']>[1] = {
       ...(status.state === 'syncing' ? {} : { total: undefined }),
@@ -1840,7 +1850,7 @@ export class TokenEngines {
       return
     }
     if (!this.closed && this.ui.registry.records().some((one) => one.id === id))
-      this.ui.publish(id, activity)
+      this.ui.publish(id, activity, status.state !== 'syncing')
     if (!report && !this.closed && this.ui.registry.records().some((one) => one.id === id))
       await TokenSettingsPort.forConnection(this.ui, id, this.app).noticed(status, report)
   }
@@ -1943,6 +1953,8 @@ export class TokenEngines {
     const prior = pendingTeardown(this.app)
     this.drainingUploads = flushUploads
     this.closed = true
+    this.progressStates.clear()
+    this.ui.cancelProgress()
     this.stopBackgroundActivity()
     this.ui.itemSets.uninstall()
     if (externalActionsOf.get(this.app.vault) === this) externalActionsOf.delete(this.app.vault)

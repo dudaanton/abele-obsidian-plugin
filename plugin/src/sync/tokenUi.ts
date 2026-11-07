@@ -24,6 +24,7 @@ import type { openDeviceReviews } from './openDeviceReviews'
 import { reviewSourceOf, sourceIdentity, type ReviewSource } from './reviewState'
 import { transferText } from './transferProgress'
 import { TokenItemSets } from './tokenItemSets'
+import { yieldSyncTask } from './syncTaskBudget'
 
 /** Its owner deleted what this connection opens; the device stops and keeps every file. */
 export const SCOPE_DELETED = 'Deleted on the server. Every file stays on this device.'
@@ -432,6 +433,64 @@ export class TokenUi {
     import('@/components/sync/serverDelete').ServerDeleteFacts
   >()
   private readonly deletions = new Map<string, Promise<void>>()
+  private readonly progress = new Map<string, () => void>()
+  private progressTimer: number | undefined
+  private publishingProgress = false
+  private reviewGeneration = 0
+  /** Replace status/transfer snapshots before doing registry or whole-window work.
+   * Reports and control/safety changes use publish directly: they are events, not ticks. */
+  queueProgress(id: string, work: () => void, kind: 'engine' | 'transfer' = 'engine'): void {
+    this.queueUi(`${kind}:${id}`, work)
+  }
+  publishTransfer(id: string, transfer: ConnectionActivity['transfer']): void {
+    if (transfer === undefined) {
+      // Finishing a transfer is a transition, not a replaceable progress tick.
+      this.cancelProgress(id, 'transfer')
+      this.publish(id, { transfer, comparison: undefined })
+    } else
+      this.queueProgress(
+        id,
+        () => this.publish(id, { transfer, comparison: undefined }),
+        'transfer'
+      )
+  }
+  cancelProgress(id?: string, kind?: 'engine' | 'transfer'): void {
+    if (id !== undefined) {
+      if (kind !== 'transfer') this.progress.delete(`engine:${id}`)
+      if (kind !== 'engine') this.progress.delete(`transfer:${id}`)
+    } else {
+      this.progress.clear()
+      this.reviewGeneration++
+      this.queuedReviewRefresh = undefined
+    }
+    if (!this.progress.size && this.progressTimer !== undefined) {
+      window.clearTimeout(this.progressTimer)
+      this.progressTimer = undefined
+    }
+  }
+  private queueUi(key: string, work: () => void): void {
+    this.progress.set(key, work)
+    this.scheduleUi()
+  }
+  private scheduleUi(): void {
+    if (this.progressTimer !== undefined || !this.progress.size) return
+    this.progressTimer = window.setTimeout(() => {
+      this.progressTimer = undefined
+      const first = this.progress.entries().next().value
+      if (!first) return
+      const [key, work] = first
+      this.progress.delete(key)
+      // One publication per task; a burst across connections cannot accumulate
+      // all their registry reads and Vue updates in a single browser task.
+      try {
+        this.publishingProgress = key !== 'refresh'
+        work()
+      } finally {
+        this.publishingProgress = false
+        this.scheduleUi()
+      }
+    }, 16)
+  }
   constructor(
     readonly registry: TokenConnectionRegistry,
     private readonly secrets: DeviceTokenSecrets & { remove(reference: string): void },
@@ -492,8 +551,8 @@ export class TokenUi {
   }
   refresh(): void {
     this.itemSets.prune()
-    this.rows.value = this.registry
-      .records()
+    const records = this.registry.records()
+    this.rows.value = records
       .filter((row) => {
         const binding = this.itemSets.store.forRecord(row.id)
         return !binding || binding.connection.id === row.id
@@ -503,9 +562,7 @@ export class TokenUi {
         if (!set) return row
         const active = set.items.filter((item) => !item.detached)
         const statuses = active.flatMap((item): TokenConnectionRecord['status'][] => {
-          const status = this.registry
-            .records()
-            .find((record) => record.id === item.recordId)?.status
+          const status = records.find((record) => record.id === item.recordId)?.status
           return status ? [status] : []
         })
         const rank: TokenConnectionRecord['status'][] = [
@@ -557,8 +614,19 @@ export class TokenUi {
     )
   }
   private reviewRefresh: Promise<void> = Promise.resolve()
+  private queuedReviewRefresh?: Promise<void>
   async refreshReviews(): Promise<void> {
-    const next = this.reviewRefresh.then(() => this.refreshReviewsNow())
+    if (this.queuedReviewRefresh) return this.queuedReviewRefresh
+    const generation = this.reviewGeneration
+    const next = this.reviewRefresh.then(async () => {
+      // Promise callbacks alone do not leave the SDK progress task. Keep review
+      // validation/automatic approvals out of the status publication's task.
+      await yieldSyncTask()
+      if (this.queuedReviewRefresh === next) this.queuedReviewRefresh = undefined
+      if (generation !== this.reviewGeneration) return
+      await this.refreshReviewsNow()
+    })
+    this.queuedReviewRefresh = next
     this.reviewRefresh = next.catch(() => {})
     return next
   }
@@ -679,12 +747,13 @@ export class TokenUi {
     this.refresh()
     void this.refreshReviews().catch((error) => this.reviewFailure(id, '', error))
     return () => {
+      this.cancelProgress(id)
       if (this.runtimes.get(id) === runtime) this.runtimes.delete(id)
       this.available.value = this.runtimes.size > 0
       this.refresh()
     }
   }
-  publish(id: string, activity: ConnectionActivity): void {
+  publish(id: string, activity: ConnectionActivity, immediate = !this.publishingProgress): void {
     if (!this.registry.records().some((one) => one.id === id)) return
     if (activity.lastSync !== undefined) {
       if (!Number.isSafeInteger(activity.lastSync) || activity.lastSync < 0)
@@ -697,7 +766,19 @@ export class TokenUi {
       ...this.activity.value,
       [id]: { ...this.activity.value[id], ...structuredClone(activity) },
     }
-    this.refresh()
+    const urgent = [
+      'safetyStop',
+      'sharedSafetyStop',
+      'backgroundAttention',
+      'sharedAttention',
+      'error',
+      'failure',
+    ].some((key) => Object.hasOwn(activity, key))
+    if (urgent || immediate) {
+      if (urgent) this.cancelProgress(id, 'engine')
+      this.progress.delete('refresh')
+      this.refresh()
+    } else this.queueUi('refresh', () => this.refresh())
     void this.refreshReviews().catch(() => {
       if (!this.registry.records().some((one) => one.id === id)) return
       this.activity.value = {

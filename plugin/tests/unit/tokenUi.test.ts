@@ -16,6 +16,164 @@ import { deferred } from '../helpers/deferred'
 import { LocalPlacementError } from '@/sync/localFolderPlacement'
 import { tokenStatus } from '@/sync/tokenStatus'
 
+it('coalesces 1000 progress callbacks before reading or validating registry state', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  vi.useFakeTimers()
+  const records = vi.spyOn(registry, 'records')
+  const validated = vi.spyOn(registry as unknown as { validated(): unknown }, 'validated')
+  const publish = vi.spyOn(ui, 'publish')
+  const refresh = vi.spyOn(ui, 'refresh')
+  const reviews = vi.spyOn(ui, 'refreshReviews').mockResolvedValue()
+  try {
+    for (let completed = 0; completed < 1000; completed++)
+      ui.queueProgress(id, () => ui.publish(id, { completed, total: 1000 }))
+    expect(records).not.toHaveBeenCalled()
+    expect(validated).not.toHaveBeenCalled()
+    expect(publish).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(16)
+    expect(publish).toHaveBeenCalledOnce()
+    expect(refresh).not.toHaveBeenCalled()
+    await vi.runAllTimersAsync()
+    expect(refresh).toHaveBeenCalledOnce()
+    expect(reviews).toHaveBeenCalledOnce()
+    expect(validated.mock.calls.length).toBeLessThan(20)
+    expect(ui.activity.value[id]).toMatchObject({ completed: 999, total: 1000 })
+  } finally {
+    ui.cancelProgress()
+    vi.useRealTimers()
+  }
+})
+
+it('shows a safety stop immediately and cancels older progress during a burst', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  vi.useFakeTimers()
+  try {
+    for (let pending = 0; pending < 1000; pending++)
+      ui.queueProgress(id, () => ui.publish(id, { pending, error: undefined }))
+    registry.setStatus(id, 'error')
+    ui.publish(id, { safetyStop: 'Sample safety stop', error: 'Sample safety stop' })
+    expect(ui.activity.value[id]?.safetyStop).toBe('Sample safety stop')
+    expect(ui.rows.value.find((row) => row.id === id)?.status).toBe('error')
+    await vi.runAllTimersAsync()
+    expect(ui.activity.value[id]?.error).toBe('Sample safety stop')
+  } finally {
+    ui.cancelProgress()
+    vi.useRealTimers()
+  }
+})
+
+it('does not run queued progress after teardown or resurrect a forgotten connection', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  vi.useFakeTimers()
+  const work = vi.fn()
+  try {
+    ui.queueProgress(id, work)
+    ui.cancelProgress()
+    await vi.runAllTimersAsync()
+    expect(work).not.toHaveBeenCalled()
+    ui.queueProgress(id, () => ui.publish(id, { pending: 1 }))
+    await ui.disconnect(id)
+    await vi.runAllTimersAsync()
+    expect(ui.activity.value[id]).toBeUndefined()
+  } finally {
+    ui.cancelProgress()
+    vi.useRealTimers()
+  }
+})
+
+it('keeps the final transfer clear when a control status cancels older engine ticks', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  vi.useFakeTimers()
+  try {
+    ui.queueProgress(id, () => ui.publish(id, { pending: 8 }))
+    ui.queueProgress(id, () => ui.publish(id, { comparison: undefined }), 'transfer')
+    ui.cancelProgress(id, 'engine')
+    await vi.runAllTimersAsync()
+    expect(ui.activity.value[id]?.pending).toBeUndefined()
+    expect(Object.hasOwn(ui.activity.value[id], 'comparison')).toBe(true)
+    expect(ui.activity.value[id].comparison).toBeUndefined()
+  } finally {
+    ui.cancelProgress()
+    vi.useRealTimers()
+  }
+})
+
+it('clears a completed transfer immediately and never replays its queued old phase', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  vi.useFakeTimers()
+  try {
+    for (let completed = 0; completed < 1000; completed++)
+      ui.publishTransfer(id, { stage: 'Uploading files', completed, total: 1000 })
+    await vi.advanceTimersByTimeAsync(16)
+    expect(ui.activity.value[id]?.transfer?.completed).toBe(999)
+    ui.publishTransfer(id, { stage: 'Committing changes', completed: 1000, total: 1000 })
+    ui.publishTransfer(id, undefined)
+    expect(ui.activity.value[id]?.transfer).toBeUndefined()
+    await vi.runAllTimersAsync()
+    expect(ui.activity.value[id]?.transfer).toBeUndefined()
+  } finally {
+    ui.cancelProgress()
+    vi.useRealTimers()
+  }
+})
+
+it('keeps the latest queued status when unrelated file-list metadata finishes', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  const id = registry.records()[0].id
+  vi.useFakeTimers()
+  try {
+    ui.queueProgress(id, () => ui.publish(id, { pending: 9 }))
+    ui.publish(id, { notSynced: [], notSyncedLoading: false })
+    await vi.runAllTimersAsync()
+    expect(ui.activity.value[id]).toMatchObject({ pending: 9, notSynced: [] })
+  } finally {
+    ui.cancelProgress()
+    vi.useRealTimers()
+  }
+})
+
+it('coalesces queued review refreshes and reruns once for changes arriving during a read', async () => {
+  const { ui } = setup()
+  const gate = deferred<void>(),
+    entered = deferred<void>()
+  const refresh = vi
+    .spyOn(ui as unknown as { refreshReviewsNow(): Promise<void> }, 'refreshReviewsNow')
+    .mockImplementationOnce(async () => {
+      entered.resolve()
+      await gate.promise
+    })
+    .mockResolvedValue()
+  const first = ui.refreshReviews()
+  await entered.promise
+  const waiting = Array.from({ length: 1000 }, () => ui.refreshReviews())
+  expect(refresh).toHaveBeenCalledOnce()
+  gate.resolve()
+  await Promise.all([first, ...waiting])
+  expect(refresh).toHaveBeenCalledTimes(2)
+})
+
+it('does not begin a deferred review refresh after host teardown', async () => {
+  const { ui } = setup()
+  const refresh = vi
+    .spyOn(ui as unknown as { refreshReviewsNow(): Promise<void> }, 'refreshReviewsNow')
+    .mockResolvedValue()
+  const pending = ui.refreshReviews()
+  ui.cancelProgress()
+  await pending
+  expect(refresh).not.toHaveBeenCalled()
+})
+
 it.each([false, true])(
   'persists pause without a drain when no runtime exists (enrolled=%s)',
   async (enrolled) => {
