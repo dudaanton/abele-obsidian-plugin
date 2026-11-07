@@ -1,8 +1,34 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { boundedNativeRead, NATIVE_READ_DEADLINE_MS } from '@/sync/nativeReadDeadline'
+import {
+  boundedNativeRead,
+  boundedNativeOperations,
+  NATIVE_READ_DEADLINE_MS,
+} from '@/sync/nativeReadDeadline'
 import { deferred } from '../helpers/deferred'
 
 afterEach(() => vi.useRealTimers())
+
+it('reuses bounded method functions without retaining file results or replaced methods', async () => {
+  const host = {
+    value: 1,
+    async stat() {
+      return this.value
+    },
+  }
+  const port = boundedNativeOperations(host, 'sample-vault')
+  const methods = new Set<unknown>()
+  for (let file = 0; file < 5000; file++) methods.add(port.stat)
+  expect(methods.size).toBe(1)
+  expect(await port.stat()).toBe(1)
+  host.value = 2
+  expect(await port.stat()).toBe(2)
+  const old = port.stat
+  host.stat = async function () {
+    return this.value + 1
+  }
+  expect(port.stat).not.toBe(old)
+  expect(await port.stat()).toBe(3)
+})
 
 it('fails a lost metadata promise with the engine retry classification', async () => {
   vi.useFakeTimers()

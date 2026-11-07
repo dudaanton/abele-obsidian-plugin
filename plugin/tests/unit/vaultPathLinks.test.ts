@@ -6,8 +6,43 @@ import {
   nativePathMethods,
   ensureVaultDirectory,
   adapterConfigRevision,
+  assertVaultPath,
 } from '@/sync/vaultPathLinks'
 import { buildFakeVault } from '../helpers/fakeVault'
+
+it('does not cache absence of a root pin when native capabilities become available', async () => {
+  const app = buildFakeVault([])
+  const native = { lstat: async () => ({ isSymbolicLink: () => false, isDirectory: () => false }) }
+  Object.assign(app.vault.adapter, {
+    getFullPath: (path: string) => '/vault/' + path,
+    fsPromises: native,
+  })
+  await assertVaultPath(app.vault.adapter, 'sample.md')
+  Object.assign(native, { realpath: async () => '/vault', open: async () => undefined })
+  await expect(assertVaultPath(app.vault.adapter, 'sample.md')).rejects.toThrow(/root.*changed/i)
+})
+
+it('reuses root access scaffolding while checking every path and changed root afresh', async () => {
+  const app = buildFakeVault([])
+  let root = '/vault'
+  const full = (path: string) => root + (path ? '/' + path : '')
+  const bind = vi.spyOn(full, 'bind')
+  let linked = false
+  const lstat = vi.fn(async () => ({ isSymbolicLink: () => linked }))
+  Object.assign(app.vault.adapter, { getFullPath: full, fsPromises: { lstat } })
+  for (let file = 0; file < 100; file++) await assertVaultPath(app.vault.adapter, 'Notes/sample.md')
+  expect(bind).toHaveBeenCalledTimes(1)
+  const calls = lstat.mock.calls.length
+  expect(calls).toBeGreaterThanOrEqual(200)
+  root = '/other'
+  await assertVaultPath(app.vault.adapter, 'Notes/sample.md')
+  expect(lstat).toHaveBeenLastCalledWith('/other/Notes/sample.md')
+  linked = true
+  await expect(assertVaultPath(app.vault.adapter, 'Notes/sample.md')).rejects.toThrow(
+    /symbolic link/i
+  )
+  bind.mockRestore()
+})
 
 it('keeps mobile method identity stable across scans and observes replaced methods', async () => {
   const app = buildFakeVault([])

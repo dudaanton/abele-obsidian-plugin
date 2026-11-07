@@ -3,6 +3,46 @@ import { nativeDiagnostics, nativeIoSnapshot, nativeSyscalls } from '@/sync/nati
 import { ExchangeTrace } from '@/sync/exchangeTrace'
 import { deferred } from '../helpers/deferred'
 
+it('reuses diagnostic method wrappers across files and observes replaced methods', async () => {
+  const host = {
+    size: 3,
+    async lstat() {
+      return this.size
+    },
+  }
+  const port = nativeDiagnostics(host, () => {})
+  const wrappers = new Set<unknown>()
+  for (let file = 0; file < 5000; file++) wrappers.add(port.lstat)
+  expect(wrappers.size).toBe(1)
+  expect(await port.lstat()).toBe(3)
+  const old = port.lstat
+  host.lstat = async function () {
+    return this.size + 1
+  }
+  expect(port.lstat).not.toBe(old)
+  expect(await port.lstat()).toBe(4)
+})
+
+it('allocates pending-call maps per method rather than per installed file', async () => {
+  const RealMap = Map
+  let allocated = 0
+  class CountedMap<K, V> extends RealMap<K, V> {
+    constructor(entries?: readonly (readonly [K, V])[] | null) {
+      super(entries)
+      allocated++
+    }
+  }
+  vi.stubGlobal('Map', CountedMap)
+  try {
+    const port = nativeDiagnostics({ async stat() {} }, undefined)
+    for (let file = 0; file < 5000; file++) await port.stat()
+    expect(allocated).toBeLessThanOrEqual(2)
+    expect(nativeIoSnapshot().guarded).toEqual({ pending: 0, longPending: 0, byKind: {} })
+  } finally {
+    vi.stubGlobal('Map', RealMap)
+  }
+})
+
 it('records the original port identity supplied by the guarded filesystem boundary', async () => {
   const original = { lstat: async () => ({ size: 3 }) }
   const identify = vi.fn(() => 'host-original-fs.promises' as const)

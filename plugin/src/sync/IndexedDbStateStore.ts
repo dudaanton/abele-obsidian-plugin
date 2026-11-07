@@ -177,8 +177,9 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   // revisions are never guessed independent: those transactions restart from fresh reads.
   private readonly recentWrites = new Map<
     number,
-    { key: string | null; owner: string; entries: boolean }
+    { key: string | null; owner: string; entries: boolean; metadata: readonly string[] | null }
   >()
+  private directoryDocument?: { db: IDBDatabase; revision: number; value: string | null }
   private scanStateRevision = 0
   private scanStateReadRevision: number | undefined
 
@@ -340,6 +341,7 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   }
 
   close(): void {
+    this.directoryDocument = undefined
     this.connection.close()
   }
 
@@ -650,10 +652,54 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
   }
 
   private async readMeta(key: string): Promise<string | null> {
+    if (key === 'v2-directories') return this.readDirectoryDocument()
     const value = await this.metaValue(own(key))
     if (value === null) return null
     if (typeof value !== 'string') throw new EngineError('io', `the stored ${key} is not a string`)
     return value
+  }
+
+  /** Read the revision and document in one IDB snapshot. Every ledger writer bumps
+   * that revision atomically. Reuse only the same revision, or a contiguous sequence
+   * of our acknowledged writes whose exact metadata keys exclude this document.
+   * Foreign writers, missing history and reopened databases always read the value.
+   * The immutable string is cached, never the SDK's parsed/mutable directory view. */
+  private readDirectoryDocument(): Promise<string | null> {
+    const key = own('v2-directories')
+    return this.read('cannot read directory metadata', [META], async (tx) => {
+      const meta = tx.objectStore(META)
+      const row = await wait<MetaRow | undefined>(meta.get('revision'))
+      const raw = row?.value ?? 0
+      const revision = typeof raw === 'number' && Number.isSafeInteger(raw) && raw >= 0 ? raw : null
+      const cached = this.directoryDocument
+      if (
+        revision !== null &&
+        cached?.db === tx.db &&
+        revision >= cached.revision &&
+        revision - cached.revision <= this.recentWrites.size
+      ) {
+        let reusable = true
+        for (let at = cached.revision + 1; at <= revision; at++) {
+          const changed = this.recentWrites.get(at)?.metadata
+          if (!changed || changed.includes(key)) {
+            reusable = false
+            break
+          }
+        }
+        if (reusable) {
+          if (cached.revision !== revision)
+            this.directoryDocument = { db: tx.db, revision, value: cached.value }
+          return cached.value
+        }
+      }
+      const current = await wait<MetaRow | undefined>(meta.get(key))
+      const value = current === undefined ? null : current.value
+      if (value !== null && typeof value !== 'string')
+        throw new EngineError('io', 'the stored v2-directories is not a string')
+      const text = typeof value === 'string' ? value : null
+      this.directoryDocument = revision !== null ? { db: tx.db, revision, value: text } : undefined
+      return text
+    })
   }
 
   /** Durable plugin metadata inventory for conservative lifecycle retirement, never engine rows. */
@@ -1092,7 +1138,8 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
         }
       },
       null,
-      overlay.entries.size > 0
+      overlay.entries.size > 0,
+      [...overlay.meta.keys()]
     )
   }
 
@@ -1128,7 +1175,9 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
           if (value === null) await wait(meta.delete(key))
           else await wait(meta.put({ key, value } satisfies MetaRow))
         },
-        key.startsWith('plugin:') ? key : null
+        key.startsWith('plugin:') ? key : null,
+        false,
+        [key]
       )
     } finally {
       this.normalizationCache?.delete(key.slice('plugin:'.length))
@@ -1160,7 +1209,12 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
     stores: string[],
     fn: (tx: IDBTransaction) => Promise<T>,
     metadataKey: string | null = null,
-    entriesChanged = stores.includes(ENTRIES)
+    entriesChanged = stores.includes(ENTRIES),
+    metadata: readonly string[] | null = metadataKey !== null
+      ? [metadataKey]
+      : stores.includes(META)
+        ? null
+        : []
   ): Promise<T> {
     const owner = this.writerLabel(what)
     if (stores.includes(ENTRIES)) {
@@ -1191,7 +1245,12 @@ export class IndexedDbStateStore implements StateStore, ExternalStatePort {
         throw asEngineError(what, cause)
       }
       await done
-      this.recentWrites.set(revision, { key: metadataKey, owner, entries: entriesChanged })
+      this.recentWrites.set(revision, {
+        key: metadataKey,
+        owner,
+        entries: entriesChanged,
+        metadata,
+      })
       if (this.recentWrites.size > 128)
         this.recentWrites.delete(this.recentWrites.keys().next().value)
       return result

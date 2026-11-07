@@ -119,12 +119,18 @@ export function boundedNativeOperations<T extends object>(port: T, scope: string
   if (!scopes) operationPorts.set(port, (scopes = new Map()))
   const cached = scopes.get(scope)
   if (cached) return cached as T
-  const wrap = (target: object): object =>
-    new Proxy(target, {
+  const wrap = (target: object): object => {
+    const methods = new Map<
+      PropertyKey,
+      { source: unknown; call: (...args: unknown[]) => Promise<unknown> }
+    >()
+    return new Proxy(target, {
       get(host, key) {
         const value = Reflect.get(host, key)
         if (typeof value !== 'function') return value
-        return (...args: unknown[]) => {
+        const previous = methods.get(key)
+        if (previous?.source === value) return previous.call
+        const call = (...args: unknown[]) => {
           const kind = String(key)
           const blocked = uncertainScopes.get(scope)?.values().next().value
           if (blocked && kind !== 'close')
@@ -195,8 +201,11 @@ export function boundedNativeOperations<T extends object>(port: T, scope: string
               : undefined
           ).then((result) => (key === 'open' && result ? wrap(result) : result))
         }
+        methods.set(key, { source: value, call })
+        return call
       },
     })
+  }
   const wrapped = wrap(port) as T
   scopes.set(scope, wrapped)
   operationPorts.set(wrapped, new Map([[scope, wrapped]]))

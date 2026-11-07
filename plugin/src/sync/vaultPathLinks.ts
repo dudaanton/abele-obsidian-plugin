@@ -228,21 +228,50 @@ export async function assertVaultPath(
   })
 }
 
-function rootAccess(adapter: DataAdapter & LinkAdapter) {
+type RootAccess = {
+  native: LinkAdapter['fsPromises']
+  nativeOrigin: LinkAdapter['fsPromises']
+  full: LinkAdapter['getFullPath']
+  pin: RootPin | undefined
+}
+const rootAccessPorts = new WeakMap<
+  object,
+  {
+    resolver: LinkAdapter['getFullPath']
+    logical: string | undefined
+    access: RootAccess
+  }
+>()
+function rootAccess(adapter: DataAdapter & LinkAdapter): RootAccess {
   const origin = (adapterOrigins.get(adapter) ?? adapter) as DataAdapter & LinkAdapter
   const port = origin.fsPromises && diagnosticOrigin(origin.fsPromises)
   const native = (port &&
     originalNativeLeaf(nativeOrigins.get(port) ?? port)) as LinkAdapter['fsPromises']
-  const full = origin.getFullPath?.bind(origin)
-  return {
+  const resolver = origin.getFullPath
+  // Re-resolve the logical root and method identity. Only callable scaffolding
+  // is reused; callers still verify physical root and ancestor identities.
+  const logical = resolver?.call(origin, '')
+  const pin = native && logical !== undefined ? pinnedRoot(native, logical) : undefined
+  const cached = rootAccessPorts.get(origin)
+  if (
+    cached &&
+    cached.resolver === resolver &&
+    cached.logical === logical &&
+    cached.access.nativeOrigin === native &&
+    cached.access.pin === pin
+  )
+    return cached.access
+  const full = resolver?.bind(origin)
+  const access: RootAccess = {
     native:
-      native &&
-      boundedNativeOperations(nativeSyscalls(native, 'path-validation'), full?.('') ?? ''),
+      native && boundedNativeOperations(nativeSyscalls(native, 'path-validation'), logical ?? ''),
     nativeOrigin: native,
     full,
     // Keep ownership/cache identity on the original port, not the diagnostic wrapper.
-    pin: native && full ? pinnedRoot(native, full('')) : undefined,
+    pin,
   }
+  rootAccessPorts.set(origin, { resolver, logical, access })
+  return access
 }
 function physicalPath(root: string, path: string): string {
   return root.replace(/\/+$/, '') + (path ? '/' + path.replace(/^\//, '') : '')

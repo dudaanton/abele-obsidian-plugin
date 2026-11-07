@@ -41,6 +41,7 @@ export function nativeIoSnapshot() {
       long = 0
     const byKind: Record<string, { pending: number; longPending: number; oldestMs: number }> = {}
     for (const [kind, active] of calls) {
+      if (!active.size) continue
       let oldestMs = 0,
         longPending = 0
       for (const started of active.values()) {
@@ -71,7 +72,7 @@ export function nativeSyscalls<T extends object>(
   // The guarded filesystem boundary owns module access. Diagnostics receives
   // its identity classifier and invokes it only when a port is first observed.
   const source = identify?.(host) ?? 'adapter'
-  const wrapped = nativeDiagnostics(host, () => {}, 'syscall', { source, site })
+  const wrapped = nativeDiagnostics(host, undefined, 'syscall', { source, site })
   ports.set(site, wrapped)
   measuredPorts.add(wrapped)
   return wrapped
@@ -84,21 +85,25 @@ export function diagnosticOrigin<T extends object>(host: T): T {
 /** Observe only this engine's native calls; never patch the host's shared filesystem. */
 export function nativeDiagnostics<T extends object>(
   host: T,
-  record: (
-    operation: string,
-    startedAt: number,
-    outcome: string,
-    paths?: readonly string[]
-  ) => void,
+  record:
+    | ((operation: string, startedAt: number, outcome: string, paths?: readonly string[]) => void)
+    | undefined,
   layer: NativeLayer = 'guarded',
   boundary?: Pick<LstatRecord, 'source' | 'site'>
 ): T {
   const wrap = <O extends object>(object: O, ownedPaths?: readonly string[]): O => {
+    // Cache callable scaffolding, never an I/O result. Hosts may replace methods.
+    const methods = new Map<
+      PropertyKey,
+      { source: unknown; call: (...args: unknown[]) => Promise<unknown> }
+    >()
     const proxy = new Proxy(object, {
       get(target, key) {
         const value = Reflect.get(target, key)
         if (typeof value !== 'function') return value
-        return async (...args: unknown[]) => {
+        const previous = methods.get(key)
+        if (previous?.source === value) return previous.call
+        const call = async (...args: unknown[]) => {
           const started = Date.now()
           const kind = String(key)
           const active = pending[layer].get(kind) ?? new Map<number, number>()
@@ -144,8 +149,9 @@ export function nativeDiagnostics<T extends object>(
               }
             }
             active.delete(id)
-            if (!active.size) pending[layer].delete(kind)
-            record(
+            // Keep the empty per-method container, not completed calls. Allocating
+            // another Map for every sequential syscall creates avoidable GC work.
+            record?.(
               'native ' +
                 String(key) +
                 (key === 'open' && typeof args[1] === 'string' ? ' ' + args[1] : ''),
@@ -158,6 +164,8 @@ export function nativeDiagnostics<T extends object>(
             )
           }
         }
+        methods.set(key, { source: value, call })
+        return call
       },
     })
     origins.set(proxy, diagnosticOrigin(object))
