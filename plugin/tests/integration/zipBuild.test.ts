@@ -28,7 +28,8 @@ beforeAll(async () => {
       }],
       build: {
         write: false,
-        lib: { entry, formats: ['cjs'], fileName: () => 'zip.js' },
+        // Exercise the real launch guard as well as the production dependency resolver.
+        lib: { entry, formats: ['cjs'], fileName: () => 'main.js' },
         rollupOptions: { input: entry },
       },
     })
