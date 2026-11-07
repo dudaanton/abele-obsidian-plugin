@@ -1,6 +1,7 @@
 import { shotDir } from './shots'
 import { visibleChatAnchor } from './visibleChatAnchor'
 import { traceScrollInput } from './scrollInputTrace'
+import { scrollCompletion } from './scrollCompletion'
 
 export const states = ['idle', 'text', 'running-tool', 'finished-tool', 'finished-reply'] as const
 const shots = shotDir('abele-phone')
@@ -279,7 +280,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
   let streamingAt = 0, stop = false, touchDown = false, buttonDown = false, keyDown = false
   const records = []
   const trace = []
-  let dragTrace
+  let dragTrace, dragCompletion
   let receivedInputs = 0
   let deliveredDelta = 0, touchY = null
   let measureInputStart, measureFollowingOrigin, measureWheelReceipt, gestureActive = false, boundaryGeometry = null
@@ -694,6 +695,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
       const el = box(), rect = el.getBoundingClientRect()
       const x = rect.right - 3, y = rect.bottom - 5
       dragTrace = (${traceScrollInput.toString()})(el)
+      dragCompletion = (${scrollCompletion.toString()})(el)
       report.dragTrace = dragTrace.events
       dragTrace.mark('press-request')
       await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 })
@@ -706,9 +708,12 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
         await wait(24)
       }
       dragTrace.mark('release-request')
+      dragCompletion.releasing()
       await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y: rect.top + 20, button: 'left', clickCount: 1 })
       dragTrace.mark('release-ack')
       buttonDown = false
+      await dragCompletion.wait()
+      dragCompletion.stop()
     } else await gesture(-box().clientHeight * 0.35)
     dragTrace?.mark('hold-origin')
     await hold()
@@ -765,6 +770,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
     window.removeEventListener('touchstart', nativeInput, true)
     window.removeEventListener('touchend', nativeInput, true)
     dragTrace?.stop()
+    dragCompletion?.stop()
     stop = true; finishInitial = true; finishTool?.(); cancelAnimationFrame(frame)
     require('fs').writeFileSync(${JSON.stringify(shots + '/')} + (phone ? 'touch-' : 'wheel-') + size + '-' + state + '-frames.json', JSON.stringify(trace))
     window.fetch = realFetch
