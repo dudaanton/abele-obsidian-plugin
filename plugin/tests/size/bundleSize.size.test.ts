@@ -109,9 +109,10 @@ describe('bundle size', () => {
     expect(report.byPackage.some((p) => p.name === 'src/testing')).toBe(false)
   })
 
-  it('ships each package once, apart from zod 4 beside the one zod 3 the vendored packages share', () => {
-    // npm nests a zod 3 under every vendored `@abele/*` package; the build resolves them to one.
-    expect(report.packageCopies).toEqual({ zod: 2 })
+  it('ships each package once', () => {
+    // Current vendored packages and the SDK share Zod 4. The legacy Zod 3 copy is gone,
+    // so allowing a second copy would mask a new duplication.
+    expect(report.packageCopies).toEqual({})
   })
 
   it('keeps private class members native rather than down-levelled for engines Obsidian dropped', () => {

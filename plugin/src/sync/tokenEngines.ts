@@ -852,54 +852,6 @@ export class TokenEngines {
         record.scope.kind === 'folder' && record.scope.path !== '/'
           ? new LocalFolderPlacement(record.scope.path, localRoot)
           : undefined
-      const approved = this.ui.startupApprovals.delete(record.id)
-      if (!approved) {
-        let reason: string | null = null
-        try {
-          const excludedLocalFolders = record.selective.excludedFolders
-            .map(excludedFolderPrefix)
-            .filter(Boolean)
-            .flatMap((path) => {
-              if (!externalPlacement) return [path]
-              // Compare server boundaries before translating to physical host paths.
-              if (withinRoot(path, externalPlacement.server))
-                return [externalPlacement.toLocal(path)]
-              if (withinRoot(externalPlacement.server, path)) return [externalPlacement.local]
-              return []
-            })
-          reason = await startupSafetyReason(
-            state,
-            async () => ({ files: this.app.vault.getFiles().map((file) => file.path) }),
-            scopedRoot ?? '',
-            assertActive,
-            [
-              this.app.vault.configDir,
-              stagingDirectory(this.app.vault.configDir),
-              privateRecoveryDirectory(this.app.vault.configDir),
-              ...excludedLocalFolders,
-            ],
-            record.scope.kind === 'group',
-            (path) => externalPlacement?.toLocal(path) ?? path
-          )
-        } catch (error) {
-          assertActive()
-          const message = `Sync startup safety check cannot judge local files; continuing without a safety stop: ${error instanceof Error ? error.message : String(error)}`
-          console.debug('[abele-sync]', message)
-          this.ui.recordEvent(record.id, message)
-        }
-        assertActive()
-        if (reason) {
-          storage.saveLocalStorage(STARTUP_STOP, reason)
-          this.ui.registry.setPaused(record.id, true)
-          const binding = this.ui.itemSets.store.forRecord(record.id)
-          if (binding) this.ui.itemSets.store.pause(binding.connection.id, binding.item.id, true)
-          await this.ui.registry.flush()
-          this.ui.recordEvent(record.id, reason)
-          this.ui.publish(record.id, { safetyStop: reason, inspection: undefined })
-          safetyNotice(this.app, 'startup-files-missing', reason)
-          throw Object.assign(new Error(reason), { code: 'startup-safety' })
-        }
-      }
       state.onRecoveryRequired((error) => {
         active = false
         fence?.release()
@@ -977,6 +929,54 @@ export class TokenEngines {
         waitForIndex
       ) ?? waitForIndex())
       assertActive()
+      const approved = this.ui.startupApprovals.delete(record.id)
+      if (!approved) {
+        let reason: string | null = null
+        try {
+          const excludedLocalFolders = record.selective.excludedFolders
+            .map(excludedFolderPrefix)
+            .filter(Boolean)
+            .flatMap((path) => {
+              if (!externalPlacement) return [path]
+              // Compare server boundaries before translating to physical host paths.
+              if (withinRoot(path, externalPlacement.server))
+                return [externalPlacement.toLocal(path)]
+              if (withinRoot(externalPlacement.server, path)) return [externalPlacement.local]
+              return []
+            })
+          reason = await startupSafetyReason(
+            state,
+            async () => ({ files: this.app.vault.getFiles().map((file) => file.path) }),
+            scopedRoot ?? '',
+            assertActive,
+            [
+              this.app.vault.configDir,
+              stagingDirectory(this.app.vault.configDir),
+              privateRecoveryDirectory(this.app.vault.configDir),
+              ...excludedLocalFolders,
+            ],
+            record.scope.kind === 'group',
+            (path) => externalPlacement?.toLocal(path) ?? path
+          )
+        } catch (error) {
+          assertActive()
+          const message = `Sync startup safety check cannot judge local files; continuing without a safety stop: ${error instanceof Error ? error.message : String(error)}`
+          console.debug('[abele-sync]', message)
+          this.ui.recordEvent(record.id, message)
+        }
+        assertActive()
+        if (reason) {
+          storage.saveLocalStorage(STARTUP_STOP, reason)
+          this.ui.registry.setPaused(record.id, true)
+          const binding = this.ui.itemSets.store.forRecord(record.id)
+          if (binding) this.ui.itemSets.store.pause(binding.connection.id, binding.item.id, true)
+          await this.ui.registry.flush()
+          this.ui.recordEvent(record.id, reason)
+          this.ui.publish(record.id, { safetyStop: reason, inspection: undefined })
+          safetyNotice(this.app, 'startup-files-missing', reason)
+          throw Object.assign(new Error(reason), { code: 'startup-safety' })
+        }
+      }
       if ((await ordinary.needsRecoveryHandshake()) || (await state.getExternalState()) !== null)
         await stage('Checking server restore generation', async () => {
           const transport = transportOf(this.deps)

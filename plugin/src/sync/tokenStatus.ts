@@ -56,7 +56,12 @@ export function tokenStatus(
   status.review = ui.candidates.value.length + ui.questions.value.length
   status.lastError =
     rows
-      .map((one) => safetyStopReason(activity[one.id]) ?? ui.connectionActivity?.(one.id)?.error ?? activity[one.id]?.error)
+      .map(
+        (one) =>
+          safetyStopReason(activity[one.id]) ??
+          ui.connectionActivity?.(one.id)?.error ??
+          activity[one.id]?.error
+      )
       .find(Boolean) ?? null
   const busy = rows.find(isBusy)
   if (busy) {

@@ -417,6 +417,66 @@ it.each([
   }
 )
 
+it('does not judge a mostly missing root until the settled host index is ready', async () => {
+  const f = inspectionFixture()
+  let restarted: TokenEngines | undefined
+  let clean = true
+  let index: ReturnType<typeof vi.spyOn> | undefined
+  let recover: ReturnType<typeof vi.spyOn> | undefined
+  try {
+    f.release()
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await vi.waitFor(() => expect(f.ui.runtimes.has(id)).toBe(true))
+    await f.host.close()
+    const state = await openTokenLedger(f.factory, f.registry, f.registry.records()[0], () => {})
+    for (let i = 0; i < 100; i++) {
+      const path = `Notes/settled-${i}.md`
+      await state.put({
+        path,
+        wirePath: path,
+        fileId: path,
+        versionId: 'v1',
+        sha: 'b'.repeat(64),
+        size: 1,
+        mtime: 1,
+      })
+      await f.app.vault.adapter.write(path, 'x')
+    }
+    state.close()
+    const files = f.app.vault.getFiles.bind(f.app.vault)
+    clean = false
+    Object.assign(f.app.workspace, { layoutReady: true })
+    Object.assign(f.app.metadataCache, { initialized: true, isCacheClean: () => clean })
+    index = vi.spyOn(f.app.vault, 'getFiles').mockImplementation(() => (clean ? files() : []))
+    recover = vi
+      .spyOn(ObsidianFileSystem.prototype, 'needsRecoveryHandshake')
+      .mockRejectedValue(new Error('preflight complete'))
+    restarted = f.makeHost()
+    restarted.start()
+    await vi.waitFor(() =>
+      expect(index!.mock.calls.length > 0 || f.ui.activity.value[id]?.indexWaiting).toBeTruthy()
+    )
+    expect(
+      index,
+      'a loading index cannot prove that remembered files vanished'
+    ).not.toHaveBeenCalled()
+    expect(f.registry.records()[0].paused).toBe(false)
+    clean = true
+    await vi.waitFor(() => expect(recover).toHaveBeenCalled())
+    expect(f.registry.records()[0].state[STARTUP_STOP]).toBeFalsy()
+    expect(f.registry.records()[0].paused).toBe(false)
+  } finally {
+    clean = true
+    f.release()
+    await restarted?.close()
+    await f.host.close()
+    recover?.mockRestore()
+    index?.mockRestore()
+    f.probe.mockRestore()
+  }
+})
+
 it.each(['vault', 'folder', 'group'] as const)(
   'waits for the complete index and ignores unrelated disk folders (%s)',
   async (kind) => {
@@ -451,9 +511,17 @@ it.each(['vault', 'folder', 'group'] as const)(
         await f.app.vault.adapter.write(path, 'x')
       }
       state.close()
-      let ready!: () => unknown
+      let layoutReady = false
+      const waitingLayout: Array<() => void> = []
+      Object.assign(f.app.workspace, { layoutReady: false })
+      const ready = () => {
+        layoutReady = true
+        Object.assign(f.app.workspace, { layoutReady: true })
+        for (const callback of waitingLayout.splice(0)) callback()
+      }
       layout = vi.spyOn(f.app.workspace, 'onLayoutReady').mockImplementation((callback) => {
-        ready = callback
+        if (layoutReady) callback()
+        else waitingLayout.push(callback)
       })
       const files = f.app.vault.getFiles.bind(f.app.vault)
       index = vi.spyOn(f.app.vault, 'getFiles').mockReturnValue([])

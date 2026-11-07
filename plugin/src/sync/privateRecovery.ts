@@ -3,7 +3,12 @@ import { ExternalRecoveryRequired } from './external/recovery'
 import { pathCoordinatorOf } from './pathCoordinator'
 import { t } from '@/i18n'
 import { vaultDisk, connectionInspectionApp } from './vaultPathLinks'
-import { connectionPrivateArea, connectionPrivateRoot, connectionJournalOwner, connectionHost } from './connectionPaths'
+import {
+  connectionPrivateArea,
+  connectionPrivateRoot,
+  connectionJournalOwner,
+  connectionHost,
+} from './connectionPaths'
 import type { App } from 'obsidian'
 import { backgroundActivity } from './backgroundActivity'
 import { makeParents } from './vaultFolders'

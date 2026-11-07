@@ -1,5 +1,6 @@
 import type { StateStore } from '@abele/sync-sdk/core'
 import { excludedFolderPrefix } from './excludedFolder'
+import { SyncTaskBudget } from './syncTaskBudget'
 
 export const STARTUP_STOP = 'abele-sync-token-state:startup-stop'
 export function waitForStartupIndex(
@@ -27,6 +28,7 @@ export async function startupSafetyReason(
   ledgerOnly = false,
   localPath: (ledgerPath: string) => string = (path) => path
 ): Promise<string | null> {
+  const budget = new SyncTaskBudget()
   let known = 0
   const members = new Set<string>()
   const exclusions = excludedRoots.map(excludedFolderPrefix).filter(Boolean)
@@ -41,6 +43,11 @@ export async function startupSafetyReason(
   }
   for await (const entry of state.all()) {
     assertCurrent()
+    const pause = budget.metadataRow()
+    if (pause !== undefined) {
+      await pause
+      assertCurrent()
+    }
     const path = localPath(entry.path)
     if (!comparable(path)) continue
     known++
@@ -56,6 +63,11 @@ export async function startupSafetyReason(
   assertCurrent()
   for (const file of entries.files) {
     assertCurrent()
+    const pause = budget.metadataRow()
+    if (pause !== undefined) {
+      await pause
+      assertCurrent()
+    }
     if (
       !comparable(file) ||
       (root && root !== '/' && file !== root && !file.startsWith(root + '/'))

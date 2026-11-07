@@ -273,3 +273,36 @@ it.each([0, 50, 100, 101])(
     expect(await state.get('Notes/sample-0.md')).not.toBeNull()
   }
 )
+
+it('yields a large saved-state comparison so cancellation prevents any index judgment', async () => {
+  const state = new MemoryStateStore()
+  let visited = 0
+  state.all = async function* () {
+    for (let i = 0; i < 20000; i++) {
+      visited++
+      const path = `Notes/entry-${i}.md`
+      yield { path, fileId: path, versionId: 'v1', sha: 'b'.repeat(64), size: 1, mtime: 1 }
+    }
+  }
+  let snapshots = 0
+  const cancelled = new AbortController(),
+    reason = new Error('startup cancelled')
+  const timer = setTimeout(() => cancelled.abort(reason), 0)
+  try {
+    await expect(
+      startupSafetyReason(
+        state,
+        async () => {
+          snapshots++
+          return { files: ['Notes/entry-0.md'] }
+        },
+        '',
+        () => cancelled.signal.throwIfAborted()
+      )
+    ).rejects.toBe(reason)
+    expect(visited).toBeLessThan(20000)
+    expect(snapshots).toBe(0)
+  } finally {
+    clearTimeout(timer)
+  }
+})
