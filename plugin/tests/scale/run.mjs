@@ -54,7 +54,8 @@ import { WireProxy } from './proxy.mjs'
 import { visibilityExperiment, targetedBudgets, postSealEvidence } from './targeted.mjs'
 import { visibilityPayloadProgress, largeFileThroughput } from './payload-progress.mjs'
 import { settleRestartDevices, controlTiming, strictWindowEvidence } from './restart.mjs'
-import { triggerComparisonAtRestart } from './restart-trigger.mjs'
+import { triggerComparisonAtRestart, prepareComparisonReindex, clickWithComparisonHold } from './restart-trigger.mjs'
+import { qualificationAnalysis } from './qualification-analysis.mjs'
 import { enablePluginWhenReady } from './startup-enable.mjs'
 import { validateBuildReceipt, validateQualificationArtifact, buildArtifactPath } from './build.mjs'
 import { qualificationScenario } from './qualification-config.mjs'
@@ -884,14 +885,14 @@ export async function run(config) {
       q = proxies[1]
     p.breakpointSha = report.interruptionTarget.sha
     p.cutAfterBytes = ((options.seed % 4) + 1) * 16 * 1024
-    const triggered = async (proxy, kind, action) => {
+    const triggered = async (proxy, kind, action, timeout = config.timeoutMs) => {
       const since = Date.now()
       proxy.breakpoint = kind
       await action()
       const event = await wait(
         `interruption ${kind}`,
         () => proxy.events.find((e) => e.at >= since && e.event === 'trigger' && e.kind === kind),
-        config.timeoutMs
+        timeout
       )
       return event
     }
@@ -914,11 +915,8 @@ export async function run(config) {
       const resumed = await device.evaluate(`return await globalThis.__scaleResumeProfiles?.(${JSON.stringify(id)},${load}) ?? false`)
       if (!resumed) throw new Error('Observer evidence flush failed')
     }
-    const reindex = async (id, device, proxy, nextBreakpoint = null) => {
-      const declared = report.declaredInterruptions.find((one) => one.id === id)
-      if (!declared) return
-      if (id === 'reindex-primary-upload') await triggered(proxy, 'reindex-upload', async () => {})
-      else await wait('reindex active sync request', () => proxy.active.size > 0, config.timeoutMs)
+    const prepareReindex = async (id, device) => {
+      const startedAt = Date.now()
       const allowed = new Set(expected.map((file) => file.path))
       for (const file of expected) {
         const parts = file.path.split('/')
@@ -929,9 +927,20 @@ export async function run(config) {
       }
       const snapshotExcluded = (path) => !allowed.has(path)
       const before = await inventory(device.root, snapshotExcluded)
+      const inventoryEndedAt = Date.now()
       const serverBefore = await manifest(token)
-      await wait('reindex active sync at click', () => proxy.active.size > 0, config.timeoutMs)
-      await device.reindex(declared)
+      ;(report.reindexInventoryTimings ??= []).push({ id, device: String(devices.indexOf(device)),
+        startedAt, inventoryEndedAt, endedAt: Date.now(), inventoryMs: inventoryEndedAt - startedAt,
+        manifestMs: Date.now() - inventoryEndedAt })
+      checkpoint(true)
+      return { before, serverBefore, snapshotExcluded }
+    }
+    const reindex = async (id, device, proxy, nextBreakpoint = null, comparison = null) => {
+      const declared = report.declaredInterruptions.find((one) => one.id === id)
+      if (!declared) return
+      if (id === 'reindex-primary-upload') await triggered(proxy, 'reindex-upload', async () => {})
+      else if (!comparison) await wait('reindex active sync request', () => proxy.active.size > 0, config.timeoutMs)
+      const { before, serverBefore, snapshotExcluded } = comparison?.inventory ?? await prepareReindex(id, device)
       const readEntries = () =>
         rendererEntries(createReadStream(join(config.output, 'renderer.jsonl')), undefined, true)
       const pendingFile =
@@ -945,11 +954,19 @@ export async function run(config) {
           throw error
         }
       }
-      const clicked = await wait(
+      const click = async () => {
+        if (!comparison) await wait('reindex active sync at click', () => proxy.active.size > 0, config.timeoutMs)
+        await device.reindex(declared)
+        return wait(
         'reindex user button click',
         async () => (await receipt(pendingFile)) ?? (await receipt(pendingFile + '.complete.json')),
         config.timeoutMs
-      )
+        )
+      }
+      const clicked = comparison
+        ? await clickWithComparisonHold(proxy, comparison.trigger,
+          () => triggered(proxy, 'comparison', () => device.sync(), 30000), click)
+        : await click()
       ;(report.boundaryCpuExports ??= []).push({ id, device: declared.device,
         ...(clicked.cpuExport ?? { flushed: false,
           diagnostic: { kind: 'Error', category: 'boundary-hook-unavailable' } }) })
@@ -1203,8 +1220,10 @@ export async function run(config) {
     if (!config.targeted && (config.reindex === true || config.shape === 'scale')) {
       phase('restart comparison')
       const comparisonAt = Date.now()
-      await triggerComparisonAtRestart(p, start, triggered)
-      await reindex('reindex-restart-comparison', a, p)
+      const comparison = await prepareComparisonReindex(
+        () => prepareReindex('reindex-restart-comparison', a),
+        () => triggerComparisonAtRestart(p, start, triggered))
+      await reindex('reindex-restart-comparison', a, p, null, comparison)
       await settle(a, 'separate comparison device A')
       await settle(b, 'separate comparison device B')
       await endReindex('reindex-restart-comparison', a)
@@ -1498,6 +1517,7 @@ export async function run(config) {
       : undefined
     report.failure =
       error.message === 'Real app startup proof unavailable' ||
+      error.message === 'Comparison reindex hold expired before click' ||
       /^(Fatal sync state|Advertised server limit|Expected server limits|Local fixture|Unknown server mode|Server file limit|Run deadline reached|Timed out:|Disposable |Two separate|Isolated |Token endpoint|Case-sensitive|Selected build)/.test(
         error.message
       )
@@ -1690,6 +1710,7 @@ export async function run(config) {
         report.reindexes[report.reindexes.findIndex((row) => row.id === result.id)] = result
       }
       report.noticeCounts = noticeSummary(entries)
+      report.analysis = qualificationAnalysis(report, entries, config.analysisBaselines)
       report.notices = entries.length ? report.noticeCounts.abele : undefined
       report.hashTracepointSetup = entries.filter(
         (row) => row.event === 'javascript-hash-tracepoint-setup'

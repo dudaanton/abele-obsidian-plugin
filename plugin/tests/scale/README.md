@@ -631,6 +631,18 @@ when multipart caller stacks match an already active upload session or the rebui
 pre-click snapshot proves the SHA was queued. A previous scan/hash alone is insufficient.
 The same-SHA session, intent snapshot and digest receipts remain in the evidence.
 
+Restart-comparison inventory and manifest snapshots are prepared before holding a response.
+An expired comparison acquisition is re-armed once, with wire receipts. After click dispatch,
+closure requires a timestamped click receipt within one second; a late/missing click fails
+explicitly rather than waiting for an unrelated active request. The active-request cut
+invariant remains enforced.
+
+`report.analysis` contains report-only ten-minute peer seal rates and per-cut local inventory
+and manifest durations. Optional `analysisBaselines` accepts compact objects with `label`,
+`peerPull` and `reindexInventory` arrays for side-by-side reporting. These values never enter
+budgets. Older captures without inventory timestamps remain unmeasured; trigger-to-click
+time also includes manifest reads, boundary export and host scheduling.
+
 `interruption-receipts` captures allowlisted pending pull intents, ledger acknowledgement,
 live identity-bound installation proof presence, committed host private-stage records and
 queued upload sources. Snapshot transaction failures remain explicitly incomplete. The
