@@ -466,7 +466,19 @@ Missing measurements fail; a failed scenario never becomes an implicit pass.
 Device settle failures are retained while later reachable steps and the byte oracles continue.
 Byte equality cannot pass unless both device scans and every server download finished.
 
-Targeted harness tests:
+Before handing off a harness change, run the complete scale unit gate from the
+repository root (no app or server required):
+
+```sh
+node plugin/scripts/test-scale.mjs
+```
+
+This runs all `tests/harness/scale*.test.ts` and `tests/scale/**/*.test.ts`
+with `--maxWorkers=2`, then all `tests/scale/*.test.mjs` with Node's test runner.
+The dedicated Vitest config replaces the normal include list: the default test
+command does not discover `tests/scale`. A failure stops the script.
+
+For a focused iteration from `plugin/`:
 
 ```sh
 npx vitest run tests/harness/scaleHarness.test.ts --maxWorkers=2

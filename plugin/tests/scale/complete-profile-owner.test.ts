@@ -7,7 +7,7 @@ const host = { functionName: 'reconcileFileInternal', url: 'app://obsidian.md/ap
 const native = { functionName: 'lstat', url: 'node:internal/original-fs/promises' }
 const program = { functionName: '(program)', url: '' }
 const gc = { functionName: '(garbage collector)', url: '' }
-async function classify(frames: typeof host[], complete = true, sampled = true, extra: Record<string, unknown>[] = []) {
+async function classify(frames: typeof host[], complete = true, sampled = true, extra: Record<string, unknown>[] = [], pluginMs = 50) {
   const task = { event: 'long-task', device: '0', startedAt: 1000, durationMs: 100 }
   return (await profileSummary([task], [
     { event: 'cpu-profile-ready', device: '0', at: 0 },
@@ -20,7 +20,7 @@ async function classify(frames: typeof host[], complete = true, sampled = true, 
     nodes: frames.map((callFrame, index) => ({ id: index + 1, callFrame,
       children: index + 1 < frames.length ? [index + 2] : [] })),
     samples: sampled ? [frames.length] : [],
-    timeDeltas: sampled ? [complete ? 1050000 : 30000] : [],
+    timeDeltas: sampled ? [complete ? (1000 + pluginMs) * 1000 : 30000] : [],
   })))[0]
 }
 
@@ -35,9 +35,11 @@ it.each([[host], [native], [program], [gc], [host, native, program, gc]])(
 it.each(['plugin:abele', '/sample/vault/.obsidian/plugins/abele/main.js'])
   ('keeps a plugin ancestor decisive even beneath native/VM frames: %s', async url => {
     const row = await classify([{ functionName: 'syncStep', url }, host, native, program, gc])
-    expect(row.owner).toBe('ours during sync')
+    // Owner decision 2026-11-07: only our sampled time counts; exactly 50 ms is within budget.
+    expect(row.owner).toBe('host task with our code ≤ budget')
     expect(row.ownershipReason).toBe('sampled-plugin-frame')
-    expect(longTaskVerdict(row).status).toBe('FAIL')
+    expect(row.ourSampledMs).toBe(50)
+    expect(longTaskVerdict(row).status).toBe('PASS')
   })
 
 it('keeps incomplete coverage without plugin frames unattributed', async () => {
@@ -63,6 +65,15 @@ it('does not waive missing samples on external shared-stop evidence', async () =
     reason: 'shared-observed-process-stop', ownershipProof: false })
   expect(row.owner).toBe('unattributed')
   expect(longTaskVerdict(row).status).toBe('FAIL')
-  expect((await classify([{ functionName: 'syncStep', url: 'plugin:abele' }], true, true, evidence)).owner)
-    .toBe('ours during sync')
+  const plugin = await classify([{ functionName: 'syncStep', url: 'plugin:abele' }], true, true, evidence)
+  // Owner decision 2026-11-07: shared-stop evidence cannot erase our 50 ms, which is within budget.
+  expect(plugin.owner).toBe('host task with our code ≤ budget')
+  expect(plugin.ownershipReason).toBe('sampled-plugin-frame')
+  expect(plugin.ourSampledMs).toBe(50)
+  expect(longTaskVerdict(plugin).status).toBe('PASS')
+  const over = await classify([{ functionName: 'syncStep', url: 'plugin:abele' }, host, native, program, gc], true, true, evidence, 51)
+  expect(over.owner).toBe('ours during sync')
+  expect(over.ownershipReason).toBe('sampled-plugin-frame')
+  expect(over.ourSampledMs).toBe(51)
+  expect(longTaskVerdict(over).status).toBe('FAIL')
 })
