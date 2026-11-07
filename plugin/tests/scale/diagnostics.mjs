@@ -186,7 +186,9 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
     )
     const counts = {},
       frames = []
-    let gcSampleMs = 0, totalSampleMs = 0, nonGcPluginMs = 0
+    let gcSampleMs = 0, totalSampleMs = 0, nonGcPluginMs = 0, ourSampledMs = 0,
+      ourSampleCount = 0, correlatedSampleCount = 0
+    const pluginFrameTimes = new Map()
     const intervals = [], pluginSamples = []
     for (const capture of matches) {
       if (!cache.has(capture.path))
@@ -243,6 +245,17 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
         const weight = Math.max(0, Math.min(at, task.startedAt + task.durationMs) -
           Math.max(task.startedAt, at - (profile.timeDeltas?.[i] ?? 0) / 1000))
         totalSampleMs += weight
+        correlatedSampleCount++
+        if (source === 'abele') {
+          ourSampledMs += weight
+          ourSampleCount++
+          const frame = stack[pluginFrame]
+          const key = JSON.stringify([frame.url, frame.lineNumber, frame.columnNumber])
+          const top = pluginFrameTimes.get(key) ?? { ...frame, sampledMs: 0, sampleCount: 0 }
+          top.sampledMs += weight
+          top.sampleCount++
+          pluginFrameTimes.set(key, top)
+        }
         const gc = stack[0]?.functionName === '(garbage collector)'
         if (gc) gcSampleMs += weight
         else if (source === 'abele') nonGcPluginMs += weight
@@ -281,7 +294,9 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
     // allocations. A heap window cannot establish the owner of later VM work.
     const unresolvedGcContext = allocations?.complete && gcDominated && counts.unknown
     const owner = scope === 'teardown' ? 'teardown' : scope === 'load' ? 'plugin load' :
-      counts.abele || measuredPlugin ? 'ours during sync' :
+      !attributionPass ? 'unattributed' :
+      counts.abele ? (ourSampledMs <= 50 ? 'host task with our code ≤ budget' : 'ours during sync') :
+      measuredPlugin ? 'ours during sync' :
       unresolvedGcContext ? 'unattributed' :
       attributionPass ? (counts.harness && !counts.unknown && !counts['other-plugin']
         ? 'harness-triggered' : 'host-only') : 'unattributed'
@@ -302,6 +317,8 @@ export async function profileSummary(tasks, captures, load, symbolize = (frame) 
       samplesBySource: counts,
       source: Object.keys(counts).length ? 'sampled' : 'unknown',
       frames,
+      ourSampledMs, ourSampleCount, correlatedSampleCount,
+      topPluginFrames: [...pluginFrameTimes.values()].sort((a, b) => b.sampledMs - a.sampledMs),
       owner,
       hostSchedulingEvidence: schedulingEvidence(task,
         captures.filter(row => row.event === 'host-process-sample')),

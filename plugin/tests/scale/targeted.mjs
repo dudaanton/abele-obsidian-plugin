@@ -70,7 +70,7 @@ export function targetedBudgets(report) {
     const taskBudget = longTaskBudget(report.longTaskAttribution)
     phases.push({ name: 'long task ownership and budgets',
       status: Array.isArray(report.longTaskAttribution) && taskBudget.failed === 0 ? 'PASS' : 'FAIL',
-      failed: taskBudget.failed, reason: 'Ours <= 50 ms during sync; plugin load <= 800 ms; every task attributed' })
+      failed: taskBudget.failed, reason: 'Our inclusive sampled time <= 50 ms during sync; whole plugin load <= 800 ms; every task attributed' })
   }
   return phases
 }

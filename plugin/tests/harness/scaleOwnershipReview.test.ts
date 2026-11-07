@@ -53,8 +53,25 @@ it('review 2: GC and heap samples cannot erase definite CPU plugin ownership', a
       nodes: [{ id: 1, callFrame: { functionName: '(garbage collector)', url: '' } },
         { id: 2, callFrame: { functionName: 'work', url: 'plugin:abele' } }],
       samples: [1, 2], timeDeltas: [1080000, 10000] } : heap('app://obsidian.md/app.js'))
-  expect(row).toMatchObject({ owner: 'ours during sync', entryLedgerConflict: true, gcDominated: true })
-  expect(longTaskVerdict(row).status).toBe('FAIL')
+  // This fixture's 80 ms root GC has no plugin ancestor; its preceding heap is
+  // host-owned. Do not invent a plugin GC cause. The definite 10 ms CPU plugin
+  // sample remains charged despite both heap evidence and the conflicting ledger.
+  expect(row).toMatchObject({ owner: 'host task with our code ≤ budget',
+    entryLedgerConflict: true, gcDominated: true, gcSampleMs: 80,
+    ourSampledMs: 10, ourSampleCount: 1, samplesBySource: { abele: 1 } })
+  expect(longTaskVerdict(row).status).toBe('PASS')
+})
+it('review 2: GC with a plugin allocation ancestor remains inclusive plugin time', async () => {
+  const [row] = await profileSummary([task], [...ledgerRows(1010), cpuCapture, heapCapture],
+    async path => path === 'cpu' ? { startTime: 0, endTime: 1200000,
+      nodes: [{ id: 1, callFrame: { functionName: '(garbage collector)', url: '' } },
+        { id: 2, children: [1], callFrame: { functionName: 'allocate', url: 'plugin:abele' } }],
+      samples: [1, 2], timeDeltas: [1080000, 10000] } : heap('plugin:scale-observer'))
+  // 80 ms of GC under our allocation frame + 10 ms execution = 90 ms ours.
+  // Neither the contradictory ledger nor preceding harness allocations erase GC.
+  expect(row).toMatchObject({ owner: 'ours during sync', entryLedgerConflict: true,
+    gcSampleMs: 80, ourSampledMs: 90, ourSampleCount: 2, samplesBySource: { abele: 2 } })
+  expect(longTaskVerdict(row)).toMatchObject({ budgetedMs: 90, status: 'FAIL' })
 })
 it('review 2: adjacent entry intervals cover a sample spanning their boundary', async () => {
   const rows = ledgerRows(1050)
@@ -63,7 +80,11 @@ it('review 2: adjacent entry intervals cover a sample spanning their boundary', 
   const [row] = await profileSummary([task], [...rows, { ...cpuCapture,
     clock: { beforeAt: 0, afterAt: 4, timestampMs: 0 } }],
   async () => cpu('plugin:abele', 'work', 1048))
-  expect(row).toMatchObject({ owner: 'ours during sync', entryLedgerConflict: false })
+  // The adjacent entries still cover the complete 1048..1052 sample uncertainty
+  // interval. Inclusive plugin time is 48 ms after clipping, so the new rule passes.
+  expect(row).toMatchObject({ owner: 'host task with our code ≤ budget',
+    entryLedgerConflict: false, pluginEntryOverlapMs: 100, ourSampledMs: 48, ourSampleCount: 1 })
+  expect(longTaskVerdict(row).status).toBe('PASS')
 })
 it('review 1: partial measured entries cannot fill missing CPU coverage', async () => {
   const rows = ledgerRows(1100).map(row => row.event === 'plugin-entry-ledger-checkpoint'

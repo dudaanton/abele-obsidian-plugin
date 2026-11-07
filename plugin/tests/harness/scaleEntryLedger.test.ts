@@ -150,7 +150,10 @@ it('uses definite plugin CPU evidence despite contradictory ledger', async () =>
     durationMs: 100 }], captures, async () => ({ startTime: 0, endTime: 100000,
       nodes: [{ id: 1, callFrame: { functionName: 'sample', url: 'plugin:abele' } }],
       samples: [1], timeDeltas: [50000] }))
-  expect(row.owner).toBe('ours during sync')
+  // 2026-11-07: 50 ms inclusive plugin samples pass, even in a longer task.
+  // The contradictory ledger must not erase either the samples or the conflict.
+  expect(row).toMatchObject({ owner: 'host task with our code ≤ budget',
+    ourSampledMs: 50, ourSampleCount: 1, samplesBySource: { abele: 1 } })
   expect(row.entryLedgerConflict).toBe(true)
 })
 it('does not use a damaged ledger to prove absence of plugin entries', async () => {
@@ -245,8 +248,11 @@ it('retains plugin CPU ownership despite conflicting ledger export evidence', as
       nodes: [{ id: 1, callFrame: { functionName: 'sample', url: 'plugin:abele' } }],
       samples: [1], timeDeltas: [50000] }))
   expect(row.entryLedgerConflict).toBe(true)
-  expect(row.owner).toBe('ours during sync')
-  expect(longTaskVerdict(row).status).toBe('FAIL')
+  // The 143 ms host task contains 50 ms of definite plugin samples. Under the
+  // owner's sampled-time rule this passes, without subtracting ledger export time.
+  expect(row).toMatchObject({ owner: 'host task with our code ≤ budget',
+    ourSampledMs: 50, ourSampleCount: 1, samplesBySource: { abele: 1 } })
+  expect(longTaskVerdict(row).status).toBe('PASS')
 })
 it('drains entry start and completion through the asynchronous sink at quit', async () => {
   const { createEntryLedger } = require('../scale/entry-ledger.cjs')

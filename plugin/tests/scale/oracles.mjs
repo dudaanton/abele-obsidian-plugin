@@ -107,16 +107,19 @@ export function attributePauseRequests(requests, traces) {
 
 export function longTaskVerdict(task) {
   const owner = task.owner ?? 'unattributed'
-  // Ownership identifies whether our code participates; the budget is for the
-  // whole task, including bundle reads/compilation before evaluation marks.
+  // Owner decision 2026-11-07: sync budgets our inclusive sampled execution;
+  // plugin load still budgets the whole task, including reads/compilation.
   const durationMs = task.durationMs
+  const ours = owner === 'ours during sync' || owner === 'host task with our code ≤ budget'
+  const budgetedMs = ours ? task.ourSampledMs : durationMs
   const limit = owner === 'plugin load' ? 800 : owner === 'teardown' ? null : 50
   const pass = owner === 'teardown' || (owner === 'plugin load' && durationMs <= limit) ||
     task.profileWindowComplete === true &&
     (owner === 'host-only' || owner === 'harness-triggered' ||
-      (owner === 'ours during sync' && durationMs <= limit) ||
+      (ours && task.ourSampleCount > 0 && Number.isFinite(budgetedMs) && budgetedMs <= limit) ||
       (owner === 'plugin load' && durationMs <= limit))
-  return { owner, durationMs, limit, gated: owner !== 'teardown', status: pass ? 'PASS' : 'FAIL' }
+  return { owner, durationMs, budgetedMs, ourSampledMs: task.ourSampledMs,
+    limit, gated: owner !== 'teardown', status: pass ? 'PASS' : 'FAIL' }
 }
 
 export function longTaskBudget(tasks) {
@@ -141,7 +144,7 @@ export function budgets(m) {
       m.strictRestartWindows.length === 2 && m.strictRestartWindows.every(row => row.complete))] : []),
     ...(m.profileCoverageRequired || m.longTaskAttribution?.length ? [check('long task ownership and budgets',
       longTaskBudget(m.longTaskAttribution).failed,
-      'ours <= 50 ms during sync; plugin load <= 800 ms; all tasks attributed',
+      'our inclusive sampled time <= 50 ms during sync; whole plugin load <= 800 ms; all tasks attributed',
       Array.isArray(m.longTaskAttribution) && longTaskBudget(m.longTaskAttribution).failed === 0)] : []),
     ...(m.postSealProofRequired ? [check('installed file read-back', m.installedFileReadbackBytes,
       '0 unexplained bytes; explicit boundary-proven recovery only',

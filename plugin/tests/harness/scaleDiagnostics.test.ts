@@ -13,6 +13,28 @@ import {
 import { budgets, longTaskVerdict } from '../scale/oracles.mjs'
 import { targetedBudgets } from '../scale/targeted.mjs'
 
+it.each([[30, 20, 'PASS'], [80, 70, 'FAIL']])(
+  'budgets only inclusive plugin sampled time for a 100 ms task (sample at %i)', async (at, ours, status) => {
+  const [row] = await profileSummary([{ event: 'long-task', device: '0', startedAt: 10, durationMs: 100 }],
+    [{ event: 'cpu-profile', device: '0', startedAt: 0, endedAt: 120, path: 'cpu',
+      clock: { beforeAt: 0, afterAt: 0, timestampMs: 0 } }], async () => ({
+      startTime: 0, endTime: 120000, nodes: [
+        { id: 1, callFrame: { functionName: 'listener', url: 'plugin:abele' }, children: [2] },
+        { id: 2, callFrame: { functionName: 'wrap', url: 'plugin:scale-observer' } },
+        { id: 3, callFrame: { functionName: 'dispatch', url: 'app://obsidian.md/app.js' } },
+      ], samples: [2, 3], timeDeltas: [at * 1000, (100 - at) * 1000],
+    }))
+  expect(row).toMatchObject({ durationMs: 100, ourSampledMs: ours, ourSampleCount: 1,
+    correlatedSampleCount: 2 })
+  expect(row.topPluginFrames[0]).toMatchObject({ functionName: 'listener', sampledMs: ours })
+  expect(longTaskVerdict(row).status).toBe(status)
+  expect(longTaskVerdict(row).budgetedMs).toBe(ours)
+  for (const result of [budgets({ profileCoverageRequired: true, longTaskAttribution: [row] }),
+    targetedBudgets({ profileCoverageRequired: true, longTaskAttribution: [row] })])
+    expect(result.find(check => check.name === 'long task ownership and budgets')?.status).toBe(status)
+  if (status === 'PASS') expect(row.owner).toBe('host task with our code ≤ budget')
+})
+
 it.each([
   ['ours during sync', 90, 'FAIL'],
   ['plugin load', 799, 'PASS'],
@@ -184,7 +206,7 @@ it('charges evaluation to plugin load and later startup sync work to the sync bu
     endTime: (tasks[Number(path)].startedAt + 100) * 1000,
     nodes: [{ id: 1, callFrame: { functionName: 'sync', url: 'plugin:abele' } }],
     samples: [1], timeDeltas: [50000] }))
-  expect(rows.map(row => row.owner)).toEqual(['plugin load', 'ours during sync'])
+  expect(rows.map(row => row.owner)).toEqual(['plugin load', 'host task with our code ≤ budget'])
 })
 
 it('classifies GC through its parent and leaves a parentless native sample unknown', async () => {
@@ -218,8 +240,8 @@ it('retains unresolved samples while definite plugin frames establish plugin own
     ], samples: [1, 2], timeDeltas: [50000, 50000],
   }))
   expect(rows[0].samplesBySource).toEqual({ abele: 1, unknown: 1 })
-  expect(rows[0].owner).toBe('ours during sync')
-  expect(longTaskVerdict(rows[0]).status).toBe('FAIL')
+  expect(rows[0].owner).toBe('host task with our code ≤ budget')
+  expect(longTaskVerdict(rows[0]).status).toBe('PASS')
 })
 
 it('resolves a generated plugin frame through the exact external map', () => {
@@ -253,8 +275,8 @@ it.each(installedBundleUrls)('recognizes and symbolizes installed bundle %s with
         { id: 3, callFrame: { url: 'app://obsidian.md/app.js', functionName: 'callback' } },
       ], samples: [3], timeDeltas: [30000],
     }), symbolize)
-  expect(row.owner).toBe('ours during sync')
-  expect(longTaskVerdict(row).status).toBe('FAIL')
+  expect(row.owner).toBe('host task with our code ≤ budget')
+  expect(longTaskVerdict(row).status).toBe('PASS')
 })
 it.each([
   'app://obsidian.md/_plugin/example/.obsidian%2Fplugins%2Fother?id=abele',

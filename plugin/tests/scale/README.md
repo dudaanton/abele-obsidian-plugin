@@ -436,6 +436,27 @@ profiled; tail samples cannot prove the whole task came from one component. Shor
 lost captures remain unattributed. This diagnostic does not claim the no-sync-task-over-50-ms
 requirement passed merely because a tail sample contains host code.
 
+### Sync task budget: our sampled execution only
+
+Owner decision, 2026-11-07: «только нашего кода». For a sync-scope long task with
+complete CPU coverage and correlated samples, the 50 ms limit applies to **our
+inclusive sampled time**, not the whole host task. For each correlated sample whose
+stack contains our installed plugin bundle anywhere (including an ancestor of host,
+observer or GC frames), add its time delta clipped to the task window. Plugin
+identity recognizes decoded/encoded installed-module URLs and native main.js paths.
+No sample is invented across a sampling gap; timestamp uncertainty must still fit
+inside the task as before. This is a sampling estimate, not exact execution timing.
+
+Each task records `durationMs`, `ourSampledMs`, `ourSampleCount`,
+`correlatedSampleCount`, and `topPluginFrames` (inclusive sampled time and counts,
+with exact-build source-map file/line where available). Positive plugin time at or
+below 50 ms is explicitly reported as `host task with our code ≤ budget`; above
+50 ms fails. A complete sampled interval without plugin frames remains host work.
+Missing/incomplete CPU coverage or no correlated samples remains unattributed and
+fails. Existing contradictory/insufficient ownership evidence is not a zero-time
+exemption. Harness and declared teardown tasks are reported; plugin load retains
+its **800 ms whole-task** limit. The same rule applies in full and targeted modes.
+
 The external controller samples RSS every second using only the owned app PID and its
 transitive process descendants, including both renderers. `memory.jsonl` records timestamps,
 phase, PIDs and aggregate bytes across restarts; `peakAppRssBytes` is the maximum observed sum.
