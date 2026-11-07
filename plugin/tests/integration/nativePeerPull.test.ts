@@ -353,6 +353,29 @@ for (const fault of [
             : {}),
         })
       let files = makeFiles()
+      // Retain only active work for pause; settled placements must not grow a
+      // history which is scanned or kept alive by every later installation.
+      const mutationCost = { added: 0, removed: 0, peak: 0, iterations: 0 }
+      const mutations = Reflect.get(files, 'scanMutationWork') as Set<Promise<unknown>>
+      if (fault === 'none') {
+        const add = mutations.add.bind(mutations),
+          remove = mutations.delete.bind(mutations)
+        const iterator = mutations[Symbol.iterator].bind(mutations)
+        mutations.add = (work) => {
+          mutationCost.added++
+          add(work)
+          mutationCost.peak = Math.max(mutationCost.peak, mutations.size)
+          return mutations
+        }
+        mutations.delete = (work) => {
+          mutationCost.removed++
+          return remove(work)
+        }
+        mutations[Symbol.iterator] = () => {
+          mutationCost.iterations++
+          return iterator()
+        }
+      }
       if (fault === 'acknowledgement-parent-race') {
         const candidates = files.trustedPathCandidates!
         let creating: Promise<void> | undefined
@@ -1197,6 +1220,20 @@ for (const fault of [
           expect([...capturedPaths].sort()).toEqual(items.map((item) => item.path).sort())
         if (fault === 'live-recovery') expect(recoveredLive).toBe(true)
         sample()
+        if (fault === 'none') {
+          console.log('[peer-pull-mutation-cost]', JSON.stringify(mutationCost))
+          expect(mutations.size, 'finished pull retains no mutation promises').toBe(0)
+          expect(mutationCost.removed).toBe(mutationCost.added)
+          expect(
+            mutationCost.peak,
+            'bounded by the active cohort, not the vault'
+          ).toBeLessThanOrEqual(256)
+          expect(mutationCost.iterations, 'normal placement does not scan pause work').toBe(0)
+          expect(
+            mutationCost.added,
+            'constant tracking work per installed file'
+          ).toBeLessThanOrEqual(count * 16 + 64)
+        }
         console.log(
           '[peer-pull-profile]',
           JSON.stringify({
