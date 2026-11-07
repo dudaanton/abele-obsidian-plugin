@@ -705,7 +705,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
       await wait(200)
       dragTrace.pointer('press-target', x, y)
       dragTrace.mark('press-request')
-      await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 })
+      await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 })
       dragTrace.mark('press-ack')
       buttonDown = true
       for (let n = 1; n <= 12; n++) {
@@ -717,7 +717,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
       dragTrace.mark('release-request')
       dragTrace.pointer('release-target', x, rect.top + 20)
       dragCompletion.releasing()
-      await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y: rect.top + 20, button: 'left', clickCount: 1 })
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y: rect.top + 20, button: 'left', buttons: 0, clickCount: 1 })
       dragTrace.mark('release-ack')
       buttonDown = false
       await dragCompletion.wait()

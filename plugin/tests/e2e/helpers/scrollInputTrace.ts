@@ -6,6 +6,8 @@ export function traceScrollInput(el: HTMLElement) {
     top: number
     requested?: number
     stack?: string
+    button?: number
+    buttons?: number
     pointer?: ReturnType<typeof pointerGeometry>
   }[] = []
   const win = el.ownerDocument.defaultView!
@@ -48,12 +50,19 @@ export function traceScrollInput(el: HTMLElement) {
       devicePixelRatio: win.devicePixelRatio,
     }
   }
-  const pointer = (kind: string, x: number, y: number, target?: EventTarget | null) => {
+  const pointer = (
+    kind: string,
+    x: number,
+    y: number,
+    target?: EventTarget | null,
+    state?: { button: number; buttons: number }
+  ) => {
     events.push({
       at: win.performance.now(),
       kind,
       top: get.call(el) as number,
       pointer: pointerGeometry(x, y, target),
+      ...state,
     })
   }
   Object.defineProperty(el, 'scrollTop', {
@@ -74,7 +83,10 @@ export function traceScrollInput(el: HTMLElement) {
   })
   const onEvent = (event: Event) => mark(event.type)
   const onPointer = (event: MouseEvent) =>
-    pointer(event.type, event.clientX, event.clientY, event.target)
+    pointer(event.type, event.clientX, event.clientY, event.target, {
+      button: event.button,
+      buttons: event.buttons,
+    })
   el.addEventListener('scroll', onEvent)
   el.addEventListener('scrollend', onEvent)
   win.addEventListener('mousedown', onPointer, true)

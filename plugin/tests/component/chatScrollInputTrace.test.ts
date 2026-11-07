@@ -57,7 +57,13 @@ it('records requested gutter geometry and the actual pointer target without movi
   try {
     trace.pointer('press-target', 507, 815)
     overlay.dispatchEvent(
-      new MouseEvent('mousedown', { bubbles: true, clientX: 507, clientY: 815 })
+      new MouseEvent('mousedown', {
+        bubbles: true,
+        clientX: 507,
+        clientY: 815,
+        button: 0,
+        buttons: 1,
+      })
     )
     expect(trace.events.map(({ kind }) => kind)).toEqual(['press-target', 'mousedown'])
     expect(trace.events[0].pointer).toMatchObject({
@@ -69,6 +75,7 @@ it('records requested gutter geometry and the actual pointer target without movi
       hit: { isContainer: false, insideContainer: false },
     })
     expect(trace.events[1].pointer?.target).toMatchObject({ tag: 'DIV', insideContainer: false })
+    expect(trace.events[1]).toMatchObject({ button: 0, buttons: 1 })
     expect(el.scrollTop).toBe(3200)
     trace.stop()
     overlay.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
