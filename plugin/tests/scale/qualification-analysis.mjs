@@ -29,6 +29,40 @@ export function qualificationAnalysis(report, entries, baselines = []) {
   }
   return {
     peerPull,
+    preciseCoverage: entries
+      .filter((row) => row.event === 'precise-coverage-start')
+      .map((row) => {
+        const stop = entries.find(
+          (x) => x.event === 'precise-coverage-stop' && x.intervalId === row.intervalId && x.stopped
+        )
+        const complete = entries.find(
+          (x) => x.event === 'reindex-complete' && x.id === row.id && x.device === row.device
+        )
+        return {
+          device: row.device,
+          id: row.id,
+          intervalId: row.intervalId,
+          startedAt: row.startedAt,
+          startRequestedAt: row.startRequestedAt ?? row.startedAt,
+          stopRequestedAt: stop?.stopRequestedAt ?? null,
+          endedAt: stop?.endedAt ?? null,
+          stopped: !!stop,
+          hostCacheCleanAt: complete?.at ?? null,
+          completionPublishedAt: complete?.coverageStoppedAt ?? complete?.at ?? null,
+          stoppedByCompletion:
+            !!stop && !!complete && stop.endedAt <= (complete.coverageStoppedAt ?? complete.at),
+          transferOverlaps: (report.phaseTimings ?? [])
+            .filter((p) => /upload|pull/.test(p.name))
+            .flatMap((p) => {
+              const durationMs = Math.max(
+                0,
+                Math.min(stop?.endedAt ?? Infinity, p.at + p.durationMs) -
+                  Math.max(row.startedAt, p.at)
+              )
+              return durationMs ? [{ phase: p.name, durationMs }] : []
+            }),
+        }
+      }),
     reindexInventory: report.reindexInventoryTimings ?? [],
     baselines: baselines.map(({ label, peerPull = [], reindexInventory = [] }) => ({
       label,

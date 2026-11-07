@@ -155,6 +155,7 @@ it('clicks the real setting once, persists actual click time, and observes host 
     scheduled = [],
     calls = []
   const module = { exports: {} }
+  let clock = 100
   const fs = {
     writeFileSync: (path, value) => files.set(path, value),
     appendFileSync: () => {
@@ -171,7 +172,8 @@ it('clicks the real setting once, persists actual click time, and observes host 
     require: (name) => (name === 'node:fs' ? fs : { resolve: (p) => p }),
     setTimeout: (fn) => scheduled.push(fn),
     __scaleSaveInterruptionBoundary: async () => ({ flushed: true, profilerExported: true }),
-    Date,
+    __scaleReindexCoverage: { end: async () => { calls.push('coverage-stop'); clock = 150; return true } },
+    Date: { now: () => clock },
     Buffer,
   })
   const api = module.exports as any
@@ -229,6 +231,7 @@ it('clicks the real setting once, persists actual click time, and observes host 
   )
   expect(rows.some((row) => row.event === 'reindex-complete')).toBe(false)
   await completed()
+  expect(calls.at(-1)).toBe('coverage-stop')
   expect(rows.at(-1)).toMatchObject({
     event: 'reindex-complete',
     id: 'sample',
@@ -237,8 +240,12 @@ it('clicks the real setting once, persists actual click time, and observes host 
   expect(files.has('trace.0.reindex.json')).toBe(false)
   expect(JSON.parse(files.get('trace.0.reindex.json.complete.json'))).toMatchObject({
     id: 'sample',
-    completedAt: expect.any(Number),
+    completedAt: 100,
+    coverageStoppedAt: 150,
+    coverageStopped: true,
   })
+  await completed()
+  expect(calls.filter(call => call === 'coverage-stop')).toHaveLength(1)
   await expect(
     api.clickRebuild(app, { querySelectorAll: () => [row, row] }, {}, 'trace')
   ).rejects.toThrow('ambiguous')

@@ -469,19 +469,38 @@ exports.watch = async function (id, serializedConfig) {
     },
   }) : undefined
   let coverageId
+  let coverageInterval
   const endCoverage = async () => {
-    if (!coverageId) return
+    if (!coverageId) return true
     const id = coverageId
+    const interval = coverageInterval
     coverageId = undefined
+    coverageInterval = undefined
+    let result
+    let stopped = false
+    let stopRequestedAt
     try {
-      const result = await transport.sendCommand('Profiler.takePreciseCoverage')
+      result = await transport.sendCommand('Profiler.takePreciseCoverage')
+    } catch { /* Stop counters even when their export fails. */ }
+    try {
+      stopRequestedAt = Date.now()
       await transport.sendCommand('Profiler.stopPreciseCoverage')
+      stopped = true
+    } catch { /* Missing confirmation remains explicit evidence. */ }
+    emit({ event: 'precise-coverage-stop', id, ...interval, stopRequestedAt, endedAt: Date.now(), stopped })
+    if (!result || !stopped) {
+      emit({ event: 'reindex-js-coverage-unavailable', id })
+      return false
+    }
+    try {
       const file = `${config.profileDirectory}/${config.device}-${randomUUID()}.coverage.json`
       fs.mkdirSync(config.profileDirectory, { recursive: true })
       fs.writeFileSync(file, JSON.stringify(result))
       emit({ event: 'reindex-js-coverage', id, file })
+      return true
     } catch {
       emit({ event: 'reindex-js-coverage-unavailable', id })
+      return false
     }
   }
   const beginCoverage = async (id) => {
@@ -497,12 +516,15 @@ exports.watch = async function (id, serializedConfig) {
       return false
     }
     if (coverageId) await endCoverage()
+    const startRequestedAt = Date.now()
     try {
       await transport.sendCommand('Profiler.startPreciseCoverage', {
         callCount: true,
         detailed: true,
       })
       coverageId = id
+      coverageInterval = { intervalId: randomUUID(), startRequestedAt, startedAt: Date.now() }
+      emit({ event: 'precise-coverage-start', id, ...coverageInterval })
       emit({ event: 'reindex-js-coverage-ready', id })
       return true
     } catch {

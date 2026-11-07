@@ -2,6 +2,26 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import * as analysis from './qualification-analysis.mjs'
 
+test('reports every precise counter interval and its transfer overlap without changing budgets', () => {
+  const r = { phaseTimings: [{ name: 'second device pull', at: 100, durationMs: 200 }] }
+  const rows = [
+    { event: 'precise-coverage-start', device: '1', id: 'sample', intervalId: 'a', startedAt: 110 },
+    {
+      event: 'precise-coverage-stop',
+      device: '1',
+      id: 'sample',
+      intervalId: 'a',
+      endedAt: 130,
+      stopped: true,
+    },
+    { event: 'reindex-complete', device: '1', id: 'sample', at: 131 },
+  ]
+  const result = analysis.qualificationAnalysis(r, rows)
+  assert.equal(result.preciseCoverage[0].endedAt, 130)
+  assert.equal(result.preciseCoverage[0].stoppedByCompletion, true)
+  assert.equal(result.preciseCoverage[0].transferOverlaps[0].durationMs, 20)
+})
+
 test('reports ten-minute SHA seal rates and explicit inventory durations without inventing legacy timings', () => {
   assert.equal(typeof analysis.qualificationAnalysis, 'function')
   const report = {

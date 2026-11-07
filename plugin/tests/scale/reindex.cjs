@@ -98,13 +98,22 @@ exports.observeRebuild = function (app, config, emit, register) {
       emit({ event: 'reindex-completion-unavailable', id: operation.id })
       return
     }
-    app.metadataCache.onCleanCache(() => {
+    let completing = false
+    app.metadataCache.onCleanCache(async () => {
+      if (completing) return
+      completing = true
       const completedAt = Date.now()
+      // Export both counters and their stop acknowledgement before publishing
+      // completion. Transfer settlement is outside the reindex interval.
+      let coverageStopped = false
+      try { coverageStopped = await globalThis.__scaleReindexCoverage?.end?.() === true }
+      catch { emit({ event: 'reindex-coverage-stop-unavailable', id: operation.id }) }
+      const coverageStoppedAt = Date.now()
       fs.writeFileSync(
         pendingFile + '.complete.json',
-        JSON.stringify({ ...operation, completedAt })
+        JSON.stringify({ ...operation, completedAt, coverageStopped, coverageStoppedAt })
       )
-      emit({ event: 'reindex-complete', id: operation.id, at: completedAt })
+      emit({ event: 'reindex-complete', id: operation.id, at: completedAt, coverageStoppedAt, coverageStopped })
       fs.unlinkSync(pendingFile)
     })
   })

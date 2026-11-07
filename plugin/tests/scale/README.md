@@ -643,6 +643,13 @@ and manifest durations. Optional `analysisBaselines` accepts compact objects wit
 budgets. Older captures without inventory timestamps remain unmeasured; trigger-to-click
 time also includes manifest reads, boundary export and host scheduling.
 
+Precise function counters run only for declared rebuilds: before the click and after its
+reload, until the host cache becomes clean. Completion is published only after counter export
+and stop acknowledgement; transfer settlement does not keep counters enabled. Interval
+start/stop request and acknowledgement timestamps are recorded per device, and
+`report.analysis.preciseCoverage` reports each interval and transfer-phase overlap. CPU
+sampling and actual digest observation continue independently outside those intervals.
+
 `interruption-receipts` captures allowlisted pending pull intents, ledger acknowledgement,
 live identity-bound installation proof presence, committed host private-stage records and
 queued upload sources. Snapshot transaction failures remain explicitly incomplete. The
