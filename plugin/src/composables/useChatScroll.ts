@@ -71,6 +71,42 @@ export function useChatScroll(options: ChatScrollOptions) {
   let sendScrollPending = false
   let readingFromMarker = false
   let queuedMarkerPages = 0
+  let idlePrefetch: { win: Window; timer: number } | undefined
+  const cancelIdlePrefetch = () => {
+    if (idlePrefetch) idlePrefetch.win.clearTimeout(idlePrefetch.timer)
+    idlePrefetch = undefined
+  }
+  const scheduleIdlePrefetch = () => {
+    cancelIdlePrefetch()
+    const el = messagesContainer.value
+    if (!el) return
+    const win = el.win
+    idlePrefetch = {
+      win,
+      timer: win.setTimeout(() => {
+        idlePrefetch = undefined
+        if (
+          messagesContainer.value !== el ||
+          shouldAutoScroll ||
+          readerDirection > 0 ||
+          fingerDown ||
+          revealing ||
+          readingFromMarker ||
+          composing.value ||
+          sendScrollPending ||
+          !hasOlder.value ||
+          !el.clientHeight ||
+          !el.scrollHeight ||
+          el.scrollTop > el.clientHeight * 2
+        )
+          return
+        console.debug('[chat-scroll] idle history prefetch', { scrollTop: el.scrollTop })
+        // Use the ordinary, anchored full-page transaction once per quiet input burst.
+        // Its layout notifications do not schedule another idle page.
+        loadOlder()
+      }, 200),
+    }
+  }
   const leaveMarker = () => {
     readingFromMarker = false
     queuedMarkerPages = 0
@@ -170,10 +206,12 @@ export function useChatScroll(options: ChatScrollOptions) {
     retainedRows
   )
   const resetWindow = () => {
+    cancelIdlePrefetch()
     leaveMarker()
     resetRenderWindow()
   }
   const showMessagesFrom = (index: number) => {
+    cancelIdlePrefetch()
     leaveMarker()
     showRenderMessagesFrom(index)
   }
@@ -215,6 +253,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     )
     if (event?.type === 'keydown' && field) return
     if (isMarkerInput(event)) return
+    scheduleIdlePrefetch()
     nativeScrolling = true
     wheelScrolling = event?.type === 'wheel'
     const point = (event as TouchEvent | undefined)?.touches?.[0]
@@ -292,6 +331,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     fingerDown = false
     touchY = null
     if (isMarkerInput(event)) return
+    scheduleIdlePrefetch()
     // Where the finger left it, read now: the scroll it made may not have been reported yet, and
     // the next piece of the reply would otherwise take a reader who went up for one still following.
     const el = messagesContainer.value
@@ -512,6 +552,11 @@ export function useChatScroll(options: ChatScrollOptions) {
   const onMessagesScroll = () => {
     const el = messagesContainer.value
     if (!el) return
+    if (
+      el.scrollTop !== observedScrollTop &&
+      (codeScrollTop === null || Math.abs(el.scrollTop - codeScrollTop) >= 1)
+    )
+      scheduleIdlePrefetch()
     // A marker reveal can evict the visible tail. Browser clamping/re-anchoring
     // is layout, not a reader asking to put that tail back. Input releases this
     // intent; queued clicks each retain their own page independently of edges.
@@ -822,6 +867,7 @@ export function useChatScroll(options: ChatScrollOptions) {
   }
 
   const unobserve = () => {
+    cancelIdlePrefetch()
     observedContainer?.removeEventListener('scrollend', onNativeScrollEnd)
     observedContainer = null
     nativeScrolling = false
