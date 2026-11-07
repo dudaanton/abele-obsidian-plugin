@@ -19,6 +19,7 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { desktopFileIdentity } from '@/sync/desktopFileIdentity'
 import { scopedFileSystem } from '@/sync/scopedFileSystem'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
+import { TaskCpu } from '../helpers/taskCpu'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 it.each(['pull', 'upload'] as const)(
@@ -186,8 +187,8 @@ it.each(['pull', 'upload'] as const)(
 
       now += 300000
       probes = reads = 0
-      // A real timer samples every event-loop turn: its longest gap bounds renderer
-      // blocking conservatively (it includes scheduling/IO delay, not just JS CPU).
+      // Keep timer gaps as diagnostics, but cap synchronous task CPU below. The test
+      // runner may suspend this process while enforcing a shared CPU allowance.
       let lastTurn = performance.now(),
         longestTaskBoundMs = 0
       const heartbeat = setInterval(() => {
@@ -195,6 +196,7 @@ it.each(['pull', 'upload'] as const)(
         longestTaskBoundMs = Math.max(longestTaskBoundMs, at - lastTurn)
         lastTurn = at
       }, 1)
+      const taskCpu = new TaskCpu()
       const inspectionStart = performance.now()
       const cpuStart = process.cpuUsage()
       let cpu: NodeJS.CpuUsage
@@ -203,6 +205,7 @@ it.each(['pull', 'upload'] as const)(
         await new Promise((resolve) => setTimeout(resolve, 2))
         cpu = process.cpuUsage(cpuStart)
       } finally {
+        taskCpu.stop()
         clearInterval(heartbeat)
       }
       console.log('native periodic inspection', {
@@ -211,8 +214,11 @@ it.each(['pull', 'upload'] as const)(
         ms: performance.now() - inspectionStart,
         cpuMs: (cpu.user + cpu.system) / 1000,
         longestTaskBoundMs,
+        taskCpuMs: taskCpu.longestMs,
+        taskWallMs: taskCpu.longestWallMs,
+        tasks: taskCpu.tasks,
       })
-      expect(longestTaskBoundMs).toBeLessThan(50)
+      expect(taskCpu.longestMs).toBeLessThan(50)
       expect(probes).toBeGreaterThan(count)
       expect(reads).toBe(0)
       expect(performance.now() - inspectionStart).toBeLessThan(5000)

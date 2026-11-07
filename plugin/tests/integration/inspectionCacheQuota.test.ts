@@ -19,7 +19,8 @@ import { buildFakeVault } from '../helpers/fakeVault'
 // The host's local storage has a small per-origin quota and drops a value that does not fit
 // without saying so. A cache sized for a large vault must not depend on it.
 const QUOTA = 64 * 1024
-const FILES = 1200
+// Enough entries to overflow the quota; this tests storage behavior, not inventory scale.
+const FILES = 512
 
 let root: string
 let factory: IDBFactory
@@ -145,6 +146,8 @@ async function start(): Promise<ExternalRepresentation> {
   let listed = 0
   for await (const _ of representation.fileSystem().list()) listed++
   expect(listed).toBe(FILES)
+  const cache = JSON.stringify({ schema: 1, entries: await host.readInspections() })
+  expect(cache.length).toBeGreaterThan(QUOTA)
   return representation
 }
 

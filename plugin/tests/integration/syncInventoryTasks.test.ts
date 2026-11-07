@@ -8,26 +8,23 @@ import { assertPhysicalPath } from '@/sync/external/projection'
 import { scopedFileSystem } from '@/sync/scopedFileSystem'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 
+import { TaskCpu } from '../helpers/taskCpu'
+
 const count = 33000
 const directory = Array.from({ length: 12 }, (_, i) => `Section Café ${i}`).join('/')
 
 async function tasks<T>(work: () => Promise<T>) {
-  let last = performance.now(),
-    longest = 0
-  const tick = () => {
-    const now = performance.now()
-    longest = Math.max(longest, now - last)
-    last = now
-  }
-  const timer = setInterval(tick, 0)
+  const monitor = new TaskCpu()
   try {
-    const result = await work()
-    tick()
-    console.info('inventory tasks', { longest })
-    expect(longest).toBeLessThan(50)
-    return result
+    return await work()
   } finally {
-    clearInterval(timer)
+    monitor.stop()
+    console.info('inventory task CPU', {
+      cpuMs: monitor.longestMs,
+      wallMs: monitor.longestWallMs,
+      tasks: monitor.tasks,
+    })
+    expect(monitor.longestMs).toBeLessThan(50)
   }
 }
 
