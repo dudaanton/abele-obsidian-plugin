@@ -2,6 +2,7 @@ import { shotDir } from './shots'
 import { visibleChatAnchor } from './visibleChatAnchor'
 import { traceScrollInput } from './scrollInputTrace'
 import { scrollCompletion } from './scrollCompletion'
+import { scrollbarDragPoint } from './scrollbarDragPoint'
 
 export const states = ['idle', 'text', 'running-tool', 'finished-tool', 'finished-reply'] as const
 const shots = shotDir('abele-phone')
@@ -693,10 +694,15 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
     begin('scrollbar drag')
     if (!phone) {
       const el = box(), rect = el.getBoundingClientRect()
-      const x = rect.right - 3, y = rect.bottom - 5
+      const { x, y } = (${scrollbarDragPoint.toString()})(el)
       dragTrace = (${traceScrollInput.toString()})(el)
       dragCompletion = (${scrollCompletion.toString()})(el)
       report.dragTrace = dragTrace.events
+      // A wheel/key event need not move the pointer over the overlay scrollbar.
+      // Hover first so a fading thumb is hit-testable when the press is delivered.
+      dragTrace.pointer('hover-target', x, y)
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, buttons: 0 })
+      await wait(200)
       dragTrace.pointer('press-target', x, y)
       dragTrace.mark('press-request')
       await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 })
@@ -704,7 +710,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
       buttonDown = true
       for (let n = 1; n <= 12; n++) {
         dragTrace.mark('move-request-' + n)
-        await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y: y - (rect.height - 25) * n / 12, button: 'left', buttons: 1 })
+        await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y: y + (rect.top + 20 - y) * n / 12, button: 'left', buttons: 1 })
         dragTrace.mark('move-ack-' + n)
         await wait(24)
       }
