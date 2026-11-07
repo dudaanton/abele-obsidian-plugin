@@ -97,6 +97,14 @@ export class ConnectionSets {
   all(): ConnectionSet[] {
     return clone(this.read().connections)
   }
+  /** Activity needs only the parent id, not a detached copy of every shared item. */
+  activityParent(recordId: string): string | undefined {
+    for (const connection of this.read().connections) {
+      const item = connection.items.find((one) => one.recordId === recordId)
+      if (item) return item.detached ? undefined : connection.id
+    }
+    return undefined
+  }
   forRecord(recordId: string): { connection: ConnectionSet; item: StoredSetItem } | null {
     for (const connection of this.all()) {
       const item = connection.items.find((one) => one.recordId === recordId)

@@ -76,6 +76,44 @@ function setup() {
 }
 
 describe('connection item sets', () => {
+  it('forwards thousands of file events without cloning item documents per event', () => {
+    const { storage, data } = setup()
+    data.delete(TOKEN_REGISTRY_KEY)
+    const registry = TokenConnectionRegistry.open(storage)
+    const parent = registry.add(),
+      child = registry.add()
+    const ui = new TokenUi(
+      registry,
+      { get: () => null, set: () => {}, remove: () => {} },
+      async () => {
+        throw new Error('No network')
+      }
+    )
+    const items = Array.from({ length: 20 }, (_, i) => folder(`item-${i}`, `Folder-${i}`))
+    ui.itemSets.store.create(parent, 'Sample share', items, {
+      'item-0': parent,
+      'item-1': child,
+    })
+    const clone = vi.spyOn(globalThis, 'structuredClone')
+    try {
+      for (let i = 0; i < 5000; i++) ui.recordEvent(child, `Installed sample-${i}.md`, i)
+      expect(ui.activity.value[parent].eventsRevision).toBe(5000)
+      expect(ui.activity.value[child].eventsRevision).toBe(5000)
+      expect(clone).not.toHaveBeenCalled()
+    } finally {
+      clone.mockRestore()
+    }
+    // A primitive lookup still reads and validates current membership; no stale cache.
+    ui.itemSets.store.reconcile(parent, [items[0]])
+    ui.recordEvent(child, 'Detached event', 5000)
+    expect(ui.activity.value[parent].eventsRevision).toBe(5000)
+    const saved = data.get(SETS_KEY)
+    data.set(SETS_KEY, { version: 1, connections: 'invalid' })
+    expect(() => ui.recordEvent(child, 'Invalid membership', 5001)).toThrow(
+      'Connection sets require recovery'
+    )
+    data.set(SETS_KEY, saved)
+  })
   it('drops detached children from live shared aggregates and future activity', () => {
     const { storage, data } = setup()
     data.delete(TOKEN_REGISTRY_KEY)
