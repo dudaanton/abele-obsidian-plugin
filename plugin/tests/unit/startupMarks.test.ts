@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
+import { transformSync } from 'esbuild'
 import { describe, expect, it } from 'vitest'
 
 // Execute the real lifecycle body, with feature work replaced by named no-ops. This tests
@@ -8,9 +9,20 @@ const source = readFileSync('src/main.ts', 'utf8')
 const file = ts.createSourceFile('main.ts', source, ts.ScriptTarget.Latest, true)
 const plugin = file.statements.find(ts.isClassDeclaration)!
 const body = plugin.members.find((m) => m.name?.getText(file) === 'onload') as ts.MethodDeclaration
-const js = ts.transpile(`async function load() ${body.body!.getText(file)}`, {
-  target: ts.ScriptTarget.ES2022,
-})
+const buildFlag = file.statements.find(
+  (statement) =>
+    ts.isVariableStatement(statement) &&
+    statement.declarationList.declarations.some((d) => d.name.getText(file) === 'testingBuild')
+)!
+// Keep the real module-level guard in scope and inline the release defines as Vite does.
+const { code: js } = transformSync(
+  `${buildFlag.getText(file)}\nasync function load() ${body.body!.getText(file)}`,
+  {
+    loader: 'ts',
+    target: 'es2022',
+    define: { 'process.env.NODE_ENV': '"production"', __ABELE_TEST_SHARING__: 'false' },
+  }
+)
 
 describe('startup mark boundaries', () => {
   it.each([false, true])('brackets every synchronous phase with AI enabled=%s', async (enabled) => {
