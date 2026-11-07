@@ -230,6 +230,55 @@ it('resolves a generated plugin frame through the exact external map', () => {
     originalName: 'prepareInventory' })
 })
 
+const installedBundleUrls = [
+  'app://obsidian.md/_plugin/example/.obsidian%2Fplugins%2Fabele?id=abele',
+  'app://obsidian.md/_plugin/another/.obsidian%2fplugins%2fabele',
+  'app://obsidian.md/_plugin/example/.obsidian/plugins/abele',
+  'app://obsidian.md/_plugin/example/.obsidian/plugins/abele/main.js?version=1',
+  '/sample/vault/.obsidian/plugins/abele/main.js',
+  'file:///sample/vault/.obsidian%2Fplugins%2Fabele/main.js',
+  'plugin:abele?version=1',
+]
+it.each(installedBundleUrls)('recognizes and symbolizes installed bundle %s with plugin ancestor precedence', async url => {
+  const symbolize = symbolizerFromMap({ version: 3, file: 'main.js', sources: ['src/sync/example.ts'],
+    names: ['nativeDeadline'], mappings: 'AAAAA' })
+  const plugin = { url, functionName: 'a', lineNumber: 0, columnNumber: 0 }
+  expect(symbolize(plugin)).toMatchObject({ originalSource: 'src/sync/example.ts', originalLine: 1 })
+  const [row] = await profileSummary([{ event: 'long-task', device: '1', startedAt: 10, durationMs: 65 }],
+    [{ event: 'cpu-profile', device: '1', startedAt: 0, endedAt: 100, path: 'cpu',
+      clock: { beforeAt: 0, afterAt: 0, timestampMs: 0 } }], async () => ({
+      startTime: 0, endTime: 100000, nodes: [
+        { id: 1, callFrame: plugin, children: [2] },
+        { id: 2, callFrame: { url: 'plugin:scale-observer', functionName: 'wrap' }, children: [3] },
+        { id: 3, callFrame: { url: 'app://obsidian.md/app.js', functionName: 'callback' } },
+      ], samples: [3], timeDeltas: [30000],
+    }), symbolize)
+  expect(row.owner).toBe('ours during sync')
+  expect(longTaskVerdict(row).status).toBe('FAIL')
+})
+it.each([
+  'app://obsidian.md/_plugin/example/.obsidian%2Fplugins%2Fother?id=abele',
+  'app://obsidian.md/_plugin/example/.obsidian/plugins/abele-helper',
+  'app://obsidian.md/app.js?path=.obsidian/plugins/abele/main.js',
+  '/sample/.obsidian/plugins/abele/data.json',
+])('does not symbolize a different script %s as our bundle', url => {
+  const symbolize = symbolizerFromMap({ version: 3, file: 'main.js', sources: ['src/sync/example.ts'],
+    names: ['sync'], mappings: 'AAAAA' })
+  const frame = { url, lineNumber: 0, columnNumber: 0, functionName: 'host' }
+  expect(symbolize(frame)).toEqual(frame)
+})
+
+it('keeps complete zero-sample intervals unattributed after bundle identity recognition', async () => {
+  const [row] = await profileSummary([{ event: 'long-task', device: '1', startedAt: 10, durationMs: 65 }],
+    [{ event: 'cpu-profile', device: '1', startedAt: 0, endedAt: 100, path: 'cpu',
+      clock: { beforeAt: 0, afterAt: 0, timestampMs: 0 } }], async () => ({
+      startTime: 0, endTime: 100000, nodes: [], samples: [], timeDeltas: [],
+    }))
+  expect(row).toMatchObject({ profileWindowComplete: true, owner: 'unattributed',
+    ownershipReason: 'no-correlated-samples' })
+  expect(longTaskVerdict(row).status).toBe('FAIL')
+})
+
 it('records rotation gaps and starts the next capture before saving the previous one', async () => {
   const calls: string[] = [], events = []
   const profiler = diagnostics.createStallProfiler({ continuous: true, maxCaptureMs: 100,

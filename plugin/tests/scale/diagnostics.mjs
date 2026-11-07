@@ -6,10 +6,22 @@ import { createInterface } from 'node:readline'
 import entryLedger from './entry-ledger.cjs'
 import { schedulingEvidence } from './host-timeline.mjs'
 const exec = promisify(execFile)
+// setupVault installs this plugin id under .obsidian/plugins on every device.
+const installedPluginId = 'abele'
+const installedModulePath = `/.obsidian/plugins/${installedPluginId}`
 function isPluginBundleFrame(frame) {
   const url = frame.url ?? ''
-  return /plugin:abele(?:[/:]|$)/.test(url) ||
-    /(?:^|[\\/])plugins[\\/]abele[\\/]main\.js(?:[?#]|$)/.test(url)
+  if (new RegExp(`^plugin:${installedPluginId}(?:[/:?#]|$)`).test(url)) return true
+  let parsed
+  try { parsed = new URL(url) } catch { /* Absolute native paths are not URLs. */ }
+  let path = parsed?.pathname ?? url.split(/[?#]/, 1)[0]
+  try { path = decodeURIComponent(path) } catch { return false }
+  path = path.replaceAll('\\', '/')
+  // The host's module loader names the directory, whereas file-based loaders
+  // name main.js. Decode only the pathname: query values never prove identity.
+  return path.endsWith(`/plugins/${installedPluginId}/main.js`) ||
+    parsed?.protocol === 'app:' && parsed.hostname === 'obsidian.md' &&
+      path.startsWith('/_plugin/') && path.endsWith(installedModulePath)
 }
 export function symbolizerFromMap(map) {
   const consumer = new SourceMapConsumer(map)
@@ -116,7 +128,7 @@ export async function allocationAttribution(task, captures, load, symbolize = fr
       node = nodes.get(parents.get(node.id))
     }
     const harness = stack.findIndex(row => /scale-observer|entry-ledger\.cjs|diagnostics\.cjs|reindex\.cjs/.test(row.url ?? ''))
-    const plugin = stack.findIndex(row => /plugin:abele(?:[/:]|$)/.test(row.url ?? ''))
+    const plugin = stack.findIndex(isPluginBundleFrame)
     const owner = harness >= 0 && (plugin < 0 || harness < plugin) ? 'harness' :
       plugin >= 0 ? 'plugin' : stack.some(row => /^app:\/\/obsidian\.md\//.test(row.url ?? ''))
         ? 'host' : 'unknown'
