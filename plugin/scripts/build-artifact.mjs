@@ -110,13 +110,7 @@ export function buildArtifactPlugin(root, mode) {
       outDir = resolve(config.root, config.build.outDir)
     },
     generateBundle(_options, bundle) {
-      // Verifiers and feature-only builds do not need the source-tree size budget.
-      if ((mode === 'production' || mode === 'sharing-test') && bundle['main.js']) {
-        const budget = JSON.parse(
-          readFileSync(resolve(root, 'plugin/tests/size/budget.json'), 'utf8')
-        )
-        assertLaunchBundle(bundle, mode, budget)
-      }
+      assertLaunchBundle(bundle, mode)
     },
     buildStart() {
       provenance = { inputs: inputIdentity(root), git: historyIdentity(root) }

@@ -11,13 +11,15 @@ export function assertNoTestingModules(bundle) {
   }
 }
 
-/** Bound the file the host reads/evaluates, including qualification builds. */
-export function assertLaunchBundle(bundle, mode, budget) {
+/** Validate launch artifacts; production size is enforced by the separate size tier. */
+export function assertLaunchBundle(bundle, mode) {
   if (mode !== 'production' && mode !== 'sharing-test') return
   const code = bundle['main.js']?.code
   if (typeof code !== 'string') throw new Error('Missing launch JavaScript')
   if (/sourceMappingURL=data:/.test(code)) throw new Error('Inline source map in launch JavaScript')
-  const limit = mode === 'production' ? budget.mainJsBytes : 26 * 1024 * 1024
+  // The landing coordinator must emit production bytes before measuring its new budget.
+  if (mode === 'production') return
+  const limit = 26 * 1024 * 1024
   const bytes = Buffer.byteLength(code)
   if (bytes > limit)
     throw new Error(

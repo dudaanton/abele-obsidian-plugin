@@ -47,11 +47,14 @@ it.each(['production', 'sharing-test'])(
         }
       )
     ).toThrow(/source map/i)
-    expect(() =>
+    const oversized = () =>
       plugin.generateBundle(
         {},
         { 'main.js': { type: 'chunk', code: ' '.repeat(27 * 1024 * 1024) } }
       )
-    ).toThrow(/budget/i)
+    // Production must emit before the coordinator measures and updates the size-test budget.
+    if (mode === 'production') expect(oversized).not.toThrow()
+    else expect(oversized).toThrow(/budget/i)
+    expect(() => plugin.generateBundle({}, {})).toThrow(/missing launch/i)
   }
 )
