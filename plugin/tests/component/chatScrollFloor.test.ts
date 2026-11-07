@@ -56,6 +56,56 @@ function conversation(messages: number) {
 }
 
 describe('the floor under a changing conversation', () => {
+  it('finishes a patch without an anchor so later input can release a new hold', async () => {
+    const { container, anchors } = conversation(0)
+    anchors.beginPageChange()
+    anchors.finishPageChange()
+    await Promise.resolve()
+    anchors.anchor = { el: container, offset: 0, at: 0 }
+    anchors.releaseReader()
+    expect(anchors.anchor).toBeNull()
+  })
+
+  it.each([true, false])(
+    'measures a patched page once before paint (observer: %s)',
+    async (observed) => {
+      const { container, anchors } = conversation(1)
+      const message = container.children[0] as HTMLElement
+      let top = 300
+      let documentTop = 400
+      const range = vi.fn(() => 1400)
+      Object.defineProperties(container, {
+        scrollTop: {
+          get: () => top,
+          set: (value: number) => {
+            top = value
+          },
+        },
+        scrollHeight: { get: range },
+        clientHeight: { get: () => 400 },
+      })
+      container.getBoundingClientRect = () => ({ top: 0 }) as DOMRect
+      message.getBoundingClientRect = () => ({ top: documentTop - top }) as DOMRect
+      anchors.beginPageChange()
+      anchors.anchor = { el: message, offset: 100, at: documentTop }
+      range.mockClear()
+      // Native input arrives before the patch; only the inserted height is compensated.
+      top -= 40
+      anchors.releaseReader()
+      documentTop += 200
+      anchors.finishPageChange()
+      expect(range).not.toHaveBeenCalled()
+      // The subtree observer runs at the microtask checkpoint after Vue's post watchers.
+      if (observed) anchors.holdLayout()
+      await Promise.resolve()
+      expect(range).toHaveBeenCalledTimes(1)
+      expect(top).toBe(460)
+      expect(message.getBoundingClientRect().top).toBe(140)
+      anchors.releaseReader()
+      expect(anchors.anchor).toBeNull()
+    }
+  )
+
   it('samples position after a range read has applied native layout clamping', () => {
     const { container, anchors } = conversation(1)
     const message = container.children[0] as HTMLElement

@@ -38,6 +38,7 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
    */
   let anchor: { el: HTMLElement; offset: number; at?: number; ids?: string[] } | null = null
   let pageChangePending = false
+  let pageChangePatched = false
 
   /** Takes the topmost rendered message as the anchor: the page is revealed above it. */
   const captureAnchor = () => {
@@ -424,6 +425,10 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     if (steady) steady.scrollTop = top
     if (layout.clearClass) container.classList.remove('abele-ai-chat__messages_steady')
     if (layout.releaseFloor) releaseFloor(container)
+    if (mode !== 'steady' && pageChangePatched) {
+      pageChangePending = false
+      pageChangePatched = false
+    }
   }
 
   /**
@@ -547,13 +552,23 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     beginPageChange: () => {
       captureAnchor()
       pageChangePending = true
+      pageChangePatched = false
     },
     finishPageChange: () => {
       if (!pageChangePending) return
-      // Vue has patched the range. Measure the surviving row now, before paint,
-      // so the correction is the exact inserted/removed height above that row.
-      holdAnchor()
-      pageChangePending = false
+      // Vue's patch already queued the subtree observer. Let it measure the page
+      // and gap together, after all post watchers, instead of forcing layout here
+      // and invalidating it again by releasing the floor before that observer.
+      // The fallback still corrects before paint when no subtree observer runs.
+      pageChangePatched = true
+      void Promise.resolve().then(() => {
+        if (!closed && pageChangePending && pageChangePatched) {
+          holdAnchor()
+          // A patch with no surviving anchor still completes its pending hold.
+          pageChangePending = false
+          pageChangePatched = false
+        }
+      })
     },
     releaseReader: () => {
       // Input can arrive between changing the range and patching its DOM. The
