@@ -1,6 +1,7 @@
 // @vitest-environment node
-import { readFileSync, readdirSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { readFileSync, readdirSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { resolve, join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { expect, it } from 'vitest'
 import { assertSdkSourceImports, assertSdkBrowserBundle } from '../../scripts/sync-sdk-browser.mjs'
 
@@ -103,10 +104,20 @@ it('refuses transitive Node imports reached through an SDK dependency', () => {
 })
 
 it('rejects a legacy Zod dependency reached from the SDK browser graph', () => {
-  const legacy = resolve('node_modules/@abele/node-protocol/node_modules/zod/index.js')
-  expect(() =>
-    assertSdkBrowserBundle(bundle(sdk + 'internal/core/index.js'), (id) => ({
-      importedIds: id.startsWith(sdk) ? [legacy] : [],
-    }))
-  ).toThrow(/SDK.*[Zz]od/)
+  // Current vendored protocols share Zod 4. A synthetic legacy package keeps this
+  // regression independent of whether npm happens to install a nested Zod 3 copy.
+  const root = mkdtempSync(join(tmpdir(), 'sample-sdk-legacy-'))
+  try {
+    const directory = join(root, 'node_modules/zod')
+    mkdirSync(directory, { recursive: true })
+    writeFileSync(join(directory, 'package.json'), JSON.stringify({ version: '3.0.0' }))
+    const legacy = join(directory, 'index.js')
+    expect(() =>
+      assertSdkBrowserBundle(bundle(sdk + 'internal/core/index.js'), (id) => ({
+        importedIds: id.startsWith(sdk) ? [legacy] : [],
+      }))
+    ).toThrow(/SDK.*[Zz]od/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
