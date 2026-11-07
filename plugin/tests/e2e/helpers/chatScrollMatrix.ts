@@ -343,7 +343,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
     if (el && row) {
       measureFollowingOrigin?.()
       const viewport = el.getBoundingClientRect()
-      trace.push({ at: performance.now(), move: row.move, scrollTop: el.scrollTop,
+      trace.push({ at: performance.now(), frameAt: now, gestureActive, move: row.move, scrollTop: el.scrollTop,
         scrollHeight: el.scrollHeight, direction, anchorOffset: previousAnchor?.isConnected ? offset(previousAnchor) : null })
       // Queued sends and status rows are rendered content too. Measuring only message
       // IDs misreported the visible queued-send row as a 33 px empty region.
@@ -697,6 +697,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
       dragTrace = (${traceScrollInput.toString()})(el)
       dragCompletion = (${scrollCompletion.toString()})(el)
       report.dragTrace = dragTrace.events
+      dragTrace.pointer('press-target', x, y)
       dragTrace.mark('press-request')
       await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 })
       dragTrace.mark('press-ack')
@@ -708,6 +709,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
         await wait(24)
       }
       dragTrace.mark('release-request')
+      dragTrace.pointer('release-target', x, rect.top + 20)
       dragCompletion.releasing()
       await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y: rect.top + 20, button: 'left', clickCount: 1 })
       dragTrace.mark('release-ack')
