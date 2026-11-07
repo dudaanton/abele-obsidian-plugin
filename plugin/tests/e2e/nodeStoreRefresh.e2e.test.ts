@@ -249,4 +249,4 @@ it('profiles eight seconds of large-history refresh without main-thread long tas
 
 // The same continuous native-wheel path used by the scroll qualification, with the
 // large connected stub's ordinary controller/store refresh running throughout.
-chatScrollMatrixSuite('wheel/long/idle', 50, 8000)
+chatScrollMatrixSuite('wheel/long/idle', 90, 8000)
