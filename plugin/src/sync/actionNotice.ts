@@ -9,6 +9,9 @@ export class SyncActionNotice {
   update(text: string): void {
     this.notice.setMessage(text)
   }
+  cancel(): void {
+    this.notice.hide()
+  }
   finish(text: string): void {
     this.notice.setMessage(text)
     window.setTimeout(() => this.notice.hide(), 5000)

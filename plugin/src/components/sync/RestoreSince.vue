@@ -239,7 +239,11 @@ async function restore(): Promise<void> {
       results.push(...(await client.restoreDeletedMany(ids, keyOf(ids))))
     }
   } catch (failure) {
-    if (failure instanceof SyncCancelled) return
+    if (failure instanceof SyncCancelled) {
+      notice.cancel()
+      busy.value = false
+      return
+    }
     error.value = t('streamC.0c4f6ab39ffe220c', {
       v1: results.length,
       v2: items.length,

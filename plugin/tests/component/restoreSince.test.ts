@@ -79,13 +79,27 @@ const open = (items: TrashItem[] = ITEMS) =>
   mount(RestoreSince, { props: { items }, global: { stubs: STUBS } })
 type View = ReturnType<typeof open>
 it('does not report a cancelled restore batch as a server failure', async () => {
-  client.restoreDeletedMany.mockRejectedValueOnce(new SyncCancelled())
+  let cancel!: (reason: unknown) => void
+  client.restoreDeletedMany.mockReturnValueOnce(
+    new Promise((_, reject) => {
+      cancel = reject
+    })
+  )
+  const hide = vi.spyOn(Notice.prototype, 'hide')
   const view = open()
   await button(view, 'Restore')!.trigger('click')
   view.findComponent(ConfirmModal).vm.$emit('confirm')
   await flushPromises()
+  // Explicit actions now show a single progress notice. Cancellation must dismiss it
+  // without adding a failure notice, and release the Restore control for a later retry.
+  const progressNotices = [...Notice.shown]
+  expect(new Set(progressNotices).size).toBe(1)
+  cancel(new SyncCancelled())
+  await flushPromises()
   expect(view.text()).not.toContain('sync stopped')
-  expect(Notice.shown).toEqual([])
+  expect(Notice.shown).toEqual(progressNotices)
+  expect(hide).toHaveBeenCalledOnce()
+  expect(button(view, 'Restore')!.props('disabled')).toBe(false)
 })
 
 const button = (view: View, prefix: string) =>
