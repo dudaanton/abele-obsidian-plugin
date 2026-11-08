@@ -97,8 +97,8 @@ const script = `(async () => {
   window.fetch = async (url, init) => {
     if (typeof url !== 'string' || !url.startsWith(FAKE)) return realFetch(url, init)
     const body = JSON.parse(init.body)
-    const last = body.messages.findLast(message => message.role === 'user')
-    if (!last) throw Error('Provider request has no user message')
+    const last = body.messages.findLast(message => message.role !== 'system')
+    if (!last) throw Error('Provider request has no conversation message')
     const content = typeof last.content === 'string' ? last.content : (last.content || []).map((p) => p.text || '').join('')
     report.requests.push({ role: last.role, text: content })
     const chunks = answers[report.requests.length - 1] || [text('Done.'), text('', 'stop')]

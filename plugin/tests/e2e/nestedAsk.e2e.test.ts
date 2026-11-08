@@ -15,6 +15,7 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { isObsidianRunning, hasTestApi, evalRaw } from './helpers/obsidianCli'
+import { parseChatMetadata } from '@/ai/ChatLog'
 import { shotDir } from './helpers/shots'
 
 const CHAT = 'AI/Chats/Abele nested ask probe.abchat'
@@ -30,6 +31,8 @@ interface Level {
   ancestry: string[]
   /** The ids the comment's own file lists as asked on its messages, read after the next level. */
   listed: string[]
+  /** Full saved log, parsed by the production metadata reader in the test process. */
+  stored: string
 }
 
 interface Report {
@@ -135,12 +138,10 @@ const script = `(async () => {
     return { id: session.commentId, anchorNote: anchor.note, quote: anchor.quote || '', trail: trail(), ancestry: (await service.trail(session)).map(step => step.title), listed: [] }
   }
 
-  const listed = async (id) => {
+  const stored = async (id) => {
     const file = app.vault.getAbstractFileByPath(service.commentPath(id))
-    if (!file) return []
-    const lines = (await app.vault.read(file)).split('\\n').filter((l) => l.includes('"k":"meta"'))
-    const meta = JSON.parse(lines[lines.length - 1])
-    return (meta.comments || []).map((c) => c.id)
+    if (!file) throw Error('Saved comment file is missing: ' + id)
+    return app.vault.read(file)
   }
 
   try {
@@ -177,7 +178,7 @@ const script = `(async () => {
     report.levels.push(await level(third, 'Is there a sleeping car on it?'))
     await shoot('desktop-level3')
 
-    for (const l of report.levels) l.listed = await listed(l.id)
+    for (const l of report.levels) l.stored = await stored(l.id)
 
     // The parent-back control returns to the message anchoring this child.
     panel().querySelector('.abele-ai-chat .abele-chat-parent-back').click()
@@ -230,6 +231,11 @@ describe.runIf(available)('asking inside a comment, three levels down', () => {
 
   beforeAll(() => {
     report = JSON.parse(evalRaw(script, 120_000)) as Report
+    for (const level of report.levels) {
+      const metadata = parseChatMetadata(level.stored)
+      expect(metadata, 'saved comment metadata').not.toBeNull()
+      level.listed = (metadata!.comments ?? []).map((comment) => comment.id)
+    }
     console.info(`\n  shots: ${report.shots.join(', ')}\n`)
   }, 180_000)
 
