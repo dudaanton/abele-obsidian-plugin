@@ -49,7 +49,7 @@
           >
         </span>
         <span
-          v-else-if="renaming"
+          v-else-if="renaming && renameReady"
           ref="editor"
           class="abele-tree-item__text"
           contenteditable="plaintext-only"
@@ -160,6 +160,8 @@ const emit = defineEmits<{
   'rename-cancel': []
 }>()
 const editor = ref<HTMLElement>()
+const glyph = ref<HTMLElement>()
+const renameReady = ref(false)
 const renameText = ref(props.text)
 let renameFinished = false
 const finishRename = () => {
@@ -208,19 +210,26 @@ watch(
   () => props.renaming,
   async (editing) => {
     stopWaitingForMenu()
+    renameReady.value = false
     if (!editing) return
     renameFinished = false
     renameText.value = props.text
-    await nextTick()
-    const element = editor.value
-    if (!element || !props.renaming) return
-    const doc = element.ownerDocument
-    const focusEditor = () => {
+    if (!glyph.value) await nextTick()
+    if (!props.renaming) return
+    const doc = renameWindow?.document ?? glyph.value?.ownerDocument
+    if (!doc) return
+    const focusEditor = async () => {
       // Host menu actions run before the phone dismissal animation has finished.
       // Taking focus now can blur the editor again and commit an untouched name.
       if (doc.querySelector('.menu')) return
       stopWaitingForMenu()
-      if (!props.renaming || editor.value !== element || renameFinished) return
+      if (!props.renaming || renameFinished) return
+      // Do not expose a textbox until menu dismissal allows it to take focus.
+      // Focus and selection then accompany the editor's first rendered tick.
+      renameReady.value = true
+      await nextTick()
+      const element = editor.value
+      if (!element || !props.renaming || renameFinished) return
       element.focus()
       const range = doc.createRange()
       range.selectNodeContents(element)
@@ -229,9 +238,11 @@ watch(
       selection?.addRange(range)
     }
     if (doc.querySelector('.menu')) {
-      menuObserver = new MutationObserver(focusEditor)
+      menuObserver = new MutationObserver(() => {
+        void focusEditor()
+      })
       menuObserver.observe(doc.body, { childList: true, subtree: true })
-    } else focusEditor()
+    } else void focusEditor()
   },
   { immediate: true }
 )
@@ -261,7 +272,6 @@ const rowKey = (e: KeyboardEvent) => {
 }
 
 const chevron = ref<HTMLElement>()
-const glyph = ref<HTMLElement>()
 
 const draw = () => {
   if (chevron.value && !chevron.value.firstChild) setIcon(chevron.value, 'right-triangle')

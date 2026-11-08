@@ -13,14 +13,14 @@ describe('independent tree disclosure', () => {
     })
     try {
       await new Promise((resolve) => setTimeout(resolve, 0))
-      const editor = row.get('[contenteditable]').element
-      expect(document.activeElement).not.toBe(editor)
+      expect(row.find('[contenteditable]').exists()).toBe(false)
       // The phone menu restores focus as its dismissal animation finishes.
       const prior = document.createElement('button')
       menu.append(prior)
       prior.focus()
       menu.remove()
       await new Promise((resolve) => setTimeout(resolve, 0))
+      const editor = row.get('[contenteditable]').element
       expect(document.activeElement).toBe(editor)
       expect(document.getSelection()?.toString()).toBe('Sample name')
       expect(row.emitted('rename')).toBeUndefined()
