@@ -945,9 +945,13 @@ export class ChatStorage {
 
     // A chat deleted in the file explorer, or by sync from another device, left its entry
     // behind: the history went on listing it and opening it found nothing.
-    const present = config.ai.chatHistory.filter(
-      (e) => app.vault.getAbstractFileByPath(e.path) instanceof TFile
-    )
+    const seen = new Set<string>()
+    const present = config.ai.chatHistory.filter((e) => {
+      if (seen.has(e.path) || !(app.vault.getAbstractFileByPath(e.path) instanceof TFile))
+        return false
+      seen.add(e.path)
+      return true
+    })
     const pruned = present.length !== config.ai.chatHistory.length
     if (pruned) config.ai.chatHistory = present
     const settle = (): AiChatHistoryEntry[] => {
@@ -1002,6 +1006,8 @@ export class ChatStorage {
         const metadata = parseChatMetadata(content)
         if (metadata?.type !== 'abele-chat' || metadata.kind === 'comment') continue
         const times = messageTimes(content)
+        // Another refresh or an open chat may have published while this read was pending.
+        if (config.ai.chatHistory.some((entry) => entry.path === file.path)) continue
         config.ai.chatHistory.push({
           path: file.path,
           title: metadata.title || file.basename,

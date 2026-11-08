@@ -152,6 +152,20 @@ describe('the index keeps both dates', () => {
 
   const entry = () => ChatStorage.getInstance().getHistory()[0]
 
+  it('publishes one entry per path when refreshes overlap their reads', async () => {
+    const storage = ChatStorage.getInstance()
+    await Promise.all([storage.refreshHistory(), storage.refreshHistory()])
+    expect(storage.getHistory().map((entry) => entry.path)).toEqual([PATH])
+  })
+
+  it('repairs duplicate entries retained by an earlier refresh', async () => {
+    const storage = ChatStorage.getInstance()
+    await storage.refreshHistory()
+    AbeleConfig.getInstance().ai.chatHistory.push({ ...entry() })
+    await storage.refreshHistory()
+    expect(storage.getHistory().map((entry) => entry.path)).toEqual([PATH])
+  })
+
   it('for a chat it finds in the folder', async () => {
     await ChatStorage.getInstance().refreshHistory()
     expect(entry().firstMessageAt).toBe(T0)

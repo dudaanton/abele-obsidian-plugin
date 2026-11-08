@@ -97,10 +97,8 @@ const script = `(async () => {
     button().click()
   }
   const inFile = async (path) => {
-    const text = await app.vault.adapter.read(path)
-    const metas = text.split('\\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.k === 'meta' || r.type)
-    const last = metas[metas.length - 1] || {}
-    return (last.touched || []).map((t) => t.path)
+    const parsed = await storage.loadChat(app.vault.getFileByPath(path))
+    return (parsed.metadata.touched || []).map((t) => t.path)
   }
   const step = async (chatPath) => {
     const root = await openArtifacts()
