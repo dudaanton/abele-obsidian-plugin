@@ -810,26 +810,27 @@ it('inspects kept copies through the host only after the live download is draine
   }
 })
 
-// The 1,147-file fixture hashes content and replays persisted state after a restart.
-// Allow scheduler contention across both runs while retaining the readiness checks.
+// Cross the SDK's 100-operation commit boundary so siblings are durable before the
+// multipart file fails. More files only add inventory/hash/IndexedDB work to this case.
 it('resumes a folder upload after a multipart interruption with already acknowledged siblings', async () => {
-  const text = 'x'.repeat(2 * 1024 * 1024)
+  // One byte beyond the bounded source chunk forces two real multipart parts.
+  const partSize = 1024 * 1024
+  const text = 'x'.repeat(partSize + 1)
   const f = inspectionFixture(false, 'Notes', [
     { path: 'Notes/Attachments/Batch 1/Sample.bin', content: text },
-    ...Array.from({ length: 146 }, (_, i) => ({
+    ...Array.from({ length: 101 }, (_, i) => ({
       path: `Notes/Attachments/Batch 0/Sample ${i}.bin`,
       content: `sample attachment ${i}`,
     })),
-    ...Array.from({ length: 1000 }, (_, i) => ({
-      path: `Notes/Section ${i % 31}/层 ${i % 7}/Nested ${i % 13}/Sample ${i}.md`,
-      content: `sample ${i}`,
-    })),
+    { path: 'Notes/Section/层/Nested/Sample.md', content: 'sample nested note' },
   ])
   let restarted: TokenEngines | undefined
   const send = f.transport.getMockImplementation()!
+  const interrupted = deferred()
+  const parts: Array<{ resumed: boolean; part: number }> = []
   let offline = false,
-    interrupted = false,
-    resumed = false
+    resumed = false,
+    completed = false
   const items = new Map<string, Record<string, unknown>>()
   f.transport.mockImplementation(async (input, init) => {
     const route = new URL(String(input)).pathname
@@ -844,22 +845,25 @@ it('resumes a folder upload after a multipart interruption with already acknowle
     if (route.endsWith('/begin'))
       return Response.json({
         upload_id: 'sample-upload',
-        part_size: 1024 * 1024,
+        part_size: partSize,
         parts: 2,
         received: [],
       })
     if (route.startsWith('/v2/uploads/') && init?.method === 'HEAD')
       return new Response(null, { status: 404 })
-    if (
-      route.startsWith('/v2/uploads/') &&
-      init?.method === 'PUT' &&
-      route.endsWith('/1') &&
-      !resumed
-    ) {
-      interrupted = offline = true
-      throw new TypeError('sample interrupted multipart')
+    if (route.includes('/sample-upload/') && init?.method === 'PUT') {
+      const part = Number(route.split('/').at(-1))
+      parts.push({ resumed, part })
+      if (part === 1 && !resumed) {
+        offline = true
+        interrupted.resolve()
+        throw new TypeError('sample interrupted multipart')
+      }
     }
-    if (route.endsWith('/complete')) return new Response(null, { status: 204 })
+    if (route.endsWith('/complete')) {
+      completed = true
+      return new Response(null, { status: 204 })
+    }
     if (route === '/v2/commit') {
       const response = await send(input, init)
       const body = await response.json()
@@ -901,18 +905,27 @@ it('resumes a folder upload after a multipart interruption with already acknowle
     f.release()
     await f.ui.connect(f.encoded)
     const id = f.registry.records()[0].id
-    await vi.waitFor(() => expect(interrupted).toBe(true), { timeout: 20000 })
+    await interrupted.promise
+    // This regression needs a committed batch before interruption, not a scale inventory.
+    // Up to four reads per fixture file, plus the bounded multipart source passes.
+    expect(f.probe.mock.calls.length).toBeLessThanOrEqual(420)
+    expect(parts).toEqual([
+      { resumed: false, part: 0 },
+      { resumed: false, part: 1 },
+    ])
+    expect(completed).toBe(false)
     expect([...items.values()].some((one) => (one.item as { sha?: string }).sha)).toBe(true)
     await f.host.close()
     offline = false
     resumed = true
     restarted = f.makeHost()
     restarted.start()
-    await vi.waitFor(
-      () => expect(f.ui.runtimes.has(id) || f.registry.records()[0].status === 'error').toBe(true),
-      { timeout: 20000 }
-    )
     await f.ui.sync(id)
+    expect(completed).toBe(true)
+    expect(parts.filter((one) => one.resumed)).toEqual([
+      { resumed: true, part: 0 },
+      { resumed: true, part: 1 },
+    ])
     expect(f.ui.activity.value[id]?.error).toBeUndefined()
     expect(await f.app.vault.adapter.read('Notes/Attachments/Batch 1/Sample.bin')).toBe(text)
   } finally {
@@ -921,7 +934,7 @@ it('resumes a folder upload after a multipart interruption with already acknowle
     await f.host.close()
     f.probe.mockRestore()
   }
-}, 180_000)
+})
 
 it('coalesces SDK status ticks before the host reads registry or rebuilds activity', async () => {
   const f = inspectionFixture()
