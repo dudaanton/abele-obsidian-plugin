@@ -102,7 +102,7 @@ export default defineConfig(async ({ mode }) => {
       },
     },
     define: {
-      'process.env.NODE_ENV': JSON.stringify(optimized ? 'production' : 'development'),
+      'process.env.NODE_ENV': JSON.stringify(prod ? 'production' : 'development'),
       __ABELE_TEST_SHARING__: JSON.stringify(mode === 'sharing-test'),
     },
     plugins: [
@@ -119,7 +119,8 @@ export default defineConfig(async ({ mode }) => {
       singleZodV3Plugin(__dirname),
       hyperFormulaCataloguePlugin(),
       buildArtifactPlugin(path.resolve(__dirname, '..'), mode),
-      vue({ isProduction: optimized }),
+      // Live test drivers inspect component instances, which development Vue attaches to DOM nodes.
+      vue({ isProduction: prod }),
       maplibreAssetsPlugin(optimized),
       {
         name: 'abele-optional-node-streams',
