@@ -5,10 +5,6 @@ import { ProjectSchema, SessionSchema, WorkspaceSchema } from '@abele/node-proto
 import { NodePathClientPort, reverseNodePatch } from '@/node/NodePathClientPort'
 import { nodeRepositoryFixture, identity, HEAD, BASE } from '../helpers/nodeRepositoryFixture'
 import { NodePathHistoryModel } from '@/node/NodePathHistoryModel'
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { resolveNodeCodeLink } from '@/node/codeLinks'
 
 const project = ProjectSchema.parse({
@@ -68,94 +64,70 @@ describe('validated node path reads', () => {
   it.each(['rebase', 'merge', 'cherry-pick', 'detached'])(
     'opens a chat citation from working bytes during %s',
     async (operation) => {
-      const root = mkdtempSync(join(tmpdir(), 'code-link-'))
-      const env = {
-        ...Object.fromEntries(
-          Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_'))
-        ),
-        GIT_CONFIG_GLOBAL: '/dev/null',
-        GIT_CONFIG_NOSYSTEM: '1',
-      }
-      const git = (...args: string[]) =>
-        execFileSync('git', args, { cwd: root, env, encoding: 'utf8', stdio: 'pipe' }).trim()
-      try {
-        git('init', '-b', 'main')
-        git('config', 'user.name', 'Sample')
-        git('config', 'user.email', 'sample@example.invalid')
-        git('config', 'commit.gpgsign', 'false')
-        writeFileSync(join(root, 'app.ts'), 'base\n')
-        git('add', 'app.ts')
-        git('commit', '-m', 'Initial sample')
-        git('checkout', '-b', 'topic')
-        writeFileSync(join(root, 'app.ts'), 'topic\n')
-        git('commit', '-am', 'Topic sample')
-        git('checkout', 'main')
-        writeFileSync(join(root, 'app.ts'), 'main\n')
-        git('commit', '-am', 'Main sample')
-        if (operation === 'detached') git('checkout', '--detach')
-        else {
-          const args = operation === 'rebase' ? ['rebase', 'main'] : [operation, 'topic']
-          if (operation === 'rebase') git('checkout', 'topic')
-          expect(() => git(...args)).toThrow()
-          expect(git('status', '--porcelain')).toContain('UU app.ts')
-          const marker =
-            operation === 'rebase'
-              ? 'rebase-merge'
-              : operation === 'merge'
-                ? 'MERGE_HEAD'
-                : 'CHERRY_PICK_HEAD'
-          expect(existsSync(join(root, '.git', marker))).toBe(true)
+      // The client consumes node protocol observations, not a local Git directory.
+      // Model the interrupted operation directly so fixture setup needs no subprocesses.
+      const detached = operation === 'rebase' || operation === 'detached'
+      const conflicted = operation !== 'detached'
+      const text = conflicted
+        ? '<<<<<<< HEAD\nmain\n=======\ntopic\n>>>>>>> sample-topic\n'
+        : 'main\n'
+      const { port, client, calls, request } = fake()
+      const mutate = vi.fn(async () => {
+        throw new Error('Citation reads must not mutate the repository')
+      })
+      client.nodePath = new NodePathClient(request, mutate)
+      const worktrees = client.repository.worktrees.bind(client.repository)
+      vi.spyOn(client.repository, 'worktrees').mockImplementation(async (params) => {
+        const page = await worktrees(params)
+        page.entries[0] = {
+          ...page.entries[0],
+          branch: detached ? null : 'refs/heads/main',
+          detached,
+          head: HEAD,
         }
-        const text = readFileSync(join(root, 'app.ts'), 'utf8')
-        const { port, client, calls } = fake()
-        const worktrees = client.repository.worktrees.bind(client.repository)
-        vi.spyOn(client.repository, 'worktrees').mockImplementation(async (params) => {
-          const page = await worktrees(params)
-          const branch = git('branch', '--show-current')
-          page.entries[0] = {
-            ...page.entries[0],
-            branch: branch ? `refs/heads/${branch}` : null,
-            detached: !branch,
-            head: git('rev-parse', 'HEAD'),
-          }
-          return page
+        return page
+      })
+      const { targets } = await port.catalogue()
+      const target = targets[0]
+      const destination = resolveNodeCodeLink('app.ts:1-3', target)!
+      expect(destination).toEqual({ path: 'app.ts', line: 1, endLine: 3 })
+      vi.spyOn(client.repository, 'status').mockResolvedValue({
+        entries: conflicted ? [{ path: 'app.ts', index: 'U', worktree: 'U' }] : [],
+        cursor: null,
+        incomplete: false,
+        omissions: [],
+      })
+      const contentId = 'c'.repeat(64)
+      const blob = vi.spyOn(client.repository, 'blob').mockResolvedValue({
+        content_id: contentId,
+        size: Buffer.byteLength(text),
+        binary: false,
+        requires_larger_load: false,
+        too_large: false,
+      })
+      const content = vi.spyOn(client.repository, 'content').mockResolvedValue({
+        offset: 0,
+        total: Buffer.byteLength(text),
+        base64: Buffer.from(text).toString('base64'),
+      })
+      const file = await port.file(target, destination.path)
+      expect(file.text).toBe(text)
+      expect(file.change).toBeUndefined()
+      expect(file.revision?.kind).toBe('working')
+      expect(blob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: 'app.ts',
+          revision: expect.objectContaining({ kind: 'working', head: HEAD }),
         })
-        const { targets } = await port.catalogue()
-        const target = targets[0]
-        const destination = resolveNodeCodeLink('app.ts:1-3', target)!
-        expect(destination).toEqual({ path: 'app.ts', line: 1, endLine: 3 })
-        vi.spyOn(client.repository, 'status').mockResolvedValue({
-          entries: operation === 'detached' ? [] : [{ path: 'app.ts', index: 'U', worktree: 'U' }],
-          cursor: null,
-          incomplete: false,
-          omissions: [],
-        })
-        const contentId = 'c'.repeat(64)
-        vi.spyOn(client.repository, 'blob').mockResolvedValue({
-          content_id: contentId,
-          size: Buffer.byteLength(text),
-          binary: false,
-          requires_larger_load: false,
-          too_large: false,
-        })
-        vi.spyOn(client.repository, 'content').mockResolvedValue({
-          offset: 0,
-          total: Buffer.byteLength(text),
-          base64: Buffer.from(text).toString('base64'),
-        })
-        const file = await port.file(target, destination.path)
-        expect(file.text).toBe(text)
-        expect(file.change).toBeUndefined()
-        expect(file.revision?.kind).toBe('working')
-        expect(calls.some((call) => call.method === 'repository.v1.patch')).toBe(false)
-        if (operation !== 'detached')
-          await expect(port.file(target, destination.path, 'staged')).rejects.toThrow(
-            'a single comparison would omit a side'
-          )
-        expect(readFileSync(join(root, 'app.ts'), 'utf8')).toBe(text)
-      } finally {
-        rmSync(root, { recursive: true, force: true })
-      }
+      )
+      expect(content).toHaveBeenCalledWith(expect.objectContaining({ content_id: contentId }))
+      expect(calls.some((call) => call.method === 'repository.v1.patch')).toBe(false)
+      if (conflicted)
+        await expect(port.file(target, destination.path, 'staged')).rejects.toThrow(
+          'a single comparison would omit a side'
+        )
+      expect(blob.mock.calls.every(([params]) => params.revision.kind === 'working')).toBe(true)
+      expect(mutate).not.toHaveBeenCalled()
     }
   )
   it('requests canonical worktree identities from new nodes while displaying the branch-named physical folder', async () => {
