@@ -13,6 +13,7 @@ const probe = (footer: boolean) => String.raw`(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms))
   const until = async (label, fn) => { for (let i = 0; i < 100; i++) { const v = fn(); if (v) return v; await wait(100) } throw Error('timeline not ready: '+label) }
   const folder = ${JSON.stringify(`Sample drag probe ${RUN_ID}`)}
+  const label = ${JSON.stringify(`sample-drag-${RUN_ID}`)}
   const day = offset => { const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()+offset); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0') }
   const report = {phase:'setup',events:[]}
   const layout=JSON.parse(JSON.stringify(app.workspace.getLayout()))
@@ -34,11 +35,11 @@ const probe = (footer: boolean) => String.raw`(async () => {
     await write('Sample group','Sample group\n')
     const fixture=[['Sample moving',0,false],['Sample past',-1,false],['Sample completed',-2,true],['Sample future',2,false]]
     for (const [name, offset, done] of fixture)
-      await write(name,'---\ntype: task\ndate: '+day(offset)+'\n'+(done?'completed: '+day(offset)+'\n':'')+'labels:\n  - sample-drag\ngroups:\n  - "[['+folder+'/Sample group]]"\n---\n'+name+'\n')
+      await write(name,'---\ntype: task\ndate: '+day(offset)+'\n'+(done?'completed: '+day(offset)+'\n':'')+'labels:\n  - '+label+'\ngroups:\n  - "[['+folder+'/Sample group]]"\n---\n'+name+'\n')
     // Every written task is in the store with its date, completion, label and group.
     await until('fixture task metadata', () => fixture.every(([name, offset, done]) => {
       const task=window.__abeleTest.GlobalStore.getInstance().tasksList.value?.tasks.get(folder+'/'+name+'.md')
-      return task?.loaded && task.date?.format('YYYY-MM-DD')===day(offset) && !!task.completedAt===done && task.labels.includes('sample-drag') && task.groups.length
+      return task?.loaded && task.date?.format('YYYY-MM-DD')===day(offset) && !!task.completedAt===done && task.labels.includes(label) && task.groups.length
     }))
     leaf = app.workspace.getLeaf('tab')
     await leaf.setViewState(${footer} ? { type:'markdown', state:{file:folder+'/Sample group.md',mode:'source',source:false},active:true } : {type:'abele-timeline-sidebar-view',active:true})
@@ -54,7 +55,7 @@ const probe = (footer: boolean) => String.raw`(async () => {
           root.querySelector('[data-abele-anchor="task:'+folder+'/Sample moving.md"]')
       })
       root.querySelector('.abele-task-label-filter').click()
-      const option=await until('fixture label menu option', () => [...document.querySelectorAll('.menu-item')].find(x=>x.textContent.trim().startsWith('sample-drag (')))
+      const option=await until('fixture label menu option', () => [...document.querySelectorAll('.menu-item')].find(x=>x.textContent.trim().startsWith(label+' (')))
       option.click()
     }
     // Task titles render on first intersection. The phone sidebar's calendar can put
