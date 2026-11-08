@@ -29,7 +29,7 @@ const script = `(async () => {
       const timer = setInterval(() => ticks++, 5)
       const start = performance.now()
       try {
-        const result = await find.execute('probe', {criteria:[{type:'path',operator:'startsWith',value:folder+'/'},{type:'content',operator:'contains',value:word}],limit:10})
+        const result = await find.execute('probe', {criteria:[{type:'path',operator:'startsWith',value:folder+'/'},{type:'content',operator:'contains',value:word}],limit:10},undefined,{scope,interactive:false})
         samples.push({word,text:result.content[0].text,reads:reads-before,ms:performance.now()-start,ticks})
       } finally { clearInterval(timer) }
     }
