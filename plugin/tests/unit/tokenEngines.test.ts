@@ -2644,6 +2644,50 @@ async function hostSettled(host: TokenEngines): Promise<void> {
   await (Reflect.get(host, 'engines') as { settled(): Promise<void> }).settled()
 }
 
+it('disconnects while native runtime startup is pending without losing ownership', async () => {
+  const f = inspectionFixture()
+  let entered!: () => void
+  const starting = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const start = TokenEngineRuntime.prototype.start
+  const spy = vi.spyOn(TokenEngineRuntime.prototype, 'start').mockImplementation(async function () {
+    entered()
+    await gate
+    return start.call(this)
+  })
+  try {
+    f.release()
+    await f.ui.connect(f.encoded)
+    await starting
+    const id = f.registry.records()[0].id
+    const disconnecting = f.ui.disconnect(id)
+    await Promise.resolve()
+    release()
+    await expect(disconnecting).resolves.toBeUndefined()
+    expect(f.registry.records()).toEqual([])
+    expect(f.ui.runtimes.size).toBe(0)
+    const retained = f.host as unknown as {
+      engines: { runtimes: Map<string, unknown> }
+      retries: Map<string, unknown>
+      live: Map<string, unknown>
+      startupCancels: Map<string, unknown>
+    }
+    expect(retained.engines.runtimes.size).toBe(0)
+    expect(retained.retries.size).toBe(0)
+    expect(retained.live.size).toBe(0)
+    expect(retained.startupCancels.size).toBe(0)
+  } finally {
+    release()
+    await f.host.close()
+    spy.mockRestore()
+  }
+})
+
 it('binds saved token rows to independent native production runtimes and drains disconnect', async () => {
   const app = buildFakeVault([]),
     registry = TokenConnectionRegistry.open(app),

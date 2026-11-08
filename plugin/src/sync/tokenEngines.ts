@@ -261,6 +261,13 @@ export class TokenEngines {
       this.drained.add(id)
     }
     ui.prepareDisconnect = async (id) => {
+      // Unpublished startup has no UI claim to retain: cancel and drain it before
+      // inspecting departure safety, so a late start cannot revoke that claim.
+      if (this.live.has(id) && this.startupCancels.has(id) && !ui.runtimes.has(id)) {
+        await this.engines.remove(id)
+        this.drained.add(id)
+        return
+      }
       if (this.live.has(id) && !this.drained.has(id)) await ui.stopRuntime(id)
     }
     ui.connectionForgotten = async (id) => {
@@ -1366,6 +1373,8 @@ export class TokenEngines {
         closeCopies = copies.close
         assertActive()
         this.live.set(record.id, runtime)
+        await stage('Starting file exchange', () => runtime.start())
+        assertActive()
         this.pending.delete(record.id)
         unbind = this.ui.bind(record.id, {
           scanSnapshot: () => runtime.trace.snapshot(),
@@ -1405,7 +1414,6 @@ export class TokenEngines {
             this.refreshDestinations()
           },
         })
-        await stage('Starting file exchange', () => runtime.start())
       }
       this.startupCancels.delete(record.id)
     }
