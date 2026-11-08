@@ -546,7 +546,8 @@ it.each(['vault', 'folder', 'group'] as const)(
       )
       index.mockImplementation(() => [...files(), ...unrelated])
       ready()
-      await vi.waitFor(() => expect(recover).toHaveBeenCalled())
+      await hostSettled(restarted)
+      expect(recover).toHaveBeenCalled()
       expect(f.registry.records()[0].paused).toBe(false)
       expect(f.registry.records()[0].state[STARTUP_STOP]).toBeFalsy()
       expect(list).not.toHaveBeenCalled()
@@ -2239,26 +2240,22 @@ for (const action of ['pass', 'refuse', 'disconnect', 'unload']) {
   it(`keeps a slow full inspection outside Connect and handles ${action} safely`, async () => {
     const fixture = pendingInspectionFixture(action === 'refuse')
     const { ui, host, registry, transport, release, encoded } = fixture
-    let connected = false
-    const connecting = ui.connect(encoded).then(() => {
-      connected = true
-    })
+    const connecting = ui.connect(encoded)
     try {
-      await vi.waitFor(() => expect(connected).toBe(true), { timeout: 300 })
+      // The inspection read remains gated: Connect must complete without releasing it.
       await connecting
       const id = registry.records()[0].id
       await vi.waitFor(() =>
         expect(ui.activity.value[id]?.inspection).toEqual({ completed: 0, total: 1 })
       )
-      await new Promise((resolve) => setTimeout(resolve, 20))
+      vi.useFakeTimers()
+      await vi.advanceTimersByTimeAsync(60000)
       expect(ui.runtimes.has(id)).toBe(false)
       expect(
         transport.mock.calls.every(
           ([input]) => new URL(String(input)).pathname === '/v2/connection'
         )
       ).toBe(true)
-      vi.useFakeTimers()
-      await vi.advanceTimersByTimeAsync(60000)
       expect(registry.records()[0].status).toBe('joining')
       expect(ui.activity.value[id].error).toBeUndefined()
       vi.useRealTimers()
@@ -2269,8 +2266,9 @@ for (const action of ['pass', 'refuse', 'disconnect', 'unload']) {
         await host.close()
       }
       release()
+      await hostSettled(host)
       if (action === 'pass') {
-        await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+        expect(ui.runtimes.has(id)).toBe(true)
         expect(
           ui.activity.value[id].startupTimings?.filter((one) => one.stage === 'Listing the vault')
         ).toHaveLength(1)
@@ -2278,11 +2276,10 @@ for (const action of ['pass', 'refuse', 'disconnect', 'unload']) {
           ui.activity.value[id].startupTimings?.filter((one) => one.stage === 'Checking the vault')
         ).toHaveLength(1)
       } else if (action === 'refuse') {
-        await vi.waitFor(() => expect(registry.records()[0].status).toBe('error'))
+        expect(registry.records()[0].status).toBe('error')
         expect(ui.activity.value[id].error).toContain('recovery')
       }
       if (action !== 'pass') {
-        await new Promise((resolve) => setTimeout(resolve, 20))
         expect(ui.runtimes.has(id)).toBe(false)
         expect(
           transport.mock.calls.every(
@@ -2436,7 +2433,9 @@ it.each(['revoked', 'forbidden', '503', 'network'] as const)(
     }
     const scope = { kind: 'folder' as const, id: 'root', path: '/' }
     let failing = false
+    let nextRequest: ReturnType<typeof deferred> | undefined
     const transport = vi.fn<typeof fetch>(async (input) => {
+      nextRequest?.resolve()
       if (failing) {
         if (failure === 'network') throw new TypeError('Network unavailable')
         if (failure === 'forbidden')
@@ -2485,6 +2484,7 @@ it.each(['revoked', 'forbidden', '503', 'network'] as const)(
       } as unknown as typeof WebSocket,
     }
     let host = new TokenEngines(app as unknown as App, ui, secrets.get, deps)
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
     try {
       host.start()
       await vi.waitFor(() =>
@@ -2609,30 +2609,40 @@ it.each(['revoked', 'forbidden', '503', 'network'] as const)(
         await olderFailure
         expect(ui.activity.value[id]?.refused).toEqual([])
         expect(ui.activity.value[id]?.pending).toBe(0)
-        await vi.waitFor(() => expect(transport.mock.calls.length).toBeGreaterThan(stopped), {
-          timeout: 4000,
-        })
+        nextRequest = deferred()
+        await vi.advanceTimersByTimeAsync(4000)
+        await nextRequest.promise
+        expect(transport.mock.calls.length).toBeGreaterThan(stopped)
         stopped = transport.mock.calls.length
       }
       await host.close()
       ui = new TokenUi(TokenConnectionRegistry.open(app), secrets, transport, reviews)
       host = new TokenEngines(app as unknown as App, ui, secrets.get, deps)
       host.announce()
+      nextRequest = deferred()
       host.start()
       if (revoked) {
-        await new Promise((resolve) => setTimeout(resolve, 50))
+        await hostSettled(host)
         expect(transport).toHaveBeenCalledTimes(stopped)
         expect(registry.records()[0].status).toBe('needs-token')
       } else {
-        await vi.waitFor(() => expect(transport.mock.calls.length).toBeGreaterThan(stopped))
+        await nextRequest.promise
+        await hostSettled(host)
+        expect(transport.mock.calls.length).toBeGreaterThan(stopped)
         expect(registry.records()[0].status).not.toBe('needs-token')
       }
       expect(await app.vault.adapter.read('Private/keep.md')).toBe('local retained file')
     } finally {
       await host.close()
+      vi.useRealTimers()
     }
   }
 )
+
+/** Await startup ownership and failure publication instead of guessing a task duration. */
+async function hostSettled(host: TokenEngines): Promise<void> {
+  await (Reflect.get(host, 'engines') as { settled(): Promise<void> }).settled()
+}
 
 it('binds saved token rows to independent native production runtimes and drains disconnect', async () => {
   const app = buildFakeVault([]),

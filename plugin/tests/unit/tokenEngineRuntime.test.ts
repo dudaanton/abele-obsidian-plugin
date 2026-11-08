@@ -293,6 +293,7 @@ it('uses the native borrowed cohort for departure notification while keeping sha
 })
 
 it('marks construction, reconciliation and first idle from the running engine', async () => {
+  vi.useFakeTimers()
   const wire = await server('Notes/sample.md', 'remote')
   const marks: string[] = []
   const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
@@ -302,16 +303,19 @@ it('marks construction, reconciliation and first idle from the running engine', 
     expect(marks).toEqual(['engine-construct'])
     await one.runtime.start()
     await one.runtime.sync()
-    await vi.waitFor(() => expect(marks).toContain('idle'), { timeout: 2000 })
+    await vi.advanceTimersByTimeAsync(500)
+    expect(marks).toContain('idle')
     expect(marks).toContain('reconcile-start')
     expect(marks.indexOf('engine-construct')).toBeLessThan(marks.indexOf('reconcile-start'))
     expect(marks.indexOf('reconcile-start')).toBeLessThan(marks.indexOf('idle'))
   } finally {
     await one.runtime.close()
+    vi.useRealTimers()
   }
 })
 
 it('waits for stable engine idle before publishing the startup idle mark', async () => {
+  vi.useFakeTimers()
   const wire = await server('Notes/sample.md', 'remote')
   const marks: string[] = []
   const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
@@ -321,42 +325,62 @@ it('waits for stable engine idle before publishing the startup idle mark', async
     await one.runtime.start()
     await one.runtime.sync()
     expect(marks).not.toContain('idle')
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await vi.advanceTimersByTimeAsync(100)
     await one.runtime.sync()
     expect(marks).not.toContain('idle')
-    await vi.waitFor(() => expect(marks).toContain('idle'), { timeout: 2000 })
+    await vi.advanceTimersByTimeAsync(499)
+    expect(marks).not.toContain('idle')
+    await vi.advanceTimersByTimeAsync(1)
+    expect(marks).toContain('idle')
   } finally {
     await one.runtime.close()
+    vi.useRealTimers()
   }
 })
 
 it('marks startup idle with a settled long automatic cycle before the observer stops', async () => {
+  vi.useFakeTimers()
   const wire = await server('Notes/sample.md', 'remote')
+  const entered = deferred(),
+    release = deferred(),
+    idle = deferred()
   const fetch = wire.fetch
   wire.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const route = new URL(
       typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     ).pathname
-    if (route === '/v2/connection') await new Promise((resolve) => setTimeout(resolve, 650))
+    if (route === '/v2/connection') {
+      entered.resolve()
+      await release.promise
+    }
     return fetch(input, init)
   })
   const marks: string[] = []
   const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
-    startupMark: (phase) => marks.push(phase),
+    startupMark: (phase) => {
+      marks.push(phase)
+      if (phase === 'idle') idle.resolve()
+    },
   })
   try {
     await one.runtime.start()
-    await vi.waitFor(() => expect(one.runtime.engine.status.state).toBe('idle'), {
-      timeout: 4000,
-    })
+    await entered.promise
+    await vi.advanceTimersByTimeAsync(650)
+    expect(marks).not.toContain('idle')
+    release.resolve()
+    await idle.promise
+    expect(one.runtime.engine.status.state).toBe('idle')
     expect(marks).toContain('idle')
     expect(marks.indexOf('reconcile:report:end')).toBeLessThan(marks.indexOf('idle'))
   } finally {
+    release.resolve()
     await one.runtime.close()
+    vi.useRealTimers()
   }
 })
 
 it('does not mark startup idle while a deletion awaits a decision', async () => {
+  vi.useFakeTimers()
   const wire = await server('Notes/sample.md', 'remote')
   const marks: string[] = []
   const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
@@ -371,13 +395,15 @@ it('does not mark startup idle while a deletion awaits a decision', async () => 
       state: 'idle',
       heldDeletes: 1,
     })
-    await new Promise((resolve) => setTimeout(resolve, 600))
+    await vi.advanceTimersByTimeAsync(600)
     expect(marks).not.toContain('idle')
     held.mockRestore()
     await one.runtime.sync()
-    await vi.waitFor(() => expect(marks).toContain('idle'), { timeout: 2000 })
+    await vi.advanceTimersByTimeAsync(500)
+    expect(marks).toContain('idle')
   } finally {
     await one.runtime.close()
+    vi.useRealTimers()
   }
 })
 
