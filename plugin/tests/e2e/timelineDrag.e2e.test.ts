@@ -15,7 +15,7 @@ const probe = (footer: boolean) => String.raw`(async () => {
   const folder = ${JSON.stringify(`Sample drag probe ${RUN_ID}`)}
   const day = offset => { const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()+offset); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0') }
   const report = {phase:'setup',events:[]}
-  const layout=app.workspace.getLayout()
+  const layout=JSON.parse(JSON.stringify(app.workspace.getLayout()))
   const picture = async name => {
     const path = ${JSON.stringify(shots)}+'/'+(${footer}?'footer':'sidebar')+'-'+(document.body.classList.contains('is-mobile')?'mobile':'desktop')+'-'+name+'.png'
     if (window.__e2eHost) await window.__e2eHost.shot(path)
@@ -65,9 +65,18 @@ const probe = (footer: boolean) => String.raw`(async () => {
       await until('visible task title '+name, () => task.textContent.includes(name))
     }
     // Only the fixture's rows are mounted (the filter applied), with titles and date labels painted.
-    await until('filtered task rows and painted dates', () => !document.querySelector('.menu') && ['Sample moving','Sample future'].every(n=>root.querySelector('[data-abele-anchor="task:'+folder+'/'+n+'.md"]')?.textContent.includes(n)) &&
-      [...root.querySelectorAll('.abele-task-view')].every(el=>el.dataset.abeleAnchor?.startsWith('task:'+folder+'/')) &&
-      [...root.querySelectorAll('.timeline__date')].every(el=>el.textContent.trim()))
+    await until('filtered task rows and painted dates', () => {
+      const rows=[...root.querySelectorAll('.abele-task-view')].map(el=>({anchor:el.dataset.abeleAnchor,text:el.textContent,fixture:!!el.dataset.abeleAnchor?.startsWith('task:'+folder+'/'),rect:el.getBoundingClientRect().toJSON()}))
+      const required=['Sample moving','Sample future'].map(name=>{
+        const el=root.querySelector('[data-abele-anchor="task:'+folder+'/'+name+'.md"]')
+        return {name,present:!!el,titlePainted:!!el?.textContent.includes(name)}
+      })
+      const dates=[...root.querySelectorAll('.timeline__date')].map(el=>({anchor:el.closest('[data-abele-anchor]')?.dataset.abeleAnchor,text:el.textContent,painted:!!el.textContent.trim(),display:getComputedStyle(el).display,rect:el.getBoundingClientRect().toJSON()}))
+      const menus=[...document.querySelectorAll('.menu')].map(el=>({text:el.textContent,display:getComputedStyle(el).display,rect:el.getBoundingClientRect().toJSON()}))
+      const conditions={menuDismissed:menus.length===0,requiredTitles:required.every(row=>row.titlePainted),onlyFixtureRows:rows.every(row=>row.fixture),datesPainted:dates.every(date=>date.painted)}
+      report.readiness={conditions,failedConditions:Object.keys(conditions).filter(key=>!conditions[key]),required,rows,dates,menus,viewport:{width:innerWidth,height:innerHeight},leaf:{id:leaf.id,type:leaf.view.getViewType(),rightSidebar:leaf.getRoot()===app.workspace.rightSplit}}
+      return Object.values(conditions).every(Boolean)
+    })
     const scroller=${footer} ? leaf.view.containerEl.querySelector('.cm-scroller') : root.closest('.abele-timeline-sidebar')
     const row=()=>root.querySelector('[data-abele-anchor="task:'+folder+'/Sample moving.md"]')
     const dates=()=>[...root.querySelectorAll('.abele-timeline__date-block')].map(x=>x.dataset.abeleAnchor)
@@ -223,13 +232,30 @@ const probe = (footer: boolean) => String.raw`(async () => {
   } catch(error) {
     throw Error(String(error)+'; timeline delivery='+JSON.stringify(report))
   } finally {
-    for(const cleanup of cleanups) cleanup()
-    document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
-    if(leaf)await (${closeFixtureLeaves.toString()})([leaf])
-    await app.workspace.changeLayout(layout)
-    if(previousLeaf?.view?.containerEl.isConnected) app.workspace.setActiveLeaf(previousLeaf,{focus:true})
-    const dir=owned && app.vault.getAbstractFileByPath(folder)
-    if(dir) await app.vault.delete(dir,true)
+    const errors=[]
+    const attempt=async(label,fn)=>{try{await fn()}catch(error){errors.push(label+': '+String(error))}}
+    for(const cleanup of cleanups) await attempt('listener cleanup',cleanup)
+    await attempt('dismiss gesture',()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
+    if(leaf) {
+      await attempt('close fixture view',()=>(${closeFixtureLeaves.toString()})([leaf]))
+      // A failed save or empty transition must never leave the owned view mounted.
+      await attempt('detach fixture leaf',()=>{
+        let mounted=false
+        app.workspace.iterateAllLeaves(candidate=>{if(candidate===leaf)mounted=true})
+        if(mounted)leaf.detach()
+      })
+    }
+    await attempt('restore layout',()=>app.workspace.changeLayout(layout))
+    // Layout restoration can recreate a leaf with the same id. Remove only our view.
+    await attempt('remove restored fixture view',async()=>{
+      const restored=[]
+      app.workspace.iterateAllLeaves(candidate=>{if(candidate.id===leaf?.id && candidate.view.getViewType()==='abele-timeline-sidebar-view')restored.push(candidate)})
+      for(const candidate of restored){try{await candidate.setViewState({type:'empty'})}finally{candidate.detach()}}
+    })
+    await attempt('restore focus',()=>{if(previousLeaf?.view?.containerEl.isConnected)app.workspace.setActiveLeaf(previousLeaf,{focus:true})})
+    await attempt('delete fixture',async()=>{const dir=owned && app.vault.getAbstractFileByPath(folder);if(dir)await app.vault.delete(dir,true)})
+    await attempt('save restored layout',()=>app.workspace.requestSaveLayout.run())
+    if(errors.length)throw Error('timeline cleanup: '+errors.join('; ')+'; timeline delivery='+JSON.stringify(report))
   }
 })()`
 
