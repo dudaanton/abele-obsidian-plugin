@@ -2688,6 +2688,79 @@ it('disconnects while native runtime startup is pending without losing ownership
   }
 })
 
+it('materializes remote-only files before disconnecting a restarted runtime still starting', async () => {
+  const path = 'Media/sample.bin'
+  const content = 'sample retained bytes'
+  const bytes = new TextEncoder().encode(content)
+  const f = inspectionFixture(false, '/', [{ path, content }])
+  Object.assign(f.app.workspace, { iterateAllLeaves: () => {} })
+  let host = f.host
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let entered!: () => void
+  const starting = new Promise<void>((resolve) => {
+    entered = resolve
+  })
+  let startSpy: ReturnType<typeof vi.spyOn> | undefined
+  try {
+    f.release()
+    await f.ui.connect(f.encoded)
+    const record = f.registry.records()[0]
+    await vi.waitFor(() => expect(f.ui.runtimes.has(record.id)).toBe(true))
+    await f.ui.sync(record.id)
+    const store = await openTokenLedger(f.factory, f.registry, record, () => {})
+    const head = (await store.get(path))!
+    expect(head).toBeDefined()
+    store.close()
+    const verify = {
+      file_id: head.fileId,
+      version_id: head.versionId,
+      path,
+      sha: head.sha,
+      size: head.size,
+      verified: true as const,
+    }
+    const live = (host as unknown as { live: Map<string, TokenEngineRuntime> }).live
+    vi.spyOn(live.get(record.id)!.client, 'verifyExternalFile').mockResolvedValue(verify)
+    expect(await host.evict(record.id, path)).toMatchObject({ status: 'complete' })
+    expect(await f.app.vault.adapter.exists(path)).toBe(false)
+    await host.close()
+    startSpy = vi
+      .spyOn(TokenEngineRuntime.prototype, 'start')
+      .mockImplementation(async function () {
+        vi.spyOn(this.client, 'verifyExternalFile').mockResolvedValue(verify)
+        vi.spyOn(this.client, 'openVersion').mockResolvedValue({
+          size: bytes.length,
+          read: async (offset, length) => bytes.slice(offset, offset + length),
+          assertUnchanged: async () => {},
+          close: async () => {},
+        })
+        entered()
+        await gate
+      })
+    host = f.makeHost()
+    host.start()
+    await starting
+    expect(f.ui.runtimes.has(record.id)).toBe(false)
+    await expect(f.ui.disconnect(record.id)).resolves.toBeUndefined()
+    expect(await f.app.vault.adapter.read(path)).toBe(content)
+    expect(f.registry.records()).toEqual([])
+    expect(f.ui.runtimes.size).toBe(0)
+    const retained = host as unknown as {
+      engines: { runtimes: Map<string, unknown> }
+      offloadPorts: Map<string, unknown>
+    }
+    expect(retained.engines.runtimes.size).toBe(0)
+    expect(retained.offloadPorts.size).toBe(0)
+  } finally {
+    release()
+    await host.close()
+    startSpy?.mockRestore()
+  }
+})
+
 it('binds saved token rows to independent native production runtimes and drains disconnect', async () => {
   const app = buildFakeVault([]),
     registry = TokenConnectionRegistry.open(app),

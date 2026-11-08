@@ -264,6 +264,9 @@ export class TokenEngines {
       // Unpublished startup has no UI claim to retain: cancel and drain it before
       // inspecting departure safety, so a late start cannot revoke that claim.
       if (this.live.has(id) && this.startupCancels.has(id) && !ui.runtimes.has(id)) {
+        // Hydration and its departure proof still need the current authenticated
+        // port. Removing startup first would close it before the safety guard.
+        await this.offloadPorts.get(id)?.prepareDisconnect()
         await this.engines.remove(id)
         this.drained.add(id)
         return
