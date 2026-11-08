@@ -326,6 +326,16 @@ const probe = (label: string) => String.raw`(async () => {
     await frame()
     reading=pagingState()
     pagingDiagnostics.push({phase:'before non-tail switch',...reading})
+    const previousDebug = console.debug
+    let restorationEvents = 0
+    console.debug = (...args) => {
+      if (restorationEvents < 100 && ['[chat-scroll] remember place', '[chat-scroll] restore place', '[chat-scroll] restore applied', '[chat-scroll] correction'].includes(args[0])) {
+        restorationEvents++
+        pagingDiagnostics.push({phase:'restoration trace',at:performance.now(),event:args[0],data:args[1]})
+      }
+      previousDebug.apply(console,args)
+    }
+    try {
     chats.switchTab(previousTab)
     await frame()
     chats.switchTab(session.id)
@@ -335,6 +345,9 @@ const probe = (label: string) => String.raw`(async () => {
         Math.abs(current.offset-reading.offset)<=1 &&
         current.ids.slice(-reading.ids.length).join()===reading.ids.join() && current.gap>60
     },'restored non-tail reading place')
+    } finally {
+      console.debug = previousDebug
+    }
     await frame()
     const returned=pagingState()
     pagingDiagnostics.push({phase:'after non-tail switch',...returned})

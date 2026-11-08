@@ -567,13 +567,25 @@ export function useChatScroll(options: ChatScrollOptions) {
           start: olderCount.value,
           end: windowEnd.value,
         })
-        anchors.anchor = { el: target, offset: place.offset }
+        endSteady(el)
+        nativeScrolling = false
+        anchors.anchor = { el: target, offset: place.offset, restoring: true }
         // Measured here too: a place already in position is not scrolled to, and a keyboard
         // opening next would otherwise keep the distance to the end of the tab just left.
         anchors.holdLayout(({ scrollHeight, scrollTop, clientHeight }) => {
           bottomGap = scrollHeight - scrollTop - clientHeight
         })
         holdAnchorAWhile(el)
+        anchors.nextFrame(el.win, () => {
+          if (!el.contains(target)) return
+          console.debug('[chat-scroll] restore applied', {
+            messageId: place.messageId,
+            savedOffset: place.offset,
+            actualOffset: offsetOf(target, el),
+            scrollTop: el.scrollTop,
+            holding: !!anchors.anchor?.restoring,
+          })
+        })
         return
       }
     }
@@ -583,6 +595,13 @@ export function useChatScroll(options: ChatScrollOptions) {
   const onMessagesScroll = () => {
     const el = messagesContainer.value
     if (!el) return
+    // A remount can clamp or asynchronously apply the requested scroll. Such
+    // layout events must not discard the saved destination as native input.
+    // Actual wheel/touch/key input releases this hold in readerTakesOver.
+    if (anchors.anchor?.restoring) {
+      anchors.holdLayout(keepGapCurrent)
+      return
+    }
     if (
       el.scrollTop !== observedScrollTop &&
       (codeScrollTop === null || Math.abs(el.scrollTop - codeScrollTop) >= 1)

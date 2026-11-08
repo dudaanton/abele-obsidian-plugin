@@ -36,7 +36,13 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
    * height arrives afterwards and shoves the view down. Holding one element still is immune to
    * that, however late and however often the heights change.
    */
-  let anchor: { el: HTMLElement; offset: number; at?: number; ids?: string[] } | null = null
+  let anchor: {
+    el: HTMLElement
+    offset: number
+    at?: number
+    ids?: string[]
+    restoring?: boolean
+  } | null = null
   let pageChangePending = false
   let pageChangePatched = false
 
@@ -93,7 +99,10 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     // and must survive a page swap even before its scroll event reaches the listener.
     const offset = layout.offset(anchor.el)
     const at = offset + layout.before.scrollTop
-    const drift = anchor.at === undefined ? offset - anchor.offset : at - anchor.at
+    // Returning to a tab is an explicit viewport destination. A short initial
+    // layout can clamp the first write; retry its offset as the range fills.
+    const drift =
+      anchor.restoring || anchor.at === undefined ? offset - anchor.offset : at - anchor.at
     anchor.at = at
     if (Math.abs(drift) >= 1) layout.correct(drift, 'message-anchor')
     layout.releaseFloor = true
