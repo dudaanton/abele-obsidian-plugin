@@ -20,6 +20,7 @@
 </template>
 
 <script setup lang="ts">
+import { registerTestComponent, testComponentEmit } from '@/testing/componentAccess'
 /**
  * A slider, in Obsidian's own `slider` class so the track and thumb are the theme's. `input`
  * follows the thumb while it is dragged; the model changes when it is let go. On a phone the
@@ -45,10 +46,11 @@ const props = withDefaults(
   { min: 0, max: 100, step: 1, disabled: false, label: undefined, thumbDragOnly: false }
 )
 
-const emit = defineEmits<{
+const vueEmit = defineEmits<{
   (e: 'update:model-value', value: number): void
   (e: 'input', value: number): void
 }>()
+const emit = testComponentEmit(vueEmit)
 
 const el = ref<HTMLInputElement>()
 
@@ -136,6 +138,8 @@ watch(
     if (el.value && label) setTooltip(el.value, label)
   }
 )
+
+registerTestComponent(() => el.value)
 </script>
 
 <style lang="scss">

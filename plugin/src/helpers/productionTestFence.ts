@@ -11,3 +11,9 @@ export function observePhoneReplayTransport(_app: App, transport: typeof fetch):
 export function syncTransportForTests(): typeof fetch | undefined {
   return undefined
 }
+
+export function registerTestComponent(_element?: () => Element | null | undefined): void {}
+
+export function testComponentEmit<T>(emit: T): T {
+  return emit
+}

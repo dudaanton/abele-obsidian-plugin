@@ -3,7 +3,7 @@
        the chat history's, a dot for the state, one line of what it waits on, the time. A row
        opens its chat where it waits; agent, model, folder and source are its tooltip. -->
   <ObsidianModal :title="t('streamB.agents.279b44')" @close="emit('close')">
-    <div class="abele-agents">
+    <div ref="testComponentRoot" class="abele-agents">
       <div class="abele-agents__head">
         <Search
           v-model="query"
@@ -76,6 +76,7 @@
 </template>
 
 <script setup lang="ts">
+import { registerTestComponent } from '@/testing/componentAccess'
 import { streamBDate, streamBTimestamp } from '@/i18n/streamBDate'
 
 import { t } from '@/i18n'
@@ -274,6 +275,8 @@ const seen = async (row: AttentionRow, id: string) => {
     busy.value = false
   }
 }
+
+registerTestComponent()
 </script>
 <style lang="scss">
 .abele-agents {

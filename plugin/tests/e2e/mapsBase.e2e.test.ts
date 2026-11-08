@@ -20,7 +20,7 @@ const prelude = `
     await leaf.openFile(app.vault.getFileByPath(${JSON.stringify(basePath)}))
     app.workspace.setActiveLeaf(leaf, { focus: true })
     const root = await until(() => leaf.view.containerEl.querySelector('.abele-map-base'), 'map root')
-    const api = root.__vueParentComponent.exposed
+    const api = window.__abeleTest.component(root).api
     const map = await until(() => api.map && ('value' in api.map ? api.map.value : api.map), 'MapLibre')
     await until(() => map.getSource('abele-places'), 'places source')
     return { leaf, root, api, map }
@@ -81,10 +81,10 @@ describe('Abele maps alongside native Maps', () => {
       const before = await app.vault.adapter.read(${JSON.stringify(basePath)})
       const { leaf, root, api, map } = await open()
       try {
-        await until(() => root.__vueParentComponent.props.places.length === 3, 'evaluated formula rows')
+        await until(() => window.__abeleTest.component(root).props.places.length === 3, 'evaluated formula rows')
         await until(() => map.queryRenderedFeatures({ layers: ['abele-place-symbols', 'abele-place-clusters'] }).length > 0, 'visible place symbols')
         await until(() => map.queryRenderedFeatures({ layers: ['abele-place-clusters'] }).some(feature => feature.properties.point_count === 2), () => JSON.stringify({ clusterImage: map.hasImage('abele-cluster-2'), clusterPosition: map.project([20, 12]), size: [root.clientWidth, root.clientHeight], source: map.querySourceFeatures('abele-places').map(feature => feature.properties) }))
-        const props = root.__vueParentComponent.props
+        const props = window.__abeleTest.component(root).props
         const points = props.places.map(p => [p.lat, p.lon])
         const skipped = props.skipped.length
         const grouping = props.group
@@ -143,7 +143,7 @@ describe('Abele maps alongside native Maps', () => {
         const afterResize = [Number(map.getCenter().lat.toFixed(9)), Number(map.getCenter().lng.toFixed(9)), map.getZoom()]
         const noDomMarkers = root.querySelectorAll('.abele-map-base__pin').length === 0
         const noteCount = app.vault.getMarkdownFiles().length
-        root.__vueParentComponent.emit('create', 12, 20)
+        window.__abeleTest.component(root).emit('create', 12, 20)
         const formula = await until(() => document.querySelector('.abele-map-formula__why'), 'formula creation dialog')
         await picture(${JSON.stringify(mobile ? 'phone-formula-create' : 'desktop-formula-create')})
         formula.closest('.modal').querySelector('.modal-button-container button').click()
@@ -190,7 +190,7 @@ describe('Abele maps alongside native Maps', () => {
         ${prelude}
         const { leaf, root } = await open()
         try {
-          const instance = root.__vueParentComponent
+          const instance = window.__abeleTest.component(root)
           const states = ['no-property', 'no-records', 'filtered', 'no-coordinates', 'offline', 'no-webgl', 'lost-context']
           for (const state of states) {
             instance.emit('failure', state)
@@ -215,7 +215,7 @@ describe('Abele maps alongside native Maps', () => {
       ${prelude}
       const { leaf, root } = await open()
       try {
-        root.__vueParentComponent.emit('manageBackgrounds')
+        window.__abeleTest.component(root).emit('manageBackgrounds')
         const settingsDoc = await until(() => app.setting.activeTab?.containerEl.ownerDocument, 'settings window')
         const add = await until(() => settingsDoc.querySelector('.abele-map-bg-add button'), 'background settings')
         add.click()

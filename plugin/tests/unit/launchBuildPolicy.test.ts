@@ -29,7 +29,7 @@ it('keeps development source maps and test activation separate from optimized em
     'vite.config.mts'
   )
   expect(test!.config.define?.__ABELE_TEST_SHARING__).toBe('true')
-  expect(test!.config.define?.['process.env.NODE_ENV']).toBe('"development"')
+  expect(test!.config.define?.['process.env.NODE_ENV']).toBe('"production"')
 })
 it.each(['production', 'sharing-test'])(
   'guards %s emitted launch bytes even without writing the build',

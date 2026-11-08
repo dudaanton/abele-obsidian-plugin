@@ -1,3 +1,4 @@
+import { testComponent } from './componentAccess'
 /**
  * Exposes internals to end-to-end tests driving the app through `obsidian eval`.
  *
@@ -251,6 +252,7 @@ export interface NoteRenderSample {
 }
 
 interface AbeleTestApi {
+  component: typeof testComponent
   setTestLocale: typeof setTestLocale
   syncStartup(): ReturnType<import('@/sync/tokenUi').TokenUi['startupSnapshot']>
   syncScans(): {
@@ -940,6 +942,7 @@ function chatHistoryPaths(): string[] {
 export function exposeTestApi(plugin: Plugin): void {
   plugin.register(closeDesignCatalogue)
   window.__abeleTest = {
+    component: testComponent,
     setTestLocale,
     openDesignCatalogue,
     closeDesignCatalogue,

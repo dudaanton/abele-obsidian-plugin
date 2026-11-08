@@ -177,8 +177,7 @@ describe('real agents list on synthetic states', () => {
       await new Promise(r => setTimeout(r, 200))
       const button = document.querySelector('.abele-agents__row[role="button"][tabindex="0"]')
       if (!button) throw new Error('No keyboard-reachable row')
-      let owner = button.closest('.abele-agents').__vueParentComponent
-      while (owner && !owner.props.source) owner = owner.parent
+      const owner = window.__abeleTest.component(button.closest('.abele-agents'))
       if (!owner) throw new Error('Synthetic agents source is unavailable')
       // The row is a focusable role=button card, so its activations are counted where it opens.
       const source = owner.props.source

@@ -87,8 +87,8 @@ it.each(onPhone() ? [true] : [false, true])(
     await leaf.openFile(app.vault.getFileByPath(${JSON.stringify(basePath)}))
     app.workspace.setActiveLeaf(leaf, { focus: true })
     const root = await until(() => leaf.view.containerEl.querySelector('.abele-map-base'), 'map')
-    const component = root.__vueParentComponent
-    const api = component.exposed
+    const component = window.__abeleTest.component(root)
+    const api = component.api
     const map = await until(() => api.map && ('value' in api.map ? api.map.value : api.map), 'map api')
     const place = name => component.props.places.find(p => p.title === name)
     const card = () => document.querySelector('.abele-map-card-modal .abele-map-card')

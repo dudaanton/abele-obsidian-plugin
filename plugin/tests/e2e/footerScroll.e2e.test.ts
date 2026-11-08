@@ -75,7 +75,7 @@ const probeScript = `(async () => {
     const account = store.footersContainers.value.find((f) => f.filePath === path)
     const own = [...account.noteRelations.transactions.values()].filter((t) => !t.transactionNotFound && t.date)
     own.sort((a, b) => a.date.valueOf() - b.date.valueOf())
-    const emit = selector().__vueParentComponent.emit
+    const emit = window.__abeleTest.component(selector()).emit
     restorePeriod = () => emit('update:start', window.moment().startOf('month'))
     emit('update:start', own[0].date.startOf('month'))
     if (!(await until(() => footer().querySelector('.abele-transactions-list .abele-transaction-view'), 30000)))

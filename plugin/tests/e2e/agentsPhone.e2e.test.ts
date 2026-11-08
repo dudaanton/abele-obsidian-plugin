@@ -25,8 +25,7 @@ describe.skipIf(!available)('agents dialog on a narrow screen', () => {
         const root = document.querySelector('.abele-agents')
         if (!root) throw new Error('Agents dialog did not open')
         const box = root.getBoundingClientRect()
-        let owner = root.__vueParentComponent
-        while (owner && !owner.props.source) owner = owner.parent
+        const owner = window.__abeleTest.component(root)
         if (!owner) throw new Error('Synthetic agents source is unavailable')
         // Exercise the same retained-request dismissal case as the original fixture.
         owner.props.source.rows.value[0].reasons = owner.props.source.rows.value[0].reasons.map(r => ({ ...r, uncertain: true }))

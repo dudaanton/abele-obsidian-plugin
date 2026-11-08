@@ -1,5 +1,5 @@
 <template>
-  <div class="abele-period-selector">
+  <div ref="testComponentRoot" class="abele-period-selector">
     <ObsidianIcon icon="chevron-left" :tooltip="t('kit.previousMonth')" @click="previousMonth" />
     <!-- The title takes the width of the year's longest month, so the arrows stay where they are
          while paging; every month's label sits unseen in the same cell to hold it. -->
@@ -33,6 +33,7 @@
 </template>
 
 <script setup lang="ts">
+import { registerTestComponent } from '@/testing/componentAccess'
 import { t } from '@/i18n'
 import { computed, ref, watch } from 'vue'
 import dayjs from 'dayjs'
@@ -127,6 +128,8 @@ function onReset() {
   pickerOpen.value = false
   emit('custom-reset')
 }
+
+registerTestComponent()
 </script>
 
 <style lang="scss">

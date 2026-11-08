@@ -87,7 +87,7 @@ describe.skipIf(!available)('agent views in a real chat answer', () => {
         const stage = frame.parentElement
         await until(() => stage.querySelectorAll(".abele-agent-view__hit").length === links.length, "parent targets", async () => {
           const before = stage.querySelectorAll(".abele-agent-view__hit").length
-          const component = frame.__vueParentComponent
+          const component = window.__abeleTest.component(frame)
           const errors = []
           const config = component?.appContext.config
           const oldHandler = config?.errorHandler
@@ -95,7 +95,7 @@ describe.skipIf(!available)('agent views in a real chat answer', () => {
           frame.dispatchEvent(new Event("load"))
           await wait(150)
           if (config) config.errorHandler = oldHandler
-          return { before, afterLoad: stage.querySelectorAll(".abele-agent-view__hit").length, rendererErrors: rendererErrors.slice(0, 5), errors, component: component ? { mounted: component.isMounted, unmounted: component.isUnmounted, keys: Object.keys(component.setupState) } : null, tail: stage.innerHTML.slice(-800) }
+          return { before, afterLoad: stage.querySelectorAll(".abele-agent-view__hit").length, rendererErrors: rendererErrors.slice(0, 5), errors, component: component ? { mounted: component.isMounted, unmounted: component.isUnmounted, propKeys: Object.keys(component.props) } : null, tail: stage.innerHTML.slice(-800) }
         })
         const targets = [...stage.querySelectorAll('.abele-agent-view__hit')]
         const alignment = () => targets.every((target, index) => {

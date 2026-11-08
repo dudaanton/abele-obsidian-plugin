@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="testComponentRoot"
     class="abele-chat-input"
     :class="{
       'abele-chat-input--dragover': isDragging,
@@ -210,6 +211,7 @@
 </template>
 
 <script setup lang="ts">
+import { registerTestComponent } from '@/testing/componentAccess'
 import { t } from '@/i18n'
 import { ref, computed, inject, nextTick, watch } from 'vue'
 import { TFile, type Scope } from 'obsidian'
@@ -621,6 +623,8 @@ defineExpose({
   putDraft,
   isDraftFor,
 })
+
+registerTestComponent()
 </script>
 
 <style lang="scss" src="./chat/input.scss"></style>

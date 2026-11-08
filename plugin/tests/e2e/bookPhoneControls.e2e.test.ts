@@ -298,7 +298,7 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
           const slider = view.contentEl.querySelector('.abele-book-reader__footer input[type=range]')
           const b = slider.getBoundingClientRect(), y = b.top + b.height / 2
           const before = location(), seeks = [], changes = [], emissions = [], relocations = []
-          const component = slider.__vueParentComponent, emit = component.emit
+          const component = window.__abeleTest.component(slider), emit = component.emit
           component.emit = function (...args) { emissions.push(args); return emit.apply(this, args) }
           const goToFraction = view.engine.goToFraction
           view.engine.goToFraction = function (...args) { seeks.push(args); return goToFraction.apply(this, args) }

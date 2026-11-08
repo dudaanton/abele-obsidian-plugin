@@ -87,10 +87,9 @@ export default defineConfig(async ({ mode }) => {
       alias: {
         ...(prod
           ? Object.fromEntries(
-              ['@/testing/exposeTestApi', '@/testing/phoneReplay'].map((id) => [
-                id,
-                path.resolve(__dirname, 'src/helpers/productionTestFence.ts'),
-              ])
+              ['@/testing/exposeTestApi', '@/testing/phoneReplay', '@/testing/componentAccess'].map(
+                (id) => [id, path.resolve(__dirname, 'src/helpers/productionTestFence.ts')]
+              )
             )
           : {}),
         '@': path.resolve(__dirname, 'src'),
@@ -102,7 +101,7 @@ export default defineConfig(async ({ mode }) => {
       },
     },
     define: {
-      'process.env.NODE_ENV': JSON.stringify(prod ? 'production' : 'development'),
+      'process.env.NODE_ENV': JSON.stringify(optimized ? 'production' : 'development'),
       __ABELE_TEST_SHARING__: JSON.stringify(mode === 'sharing-test'),
     },
     plugins: [
@@ -119,8 +118,8 @@ export default defineConfig(async ({ mode }) => {
       singleZodV3Plugin(__dirname),
       hyperFormulaCataloguePlugin(),
       buildArtifactPlugin(path.resolve(__dirname, '..'), mode),
-      // Live test drivers inspect component instances, which development Vue attaches to DOM nodes.
-      vue({ isProduction: prod }),
+      // Qualification must measure the same Vue runtime as the distributable.
+      vue({ isProduction: optimized }),
       maplibreAssetsPlugin(optimized),
       {
         name: 'abele-optional-node-streams',

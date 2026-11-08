@@ -57,6 +57,7 @@
 </template>
 
 <script setup lang="ts">
+import { registerTestComponent } from '@/testing/componentAccess'
 import { t } from '@/i18n'
 /**
  * A view an agent wrote in its answer, drawn in a frame of its own: no scripts, no forms, no way
@@ -412,6 +413,8 @@ onBeforeUnmount(() => {
   themeWatch?.disconnect()
   releaseLinks?.()
 })
+
+registerTestComponent(() => frame.value)
 </script>
 
 <style lang="scss">

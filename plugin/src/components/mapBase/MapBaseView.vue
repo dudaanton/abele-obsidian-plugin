@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="testComponentRoot"
     :class="[
       'abele-map-base',
       {
@@ -131,6 +132,7 @@
 </template>
 
 <script setup lang="ts">
+import { registerTestComponent } from '@/testing/componentAccess'
 // The plugin's own Bases view, t('maps.viewName'), beside Obsidian Maps' "Map" rather than in its place:
 // it reads the same view settings, so a base moves over by picking it. Every note of the base that has coordinates as a mark of its glyph and
 // colour, Obsidian Maps' behaviour first (a press opens the note, pointing shows the properties,
@@ -943,4 +945,6 @@ defineExpose({
   sortBy: (f: MapSortFrom) => (sortFrom.value = f),
   markStale: () => (stale.value = true),
 })
+
+registerTestComponent()
 </script>

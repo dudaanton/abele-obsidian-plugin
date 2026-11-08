@@ -342,7 +342,7 @@ const probeScript = (tag: string): string => `(async () => {
     if (!own[0]) throw new Error('the account holds no transaction')
     // An account's list holds only its chart's period, this month by default, and the vault's
     // transactions are all older. Widened back to the first one, the list runs to many pages.
-    selector().__vueParentComponent.emit('update:start', own[0].date.startOf('month'))
+    window.__abeleTest.component(selector()).emit('update:start', own[0].date.startOf('month'))
     if (!(await until(() => footer().querySelector('.abele-transactions-list .abele-transaction-view'), 30000)))
       throw new Error('the account note never listed its transactions')
     await steady(() => [footer().querySelectorAll('.abele-transactions-list .abele-transaction-view').length, account.noteRelations.transactions.size], 30000)

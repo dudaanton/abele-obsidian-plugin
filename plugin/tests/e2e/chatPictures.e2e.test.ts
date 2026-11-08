@@ -20,11 +20,11 @@ const PANE_PRELUDE = `
     const leaf = app.workspace.getLeaf('split')
     ownedPanes.push(leaf)
     await leaf.setViewState({ type: 'abele-ai-sidebar-view', active: true })
-    await until(() => leaf.view.containerEl.querySelector('.abele-chat-input')?.__vueParentComponent?.exposed)
+    await until(() => window.__abeleTest.component(leaf.view.containerEl.querySelector('.abele-chat-input'))?.api)
     return leaf
   }
   const paneHost = leaf => leaf.view.containerEl.isConnected ? leaf.view.containerEl.querySelector('.abele-chat-input') : null
-  const paneInput = leaf => paneHost(leaf)?.__vueParentComponent?.exposed
+  const paneInput = leaf => window.__abeleTest.component(paneHost(leaf))?.api
   const capture = async name => {
     await wait(350)
     const path = ${JSON.stringify(SHOTS + '/')} + (app.isMobile ? 'phone-' : 'desktop-') + name + '.png'
