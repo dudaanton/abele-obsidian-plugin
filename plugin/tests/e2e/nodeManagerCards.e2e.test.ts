@@ -23,11 +23,11 @@ async function inspectToolPermissions(label: string) {
       for(const heading of editor.querySelectorAll('.abele-disclosure__control[aria-expanded="false"]'))heading.click();
       let delegate;
       for(let i=0;i<100;i++) {
-        delegate=[...editor.querySelectorAll('.abele-tool-modes__row')].find(el=>el.querySelector('.setting-item-name')?.textContent.trim()==='Delegate to agent');
+        delegate=[...editor.querySelectorAll('.abele-tool-modes__row')].find(el=>el.querySelector('.setting-item-name')?.textContent.trim()==='Delegate');
         if(delegate)break;
         await wait(50);
       }
-      if(!delegate)throw Error('Ordinary Delegate permission did not appear');
+      if(!delegate)throw Error('Ordinary Delegate permission did not appear: '+editor.textContent);
       delegate.scrollIntoView({block:'center'});
       return JSON.stringify({
         actions:editor.querySelectorAll('.abele-tool-modes__action').length,
