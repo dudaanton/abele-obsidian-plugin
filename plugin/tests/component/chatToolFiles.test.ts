@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { expect, it, vi } from 'vitest'
 import ChatToolRun from '@/components/ChatToolRun.vue'
 import ChatToolFiles from '@/components/chat/ChatToolFiles.vue'
+import NodeMessageTree from '@/components/NodeMessageTree.vue'
 import AiChatMessage from '@/components/AiChatMessage.vue'
 import { toolFilePaths } from '@/ai/toolFiles'
 import type { ChatMessage } from '@/ai/types'
@@ -18,6 +19,39 @@ import { toolSummary } from '@/ai/toolLine'
 
 vi.mock('@/node/nodeChatPlace', () => ({ openNodeChatResource: vi.fn() }))
 vi.mock('@/ai/openChat', () => ({ openVaultFile: vi.fn() }))
+
+it('keeps provider paths visible across single calls and a folded multi-file run', () => {
+  useVault([])
+  const singles = ['read', 'write', 'node_write', 'read'].flatMap((toolName, i) => [
+    call({ id: `single-${i}`, toolName, toolParams: { path: `Sample/single-${i}.md` } }),
+    { id: `answer-${i}`, role: 'assistant' as const, timestamp: i + 1, content: 'Done.' },
+  ])
+  const calls = [
+    call({ id: 'provider-read', toolName: 'Read', toolParams: {}, toolPath: 'Sample/read.md' }),
+    call({ id: 'provider-write', toolPaths: ['Sample/written.md', 'src/second.ts'] }),
+    call({ id: 'created', toolName: 'create', toolParams: { path: 'Sample/created.md' } }),
+    call({ id: 'repeat', toolPaths: ['Sample/written.md', 'src/second.ts'] }),
+    call({ id: 'missing', toolStatus: 'rejected', toolParams: { path: 'Sample/missing.md' } }),
+    call({ id: 'no-path', toolStatus: 'rejected', toolParams: {} }),
+  ]
+  const view = mount(NodeMessageTree, {
+    props: { messages: [...singles, ...calls], children: {}, openResource: vi.fn() },
+  })
+  try {
+    expect(
+      view.findAll('.abele-chat-tool-files [role="link"]').map((link) => link.attributes('title'))
+    ).toEqual([
+      ...Array.from({ length: 4 }, (_, i) => `Sample/single-${i}.md`),
+      'Sample/read.md',
+      'Sample/written.md',
+      'src/second.ts',
+      'Sample/created.md',
+      'Sample/missing.md',
+    ])
+  } finally {
+    view.unmount()
+  }
+})
 
 it('deduplicates folded writes by path while retaining the call count', async () => {
   useVault([])

@@ -573,7 +573,20 @@ const script = (footer: boolean, short = false) => String.raw`(async function* (
       yield 'short-list completion and fold anchors'
       count('initial')
       const before = row(0).getBoundingClientRect().top
-      await toggleCompleted()
+      const trace = [], logged = [], debug = console.debug
+      let tracing = true
+      const sample = () => {
+        const space = root.querySelector('.abele-timeline__anchor-space')
+        trace.push({top:row(0)?.getBoundingClientRect().top,scrollTop:scroller.scrollTop,
+          scrollHeight:scroller.scrollHeight,clientHeight:scroller.clientHeight,
+          ownerTop:scroller.getBoundingClientRect().top,space:space?.style.height,
+          held:scroller.classList.contains('abele-timeline__scroll-hold')})
+        if(tracing && trace.length < 90)requestAnimationFrame(sample)
+      }
+      console.debug = (...args) => { if(String(args[0]).startsWith('[Abele timeline]'))logged.push(JSON.stringify(args));return debug.apply(console,args) }
+      sample()
+      try { await toggleCompleted() } finally { tracing=false;console.debug=debug }
+      ;(report.anchorFrames ??= []).push(['short-completed-shown',trace,logged])
       report.anchored = [before, row(0)?.getBoundingClientRect().top ?? -9999]
       count('completed shown')
       await shot('completed')
@@ -949,7 +962,10 @@ describe.skipIf(!available)('task timeline scrolling', () => {
             p.collapseAnchor,
           ]) {
             expect(pair).toHaveLength(2)
-            expect(Math.abs(pair![1] - pair![0])).toBeLessThanOrEqual(1)
+            expect(
+              Math.abs(pair![1] - pair![0]),
+              JSON.stringify(p.anchorFrames)
+            ).toBeLessThanOrEqual(1)
           }
         }
       )

@@ -74,7 +74,16 @@ const PRELUDE = `
     const crop={x:Math.round(r.left)+1,y:Math.round(r.top)+1,width:Math.round(r.width)-2,height:Math.round(r.height)-2}
     const image=await wc.capturePage(crop), bitmap=image.toBitmap()
     let count=0;for(let i=0;i<bitmap.length;i+=4)if(bitmap[i]+bitmap[i+1]+bitmap[i+2]<300)count++
-    return { ink:count, geometry:{paneId:leaf.id,rect:rect(r),imageRect:rect(el.querySelector('img').getBoundingClientRect()),crop,paper,dpr:devicePixelRatio,bitmapBytes:bitmap.length} }
+    const img=el.querySelector('img')
+    let decoded
+    try {
+      const canvas=document.createElement('canvas');canvas.width=img.naturalWidth;canvas.height=img.naturalHeight
+      const context=canvas.getContext('2d');context.fillStyle='white';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(img,0,0)
+      const pixels=context.getImageData(0,0,canvas.width,canvas.height).data
+      let ink=0;for(let i=0;i<pixels.length;i+=4)if(pixels[i]+pixels[i+1]+pixels[i+2]<300)ink++
+      decoded={ink,width:canvas.width,height:canvas.height}
+    } catch(error) { decoded={error:String(error)} }
+    return { ink:count, decoded, source:img.currentSrc, geometry:{paneId:leaf.id,rect:rect(r),imageRect:rect(img.getBoundingClientRect()),crop,paper,dpr:devicePixelRatio,bitmapBytes:bitmap.length} }
   }
   const note = async (name, text, mode, pane = 'tab') => {
     const path = DIR + '/' + name + '.md'
@@ -168,6 +177,7 @@ describe.skipIf(!available)('a drawing in a note', () => {
       savedBefore?: string
       savedAfter?: string
       reading?: { ink: number; w: number }
+      refreshEvidence?: unknown
     }>(`
       await closeAll()
       // This diagonal establishes the entire paper; the later zigzag stays inside it.
@@ -221,7 +231,8 @@ describe.skipIf(!available)('a drawing in a note', () => {
       await pictureReady(rb)
       const reading = rb && { ink: await ink(rb), w: rb.clientWidth }
       await shoot('plain-reading')
-      return { live, after, reading, savedBefore, savedAfter, repeat, geometryBefore:measuredBefore.geometry, geometryAfter:measuredAfter.geometry }
+      return { live, after, reading, savedBefore, savedAfter, repeat, geometryBefore:measuredBefore.geometry, geometryAfter:measuredAfter.geometry,
+        refreshEvidence:{before:{source:measuredBefore.source,decoded:measuredBefore.decoded},after:{source:measuredAfter.source,decoded:measuredAfter.decoded}} }
     `)
     writeFileSync(join(SHOTS, 'drawing-geometry-proof.json'), JSON.stringify(r, null, 2))
     expect(r.error).toBeUndefined()

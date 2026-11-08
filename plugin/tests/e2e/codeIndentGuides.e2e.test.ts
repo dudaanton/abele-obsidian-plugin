@@ -122,7 +122,15 @@ describe.skipIf(!available)('code indentation guides', () => {
               (${JSON.stringify(mode)} !== 'preview' || (enabled ? paintedRows > 0 : paintedRows === 0))) return state
           await wait(100)
         } while (Date.now() < deadline)
-        throw new Error('Guide state did not settle: ' + JSON.stringify({ expected: enabled, state }))
+        // Put the paint facts first: CLI error envelopes can truncate the full gate history.
+        throw new Error('Guide state did not settle: ' + JSON.stringify({ expected: enabled,
+          raw: state.raw, rows: state.rows, paintedRows: state.paintedRows,
+          bodyPaintClass: leaf.view.containerEl.ownerDocument.body.classList.contains('abele-show-code-guides'),
+          blocks: [...leaf.view.containerEl.querySelectorAll('pre > code')].map(code => ({
+            language: code.className, parent: code.parentElement.className,
+            connected: code.isConnected, rows: code.querySelectorAll('.abele-code-line').length,
+            textLength: code.textContent.length,
+          })), gates: state.gates.map(g => ({gateReturn:g.gateReturn,inputUsed:g.inputUsed})), state }))
       }
       app.vault.setConfig('showIndentGuide', true)
       await app.vault.requestSaveConfig?.run()
