@@ -1,6 +1,54 @@
 import { expect, it } from 'vitest'
 import { phoneLifecycle } from '../e2e/helpers/phoneLifecycle'
 
+it('persists explicit reload requests before the page is replaced', () => {
+  const storage = new Map<string, string>()
+  const win = page(storage)
+  const commands = {
+    executeCommandById(id: string) {
+      expect(this).toBe(commands)
+      return id === 'app:reload'
+    },
+  }
+  Object.assign(win, { app: { commands } })
+  phoneLifecycle(win, 'inspect stopped folder row')
+  phoneLifecycle(win)
+  expect(commands.executeCommandById('app:reload')).toBe(true)
+  expect(commands.executeCommandById('unrelated-command')).toBe(false)
+  const previous = phoneLifecycle(page(storage, 200)).snapshot().previous!
+  expect(previous.action).toBe('inspect stopped folder row')
+  expect(previous.events.map((event) => event.kind)).toEqual(['reload-command'])
+})
+
+it('records only the tested plugin lifecycle and preserves host promises and receivers', async () => {
+  const win = page()
+  const answer = Promise.resolve('enabled')
+  const plugins = {
+    enablePlugin() {
+      expect(this).toBe(plugins)
+      return answer
+    },
+    disablePlugin() {
+      expect(this).toBe(plugins)
+      throw new Error('host failure')
+    },
+  }
+  Object.assign(win, { app: { plugins } })
+  const lifecycle = phoneLifecycle(win)
+  const host = plugins as unknown as {
+    enablePlugin(id: string): Promise<string>
+    disablePlugin(id: string): void
+  }
+  expect(host.enablePlugin('abele')).toBe(answer)
+  await answer
+  expect(() => host.disablePlugin('abele')).toThrow('host failure')
+  host.enablePlugin('unrelated-plugin')
+  expect(lifecycle.snapshot().current.events.map((event) => event.kind)).toEqual([
+    'plugin-enable',
+    'plugin-disable',
+  ])
+})
+
 function page(storage = new Map<string, string>(), origin = 100) {
   const win = new EventTarget() as EventTarget & Record<string, unknown>
   const doc = new EventTarget() as EventTarget & Record<string, unknown>

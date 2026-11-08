@@ -24,6 +24,8 @@ export function phoneLifecycle(win: Window, action?: string) {
     'type-keys',
     'type-driver',
     'sync-action',
+    'inspect stopped folder row',
+    'recover folder connection',
     'open Share picker',
     'inline results above the native keyboard',
     'cancel Share picker',
@@ -39,6 +41,9 @@ export function phoneLifecycle(win: Window, action?: string) {
     'anchor-click',
     'popstate',
     'hashchange',
+    'reload-command',
+    'plugin-disable',
+    'plugin-enable',
   ])
   const safeAction = (value: unknown) =>
     typeof value === 'string' && actions.has(value) ? value : 'sync-action'
@@ -111,6 +116,23 @@ export function phoneLifecycle(win: Window, action?: string) {
     })
     if (current.events.length > 16) current.events.shift()
     save()
+  }
+  // Persist intent before invoking the host: a replaced WebView cannot return it.
+  // Only fixed event names travel; command arguments and plugin IDs are never saved.
+  type Methods = Record<string, ((...args: unknown[]) => unknown) | undefined>
+  const app = Reflect.get(win, 'app') as { commands?: Methods; plugins?: Methods } | undefined
+  for (const [owner, method, argument, kind] of [
+    [app?.commands, 'executeCommandById', 'app:reload', 'reload-command'],
+    [app?.plugins, 'disablePlugin', 'abele', 'plugin-disable'],
+    [app?.plugins, 'enablePlugin', 'abele', 'plugin-enable'],
+  ] as const) {
+    if (!owner) continue
+    const original = owner[method]
+    if (typeof original !== 'function') continue
+    owner[method] = function (...args: unknown[]) {
+      if (args[0] === argument) record(kind, new Event(kind))
+      return Reflect.apply(original, this, args)
+    }
   }
   for (const kind of ['beforeunload', 'pagehide', 'pageshow', 'popstate', 'hashchange'])
     win.addEventListener(kind, (event) => record(kind, event))
