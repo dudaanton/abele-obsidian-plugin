@@ -1279,11 +1279,13 @@ for (const fault of [
         await disk.rm(root, { recursive: true, force: true })
       }
     },
-    // Alone the 33000-file case takes about six minutes; this only stops a hang.
+    // This is a persistence/payload work test, not a throughput benchmark.
+    // The 33k case needs about 1,000 s alone and over 1,200 s with capped sibling work;
+    // keep wall-time headroom while the per-batch commit, flush and byte bounds stay strict.
     process.env.PEER_PULL_FILES
       ? 3_600_000
       : fault === 'none'
-        ? 1_200_000
+        ? 2_700_000
         : fault === 'install-fingerprint-backlog' ||
             fault === 'path-candidates' ||
             fault === 'directory-projection' ||
