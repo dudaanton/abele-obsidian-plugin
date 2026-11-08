@@ -833,10 +833,11 @@ async function runProbe(footer: boolean, short = false): Promise<Probe> {
 }
 
 const REMOVE_TIMELINE_FIXTURE = `
-  async function removeTimelineFixture(path, label) {
+  async function* removeTimelineFixture(path, label) {
     const folder = app.vault.getAbstractFileByPath(path)
     const files = [...(folder?.children ?? [])]
     // Prove every file before deleting any: a synthetic folder name is not ownership.
+    let verified = 0
     for (const file of files) {
       if (file.children) throw Error('unowned nested fixture folder: ' + file.path)
       const text = await app.vault.read(file)
@@ -846,9 +847,14 @@ const REMOVE_TIMELINE_FIXTURE = `
         fm?.type === 'task' && Array.isArray(fm.labels) && fm.labels.includes(label) &&
         Array.isArray(fm.groups) && fm.groups.includes('[[' + path + '/Sample group]]')
       if (!group && !task) throw Error('unowned fixture file: ' + file.path)
+      if (++verified % 16 === 0) yield 'verified ' + verified
     }
     // Individual native deletes publish file events before the empty folder is removed.
-    for (const file of files) await app.vault.delete(file, true)
+    let removed = 0
+    for (const file of files) {
+      await app.vault.delete(file, true)
+      if (++removed % 16 === 0) yield 'removed ' + removed
+    }
     if (folder) await app.vault.delete(folder, true)
     const deadline = Date.now() + 60000
     while ([...window.__abeleTest.GlobalStore.getInstance().tasksList.value.tasks.keys()].some(key => key.startsWith(path + '/'))) {
@@ -862,14 +868,24 @@ const REMOVE_TIMELINE_FIXTURE = `
 // Synthetic fixtures may survive an interrupted run. Remove only proven owned notes.
 async function removeFixtures(): Promise<void> {
   for (const dir of [FOLDER, FOLDER + ' short']) {
-    const raw = await evalLong(
-      `(async () => {
+    evalRaw(
+      `(() => {
         ${REMOVE_TIMELINE_FIXTURE}
-        return await removeTimelineFixture(${JSON.stringify(dir)}, ${JSON.stringify('sample-timeline-probe' + (dir.endsWith(' short') ? '-short' : ''))})
-      })()`,
-      120_000
+        window.__timelineCleanup = removeTimelineFixture(${JSON.stringify(dir)}, ${JSON.stringify('sample-timeline-probe' + (dir.endsWith(' short') ? '-short' : ''))})
+        return 'ready'
+      })()`
     )
-    if (raw.startsWith('Error:')) throw new Error(raw)
+    try {
+      for (;;) {
+        const step = JSON.parse(await evalLong('window.__timelineCleanup.next()', 120_000))
+        if (step.done) break
+      }
+    } finally {
+      await evalLong(
+        `(async()=>{await window.__timelineCleanup?.return();delete window.__timelineCleanup;return 'closed'})()`,
+        60_000
+      )
+    }
   }
 }
 

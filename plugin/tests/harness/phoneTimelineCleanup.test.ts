@@ -37,7 +37,18 @@ function fixture(texts: Record<string, string>) {
     },
   }
   const run = new Function('app', 'window', `${script}; return removeTimelineFixture`)(app, window)
-  return { run: () => run(path, 'sample-timeline-probe'), remove, folder, files }
+  const steps: string[] = []
+  return {
+    run: async () => {
+      for await (const progress of run(path, 'sample-timeline-probe')) {
+        steps.push(progress)
+      }
+    },
+    remove,
+    folder,
+    files,
+    steps,
+  }
 }
 
 it('deletes individual owned notes before their empty folder', async () => {
@@ -48,6 +59,23 @@ it('deletes individual owned notes before their empty folder', async () => {
   })
   await f.run()
   expect(f.remove.mock.calls.map((call) => call[0])).toEqual([...f.files, f.folder])
+})
+
+it('bounds phone cleanup steps while still verifying every note before deleting any', async () => {
+  const texts = Object.fromEntries(
+    Array.from({ length: 36 }, (_, i) => [
+      `Sample item ${i} 1.md`,
+      '---\ntype: task\nlabels: [sample-timeline-probe]\ngroups: ["[[Sample timeline probe/Sample group]]"]\n---\nSample task\n',
+    ])
+  )
+  const good = fixture(texts)
+  await good.run()
+  expect(good.steps).toEqual(['verified 16', 'verified 32', 'removed 16', 'removed 32'])
+  expect(good.remove.mock.calls.map((call) => call[0])).toEqual([...good.files, good.folder])
+  const bad = fixture({ ...texts, 'Other note.md': 'Unowned' })
+  await expect(bad.run()).rejects.toThrow('unowned fixture file')
+  expect(bad.steps).toEqual(['verified 16', 'verified 32'])
+  expect(bad.remove).not.toHaveBeenCalled()
 })
 
 it('recognizes owned task metadata after a native frontmatter rewrite', async () => {
