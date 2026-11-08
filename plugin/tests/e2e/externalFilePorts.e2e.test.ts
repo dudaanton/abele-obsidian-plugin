@@ -67,7 +67,10 @@ describe.skipIf(!available)('external-file production filesystem ports on the li
         if(when==='during')raw[method]=async function(...args){
           const before=${onPhone() ? 'await real.apply(raw,args)' : 'undefined'}
           if(armed&&${onPhone() ? 'args[0]===target' : 'args[1]===adapter.getFullPath(target)'}){
-            checks++;await adapter.writeBinary(target,encode('sample occupant').buffer)
+            checks++;
+            // The native link already owns the adapter queue. A competing writer must
+            // enter the filesystem directly rather than wait behind this operation.
+            ${onPhone() ? "await adapter.writeBinary(target,encode('sample occupant').buffer)" : "await raw.writeFile(args[1],encode('sample occupant'),{flag:'wx'})"}
           }
           return ${onPhone() ? 'before' : 'real.apply(raw,args)'}
         }
@@ -81,6 +84,7 @@ describe.skipIf(!available)('external-file production filesystem ports on the li
       }
       return result
     `)
+    console.info('installation collision boundary', out)
     expect(out.find((item: { when: string }) => item.when === 'during').checks).toBeGreaterThan(0)
     expect(
       out.map((item: { refused: string; target: string; staging: string }) => ({
