@@ -29,12 +29,16 @@ async function inspectToolPermissions(label: string) {
       }
       if(!delegate)throw Error('Ordinary Delegate permission did not appear: '+editor.textContent);
       delegate.scrollIntoView({block:'center'});
+      // The host also inserts a hidden select with one option to measure its width.
+      const controls=delegate.querySelectorAll('select.abele-obsidian-dropdown__base:not(.is-measuring)');
+      if(controls.length!==1)throw Error('Expected one interactive Delegate control, found '+controls.length);
+      const control=controls[0];
       return JSON.stringify({
         actions:editor.querySelectorAll('.abele-tool-modes__action').length,
         headings:[...editor.querySelectorAll('.abele-disclosure__control .abele-fold-heading__text')].map(el=>el.textContent.trim()),
         nodeSwitches:[...editor.querySelectorAll('.abele-tool-modes__row')].filter(el=>/node_delegate|node_command|node_git_integrate|Hand work to a node agent/.test(el.textContent)).length,
-        delegateModes:[...delegate.querySelectorAll('select option')].map(el=>el.value),
-        delegateMode:delegate.querySelector('select').value
+        delegateModes:[...control.options].map(el=>el.value),
+        delegateMode:control.value
       });
     })()`)
     )
