@@ -112,7 +112,8 @@ const desktopRequest = async (
       30000 + Math.ceil(requestBytes / (32 * 1024)) * 1000
     ).catch((error: unknown) => {
       // Electron's native manual policy rejects at the redirect before exposing a Response.
-      if ((error as { message?: unknown } | null)?.message === 'Redirect was cancelled') {
+      const message = (error as { message?: unknown } | null)?.message
+      if (typeof message === 'string' && /(?:^|: )Redirect was cancelled$/.test(message)) {
         throw new Error('sync transport refuses redirects')
       }
       throw error

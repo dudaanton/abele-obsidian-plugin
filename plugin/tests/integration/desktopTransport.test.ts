@@ -25,6 +25,22 @@ vi.mock('@/sync/desktopNet', () => ({
 // Socket-level translation checks use a manual-redirect Node fetch test port. Native Electron
 // session/redirect/proxy behavior is asserted independently in the desktop e2e gate.
 const servers: Server[] = []
+it.each([
+  'Redirect was cancelled',
+  "Error invoking remote method 'fetch': Error: Redirect was cancelled",
+])('normalizes native redirect cancellation: %s', async (message) => {
+  const fetch = vi.fn().mockRejectedValue(new Error(message))
+  const transport = desktopTransport(undefined, {
+    session: { fetch },
+    controller: () => new AbortController(),
+    bytes: (buffer: ArrayBuffer) => new Uint8Array(buffer),
+    body: (buffer: ArrayBuffer) => new Uint8Array(buffer),
+  })
+  await expect(transport('https://sync.example/sample')).rejects.toThrow(
+    'sync transport refuses redirects'
+  )
+  expect(fetch).toHaveBeenCalledTimes(1)
+})
 it('aborts a desktop server check that never answers instead of hanging an offload', async () => {
   vi.useFakeTimers()
   const controller = new AbortController()
