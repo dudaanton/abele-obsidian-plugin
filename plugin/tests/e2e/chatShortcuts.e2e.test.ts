@@ -18,11 +18,10 @@ import {
   evalLong,
   hasTestApi,
   isObsidianRunning,
-  runCli,
   setBackgroundThrottling,
   setFocusEmulation,
 } from './helpers/obsidianCli'
-import { withNativeInput } from './helpers/nativeInput'
+import { nativeInputProbe } from './helpers/nativeInput'
 
 const CHATS = ['sample-shortcuts-a', 'sample-shortcuts-b', 'sample-shortcuts-c'].map(
   (name) => `${name}.abchat`
@@ -48,38 +47,38 @@ const KEYS: Record<string, { code: string; vk: number; key?: string; shifted?: s
 }
 
 /** One key, pressed with its modifiers held, as the keyboard sends it. */
-const press = (mods: Mod[], name: keyof typeof KEYS) =>
-  withNativeInput(async () => {
-    const spec = KEYS[name]
-    const real = mods.map((m) => (m === 'Mod' ? (mac ? 'Meta' : 'Ctrl') : m))
-    const bits = { Alt: 1, Ctrl: 2, Meta: 4, Shift: 8 } as Record<string, number>
-    const modifiers = real.reduce((sum, m) => sum | bits[m], 0)
-    const letter = name.length === 1 && /[a-z]/.test(name)
-    const key = real.includes('Shift')
-      ? letter
-        ? name.toUpperCase()
-        : (spec.shifted ?? name)
-      : name
-    const props = {
-      key,
-      code: spec.code,
-      windowsVirtualKeyCode: spec.vk,
-      nativeVirtualKeyCode: spec.vk,
-      modifiers,
-    }
-    runCli([
-      'dev:cdp',
-      'method=Input.dispatchKeyEvent',
-      `params=${JSON.stringify({ type: 'rawKeyDown', ...props })}`,
-    ])
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    runCli([
-      'dev:cdp',
-      'method=Input.dispatchKeyEvent',
-      `params=${JSON.stringify({ type: 'keyUp', ...props })}`,
-    ])
-    await new Promise((resolve) => setTimeout(resolve, 400))
-  })
+const press = async (mods: Mod[], name: keyof typeof KEYS) => {
+  const spec = KEYS[name]
+  const real = mods.map((m) => (m === 'Mod' ? (mac ? 'Meta' : 'Ctrl') : m))
+  const bits = { Alt: 1, Ctrl: 2, Meta: 4, Shift: 8 } as Record<string, number>
+  const modifiers = real.reduce((sum, m) => sum | bits[m], 0)
+  const letter = name.length === 1 && /[a-z]/.test(name)
+  const key = real.includes('Shift') ? (letter ? name.toUpperCase() : (spec.shifted ?? name)) : name
+  const props = {
+    key,
+    code: spec.code,
+    windowsVirtualKeyCode: spec.vk,
+    nativeVirtualKeyCode: spec.vk,
+    modifiers,
+  }
+  await evalLong(
+    nativeInputProbe(`(async () => {
+      const debuggerApi = require('@electron/remote').getCurrentWebContents().debugger
+      const attached = debuggerApi.isAttached()
+      const cdp = (method, params) => debuggerApi.sendCommand(method, params)
+      if (!attached) debuggerApi.attach('1.3')
+      try {
+        await cdp('Input.dispatchKeyEvent', ${JSON.stringify({ type: 'rawKeyDown', ...props })})
+        await cdp('Input.dispatchKeyEvent', ${JSON.stringify({ type: 'keyUp', ...props })})
+      } finally {
+        if (!attached) debuggerApi.detach()
+      }
+      return true
+    })()`),
+    15_000
+  )
+  await new Promise((resolve) => setTimeout(resolve, 400))
+}
 
 interface State {
   paths: (string | null)[]

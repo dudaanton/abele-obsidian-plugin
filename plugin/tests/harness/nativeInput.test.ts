@@ -1,9 +1,18 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, utimesSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  utimesSync,
+} from 'node:fs'
 import { spawn } from 'node:child_process'
 import { buildSync } from 'esbuild'
 import { join } from 'node:path'
+import Module from 'node:module'
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import { withNativeInput } from '../e2e/helpers/nativeInput'
+import { withNativeInput, nativeInputProbe } from '../e2e/helpers/nativeInput'
 
 let dir: string
 beforeEach(() => {
@@ -98,4 +107,125 @@ it('never steals an old lock held by a live worker', async () => {
   writeFileSync(join(lock, String(process.pid)), '')
   utimesSync(lock, new Date(0), new Date(0))
   await expect(withNativeInput(() => {}, lock, 0)).rejects.toThrow('native input lock')
+})
+
+it('leaves the lane free between probe gestures and releases a failed down', async () => {
+  const lock = join(dir, 'probe.lock')
+  const source = `(async () => {
+    const cdp = (method, params) => debuggerApi.sendCommand(method, params)
+    await between()
+    await cdp('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'End' })
+  })()`
+  const events: string[] = []
+  const debuggerApi = {
+    sendCommand: async (_method: string, params: { type: string }) => {
+      events.push(params.type)
+      if (params.type === 'rawKeyDown') throw new Error('lost answer')
+    },
+  }
+  const between = () =>
+    withNativeInput(
+      () => {
+        events.push('other gesture')
+      },
+      lock,
+      0
+    )
+  const execute = new Function(
+    'require',
+    'debuggerApi',
+    'between',
+    `return ${nativeInputProbe(source, lock)}`
+  )
+  const nodeRequire = Module.createRequire(import.meta.url)
+  const requireProbe = (name: string) =>
+    name === '@electron/remote'
+      ? { getCurrentWebContents: () => ({ debugger: debuggerApi }) }
+      : nodeRequire(name)
+  await expect(execute(requireProbe, debuggerApi, between)).rejects.toThrow('lost answer')
+  expect(events).toEqual(['other gesture', 'rawKeyDown', 'keyUp'])
+  await withNativeInput(() => {}, lock, 0)
+})
+
+it('holds touch, drag and keyboard pairs but frees the lane during probe idle work', async () => {
+  const lock = join(dir, 'probe.lock')
+  const events: string[] = []
+  const source = `(async () => {
+    const cdp = (method, params) => debuggerApi.sendCommand(method, params)
+    for (const [method, down, up] of pairs) {
+      await between()
+      await cdp(method, { type: down })
+      held()
+      await cdp(method, { type: up })
+      await between()
+    }
+    await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel' })
+    await between()
+    return 'finished'
+  })()`
+  const debuggerApi = {
+    sendCommand: async (_method: string, params: { type: string }) => {
+      expect(existsSync(lock)).toBe(true)
+      events.push(params.type)
+    },
+  }
+  const nodeRequire = Module.createRequire(import.meta.url)
+  const requireProbe = (name: string) =>
+    name === '@electron/remote'
+      ? { getCurrentWebContents: () => ({ debugger: debuggerApi }) }
+      : nodeRequire(name)
+  const execute = new Function(
+    'require',
+    'debuggerApi',
+    'pairs',
+    'between',
+    'held',
+    `return ${nativeInputProbe(source, lock)}`
+  )
+  const pairs = [
+    ['Input.dispatchTouchEvent', 'touchStart', 'touchEnd'],
+    ['Input.dispatchMouseEvent', 'mousePressed', 'mouseReleased'],
+    ['Input.dispatchKeyEvent', 'rawKeyDown', 'keyUp'],
+  ]
+  const between = () => withNativeInput(() => {}, lock, 0)
+  const held = () => expect(existsSync(lock)).toBe(true)
+  await expect(execute(requireProbe, debuggerApi, pairs, between, held)).resolves.toBe('finished')
+  expect(events).toEqual([...pairs.flatMap(([, down, up]) => [down, up]), 'mouseWheel'])
+  expect(existsSync(lock)).toBe(false)
+})
+
+it('rejects a probe without an explicit input port instead of silently running unlocked', () => {
+  expect(() => nativeInputProbe('(async () => {})()')).toThrow('no explicit CDP port')
+})
+
+it('ends an interrupted gesture before the probe detaches its debugger', async () => {
+  const lock = join(dir, 'probe.lock')
+  const events: string[] = []
+  const source = `(async () => {
+    const cdp = (method, params) => debuggerApi.sendCommand(method, params)
+    try {
+      await cdp('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 1, y: 1 }] })
+      throw new Error('probe interrupted')
+    } finally {
+      debuggerApi.detach()
+    }
+  })()`
+  const debuggerApi = {
+    sendCommand: async (_method: string, params: { type: string }) => {
+      expect(existsSync(lock)).toBe(true)
+      events.push(params.type)
+    },
+    detach: () => {
+      expect(existsSync(lock)).toBe(false)
+      events.push('detach')
+    },
+  }
+  const nodeRequire = Module.createRequire(import.meta.url)
+  const requireProbe = (name: string) =>
+    name === '@electron/remote'
+      ? { getCurrentWebContents: () => ({ debugger: debuggerApi }) }
+      : nodeRequire(name)
+  const execute = new Function('require', 'debuggerApi', `return ${nativeInputProbe(source, lock)}`)
+  await expect(execute(requireProbe, debuggerApi)).rejects.toThrow('probe interrupted')
+  expect(events).toEqual(['touchStart', 'touchEnd', 'detach'])
 })

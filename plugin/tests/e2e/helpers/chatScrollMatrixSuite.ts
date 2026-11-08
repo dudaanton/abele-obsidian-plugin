@@ -9,7 +9,7 @@ import {
   isObsidianRunning,
   reloadApp,
 } from './obsidianCli'
-import { withNativeInput } from './nativeInput'
+import { nativeInputProbe, withNativeInput } from './nativeInput'
 
 const available = isObsidianRunning() && hasTestApi()
 import { inputProbe, script, states, type Report } from './chatScrollMatrix'
@@ -70,15 +70,10 @@ export function chatScrollMatrixSuite(filter?: string, frameBudgetMs?: number, i
               `${phone ? 'touch' : 'wheel'} / ${size} / ${state}`,
               async () => {
                 const probe = () =>
-                  withNativeInput(
-                    async () =>
-                      JSON.parse(
-                        await evalLong(
-                          script(size, state, phone, idleMs),
-                          longTouchText ? 390_000 : 300_000
-                        )
-                      ) as Report
-                  )
+                  evalLong(
+                    nativeInputProbe(script(size, state, phone, idleMs)),
+                    longTouchText ? 390_000 : 300_000
+                  ).then((result) => JSON.parse(result) as Report)
                 const result = await probe()
                 console.log('scroll-matrix', JSON.stringify({ phone, size, state, ...result }))
                 if (frameBudgetMs !== undefined)
