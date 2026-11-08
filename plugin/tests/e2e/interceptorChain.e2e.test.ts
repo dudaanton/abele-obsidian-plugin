@@ -150,7 +150,8 @@ const setup = `(async () => {
   window.fetch = async (url, init) => {
     if (typeof url !== 'string' || !url.startsWith(FAKE)) return P.realFetch(url, init)
     const body = JSON.parse(init.body)
-    const last = body.messages[body.messages.length - 1]
+    const last = body.messages.findLast(message => message.role === 'user')
+    if (!last) throw Error('Provider request has no user message')
     P.requests.push(typeof last.content === 'string' ? last.content : (last.content || []).map((p) => p.text || '').join(''))
     return new Response(sse([text('The lantern is on the shelf.'), text('', 'stop')]), { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
   }
