@@ -1,13 +1,35 @@
 import { describe, expect, it } from 'vitest'
 import fixture from '../fixtures/audit/zod.json'
-import exceptions from '../../scripts/audit-exceptions.json'
+import shippedExceptions from '../../scripts/audit-exceptions.json'
 import { evaluateAudit } from '../../scripts/audit-dependencies.mjs'
+
+// Policy tests keep exercising an affected dependency even when production needs no exceptions.
+const exceptions = [
+  {
+    advisory: 'GHSA-mrhx-c7xc-m3w5',
+    paths: fixture.vulnerabilities.zod.nodes,
+    reason: 'Exercise a path-specific audit exception.',
+    expires: '2026-11-14',
+  },
+]
 
 const today = '2026-10-24'
 const expires = exceptions[0].expires
-const dayAfterExpiry = new Date(Date.parse(`${expires}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)
+const dayAfterExpiry = new Date(Date.parse(`${expires}T00:00:00Z`) + 86_400_000)
+  .toISOString()
+  .slice(0, 10)
 
 describe('shipped dependency audit', () => {
+  it('does not exempt the advisory in the patched shipped dependency tree', () => {
+    expect(shippedExceptions).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ advisory: 'GHSA-mrhx-c7xc-m3w5' })])
+    )
+  })
+  it('rejects the affected fixture when no exception is recorded', () => {
+    expect(evaluateAudit(fixture, [], today)).toEqual([
+      'Unexcepted advisory: GHSA-mrhx-c7xc-m3w5 node_modules/@abele/sync-sdk/node_modules/zod (high)',
+    ])
+  })
   it('honours the advisory only at the recorded nested paths', () => {
     expect(exceptions[0].paths).toEqual(['node_modules/@abele/sync-sdk/node_modules/zod'])
     expect(evaluateAudit(fixture, exceptions, today)).toEqual([])
