@@ -204,6 +204,9 @@ const probe = (label: string) => `(async () => {
     service.switchTab(first)
     if (document.querySelector('.abele-chat-tree')) current().click()
     current().click()
+    const parentRow = await until(() => document.querySelector('[data-chat="' + first + '"] > .tree-item-self'))
+    if (parentRow.getAttribute('aria-expanded') !== 'true') parentRow.querySelector('.collapse-icon').click()
+    await until(() => parentRow.getAttribute('aria-expanded') === 'true')
     await until(() => document.querySelector('[data-chat="' + first + '"] [data-chat="' + archivedPath + '"]'))
     if (app.isMobile) {
       const openRow = document.querySelector('[data-chat="' + second + '"] > .tree-item-self')
@@ -325,6 +328,8 @@ const probe = (label: string) => `(async () => {
     await until(() => files.every(file => !service.folders.folderOf(file.path)))
     if (!files.every(file => file.path.startsWith(path + '/'))) throw Error('Tree action moved a transcript')
     if (await app.vault.read(marker) !== markerContent) throw Error('Tree action changed a disk folder access file')
+    const dropped = reopened.toolModes.value.web_search === ownMode
+    if (!dropped) throw Error('Moving to top retained inherited folder access')
     // An empty selection queues behind the requested move before fixture files are released.
     await service.folders.moveMany([], '')
     for (const destination of ['', folder]) {
@@ -427,7 +432,7 @@ const probe = (label: string) => `(async () => {
     const closedCandidate = await until(() => document.querySelector('[data-chat="' + capPath + '"]'))
     closedCandidate.scrollIntoView({ block: 'nearest' })
     await shot('plus-at-cap')
-    return { composer: { focusedComposer, blurredComposer }, closedTogether: !service.tabOrder.value.includes(second), inherited, dropped: reopened.toolModes.value.web_search === ownMode, moved: true, overflow, width: bounds.width, viewport: innerWidth, sidebarWidth: root.getBoundingClientRect().width, pictures: pictureCount }
+    return { composer: { focusedComposer, blurredComposer }, closedTogether: !service.tabOrder.value.includes(second), inherited, dropped, moved: true, overflow, width: bounds.width, viewport: innerWidth, sidebarWidth: root.getBoundingClientRect().width, pictures: pictureCount }
   } finally {
     if (service.folders.paths.includes('Synthetic child')) await service.folders.remove('Synthetic child')
     service.closedNodeChats.value=priorNodes.slice();service.saveTabs();await service.folders.forgetNode(sampleNodeId)
