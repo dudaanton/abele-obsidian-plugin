@@ -33,16 +33,14 @@ describe('native local-save replacement boundary', () => {
       beforeBytes: 'native save before entry',
     })
   })
-  it('holds a changed queued source and retains a save queued at the native rename', () => {
+  it('holds a source changed at capture and retains a save queued at native publication', () => {
     const name = process.env.OBSIDIAN_TEST_VAULT
     if (!name) throw new Error('Native replacement gate requires an exclusively leased vault')
     const result = vaultCli(name).evalAwait<any>(String.raw`(async () => {
       const root = 'ReplacementProbe-' + require('crypto').randomBytes(16).toString('hex')
       const path = root + '/sample.md', adapter = app.vault.adapter
       const original = adapter.fsPromises
-      const native = window.require('original-fs').promises, open = native.open, rename = native.rename
-      const queue = adapter.queue
-      let inQueue = false
+      const native = window.require('original-fs').promises, rename = native.rename, link = native.link
       let owned = false
       try {
         await app.vault.createFolder(root); owned = true
@@ -54,46 +52,40 @@ describe('native local-save replacement boundary', () => {
         finally { app.metadataCache.offref(ref) }
         const full = adapter.getFullPath(path)
         let injections = 0
-        adapter.queue = function(work) {
-          return queue.call(this, async () => {
-            inQueue = true
-            try { return await work() } finally { inQueue = false }
-          })
-        }
-        native.open = async function(target, ...args) {
-          const handle = await open.call(native, target, ...args)
-          if (target === full) {
-            const read = handle.read
-            handle.read = async function(...args) {
-              // Intercept the final identity read inside the local-save queue.
-              if (inQueue && injections === 0) { injections++; await original.writeFile(full, 'local-before-queued-compare') }
-              return read.apply(handle, args)
-            }
+        // Conditional publication first captures the old inode, then verifies the
+        // captured bytes. Mutate at that syscall, after its decision snapshot.
+        native.rename = async function(from, to) {
+          if (from === full && injections === 0) {
+            injections++
+            await native.writeFile(full, 'local-before-queued-compare')
           }
-          return handle
+          return rename.call(native, from, to)
         }
         const fs = new window.__abeleTest.ObsidianFileSystem(app)
         let held = false
         try { await fs.writeAtomic(path, new TextEncoder().encode('remote'), Date.now()) }
         catch (error) { held = error.code === 'conflict' }
         const before = String(await original.readFile(full, 'utf8'))
-        native.open = open
-        adapter.queue = queue
+        native.rename = rename
         await app.vault.modify(file, 'original again')
         let save = null
-        native.rename = async function(from, to) {
-          if (to === full) save = app.vault.modify(file, 'local-save-at-rename')
-          return rename.call(native, from, to)
+        let publications = 0
+        // Installation uses an exclusive link, while the adapter queue is held.
+        native.link = async function(from, to) {
+          if (to === full) {
+            publications++
+            save = app.vault.modify(file, 'local-save-at-rename')
+          }
+          return link.call(native, from, to)
         }
         const queued = new window.__abeleTest.ObsidianFileSystem(app)
         await queued.writeAtomic(path, new TextEncoder().encode('second remote'), Date.now())
         await save
         const after = String(await original.readFile(full, 'utf8'))
-        return { held, before, after, saveQueued: !!save, injections }
+        return { held, before, after, saveQueued: !!save, injections, publications }
       } finally {
-        native.open = open
         native.rename = rename
-        adapter.queue = queue
+        native.link = link
         if (owned) { const folder = app.vault.getAbstractFileByPath(root); if (folder) await app.vault.delete(folder, true) }
       }
     })()`)
@@ -101,6 +93,7 @@ describe('native local-save replacement boundary', () => {
     expect(result.injections).toBeGreaterThan(0)
     expect(result).toEqual({
       injections: 1,
+      publications: 1,
       held: true,
       before: 'local-before-queued-compare',
       after: 'local-save-at-rename',
