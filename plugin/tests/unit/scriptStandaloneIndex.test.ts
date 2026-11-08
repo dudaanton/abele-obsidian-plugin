@@ -82,11 +82,9 @@ describe('a direct script consumer after layout readiness', () => {
     } as never
     ScriptService.destroy()
     const service = ScriptService.getInstance()
-    let ready = false
-    void service.ready.then(() => {
-      ready = true
-    })
-    await vi.waitFor(() => expect(ready).toBe(true), { timeout: 200 })
+    // Nothing else is triggered here: if readiness needed another save or the background
+    // index, this await would never settle and the test timeout reports it.
+    await service.ready
     expect(service.getAll().map((s) => s.path)).toEqual(['Scripts/sample.js'])
     expect(service.toolbar).toBeNull()
   })
