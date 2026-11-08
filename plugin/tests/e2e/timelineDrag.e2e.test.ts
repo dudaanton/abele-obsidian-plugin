@@ -57,6 +57,13 @@ const probe = (footer: boolean) => String.raw`(async () => {
       const option=await until('fixture label menu option', () => [...document.querySelectorAll('.menu-item')].find(x=>x.textContent.trim().startsWith('sample-drag (')))
       option.click()
     }
+    // Task titles render on first intersection. The phone sidebar's calendar can put
+    // these rows below the viewport, so reveal them before waiting for painted text.
+    for (const name of ['Sample moving','Sample future']) {
+      const task = await until('fixture row '+name, () => root.querySelector('[data-abele-anchor="task:'+folder+'/'+name+'.md"]'))
+      task.scrollIntoView({block:'center'})
+      await until('visible task title '+name, () => task.textContent.includes(name))
+    }
     // Only the fixture's rows are mounted (the filter applied), with titles and date labels painted.
     await until('filtered task rows and painted dates', () => !document.querySelector('.menu') && ['Sample moving','Sample future'].every(n=>root.querySelector('[data-abele-anchor="task:'+folder+'/'+n+'.md"]')?.textContent.includes(n)) &&
       [...root.querySelectorAll('.abele-task-view')].every(el=>el.dataset.abeleAnchor?.startsWith('task:'+folder+'/')) &&
