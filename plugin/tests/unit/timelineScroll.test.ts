@@ -282,6 +282,31 @@ describe('timeline scroll ownership', () => {
     return () => callbacks.forEach((callback) => callback([], {} as ResizeObserver))
   }
 
+  it.each([false, true])(
+    'holds through editor end restoration before late titles (scroll event=%s)',
+    async (event) => {
+      const resize = lateResize()
+      const p = await pane(50)
+      p.owner.classList.add('cm-scroller')
+      let height = 1000
+      Object.defineProperty(p.owner, 'scrollHeight', { get: () => height })
+      await p.patch(() => p.shift(100))
+      height += 4
+      p.owner.scrollTop += 4
+      p.shift(4)
+      if (event) p.owner.dispatchEvent(new Event('scroll'))
+      resize()
+      p.shift(20)
+      height += 20
+      resize()
+      expect(p.row.getBoundingClientRect().top).toBe(50)
+      p.root.dispatchEvent(new WheelEvent('wheel', { bubbles: true }))
+      p.shift(20)
+      resize()
+      expect(p.row.getBoundingClientRect().top).toBe(70)
+    }
+  )
+
   it.each(['touchmove', 'wheel', 'keydown', 'pointerdown', 'scroll'])(
     'releases a hold acquired after touchstart on continuing %s input before late layout',
     async (type) => {

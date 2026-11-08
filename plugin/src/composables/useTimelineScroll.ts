@@ -235,6 +235,12 @@ export function useTimelineScroll(
     owner.classList.add('abele-timeline__scroll-hold')
     let heldTop = owner.scrollTop
     let heldHeight = owner.scrollHeight
+    // An editor at its end can restore the same distance from the bottom after a
+    // title grows. Reader input releases the hold separately; this is layout movement.
+    const editorRestored = () =>
+      owner.matches('.cm-scroller') &&
+      owner.scrollHeight !== heldHeight &&
+      Math.abs(owner.scrollTop - heldTop - (owner.scrollHeight - heldHeight)) <= 0.5
     // A shrinking patch can clamp scrollTop before nextTick aligns the surviving row.
     // Reserve range only across that patch; align replaces it with the exact needed room.
     // An editor which already owns anchoring also owns its patch-time scroll range.
@@ -260,7 +266,12 @@ export function useTimelineScroll(
       // scroll moved up is the layout moving, not the reader: reading never shortens the list.
       const clamped =
         owner.scrollTop < heldTop && heldHeight - owner.scrollHeight >= heldTop - owner.scrollTop
-      if (Math.abs(owner.scrollTop - heldTop) > 0.5 && !clamped && (!requested || dragging())) {
+      if (
+        Math.abs(owner.scrollTop - heldTop) > 0.5 &&
+        !clamped &&
+        !editorRestored() &&
+        (!requested || dragging())
+      ) {
         console.debug('[Abele timeline] hold released: the pane moved', {
           scrollTop: owner.scrollTop,
           heldTop,
@@ -288,6 +299,13 @@ export function useTimelineScroll(
           })
           heldTop = owner.scrollTop
           heldHeight = owner.scrollHeight
+        }
+        // A native restoration can already have kept this row in place. Retain the
+        // new editor position so the next title resize is judged against that layout.
+        if (editorRestored()) {
+          heldTop = owner.scrollTop
+          heldHeight = owner.scrollHeight
+          alignedScroll = { owner, top: owner.scrollTop }
         }
       } else {
         console.debug('[Abele timeline] hold released: its row is gone', { key, day })
@@ -328,6 +346,10 @@ export function useTimelineScroll(
     replayedClamp = requested
       ? null
       : () => {
+          if (editorRestored()) {
+            align()
+            return true
+          }
           const reserved = anchorSpace.value
           if (replayed || !reserved?.style.height) return false
           const naturalEnd = Math.max(
