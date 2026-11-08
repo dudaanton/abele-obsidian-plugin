@@ -62,7 +62,7 @@ describe.skipIf(!available)('external-file production filesystem ports on the li
       for(const when of ['before','during']){
         const target=root+'/sample-'+when+'.bin',stage=root+'/.abele-external-'+when+'.incoming',data=encode('sample incoming'),a=await artifact(stage,data)
         if(when==='before')await adapter.writeBinary(target,encode('sample occupant').buffer)
-        const raw=${onPhone() ? 'adapter' : 'adapter.fsPromises'},method=${JSON.stringify(onPhone() ? 'exists' : 'link')},real=raw[method]
+        const raw=${onPhone() ? 'adapter' : "window.require('original-fs').promises"},method=${JSON.stringify(onPhone() ? 'exists' : 'link')},real=raw[method]
         let armed=false,checks=0
         if(when==='during')raw[method]=async function(...args){
           const before=${onPhone() ? 'await real.apply(raw,args)' : 'undefined'}
@@ -98,8 +98,8 @@ describe.skipIf(!available)('external-file production filesystem ports on the li
     const out = await probe(`
       const target=root+'/sample-free.bin',stage=root+'/.abele-external-free.incoming',data=encode('sample incoming'),a=await artifact(stage,data)
       const write=adapter.writeBinary.bind(adapter),copy=adapter.copy.bind(adapter),rename=adapter.rename.bind(adapter)
-      const native=adapter.fsPromises&&typeof window.require==='function'?window.require('fs').promises:null
-      const open=native?.open,nativeCopy=adapter.fsPromises?.copyFile,nativeRename=adapter.fsPromises?.rename
+      const native=adapter.fsPromises&&typeof window.require==='function'?window.require('original-fs').promises:null
+      const open=native?.open,nativeCopy=native?.copyFile,nativeRename=native?.rename
       let writes=[],copies=0,renames=0
       // Observe this fixture's effects without intercepting independent sync staging.
       const ours=path=>typeof path==='string'&&path.startsWith(root+'/')
@@ -122,8 +122,8 @@ describe.skipIf(!available)('external-file production filesystem ports on the li
           }
           return handle
         }
-        adapter.fsPromises.copyFile=async function(...args){if(args.slice(0,2).some(nativeOurs)){copies++;throw Error('Copy is not an installer')}return nativeCopy.apply(adapter.fsPromises,args)}
-        adapter.fsPromises.rename=async function(...args){if(args.slice(0,2).some(nativeOurs))renames++;return nativeRename.apply(adapter.fsPromises,args)}
+        native.copyFile=async function(...args){if(args.slice(0,2).some(nativeOurs)){copies++;throw Error('Copy is not an installer')}return nativeCopy.apply(native,args)}
+        native.rename=async function(...args){if(args.slice(0,2).some(nativeOurs))renames++;return nativeRename.apply(native,args)}
       }
       try{
         return await host.run(serial,request([target,stage]),async op=>{
@@ -133,7 +133,7 @@ describe.skipIf(!available)('external-file production filesystem ports on the li
         })
       }finally{
         adapter.writeBinary=write;adapter.copy=copy;adapter.rename=rename
-        if(native){native.open=open;adapter.fsPromises.copyFile=nativeCopy;adapter.fsPromises.rename=nativeRename}
+        if(native){native.open=open;native.copyFile=nativeCopy;native.rename=nativeRename}
       }
     `)
     expect(out.result).toEqual({
@@ -213,8 +213,9 @@ describe.skipIf(!available)('external-file production filesystem ports on the li
       await adapter.writeBinary(target,data.buffer)
       const deleted=await host.run(serial,request([target,stage]),op=>op.deleteOriginal({path:target,sha:a.sha,size:a.size}))
       const installTarget=root+'/sample-uncertain.bin',incoming=root+'/.abele-external-uncertain.incoming',b=await artifact(incoming,data)
-      const raw=${onPhone() ? 'adapter' : 'adapter.fsPromises'},method=${JSON.stringify(onPhone() ? 'rename' : 'link')},real=raw[method].bind(raw)
-      raw[method]=async(...args)=>{await real(...args);throw Error('Sample lost acknowledgement')}
+      const raw=${onPhone() ? 'adapter' : "window.require('original-fs').promises"},method=${JSON.stringify(onPhone() ? 'rename' : 'link')},real=raw[method]
+      let injections=0
+      raw[method]=async(...args)=>{const result=await real.apply(raw,args);if(args[1]===${onPhone() ? 'installTarget' : 'adapter.getFullPath(installTarget)'}){injections++;throw Error('Sample lost acknowledgement')}return result}
       try{
         const result=await host.run(serial,request([installTarget,incoming]),async op=>{
           await op.stage(b,data)
@@ -222,11 +223,12 @@ describe.skipIf(!available)('external-file production filesystem ports on the li
           const retry=await reason(op.install(b,installTarget))
           return {outcome,retry}
         })
-        return {deleted,originalPresent:await adapter.exists(target),result,installed:await read(installTarget)}
+        return {deleted,originalPresent:await adapter.exists(target),result,installed:await read(installTarget),injections}
       }finally{raw[method]=real}
     `)
     expect(out.deleted).toEqual({ status: 'deleted', reclaimedBytes: 11 })
     expect(out.originalPresent).toBe(false)
+    expect(out.injections).toBe(1)
     expect(out.result.outcome.status).toBe('outcome-unknown')
     expect(out.result.outcome.artifacts).toHaveLength(1)
     expect(out.result.retry).toBe('recovery-required')
