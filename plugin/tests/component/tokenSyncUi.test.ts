@@ -135,6 +135,41 @@ it.each(['deleted', 'moved'] as const)(
   }
 )
 
+it.each(['deleted', 'moved'] as const)(
+  'keeps the %s root stop reason above shared member errors',
+  async (kind) => {
+    const ui = tokenUiFixture(),
+      id = ui.rows.value[0].id
+    ui.itemSets.store.create(
+      id,
+      'Sample scope',
+      [{ id: 'sample-scope', kind: 'folder', scopeId: 'root', path: '/' }],
+      { 'sample-scope': id }
+    )
+    ui.itemSets.install()
+    ui.registry.setRootIssue(id, kind === 'moved' ? { kind, path: 'Moved' } : { kind })
+    ui.registry.setStatus(id, 'error')
+    ui.publish(id, { error: 'Local sync folder is missing' })
+    const view = mount(SyncSettings, { props: { model: ui } })
+    try {
+      const row = view.findAll('.abele-sync-row')[0]
+      expect(row.text()).toContain(
+        kind === 'moved' ? 'Folder moved to Moved; sync stopped' : 'Folder is gone; sync stopped'
+      )
+      expect(row.find('.abele-status-dot_red').exists()).toBe(true)
+      expect(
+        row
+          .findAllComponents(Icon)
+          .find((one) => one.props('icon') === 'refresh-cw')!
+          .props('disabled')
+      ).toBe(true)
+    } finally {
+      view.unmount()
+      ui.itemSets.uninstall()
+    }
+  }
+)
+
 it('renders held-only warnings in the status bar and phone header until resolved', () => {
   const ui = tokenUiFixture()
   const first = ui.rows.value[0]
