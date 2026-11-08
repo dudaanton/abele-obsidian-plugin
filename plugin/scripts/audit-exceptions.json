@@ -4,7 +4,7 @@
     "paths": [
       "node_modules/@abele/sync-sdk/node_modules/zod"
     ],
-    "reason": "Validated data comes from the user's own node and sync server; migration to patched Zod is pending.",
-    "expires": "2026-11-07"
+    "reason": "Validated data comes from the user's own node and sync server; the updated SDK without the nested Zod 3 is pending its landing.",
+    "expires": "2026-11-14"
   }
 ]
