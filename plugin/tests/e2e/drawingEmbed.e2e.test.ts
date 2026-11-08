@@ -108,6 +108,8 @@ const PRELUDE = `
       return box?.isConnected && box.clientWidth > 0 && box.clientHeight > 0 && img?.complete && img.naturalWidth > 0
     })) throw new Error('embedded drawing image did not load')
     await box.querySelector('img').decode()
+    // Decode resolves before the compositor has painted the replacement resource.
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
   }
 
 `

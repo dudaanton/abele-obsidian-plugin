@@ -16,6 +16,25 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+it('waits for decoded image pixels to reach a painted frame before capture', async () => {
+  const frames: FrameRequestCallback[] = []
+  const ready = new Function('require', 'requestAnimationFrame', `${prelude}; return pictureReady`)(
+    () => ({ getCurrentWebContents: () => ({ debugger: {} }) }),
+    (callback: FrameRequestCallback) => frames.push(callback)
+  )
+  const img = { complete: true, naturalWidth: 20, decode: vi.fn().mockResolvedValue(undefined) }
+  const box = { isConnected: true, clientWidth: 20, clientHeight: 20, querySelector: () => img }
+  const done = vi.fn()
+  const pending = ready(box).then(done)
+  await vi.waitFor(() => expect(frames).toHaveLength(1))
+  expect(done).not.toHaveBeenCalled()
+  frames.shift()!(0)
+  expect(done).not.toHaveBeenCalled()
+  frames.shift()!(16)
+  await pending
+  expect(done).toHaveBeenCalledOnce()
+})
+
 it('does not use the note before its requested file and reading mode arrive', async () => {
   vi.useFakeTimers()
   const leaf = {
