@@ -171,6 +171,7 @@ export async function serverRenamedRootRecovery(s: TokenSyncLive) {
   // The stopped connection row and its window both retain the root-change reason.
   const stopped = await stoppedRow(s, id, reason)
   expect(stopped.disabled).toBe(true)
+  expect(stopped.state).toBe('paused')
   await a.long(
     'inspect server rename reason',
     `const root=await openSyncTab();connectionRow(root,${JSON.stringify(id)}).click();await poll(()=>inWindows('.abele-sync-window')?.textContent.includes(${JSON.stringify(reason)}),10000,'server rename reason in the connection window');inWindows('.abele-sync-window').closest('.modal').querySelector('.modal-close-button, .modal-header-button:has(svg.lucide-x)').click();return true`
