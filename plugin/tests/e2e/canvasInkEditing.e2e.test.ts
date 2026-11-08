@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { evalAsync } from './helpers/githubLive'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
@@ -148,10 +148,27 @@ describe.skipIf(!available)('canvas eraser and lasso with real pointer input', (
     await app.vault.createFolder(${JSON.stringify(DIR)});window.__inkEditing.owned=true
     const ink=(id,points)=>({version:1,id,tool:'pen',color:'1',size:4,points})
     await app.vault.create(path,JSON.stringify({nodes:[{id:'card',type:'text',text:'Sample card',x:0,y:0,width:400,height:200,abele:{ink:[{...ink('attached',[60,120,0.2,300,120,0.8]),frame:{width:400,height:200}}]}}],edges:[],abele:{ink:[ink('free',[20,310,0.5,340,310,0.5])]}}))
-    const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-canvas',state:{file:path},active:true});await app.workspace.revealLeaf(leaf);return true
+    window.__inkEditing.source=await app.vault.read(app.vault.getAbstractFileByPath(path));return true
   `),
     120_000
   )
+  beforeEach(async () => {
+    run(
+      `const leaf=app.workspace.getLeaf('tab');await leaf.setViewState({type:'abele-canvas',state:{file:path},active:true});await app.workspace.revealLeaf(leaf);return true`
+    )
+    await until('view()?.editor')
+    await click('Canvas drawing tools')
+  }, 120_000)
+  afterEach(async () => {
+    await until('!view()?.documentLease?.document.session.busy')
+    run(`
+      const leaves=[];app.workspace.iterateAllLeaves(leaf=>{if(leaf.view.file?.path===path)leaves.push(leaf)})
+      for(const leaf of leaves){leaf.view.documentLease?.document.discardDraft();leaf.detach()}
+      await app.vault.modify(app.vault.getAbstractFileByPath(path),window.__inkEditing.source)
+      return true
+    `)
+    expect(source()).toEqual(JSON.parse(run<string>('return window.__inkEditing.source')))
+  }, 120_000)
   afterAll(
     () =>
       run(`
@@ -164,8 +181,6 @@ describe.skipIf(!available)('canvas eraser and lasso with real pointer input', (
     120_000
   )
   it('erases whole attached strokes and cuts free strokes, with exact undo for each sweep', async () => {
-    await until('view()?.editor')
-    await click('Canvas drawing tools')
     await click('Erase whole strokes')
     await fit()
     const before = source()
@@ -269,7 +284,7 @@ describe.skipIf(!available)('canvas eraser and lasso with real pointer input', (
     await until(`document.activeElement?.matches('[data-frame-id][contenteditable="true"]')`)
     await enter()
     await until('!view().editor.controls.naming()')
-    await click('Ungroup canvas selection')
+    await click('Ungroup selected group')
     await saved()
     expect(run<boolean>('return (await read()).abele.ink.some(s=>s.id==="free"&&!s.frame)')).toBe(
       true

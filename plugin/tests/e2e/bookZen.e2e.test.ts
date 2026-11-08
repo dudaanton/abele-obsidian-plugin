@@ -442,7 +442,14 @@ describe.skipIf(!available)('zen mode', () => {
       phone?: boolean
       before?: { height: number; nav: boolean; boxes: Boxes }
       zen?: { height: number; hidden: boolean; navbarOpacity: string; header: string; boxes: Boxes }
-      peek?: { height: number; hidden: boolean; foot: boolean; footBottom: number; navTop: number }
+      peek?: {
+        height: number
+        hidden: boolean
+        foot: boolean
+        footBottom: number
+        backingBottom: number
+        navTop: number
+      }
       expired?: { hidden: boolean; foot: boolean }
       last?: Last
       after?: { height: number; hidden: boolean; boxes: Boxes }
@@ -476,7 +483,8 @@ describe.skipIf(!available)('zen mode', () => {
         height: height(view),
         hidden: document.body.classList.contains('is-hidden-nav'),
         foot: shown(f),
-        footBottom: Math.round(f.getBoundingClientRect().bottom),
+        footBottom: Math.round(f.firstElementChild.getBoundingClientRect().bottom),
+        backingBottom: Math.round(f.getBoundingClientRect().bottom),
         navTop: navbar ? Math.round(navbar.getBoundingClientRect().top) : 0,
       }
       await shot('phone-peek')
@@ -504,7 +512,10 @@ describe.skipIf(!available)('zen mode', () => {
     expect(r.peek?.foot).toBe(true)
     expect(r.peek?.height).toBe(r.zen?.height)
     // The row under the page sits above Obsidian's bar, not under it.
-    if (r.before?.nav) expect(r.peek?.footBottom).toBeLessThanOrEqual((r.peek?.navTop ?? 0) + 1)
+    if (r.before?.nav) {
+      expect(r.peek?.footBottom).toBeLessThanOrEqual((r.peek?.navTop ?? 0) + 1)
+      expect(r.peek?.backingBottom).toBe(844)
+    }
     expect(r.expired?.hidden).toBe(true)
     expect(r.expired?.foot).toBe(false)
     uncovered('phone', r.last, r.zen?.height)

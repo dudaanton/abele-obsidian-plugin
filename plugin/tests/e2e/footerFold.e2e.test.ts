@@ -39,7 +39,7 @@ interface Report {
   /** Lists that still show more than their header row once folded. */
   leftOpen: string[]
   /** The counts the folded headings show. */
-  counts: string[]
+  counts: number[]
   /** Folded lists that were open again after leaving the note and coming back. */
   forgotten: string[]
   /** aria-expanded after Enter, then after Space, on a folded heading. */
@@ -133,7 +133,8 @@ const probeScript = (tag: string): string => `(async () => {
       const title = titleOf(h)
       const now = headingFor(title)
       if (now.getAttribute('aria-expanded') !== 'false' || listOf(now).children.length !== 1) report.leftOpen.push(title)
-      report.counts.push(title + ' ' + (now.querySelector('.abele-fold-heading__count')?.textContent ?? '-'))
+      const count = now.querySelector('.abele-fold-heading__count')?.textContent ?? ''
+      report.counts.push(count.trim() ? Number(count.replace(/[,\\s\u00a0\u202f]/g, '')) : NaN)
     }
     const r = footer().getBoundingClientRect()
     for (const el of [footer(), ...footer().querySelectorAll('.abele-fold-heading, [class$="__header"] *')]) {
@@ -274,7 +275,10 @@ describe.skipIf(!available)('folding the lists under a note', () => {
       expect(r.leftOpen, label).toEqual([])
       // Only the folded header rows are left above the logs.
       expect(r.logsAfter, label).toBeLessThan(r.lists.length * 80)
-      for (const c of r.counts) expect(c, label).toMatch(/ \d+$/)
+      for (const c of r.counts) {
+        expect(Number.isInteger(c), label).toBe(true)
+        expect(c, label).toBeGreaterThanOrEqual(0)
+      }
     }
   })
 

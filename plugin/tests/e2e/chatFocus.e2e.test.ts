@@ -23,6 +23,8 @@ const script = `(async () => {
   const VIEW = 'abele-ai-sidebar-view'
   const report = {}
   const tabsBefore = [...svc.tabOrder.value]
+  const folder = 'Sample focus ' + Date.now()
+  let madeFolder = false
   const hadPanel = app.workspace.getLeavesOfType(VIEW).length > 0
 
   const decoy = document.createElement('input')
@@ -55,12 +57,18 @@ const script = `(async () => {
     app.commands.executeCommandById('abele:show-ai-sidebar')
     report.commandOpenPanel = await focusedWithin()
 
+    // A folder creation action cannot be confused with an existing blank chat row.
+    await svc.folders.create('', folder)
+    madeFolder = true
     // ── a new chat from the navigation tree ──
     elsewhere()
     const tabBefore = svc.activeTabId.value
     panelChat().querySelector('.abele-chat-switch__current').click()
-    for (let i = 0; i < 100 && !document.querySelector('.abele-chat-tree [aria-label="New chat"]'); i++) await wait(50)
-    document.querySelector('.abele-chat-tree [aria-label="New chat"]').click()
+    const create = () => [...document.querySelectorAll('.abele-chat-tree [aria-label]')].find(el => el.getAttribute('aria-label') === 'New chat in ' + folder)
+    for (let i = 0; i < 100 && !create(); i++) await wait(50)
+    if (!create()) throw Error('Folder new-chat action is missing')
+    create().click()
+    for (let i = 0; i < 100 && svc.activeTabId.value === tabBefore; i++) await wait(50)
     report.plusNewTab = svc.activeTabId.value !== tabBefore
     report.plusFocused = await focusedWithin()
 
@@ -75,6 +83,7 @@ const script = `(async () => {
     for (const id of [...svc.tabOrder.value]) {
       if (!tabsBefore.includes(id)) await svc.closeTab(id)
     }
+    if (madeFolder) await svc.folders.remove(folder)
     if (!hadPanel) for (const leaf of app.workspace.getLeavesOfType(VIEW)) leaf.detach()
   }
   return report
@@ -103,7 +112,7 @@ describe.skipIf(!available)('a new chat opens with the cursor in its composer', 
     expect(report.commandOpenPanel).toBe(true)
   })
 
-  it('from the + in the tab bar', () => {
+  it('from a folder’s new-chat control', () => {
     expect(report.plusNewTab).toBe(true)
     expect(report.plusFocused).toBe(true)
   })

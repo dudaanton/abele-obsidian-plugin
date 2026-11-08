@@ -93,11 +93,19 @@ const probe = (screen: string) => `(async () => {
     await session.approveToolCall()
     report.hiddenRemoved = !(await app.vault.adapter.exists(root + '/.sample.md'))
     session.permissionMode.value = 'allow-edit'
-    await until(() => document.querySelector('.abele-chat-write-permission'))
+    await until(() => document.querySelector('.abele-chat-input__scope-mode'))
+    if (!document.querySelector('.abele-chat-input__scope').getAttribute('aria-label').includes('Writes without asking')) throw Error('Access control does not show automatic writes')
     await shot('automatic-writes')
-    document.querySelector('.abele-chat-write-permission').click()
+    document.querySelector('.abele-chat-input__scope').click()
+    await until(() => document.querySelector('.abele-scope-mgr__group select'))
+    const permission = document.querySelector('.abele-scope-mgr__group select')
+    if (permission.value !== 'allow-edit') throw Error('Access dialog lost permission mode')
+    permission.value = 'confirm-all'
+    permission.dispatchEvent(new Event('change', { bubbles: true }))
     await until(() => session.permissionMode.value === 'confirm-all')
     report.permission = true
+    await closeModal()
+    await until(() => !document.querySelector('.abele-chat-input__scope-mode'))
     await pending('sample-stop', 'edit', { path: root + '/New/Nested/sample.md', old_string: 'Revised', new_string: 'Unfinished' })
     session.stopFromApproval('sample-stop')
     await wait(100)

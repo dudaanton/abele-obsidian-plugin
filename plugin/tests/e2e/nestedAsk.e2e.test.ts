@@ -24,10 +24,10 @@ interface Level {
   id: string
   anchorNote: string
   quote: string
-  /** The trail's levels as drawn over the messages, outermost first. */
+  /** The immediate parent control shown over the messages. */
   trail: string[]
-  /** Four levels and more: the trail as first drawn, folded — `trail` is it opened. */
-  folded?: string[]
+  /** Persisted ancestry, outermost first, independent of the compact navigation control. */
+  ancestry: string[]
   /** The ids the comment's own file lists as asked on its messages, read after the next level. */
   listed: string[]
 }
@@ -80,7 +80,7 @@ const script = `(async () => {
     .find(l => l.getRoot() === app.workspace.rightSplit || l.getRoot() === app.workspace.leftSplit)?.view.containerEl
   const row = (id) => panel()?.querySelector('.abele-ai-chat [data-message-id="' + id + '"]')
   const trail = () =>
-    [...panel()?.querySelectorAll('.abele-ai-chat .abele-breadcrumbs__item') ?? []].map((el) => el.textContent.trim())
+    [...panel()?.querySelectorAll('.abele-ai-chat .abele-chat-parent-back') ?? []].map((el) => el.getAttribute('aria-label'))
 
   /** Selects the words in a rendered message and presses "Ask here" in its action row. */
   const askOn = async (messageId, words) => {
@@ -128,10 +128,11 @@ const script = `(async () => {
     return msg.id
   }
 
-  const level = async (session, depth) => {
-    await until(() => trail().length === depth, 5000)
+  const level = async (session, parentTitle) => {
+    if (!await until(() => trail()[0] === 'Back to ' + parentTitle, 5000))
+      throw Error('Parent-back control did not reach ' + parentTitle)
     const anchor = session.anchor.value
-    return { id: session.commentId, anchorNote: anchor.note, quote: anchor.quote || '', trail: trail(), listed: [] }
+    return { id: session.commentId, anchorNote: anchor.note, quote: anchor.quote || '', trail: trail(), ancestry: (await service.trail(session)).map(step => step.title), listed: [] }
   }
 
   const listed = async (id) => {
@@ -165,29 +166,21 @@ const script = `(async () => {
     await chats.revealSidebar()
 
     const first = await askOn('a1', 'night train')
-    report.levels.push(await level(first, 2))
+    report.levels.push(await level(first, 'Nested ask probe'))
     const firstLine = await say(first, 'Which train exactly leaves at night?')
 
     const second = await askOn(firstLine, 'Which train')
-    report.levels.push(await level(second, 3))
+    report.levels.push(await level(second, 'Which train exactly leaves at night?'))
     const secondLine = await say(second, 'Is there a sleeping car on it?')
 
     const third = await askOn(secondLine, 'sleeping car')
-    // Four levels fold to the root, an ellipsis, the parent and this one; the ellipsis opens them.
-    await until(() => panel()?.querySelector('.abele-ai-chat .abele-breadcrumbs__more'), 5000)
-    const folded = trail()
-    const more = panel()?.querySelector('.abele-ai-chat .abele-breadcrumbs__more')
-    if (!more) throw new Error('a trail of four levels did not fold')
-    more.click()
-    report.levels.push(await level(third, 4))
-    report.levels[2].folded = folded
+    report.levels.push(await level(third, 'Is there a sleeping car on it?'))
     await shoot('desktop-level3')
 
     for (const l of report.levels) l.listed = await listed(l.id)
 
-    // Back up one level through the opened trail: chat, first, second, third — the third item.
-    const crumbs = [...panel().querySelectorAll('.abele-ai-chat .abele-breadcrumbs__item')]
-    crumbs[2].click()
+    // The parent-back control returns to the message anchoring this child.
+    panel().querySelector('.abele-ai-chat .abele-chat-parent-back').click()
     await until(() => chats.activeSession.value && chats.activeSession.value.commentId === second.commentId, 5000)
     report.backTo = chats.activeSession.value ? chats.activeSession.value.commentId : ''
     await until(() => row(secondLine) && row(secondLine).querySelector('.abele-comment__quote'), 5000)
@@ -261,24 +254,21 @@ describe.runIf(available)('asking inside a comment, three levels down', () => {
     expect(third.listed).toEqual([])
   })
 
-  it('drew the trail one level longer at every depth, folding it past three', () => {
-    const [first, second, third] = report.levels
-    expect(first.trail).toEqual(['Nested ask probe', 'night train'])
-    expect(second.trail).toEqual([
-      'Nested ask probe',
-      'Which train exactly leaves at night?',
-      'Which train',
+  it('shows the immediate parent at every depth', () => {
+    expect(report.levels.map((level) => level.ancestry)).toEqual([
+      ['Nested ask probe', 'night train'],
+      ['Nested ask probe', 'Which train exactly leaves at night?', 'Which train'],
+      [
+        'Nested ask probe',
+        'Which train exactly leaves at night?',
+        'Is there a sleeping car on it?',
+        'sleeping car',
+      ],
     ])
-    expect(third.folded).toEqual([
-      'Nested ask probe',
-      'Is there a sleeping car on it?',
-      'sleeping car',
-    ])
-    expect(third.trail).toEqual([
-      'Nested ask probe',
-      'Which train exactly leaves at night?',
-      'Is there a sleeping car on it?',
-      'sleeping car',
+    expect(report.levels.map((level) => level.trail)).toEqual([
+      ['Back to Nested ask probe'],
+      ['Back to Which train exactly leaves at night?'],
+      ['Back to Is there a sleeping car on it?'],
     ])
   })
 
