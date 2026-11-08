@@ -27,7 +27,7 @@ describe('build compression', () => {
       expect(result).toEqual({
         minify: mode !== 'development' ? 'esbuild' : false,
         misplaced: false,
-        environment: mode !== 'development' ? 'production' : 'development',
+        environment: mode === 'production' ? 'production' : 'development',
         testApiFenced: mode === 'production',
         sharing: mode === 'sharing-test',
       })
