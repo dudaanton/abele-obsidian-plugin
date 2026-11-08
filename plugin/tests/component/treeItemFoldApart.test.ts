@@ -3,6 +3,33 @@ import { mount } from '@vue/test-utils'
 import TreeItem from '@/components/obsidian/TreeItem.vue'
 
 describe('independent tree disclosure', () => {
+  it('waits for a closing host menu before focusing the rename editor', async () => {
+    const menu = document.createElement('div')
+    menu.className = 'menu'
+    document.body.append(menu)
+    const row = mount(TreeItem, {
+      attachTo: document.body,
+      props: { text: 'Sample name', renaming: true },
+    })
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      const editor = row.get('[contenteditable]').element
+      expect(document.activeElement).not.toBe(editor)
+      // The phone menu restores focus as its dismissal animation finishes.
+      const prior = document.createElement('button')
+      menu.append(prior)
+      prior.focus()
+      menu.remove()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(document.activeElement).toBe(editor)
+      expect(document.getSelection()?.toString()).toBe('Sample name')
+      expect(row.emitted('rename')).toBeUndefined()
+      expect(row.emitted('rename-cancel')).toBeUndefined()
+    } finally {
+      row.unmount()
+      menu.remove()
+    }
+  })
   it('commits before the host document keymap can consume Enter', async () => {
     const hostKey = (event: KeyboardEvent) => event.stopImmediatePropagation()
     document.addEventListener('keydown', hostKey, true)

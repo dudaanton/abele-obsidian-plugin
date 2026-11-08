@@ -195,22 +195,43 @@ watch(
   },
   { flush: 'post' }
 )
-onBeforeUnmount(detachRenameKey)
+let menuObserver: MutationObserver | undefined
+const stopWaitingForMenu = () => {
+  menuObserver?.disconnect()
+  menuObserver = undefined
+}
+onBeforeUnmount(() => {
+  detachRenameKey()
+  stopWaitingForMenu()
+})
 watch(
   () => props.renaming,
   async (editing) => {
+    stopWaitingForMenu()
     if (!editing) return
     renameFinished = false
     renameText.value = props.text
     await nextTick()
-    editor.value?.focus()
-    if (editor.value) {
-      const range = editor.value.ownerDocument.createRange()
-      range.selectNodeContents(editor.value)
-      const selection = editor.value.ownerDocument.getSelection()
+    const element = editor.value
+    if (!element || !props.renaming) return
+    const doc = element.ownerDocument
+    const focusEditor = () => {
+      // Host menu actions run before the phone dismissal animation has finished.
+      // Taking focus now can blur the editor again and commit an untouched name.
+      if (doc.querySelector('.menu')) return
+      stopWaitingForMenu()
+      if (!props.renaming || editor.value !== element || renameFinished) return
+      element.focus()
+      const range = doc.createRange()
+      range.selectNodeContents(element)
+      const selection = doc.getSelection()
       selection?.removeAllRanges()
       selection?.addRange(range)
     }
+    if (doc.querySelector('.menu')) {
+      menuObserver = new MutationObserver(focusEditor)
+      menuObserver.observe(doc.body, { childList: true, subtree: true })
+    } else focusEditor()
   },
   { immediate: true }
 )
