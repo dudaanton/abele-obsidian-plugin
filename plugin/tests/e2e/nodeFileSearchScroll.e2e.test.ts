@@ -39,6 +39,8 @@ async function scenario(shell: string) {
           else {leaf.view.editing.stop();leaf.view.file.mode.value=${JSON.stringify(mode === 'diff' ? 'diff' : 'file')};}
           await wait(200);if(${JSON.stringify(mode)}==='diff')await until(()=>leaf.view.contentEl.querySelector('.abele-diff'),'Comparison before find',15000);
           const root=leaf.view.contentEl;
+          // Each entry starts a fresh search, rather than inheriting the last selected match.
+          for(const content of root.querySelectorAll('.cm-content')){const view=api.codeView(content.closest('.cm-editor'));view?.dispatch({selection:{anchor:0}})}
           if(${JSON.stringify(entry)}==='button')root.querySelector('[data-node-find]').click();
           else if(${JSON.stringify(entry)}==='command')app.commands.executeCommandById('editor:open-search');
           else {const focus=root.querySelector('.cm-content')??root.querySelector('.abele-file-view');focus.tabIndex=-1;focus.focus();const web=require('@electron/remote').getCurrentWebContents(),modifiers=require('process').platform==='darwin'?['meta']:['control'];web.sendInputEvent({type:'keyDown',keyCode:'F',modifiers});web.sendInputEvent({type:'keyUp',keyCode:'F',modifiers});}

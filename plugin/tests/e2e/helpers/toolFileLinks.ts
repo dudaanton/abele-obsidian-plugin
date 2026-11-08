@@ -2,13 +2,28 @@ import { expect } from 'vitest'
 import { evalLong } from './obsidianCli'
 import { withEmulatedPhone } from './emulatedPhone'
 import { shotDir } from './shots'
+import { startPairedNode } from './pairedNode'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 
 /** Synthetic saved calls and a synthetic node presenter; no provider is started. */
 export async function checkToolFileLinks(node: boolean, phone: boolean) {
   const shots = shotDir('tool-file-links')
   const run = async () => {
-    const result = JSON.parse(
-      await evalLong(`(async () => {
+    const paired = node ? await startPairedNode() : null
+    try {
+      if (paired) {
+        for (const path of ['src/sample.ts', 'src/other.ts', 'Sample/single-read.md']) {
+          const file = resolve(paired.state, '../sample-project', path)
+          mkdirSync(dirname(file), { recursive: true })
+          writeFileSync(
+            file,
+            Array.from({ length: 12 }, (_, i) => `// Sample line ${i + 1}`).join('\n')
+          )
+        }
+      }
+      const result = JSON.parse(
+        await evalLong(`(async () => {
       const T=window.__abeleTest, chats=T.ChatService.getInstance(), prior=chats.activeTabId.value
       const wait=ms=>new Promise(r=>setTimeout(r,ms))
       const until=async fn=>{for(let i=0;i<120;i++){const v=fn();if(v)return v;await wait(50)}throw Error('File links did not render')}
@@ -28,6 +43,15 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
       if(node)messages.push({id:'sample-code-citation',role:'assistant',timestamp:30,content:'See [src/sample.ts:3-7](src/sample.ts:3-7), \`src/other.ts:9\`, and [the web revision](https://example.test/code).',toolName:undefined})
       const opened=[]
       const presenter={id:'sample-file-links-node',reference:{kind:'node-session',nodeId:'sample-node',registrationId:'sample-registration',sessionId:'sample-session',title:'Sample file calls'},label:{value:'Sample file calls'},provider:{value:'claude'},state:{value:'idle'},isStreaming:{value:false},connection:{state:{value:'connected'},error:{value:''}},error:{value:''},draft:{value:{text:'',attachments:[]}},queued:{value:[]},rejected:{value:[]},messages:{value:messages},projection:{value:{activeRuns:[],queuedInputs:[],children:{},artifacts:[],unknown:[],prompts:[]}},send:async()=>{},answer:async()=>{},cancelInput:async()=>{},interrupt:async()=>{},openResource:path=>opened.push(path),destroy:()=>{}}
+      const pairing=${JSON.stringify(paired && { node: paired.node, registration: paired.registration, project: paired.project })}
+      if(node){
+        const client=T.NodeService.getInstance().connection(pairing.registration).client
+        const rows=await client.repository.worktrees({project_id:pairing.project}),target=rows.entries.find(row=>row.kind==='root')
+        presenter.reference.nodeId=pairing.node;presenter.reference.registrationId=pairing.registration
+        presenter.binding={value:{project_id:pairing.project,target:{kind:'worktree',worktree_id:target.worktree_id}}}
+      }
+      const openedFile=path=>app.workspace.getLeavesOfType('abele-node-file').find(leaf=>leaf.view.getState().target?.registrationId===pairing?.registration&&leaf.view.getState().path===path)
+      const follow=async(path,activate)=>{activate();const leaf=await until(()=>openedFile(path.replace(/:\\d+(?:-\\d+)?$/,'')));opened.push(path);leaf.detach();await app.workspace.revealLeaf(owned)}
       const root=()=>owned.view.containerEl
       const links=()=>[...root().querySelectorAll('.abele-chat-tool-files [role="link"]')].filter(el=>el.getBoundingClientRect().width)
       const shot=async state=>{await wait(150);require('fs').writeFileSync(${JSON.stringify(shots + '/')}+(node?'node-':'chat-')+${JSON.stringify(phone ? 'phone-' : 'desktop-')}+state+'.png',(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG())}
@@ -40,7 +64,7 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
             active:chats.activeTabId.value,session:root().querySelector('.abele-node-chat')?.dataset.sessionId,
             runs:[...root().querySelectorAll('[data-run-ids]')].map(el=>({ids:el.dataset.runIds,open:el.querySelector('[aria-expanded]')?.getAttribute('aria-expanded')}))}))
         }
-        if(node){await until(()=>root().querySelectorAll('a[data-node-resource]').length>=2);const citations=[...root().querySelectorAll('a[data-node-resource]')];for(const path of ['src/sample.ts:3-7','src/other.ts:9']){const link=citations.find(a=>a.getAttribute('data-node-resource')===path);if(!link)throw Error('Code citation missing: '+path);link.click()}citations.find(a=>a.getAttribute('data-node-resource')==='src/sample.ts:3-7').scrollIntoView({block:'center'});await shot('code-citations')}
+        if(node){await until(()=>root().querySelectorAll('a[data-node-resource]').length>=2);const citations=[...root().querySelectorAll('a[data-node-resource]')];for(const path of ['src/sample.ts:3-7','src/other.ts:9']){const link=citations.find(a=>a.getAttribute('data-node-resource')===path);if(!link)throw Error('Code citation missing: '+path);await follow(path,()=>link.click())}citations.find(a=>a.getAttribute('data-node-resource')==='src/sample.ts:3-7').scrollIntoView({block:'center'});await shot('code-citations')}
         const folded=links().map(el=>el.textContent)
         const singleGeometry=()=>singlePaths.map(path=>{
           const el=links().find(el=>el.title===path),row=el?.closest('.tree-item-self'),name=row?.querySelector('.abele-tree-item__text')
@@ -62,7 +86,7 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
         await shot('folded-long-missing')
         links()[0].scrollIntoView({block:'start'});await shot('folded-single-actions')
         links()[links().length-1].scrollIntoView({block:'end'});await shot('folded-multi-file')
-        if(node){links()[0].dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await wait(50)}
+        if(node)await follow(paths[0],()=>links()[0].dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})))
         root().querySelectorAll('.abele-chat-run > .tree-item-self').forEach(el=>el.click())
         await until(()=>root().querySelector('.abele-chat-run__calls .abele-chat-tool-files'))
         const expanded=links().map(el=>el.textContent)
@@ -82,24 +106,28 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
         if(!node){await session.save();chatFile=session.currentChatFile.value;await chats.closeTab(tab);await chats.openChatFile(chatFile);session=chats.getSessionByFile(chatFile.path);tab=session.id;await until(()=>links().length===paths.length);reopened=links().map(el=>el.textContent);reopenedGeometry=singleGeometry();await shot('reopened')}
         return JSON.stringify({paths,expandedPaths,folded,expanded,reopened,opened,geometry,reopenedGeometry,foldedClipped,expandedClipped,cramped,squeezed,cutNames})
       } finally {
+        if(node)for(const leaf of app.workspace.getLeavesOfType('abele-node-file'))if(leaf.view.getState().target?.registrationId===pairing.registration)leaf.detach()
         if(node){chats.nodeSessions.delete(tab);chats.tabOrder.value=chats.tabOrder.value.filter(id=>id!==tab)}else{if(tab)await chats.closeTab(tab);if(chatFile)await app.vault.delete(chatFile)}
         chats.activeTabId.value=prior;owned.detach()
       }
     })()`)
-    )
-    const names = result.paths.map((path: string) => path.split('/').pop()!.replace(/\.md$/i, ''))
-    expect(result.folded).toEqual(names)
-    expect(result.expanded).toEqual(result.expandedPaths)
-    expect(result.reopened).toEqual(names)
-    expect(result.geometry).toEqual([true, true, true, true])
-    expect(result.reopenedGeometry).toEqual([true, true, true, true])
-    expect(result.foldedClipped).toEqual([])
-    expect(result.expandedClipped).toEqual([])
-    expect(result.cramped).toEqual([])
-    expect(result.squeezed).toEqual([])
-    expect(result.cutNames).toEqual([])
-    if (node)
-      expect(result.opened).toEqual(['src/sample.ts:3-7', 'src/other.ts:9', result.paths[0]])
+      )
+      const names = result.paths.map((path: string) => path.split('/').pop()!.replace(/\.md$/i, ''))
+      expect(result.folded).toEqual(names)
+      expect(result.expanded).toEqual(result.expandedPaths)
+      expect(result.reopened).toEqual(names)
+      expect(result.geometry).toEqual([true, true, true, true])
+      expect(result.reopenedGeometry).toEqual([true, true, true, true])
+      expect(result.foldedClipped).toEqual([])
+      expect(result.expandedClipped).toEqual([])
+      expect(result.cramped).toEqual([])
+      expect(result.squeezed).toEqual([])
+      expect(result.cutNames).toEqual([])
+      if (node)
+        expect(result.opened).toEqual(['src/sample.ts:3-7', 'src/other.ts:9', result.paths[0]])
+    } finally {
+      await paired?.close()
+    }
   }
   if (phone) await withEmulatedPhone(run)
   else await run()

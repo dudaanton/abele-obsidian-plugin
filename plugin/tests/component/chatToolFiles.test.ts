@@ -20,7 +20,7 @@ import { toolSummary } from '@/ai/toolLine'
 vi.mock('@/node/nodeChatPlace', () => ({ openNodeChatResource: vi.fn() }))
 vi.mock('@/ai/openChat', () => ({ openVaultFile: vi.fn() }))
 
-it('keeps provider paths visible across single calls and a folded multi-file run', () => {
+it('keeps provider paths visible across single calls and a folded multi-file run', async () => {
   useVault([])
   const singles = ['read', 'write', 'node_write', 'read'].flatMap((toolName, i) => [
     call({ id: `single-${i}`, toolName, toolParams: { path: `Sample/single-${i}.md` } }),
@@ -48,6 +48,10 @@ it('keeps provider paths visible across single calls and a folded multi-file run
       'Sample/created.md',
       'Sample/missing.md',
     ])
+    for (const row of view.findAll('.abele-chat-run > .tree-item-self')) await row.trigger('click')
+    expect(
+      view.findAll('.abele-chat-run__calls .abele-chat-tool-files [role="link"]')
+    ).toHaveLength(11)
   } finally {
     view.unmount()
   }
