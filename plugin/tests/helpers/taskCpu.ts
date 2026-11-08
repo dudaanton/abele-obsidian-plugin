@@ -2,7 +2,7 @@ import { createHook } from 'node:async_hooks'
 
 type Sample = { user: number; system: number }
 
-/** CPU consumed by one host task, including its promise/nextTick continuations.
+/** Current-thread CPU over a measurement and each host task, including microtasks.
  * Wall-clock gaps also contain scheduler suspension and I/O wait, neither of which
  * is synchronous renderer work. Other test workers and native I/O threads are excluded.
  */
@@ -13,6 +13,7 @@ export class TaskCpu {
   ).threadCpuUsage.bind(process)
   private started = this.micros()
   private wallStarted = performance.now()
+  totalMs = 0
   longestMs = 0
   longestWallMs = 0
   tasks = 0
@@ -40,7 +41,9 @@ export class TaskCpu {
   private boundary(): void {
     const now = this.micros()
     const wall = performance.now()
-    this.longestMs = Math.max(this.longestMs, (now - this.started) / 1000)
+    const elapsedMs = (now - this.started) / 1000
+    this.totalMs += elapsedMs
+    this.longestMs = Math.max(this.longestMs, elapsedMs)
     this.longestWallMs = Math.max(this.longestWallMs, wall - this.wallStarted)
     this.started = now
     this.wallStarted = wall

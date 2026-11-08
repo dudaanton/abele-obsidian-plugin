@@ -21,6 +21,7 @@ it('excludes a parked thread but includes synchronous work and promise continuat
   parked.stop()
   expect(parked.longestWallMs).toBeGreaterThanOrEqual(50)
   expect(parked.longestMs).toBeLessThan(50)
+  expect(parked.totalMs).toBeLessThan(50)
 
   const blocked = new TaskCpu()
   try {
@@ -32,6 +33,7 @@ it('excludes a parked thread but includes synchronous work and promise continuat
     blocked.stop()
   }
   expect(blocked.longestMs).toBeGreaterThanOrEqual(50)
+  expect(blocked.totalMs).toBeGreaterThanOrEqual(50)
 })
 
 it('starts a fresh CPU allowance only after a real host task boundary', async () => {
@@ -44,6 +46,7 @@ it('starts a fresh CPU allowance only after a real host task boundary', async ()
   } finally {
     monitor.stop()
   }
+  expect(monitor.totalMs).toBeGreaterThanOrEqual(60)
   expect(monitor.tasks).toBeGreaterThanOrEqual(6)
   expect(monitor.longestMs).toBeLessThan(50)
 })

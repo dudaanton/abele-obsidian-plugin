@@ -22,6 +22,19 @@ import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { TaskCpu } from '../helpers/taskCpu'
 import { buildFakeVault } from '../helpers/fakeVault'
 
+// Keep wall latency diagnostic: the capped train can suspend this process between tasks.
+async function measured<T>(work: () => Promise<T>) {
+  const cpu = new TaskCpu()
+  const started = performance.now()
+  let result: T
+  try {
+    result = await work()
+  } finally {
+    cpu.stop()
+  }
+  return { result, cpu, ms: performance.now() - started }
+}
+
 it.each(['pull', 'upload'] as const)(
   'settles a watched 33000-file native vault after %s without another full filesystem pass or content read',
   async (phase) => {
@@ -36,7 +49,8 @@ it.each(['pull', 'upload'] as const)(
       sha = await sha256(bytes)
     const paths = Array.from({ length: count }, (_, i) => `Notes/Section ${i % 16}/Sample ${i}.bin`)
     let probes = 0,
-      reads = 0
+      reads = 0,
+      enumeratedEntries = 0
     const native = new Proxy(disk, {
       get(target, key) {
         const value = Reflect.get(target, key)
@@ -44,7 +58,13 @@ it.each(['pull', 'upload'] as const)(
         return (...args: unknown[]) => {
           if (['stat', 'lstat', 'realpath', 'readdir'].includes(String(key))) probes++
           if (['readFile', 'open'].includes(String(key))) reads++
-          return value.apply(target, args)
+          const result = value.apply(target, args)
+          if (key === 'readdir')
+            return result.then((rows: unknown[]) => {
+              enumeratedEntries += rows.length
+              return rows
+            })
+          return result
         }
       },
     })
@@ -176,17 +196,23 @@ it.each(['pull', 'upload'] as const)(
       expect(engine.status.state).toBe('idle')
       expect((await state.get(paths.at(-1)!))?.versionId).toBe(tail.version_id)
       expect(phase === 'pull' ? completed?.pull.applied : completed?.push.applied).toBe(1)
-      probes = reads = 0
-      const started = performance.now()
-      await engine.sync()
-      console.log('native idle cycle', { probes, reads, ms: performance.now() - started })
+      probes = reads = enumeratedEntries = 0
+      const idle = await measured(() => engine!.sync())
+      console.log('native idle cycle', {
+        probes,
+        reads,
+        enumeratedEntries,
+        ms: idle.ms,
+        cpuMs: idle.cpu.totalMs,
+      })
       expect(engine.status.state).toBe('idle')
       expect(probes).toBeLessThan(128)
       expect(reads).toBe(0)
-      expect(performance.now() - started).toBeLessThan(5000)
+      expect(enumeratedEntries).toBeLessThan(128)
+      expect(idle.cpu.totalMs).toBeLessThan(5000)
 
       now += 300000
-      probes = reads = 0
+      probes = reads = enumeratedEntries = 0
       // Keep timer gaps as diagnostics, but cap synchronous task CPU below. The test
       // runner may suspend this process while enforcing a shared CPU allowance.
       let lastTurn = performance.now(),
@@ -211,6 +237,8 @@ it.each(['pull', 'upload'] as const)(
       console.log('native periodic inspection', {
         probes,
         reads,
+        enumeratedEntries,
+        threadCpuMs: taskCpu.totalMs,
         ms: performance.now() - inspectionStart,
         cpuMs: (cpu.user + cpu.system) / 1000,
         longestTaskBoundMs,
@@ -221,7 +249,11 @@ it.each(['pull', 'upload'] as const)(
       expect(taskCpu.longestMs).toBeLessThan(50)
       expect(probes).toBeGreaterThan(count)
       expect(reads).toBe(0)
-      expect(performance.now() - inspectionStart).toBeLessThan(5000)
+      // A periodic cycle inventories files and directories: two probes/enumerations
+      // per file plus fixed scope/private-directory work, never an extra full pass.
+      expect(probes).toBeLessThan(count * 2 + 1024)
+      expect(enumeratedEntries).toBeLessThan(count * 2 + 1024)
+      expect(taskCpu.totalMs).toBeLessThan(5000)
       expect(engine.status.state).toBe('idle')
 
       let since = 0
@@ -237,27 +269,36 @@ it.each(['pull', 'upload'] as const)(
         prev_path: null,
         kind: 'attachment',
       }))
-      probes = reads = 0
-      const echoStart = performance.now()
-      const echo = await pull(
-        {
-          ...client,
-          changes: async () => {
-            const items = changes.slice(since, since + 1000)
-            since += items.length
-            return { items, head_seq: 34002, next_since: items.at(-1)?.seq ?? 34002 }
-          },
-        } as EngineClient,
-        coreFs,
-        state,
-        { filter: { excluded: () => false }, dirty: new Set(), expected: new ExpectedWrites() }
+      probes = reads = enumeratedEntries = 0
+      const echoes = await measured(() =>
+        pull(
+          {
+            ...client,
+            changes: async () => {
+              const items = changes.slice(since, since + 1000)
+              since += items.length
+              return { items, head_seq: 34002, next_since: items.at(-1)?.seq ?? 34002 }
+            },
+          } as EngineClient,
+          coreFs,
+          state,
+          { filter: { excluded: () => false }, dirty: new Set(), expected: new ExpectedWrites() }
+        )
       )
-      console.log('native own echoes', { probes, reads, ms: performance.now() - echoStart })
+      const echo = echoes.result
+      console.log('native own echoes', {
+        probes,
+        reads,
+        enumeratedEntries,
+        ms: echoes.ms,
+        cpuMs: echoes.cpu.totalMs,
+      })
       expect(echo.cursor).toBe(34002)
       expect(echo.applied).toBe(0)
       expect(probes).toBeLessThan(128)
       expect(reads).toBe(0)
-      expect(performance.now() - echoStart).toBeLessThan(5000)
+      expect(enumeratedEntries).toBeLessThan(128)
+      expect(echoes.cpu.totalMs).toBeLessThan(5000)
       await engine.stop()
       // Rebuild only the adapter/engine, retaining committed paired-file evidence.
       const restarted = new ObsidianFileSystem(app as never, { ledger: state, fileScope: 'Notes' })
