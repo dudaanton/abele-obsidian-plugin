@@ -168,7 +168,7 @@ describe.skipIf(!available)('file blame on a phone', () => {
       marked: boolean
       lateRange: boolean
       count: number
-      toggleScrolledAway: boolean
+      togglePinned: boolean
       toggleHit: boolean
       toggledOff: boolean
     }>(`(async () => {
@@ -195,10 +195,8 @@ describe.skipIf(!available)('file blame on a phone', () => {
       main.dispatchEvent(new Event('wheel', { bubbles: true }))
       main.scrollTop += 240
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-      // Only the path remains pinned. Blame stays reachable by returning to the top.
-      report.toggleScrolledAway = toggle.getBoundingClientRect().bottom <= main.getBoundingClientRect().top && main.scrollTop - initial > 200
-      main.scrollTop = 0
-      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      // File actions stay pinned with the path while reading deeper in the file.
+      report.togglePinned = toggle.getBoundingClientRect().top >= main.getBoundingClientRect().top && toggle.getBoundingClientRect().bottom <= main.getBoundingClientRect().bottom && main.scrollTop - initial > 200
       const box = toggle.getBoundingClientRect()
       const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
       report.toggleHit = toggle === hit || toggle.contains(hit)
@@ -215,7 +213,7 @@ describe.skipIf(!available)('file blame on a phone', () => {
     expect(report.marked).toBe(true)
     expect(report.lateRange).toBe(true)
     expect(report.count).toBeLessThan(100)
-    expect(report.toggleScrolledAway).toBe(true)
+    expect(report.togglePinned).toBe(true)
     expect(report.toggleHit).toBe(true)
     expect(report.toggledOff).toBe(true)
   })
