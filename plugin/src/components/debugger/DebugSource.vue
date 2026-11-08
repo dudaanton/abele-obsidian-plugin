@@ -301,6 +301,7 @@ async function draw() {
     const drawn = viewer
     unpin = pinIntoView(host.value, () => drawn.targetTop(), {
       context: (scrollParent(host.value)?.clientHeight ?? 192) / 2,
+      keepVisibleInShortPane: true,
     })
   }
   console.debug('[debugger] Source mounted', props.path, props.line)
