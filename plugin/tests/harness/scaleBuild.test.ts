@@ -5,6 +5,7 @@ import { promisify } from 'node:util'
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, writeFile, readFile, rm, symlink } from 'node:fs/promises'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import {
   installSdkTarball,
   verifyPreparedSdk,
@@ -17,9 +18,7 @@ const execute = promisify(execFile)
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex')
 
 async function fixture() {
-  const scratch = join(process.cwd(), '.scratch')
-  await mkdir(scratch, { recursive: true })
-  const root = await mkdtemp(join(scratch, 'scale-build-'))
+  const root = await mkdtemp(join(tmpdir(), 'scale-build-'))
   const plugin = join(root, 'plugin'),
     source = join(root, 'input/package')
   await mkdir(plugin, { recursive: true })

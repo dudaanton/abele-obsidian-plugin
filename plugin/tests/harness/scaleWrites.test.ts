@@ -2,6 +2,7 @@
 import { expect, it } from 'vitest'
 import { createRequire } from 'node:module'
 import * as fsp from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -141,7 +142,7 @@ it('preserves filesystem errors and fails observation closed without breaking an
 
 it('observes native handle writes and atomic installs without altering results, then restores the ports', async () => {
   const { observeWrites } = require('../scale/writes.cjs')
-  const root = await fsp.mkdtemp(join(process.cwd(), '.scratch/scale-writes-'))
+  const root = await fsp.mkdtemp(join(tmpdir(), 'scale-writes-'))
   const native = { ...fsp }
   const adapter = {
     getBasePath: () => root,

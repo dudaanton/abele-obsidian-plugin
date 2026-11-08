@@ -3,6 +3,7 @@ import { expect, it } from 'vitest'
 import { mkdtemp, mkdir, copyFile, readFile, rm, stat } from 'node:fs/promises'
 import * as fs from 'node:fs'
 import { join, isAbsolute } from 'node:path'
+import { tmpdir } from 'node:os'
 import { runInNewContext } from 'node:vm'
 import { createRequire } from 'node:module'
 import { qualificationScenario, qualificationInstrumentation } from './qualification-config.mjs'
@@ -43,8 +44,7 @@ it('renderer-loaded harness modules never require a relative local specifier', a
 })
 
 async function deployed(mode: string, check: (config: any, root: string) => Promise<void>) {
-  await mkdir('.scratch', { recursive: true })
-  const root = await mkdtemp(join(process.cwd(), '.scratch/observer-config-'))
+  const root = await mkdtemp(join(tmpdir(), 'observer-config-'))
   try {
     const observer = join(root, '.obsidian/plugins/scale-observer')
     await mkdir(observer, { recursive: true })

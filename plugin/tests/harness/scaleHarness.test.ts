@@ -4,8 +4,9 @@ import { createServer } from 'node:http'
 import { once } from 'node:events'
 import { gzipSync } from 'node:zlib'
 import { runInNewContext } from 'node:vm'
-import { mkdir, mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { planVault, contentChunk, shapes } from '../scale/generate.mjs'
 import {
   compareInventory,
@@ -448,9 +449,7 @@ describe('scale harness independent guarantees', () => {
     ).toContainEqual({ path: files[2].path, kind: 'extra' })
   })
   it('accepts a framed CLI reply even while a descendant keeps its output pipe open', async () => {
-    const parent = join(process.cwd(), '.scratch')
-    await mkdir(parent, { recursive: true })
-    const root = await mkdtemp(join(parent, 'scale-cli-'))
+    const root = await mkdtemp(join(tmpdir(), 'scale-cli-'))
     const cli = join(root, 'sample-cli.cjs'),
       pidFile = join(root, 'holder.pid')
     await writeFile(
