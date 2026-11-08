@@ -2087,6 +2087,22 @@ it.each(['root', 'member'] as const)(
 async function checkFolderInspection(allStartup: boolean) {
   const fixture = inspectionFixture(false, 'Notes')
   const { app, ui, host, registry, probe, release, encoded } = fixture
+  // Runtime registration precedes its asynchronous file scan. Hold that scan so
+  // this test always exercises the ordering that a loaded worker can expose.
+  const scan = deferred<void>()
+  const inspected = deferred<void>()
+  const read = probe.getMockImplementation()!
+  probe.mockImplementation(async (path) => {
+    if (path === 'Notes/slow.txt') inspected.resolve()
+    return read(path)
+  })
+  const originalList = ObsidianFileSystem.prototype.list
+  const files = vi.spyOn(ObsidianFileSystem.prototype, 'list').mockImplementation(async function* (
+    this: ObsidianFileSystem
+  ) {
+    await scan.promise
+    yield* originalList.call(this)
+  })
   for (let i = 0; i < 200; i++) await app.vault.create(`Private/item-${i}.txt`, 'private')
   const list = vi.spyOn(app.vault.adapter, 'list')
   let inspectionLists: string[] = []
@@ -2101,16 +2117,24 @@ async function checkFolderInspection(allStartup: boolean) {
     await ui.connect(encoded)
     const id = registry.records()[0].id
     await vi.waitFor(() => expect(ui.runtimes.has(id)).toBe(true))
+    expect(probe.mock.calls.some(([path]) => path === 'Notes/slow.txt')).toBe(false)
+    scan.resolve()
+    // Wait for the actual owned-file read, not registration of its runtime.
+    // The existing case timeout bounds this one-file inspection; no polling/sleep.
+    await inspected.promise
+    await ui.sync(id)
     const directories = allStartup ? list.mock.calls.map(([path]) => path) : inspectionLists
     expect(directories.some((path) => path === '' || path.startsWith('Private'))).toBe(false)
     expect(probe.mock.calls.some(([path]) => path.startsWith('Private/'))).toBe(false)
     expect(probe.mock.calls.some(([path]) => path === 'Notes/slow.txt')).toBe(true)
   } finally {
+    scan.resolve()
     release()
     probe.mockRestore()
     list.mockRestore()
     recovery.mockRestore()
     await host.close()
+    files.mockRestore()
   }
 }
 
