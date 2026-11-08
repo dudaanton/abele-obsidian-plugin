@@ -6,7 +6,28 @@ import { parse, list } from 'postcss'
  */
 export function timelineStructuralCss(css: string, appearance = false): string {
   const root = parse(css)
+  const shells = new WeakSet<object>()
   root.walkRules((rule) => {
+    if (shells.has(rule)) return
+    const placement = list
+      .comma(rule.selector)
+      .filter((selector) => /\.abele-timeline__date-block$/.test(selector))
+    if (placement.length) {
+      const positions = rule.nodes.filter(
+        (node) => node.type === 'decl' && node.prop === 'position'
+      )
+      if (!appearance && positions.length) {
+        // The separator introduced a containing block. Keep that paint coordinate
+        // system in both captures; changing it also changes fractional label-dot AA.
+        const shell = rule.clone({ selector: placement.join(', ') })
+        shell.removeAll()
+        for (const position of positions) shell.append(position.clone())
+        shells.add(shell)
+        rule.before(shell)
+      } else if (appearance && placement.length === list.comma(rule.selector).length) {
+        for (const position of positions) position.remove()
+      }
+    }
     const selectors = list.comma(rule.selector).filter((selector) => {
       const dateBlock =
         /\.(?:timeline__date\b|abele-timeline__(?:date-|block-content\b|tasks\b|no-tasks\b|completed-toggle\b))/.test(

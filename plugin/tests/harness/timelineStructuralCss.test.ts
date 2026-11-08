@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { timelineStructuralCss } from '../e2e/contracts/timelineStructuralCss'
 
 describe('timeline frozen-reference structural shell', () => {
+  it('keeps the current containing block in both paint comparisons, while freezing its appearance', () => {
+    const css = '.abele-timeline__date-block{position:relative;margin-bottom:16px;color:red}'
+    expect(timelineStructuralCss(css)).toContain('position:relative')
+    expect(timelineStructuralCss(css)).not.toContain('margin-bottom')
+    expect(timelineStructuralCss(css, true)).not.toContain('position:relative')
+    expect(timelineStructuralCss(css, true)).toContain('color:red')
+  })
   it('retains the current shared root, nested phone spacing and history, not date-block appearance', () => {
     const root = {
       selectorText: '.abele-sidebar-panel',
