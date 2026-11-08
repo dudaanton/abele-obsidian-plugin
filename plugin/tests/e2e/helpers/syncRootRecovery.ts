@@ -168,9 +168,8 @@ export async function serverRenamedRootRecovery(s: TokenSyncLive) {
   )
   const reason =
     'Shared folder renamed on the server: ' + folder + ' → ' + renamed + '; sync stopped'
-  // Item sets summarize a waiting item on the row; its connection window retains
-  // the full root-change reason and explicit recovery action.
-  const stopped = await stoppedRow(s, id, '1 of 1 waiting')
+  // The stopped connection row and its window both retain the root-change reason.
+  const stopped = await stoppedRow(s, id, reason)
   expect(stopped.disabled).toBe(true)
   await a.long(
     'inspect server rename reason',

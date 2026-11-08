@@ -263,7 +263,7 @@ describe('the sync item in the status bar', () => {
     expect(result).toEqual([
       { text: 'Syncing', glyphs: 1, warning: false, colour: true, centred: true },
       { text: 'Deletions held (60)', glyphs: 1, warning: true, colour: true, centred: true },
-      { text: 'Waiting (3)', glyphs: 1, warning: false, colour: true, centred: true },
+      { text: '3 files waiting', glyphs: 1, warning: false, colour: true, centred: true },
     ])
   }, 60000)
 })
