@@ -1,11 +1,12 @@
 /**
  * A month with nothing in it, in the running app: the finance and time tracking sidebars say so
- * in one muted line naming the month, with no zero rows, chart switcher or empty list under it.
+ * in one muted line naming the month, with no zero summary rows. Finance keeps its chart tabs
+ * and empty pie state available; time tracking hides its empty controls and list.
  * And on a phone every row of the accounts pane is a finger's height, its words in the middle;
  * on a desktop the rows keep their own height.
  *
- * The sidebars are moved forward month by month until one is empty, so nothing is written to the
- * vault. On the phone the same checks run and the pictures come from the device.
+ * The sidebars are moved forward month by month until one is empty. A temporary transaction
+ * establishes a populated finance month to return to. On the phone pictures come from the device.
  *
  * Requires Obsidian running with the plugin installed — see docs/Testing.md.
  */
@@ -25,12 +26,12 @@ interface Pane {
   empty: string | null
   /** What the period picker says, to compare with the line. */
   period: string
-  /** Anything of a full period still drawn under it. */
+  /** Summary rows or other controls that should be absent in an empty period. */
   leftovers: string[]
 }
 
 interface State {
-  finance: Pane
+  finance: Pane & { chartTabs: boolean; pieEmpty: boolean; summaryRestored: boolean }
   time: Pane
   /** Heights of the accounts pane's rows, px, and how far the name sits off their middle. */
   rows: { heights: number[]; offCentre: number[]; error: string }
@@ -73,9 +74,17 @@ const probe = `(async () => {
       const root = () => leaf.view.containerEl.querySelector(rootSel)
       await until(() => !!root(), 30000)
       await wait(800)
+      const finance = type === 'abele-finance-sidebar-view'
+      if (finance) {
+        root().querySelector('.abele-finance-sidebar__currency-tabs [data-tab-id="EUR"]')?.click()
+        root().querySelector('.abele-finance-sidebar__chart-tabs [data-tab-id="expenses"]')?.click()
+        if (!await until(() => root().querySelector('.abele-finance-sidebar__summary-row') && !root().querySelector(emptySel), 30000)) throw Error('Missing populated finance fixture')
+      }
+      let monthsForward = 0
       for (let i = 0; i < 60 && !root().querySelector(emptySel); i++) {
         const icons = root().querySelectorAll('.abele-period-selector > .abele-obsidian-icon')
         icons[icons.length - 1].click()
+        monthsForward++
         await wait(150)
       }
       await wait(500)
@@ -83,9 +92,20 @@ const probe = `(async () => {
       pane.empty = line ? line.textContent.replace(/\\s+/g, ' ').trim() : null
       pane.period = (root().querySelector('.abele-period-selector__title')?.textContent || '').trim()
       for (const sel of leftoverSels) if ([...root().querySelectorAll(sel)].some(visible)) pane.leftovers.push(sel)
+      if (finance) {
+        pane.chartTabs = !!root().querySelector('.abele-finance-sidebar__chart-tabs')
+        pane.pieEmpty = !!root().querySelector('.abele-finance-sidebar__pie-empty')
+      }
       root().scrollTop = 0
       await wait(200)
       await shot(picture + '-' + target)
+      if (finance) {
+        for (let i = 0; i < monthsForward; i++) {
+          root().querySelector('.abele-period-selector > .abele-obsidian-icon').click()
+          await wait(150)
+        }
+        pane.summaryRestored = await until(() => !root().querySelector(emptySel) && !!root().querySelector('.abele-finance-sidebar__summary-row'), 30000)
+      }
     } catch (e) {
       pane.error = String((e && e.message) || e)
     }
@@ -93,11 +113,21 @@ const probe = `(async () => {
   }
   const state = { finance: null, time: null, rows: { heights: [], offCentre: [], error: '' } }
   try {
+    // A populated month and account rows owned by this probe; removed together afterwards.
+    if (!app.vault.getAbstractFileByPath(FOLDER)) await app.vault.createFolder(FOLDER)
+    for (const [name, balance] of [['Wallet', 120], ['Savings', 5000], ['Card', -40], ['Cash', 15]]) {
+      await app.vault.create(FOLDER + '/Empty probe ' + name + '.md', '---\\ntype: account\\naccountType: asset\\ncurrency: EUR\\nstartingBalance: ' + balance + '\\nstartingBalanceDate: 2020-01-01\\n---\\n')
+    }
+    const now = new Date()
+    const date = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-01'
+    const note = fields => '---\\n' + Object.entries(fields).map(([k,v]) => k + ': ' + JSON.stringify(v)).join('\\n') + '\\n---\\n'
+    await app.vault.create(FOLDER + '/Sample spending.md', note({ type: 'account', accountType: 'expense' }))
+    await app.vault.create(FOLDER + '/Sample purchase.md', note({ type: 'transaction', date, from: '[[' + FOLDER + '/Empty probe Wallet]]', to: '[[' + FOLDER + '/Sample spending]]', amount: 10, currency: 'EUR' }))
     state.finance = await emptyMonth(
       'abele-finance-sidebar-view',
       '.abele-finance-sidebar',
       '.abele-finance-sidebar__period-empty',
-      ['.abele-finance-sidebar__summary-row', '.abele-finance-sidebar__chart-tabs', '.abele-finance-sidebar__pie-empty', '.abele-finance-sidebar__pie-chart', '.abele-finance-sidebar__calendar-chart', '.abele-finance-sidebar__networth-chart'],
+      ['.abele-finance-sidebar__summary-row'],
       'finance-empty'
     )
     state.time = await emptyMonth(
@@ -108,11 +138,6 @@ const probe = `(async () => {
       'time-empty'
     )
     try {
-      // Rows of its own, so the check does not lean on what the vault holds; removed afterwards.
-      if (!app.vault.getAbstractFileByPath(FOLDER)) await app.vault.createFolder(FOLDER)
-      for (const [name, balance] of [['Wallet', 120], ['Savings', 5000], ['Card', -40], ['Cash', 15]]) {
-        await app.vault.create(FOLDER + '/Empty probe ' + name + '.md', '---\\ntype: account\\naccountType: asset\\ncurrency: EUR\\nstartingBalance: ' + balance + '\\nstartingBalanceDate: 2020-01-01\\n---\\n')
-      }
       const accounts = await open('abele-accounts-sidebar-view')
       const pane = () => accounts.view.containerEl.querySelector('.abele-accounts-sidebar')
       const probeRows = () => [...pane().querySelectorAll('.abele-accounts-sidebar__row')].filter((r) => r.textContent.includes('Empty probe'))
@@ -159,12 +184,15 @@ describe.skipIf(!available)('a month with nothing in it, and account rows a fing
     ).toContain('false')
   })
 
-  it('finance: one muted line naming the month, nothing of a full month under it', async () => {
+  it('finance: empty month keeps charts and returning to a populated month restores the summary', async () => {
     const { finance } = await run()
     expect(finance.error).toBe('')
     expect(finance.empty).toBe(`Nothing in ${finance.period}`)
     expect(finance.empty).toMatch(/^Nothing in [A-Z][a-z]+ \d{4}$/)
     expect(finance.leftovers).toEqual([])
+    expect(finance.chartTabs).toBe(true)
+    expect(finance.pieEmpty).toBe(true)
+    expect(finance.summaryRestored).toBe(true)
   })
 
   it('time tracking: one muted line naming the month, no total, tabs or Entries under it', async () => {
