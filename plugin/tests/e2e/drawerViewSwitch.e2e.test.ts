@@ -42,16 +42,24 @@ const probe = (type: string, phone: boolean) => `(async () => {
     for (let i = 0; i < 160; i++) { if (fn()) return; await wait(50) }
     throw Error('Drawer did not settle: ' + fn.toString())
   }
-  const report = { switches: 0, rows: [], restored: [], overflow: [], shot: '', error: '' }
+  const report = { geometry: [], switches: 0, rows: [], restored: [], overflow: [], shot: '', error: '' }
   try {
     config.ai.enabled = true
     config.github.enabled = false
+    // A prior fixture may have just closed the drawer. Do not reveal a new leaf while
+    // that host animation can still finish and hide the newly opened drawer.
+    if (${phone}) {
+      ws.rightSplit.collapse()
+      await wait(500)
+      await until(() => ws.rightSplit.containerEl.offsetWidth === 0)
+    }
     const leaf = ws.getRightLeaf(true); leaves.push(leaf)
     await leaf.setViewState({ type: ${JSON.stringify(type)}, active: true })
     await ws.revealLeaf(leaf); ws.rightSplit.expand()
     if (!app.isMobile) ws.rightSplit.setSize(390)
     const content = leaf.view.containerEl
     await until(() => content.querySelector(${JSON.stringify(phone ? '.abele-drawer-switch.is-shown' : 'span[hidden]')}))
+    if (${phone}) await until(() => ws.rightSplit.containerEl.offsetWidth > 0)
     await wait(${phone ? 600 : 200})
     const drawer = content.closest('.workspace-drawer')
     if (${phone} && !drawer) throw Error('The view is outside the phone drawer')
@@ -65,6 +73,7 @@ const probe = (type: string, phone: boolean) => `(async () => {
     }
     for (const control of content.querySelectorAll('.abele-drawer-switch.is-shown')) {
       const r = control.getBoundingClientRect(), p = content.getBoundingClientRect()
+      report.geometry.push({ control: r.toJSON(), content: p.toJSON(), drawerWidth: drawer?.offsetWidth, collapsed: ws.rightSplit.collapsed })
       if (r.width < 24 || r.height < 24 || r.left < p.left || r.right > p.right || r.top < p.top)
         report.overflow.push('Drawer switch is clipped or too small')
       const header = control.closest('.nav-header')?.getBoundingClientRect()
@@ -147,7 +156,13 @@ const probe = (type: string, phone: boolean) => `(async () => {
     leaves.reverse().forEach(leaf => leaf.detach())
     config.ai.enabled = oldAi
     config.github.enabled = oldGithub
-    if (wasCollapsed) ws.rightSplit.collapse()
+    if (wasCollapsed) {
+      ws.rightSplit.collapse()
+      if (${phone}) {
+        await wait(500)
+        await until(() => ws.rightSplit.containerEl.offsetWidth === 0)
+      }
+    }
     if (!app.isMobile && typeof size === 'number') ws.rightSplit.setSize(size)
   }
   return JSON.stringify(report)
@@ -169,7 +184,7 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())('drawer view switch', () 
         const report = JSON.parse(await evalLong(probe(type, phone), 60_000))
         expect(report.error).toBe('')
         expect(report.switches).toBe(phone ? 1 : 0)
-        expect(report.overflow).toEqual([])
+        expect(report.overflow, JSON.stringify(report.geometry)).toEqual([])
         expect(report.shot).toBeTruthy()
         if (phone) {
           expect(report.rows).toEqual(['none', 'none'])
