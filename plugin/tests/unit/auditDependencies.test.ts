@@ -4,6 +4,8 @@ import exceptions from '../../scripts/audit-exceptions.json'
 import { evaluateAudit } from '../../scripts/audit-dependencies.mjs'
 
 const today = '2026-10-24'
+const expires = exceptions[0].expires
+const dayAfterExpiry = new Date(Date.parse(`${expires}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)
 
 describe('shipped dependency audit', () => {
   it('honours the advisory only at the recorded nested paths', () => {
@@ -19,10 +21,10 @@ describe('shipped dependency audit', () => {
     ])
   })
   it('fails after the exception expires', () => {
-    expect(evaluateAudit(fixture, exceptions, '2026-11-08').join('\n')).toMatch(/expired/)
+    expect(evaluateAudit(fixture, exceptions, dayAfterExpiry).join('\n')).toMatch(/expired/)
   })
   it('allows the exception through its expiry date', () => {
-    expect(evaluateAudit(fixture, exceptions, '2026-11-07')).toEqual([])
+    expect(evaluateAudit(fixture, exceptions, expires)).toEqual([])
   })
   it('rejects a critical advisory alongside an excepted advisory', () => {
     const audit = structuredClone(fixture)
