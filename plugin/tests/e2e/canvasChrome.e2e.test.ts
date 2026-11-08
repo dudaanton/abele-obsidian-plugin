@@ -4,6 +4,7 @@
  * labelled with a double press, the picked things' more menu, and a Pencil drawing whatever tool
  * is in hand. Pictures of each for the desktop and the phone.
  */
+import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalAsync } from './helpers/githubLive'
 import { hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
@@ -15,7 +16,7 @@ import { canvasChrome, menuItem } from './helpers/canvasChrome'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
-const DIR = 'Sample canvas chrome'
+const DIR = `Sample canvas chrome ${randomUUID()}`
 const SHOTS = shotDir('canvas-chrome')
 const PRELUDE = `
   const path=${JSON.stringify(`${DIR}/sample.canvas`)}

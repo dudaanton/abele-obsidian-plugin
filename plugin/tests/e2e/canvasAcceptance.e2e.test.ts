@@ -22,6 +22,7 @@ targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
 const mobile = process.env.CANVAS_ACCEPTANCE_MOBILE === '1'
 const DIR = `Sample canvas acceptance ${randomUUID()}`
+const NOTE = `sample-note-${randomUUID()}`
 const SHOTS = shotDir('canvas-acceptance')
 const PRELUDE = `
   const path=${JSON.stringify(`${DIR}/Sample diagram.canvas`)}
@@ -173,7 +174,7 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
       if(!${onPhone()}){app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse()}
       // Own the host's creation parent even if modal focus changes its active file.
       app.vault.setConfig('newFileLocation','folder');app.vault.setConfig('newFileFolderPath',${JSON.stringify(DIR)});app.vault.setConfig('attachmentFolderPath',${JSON.stringify(DIR)})
-      const note=await app.vault.create(${JSON.stringify(`${DIR}/sample-note.md`)},${JSON.stringify('# Linked concept\n\nA person starts; an agent continues.\n')})
+      const note=await app.vault.create(${JSON.stringify(`${DIR}/${NOTE}.md`)},${JSON.stringify('# Linked concept\n\nA person starts; an agent continues.\n')})
       const leaf=app.workspace.getLeaf('tab');await leaf.openFile(note);app.workspace.setActiveLeaf(leaf,{focus:true});await app.workspace.revealLeaf(leaf);return true
     `)
     // A new canvas goes beside the note in front. After the reload the restored layout can take
@@ -182,7 +183,7 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
     for (let i = 0; i < 100; i++) {
       if (
         run<boolean>(
-          `return app.workspace.getActiveFile()?.path===${JSON.stringify(`${DIR}/sample-note.md`)}`
+          `return app.workspace.getActiveFile()?.path===${JSON.stringify(`${DIR}/${NOTE}.md`)}`
         )
       )
         break
@@ -237,11 +238,13 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
     expect(run<number>('return (await graph()).nodes.length')).toBe(0)
     await click('Add note or attachment')
     await press('document.querySelector(".prompt-input")')
-    await type('sample-note', '.prompt-input')
+    await type(NOTE, '.prompt-input')
     await press(
-      `[...document.querySelectorAll('.suggestion-item')].find(el=>el.textContent.includes(${JSON.stringify(`${DIR}/sample-note.md`)}))`
+      `[...document.querySelectorAll('.suggestion-item')].find(el=>el.textContent.includes(${JSON.stringify(`${DIR}/${NOTE}.md`)}))`
     )
+    await until('!document.querySelector(".prompt-input")')
     await saved()
+    expect(run<string>('return (await graph()).nodes[0]?.file')).toBe(`${DIR}/${NOTE}.md`)
     await click('Canvas drawing tools')
     await click('Draw with pen')
     await fit()
@@ -289,7 +292,7 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
     )
     // Rename via the host's normal rename UI, then open through the canvas action.
     run(
-      `app.fileManager.promptForFileRename(app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/sample-note.md`)}));return true`
+      `app.fileManager.promptForFileRename(app.vault.getAbstractFileByPath(${JSON.stringify(`${DIR}/${NOTE}.md`)}));return true`
     )
     await until('document.activeElement?.matches(".rename-textarea")')
     await type('sample-renamed', '.rename-textarea')
