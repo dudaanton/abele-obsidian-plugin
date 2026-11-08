@@ -65,42 +65,25 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-// BUG: historical charts in an empty period conflict with the single empty-state contract.
-it.fails(
-  'keeps chart tabs, calendar and historical balance available in an empty current month',
-  async () => {
-    wrapper = mount(FinanceSidebar, {
-      shallow: true,
-      props: { active: true },
-      global: { stubs: { SidebarPanel: false, Section: false, EmptyState: false } },
-    })
-    await flushPromises()
-    await nextTick()
-    const tabs = wrapper.findComponent('.abele-finance-sidebar__chart-tabs')
-    expect(tabs.exists()).toBe(true)
-    expect(wrapper.find('.abele-finance-sidebar__pie-empty').text()).toBe('No expenses yet')
-    tabs.vm.$emit('update:modelValue', 'income')
-    await nextTick()
-    expect(wrapper.find('.abele-finance-sidebar__pie-empty').text()).toBe('No income yet')
-    tabs.vm.$emit('update:modelValue', 'calendar')
-    await nextTick()
-    expect(wrapper.find('.abele-finance-sidebar__calendar-chart').exists()).toBe(true)
-    tabs.vm.$emit('update:modelValue', 'networth')
-    await nextTick()
-    expect(wrapper.find('.abele-finance-sidebar__networth-chart').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Nothing in')
-  }
-)
-
-it('shows only the period empty state without chart controls or content', async () => {
+it('keeps chart tabs, calendar and historical balance available in an empty current month', async () => {
   wrapper = mount(FinanceSidebar, {
     shallow: true,
     props: { active: true },
     global: { stubs: { SidebarPanel: false, Section: false, EmptyState: false } },
   })
   await flushPromises()
-  expect(wrapper.find('.abele-finance-sidebar__period-empty').exists()).toBe(true)
-  expect(wrapper.find('.abele-finance-sidebar__chart-tabs').exists()).toBe(false)
-  expect(wrapper.find('.abele-finance-sidebar__pie-empty').exists()).toBe(false)
-  expect(wrapper.findComponent({ name: 'Chart' }).exists()).toBe(false)
+  await nextTick()
+  const tabs = wrapper.findComponent('.abele-finance-sidebar__chart-tabs')
+  expect(tabs.exists()).toBe(true)
+  expect(wrapper.find('.abele-finance-sidebar__pie-empty').text()).toBe('No expenses yet')
+  tabs.vm.$emit('update:modelValue', 'income')
+  await nextTick()
+  expect(wrapper.find('.abele-finance-sidebar__pie-empty').text()).toBe('No income yet')
+  tabs.vm.$emit('update:modelValue', 'calendar')
+  await nextTick()
+  expect(wrapper.find('.abele-finance-sidebar__calendar-chart').exists()).toBe(true)
+  tabs.vm.$emit('update:modelValue', 'networth')
+  await nextTick()
+  expect(wrapper.find('.abele-finance-sidebar__networth-chart').exists()).toBe(true)
+  expect(wrapper.text()).toContain('Nothing in')
 })

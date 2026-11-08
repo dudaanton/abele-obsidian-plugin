@@ -205,13 +205,12 @@
         </div>
       </div>
       <Tabs
-        v-if="!periodEmpty"
         v-model="chartTab"
         :tabs="chartTabs"
         level="secondary"
         class="abele-finance-sidebar__chart-tabs"
       />
-      <template v-if="!periodEmpty && (chartTab === 'expenses' || chartTab === 'income')">
+      <template v-if="chartTab === 'expenses' || chartTab === 'income'">
         <Chart
           v-if="pieData.length"
           :active="active"
@@ -226,7 +225,7 @@
           :text="chartTab === 'income' ? t('area.noIncomeYet') : t('area.noExpensesYet')"
         />
       </template>
-      <template v-else-if="!periodEmpty && chartTab === 'calendar'">
+      <template v-else-if="chartTab === 'calendar'">
         <Chart
           :active="active"
           :source="[calendarData, store.weekStartsOnMonday.value]"
@@ -234,7 +233,7 @@
           class="abele-finance-sidebar__calendar-chart"
         />
       </template>
-      <template v-else-if="!periodEmpty && chartTab === 'networth'">
+      <template v-else-if="chartTab === 'networth'">
         <Chart
           :active="active"
           :source="networthData"

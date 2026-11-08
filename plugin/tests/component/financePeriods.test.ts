@@ -453,40 +453,23 @@ describe('finance sidebar — period money and charts', () => {
     expect(option().legend.selected).toEqual({ EUR: false, USD: true })
   })
 
-  // BUG: retaining charts here conflicts with the single empty-period state.
-  it.fails(
-    'keeps charts available beside the empty-period summary instead of zero summary rows',
-    async () => {
-      await sidebar()
-      await period('2024-05-01', '2024-05-31')
-      expect(wrapper!.findAll('.abele-finance-sidebar__summary-row')).toHaveLength(0)
-      expect(
-        wrapper!
-          .findAllComponents(Tabs)
-          .some((c) => c.classes().includes('abele-finance-sidebar__chart-tabs'))
-      ).toBe(true)
-      expect(wrapper!.find('.abele-finance-sidebar__pie-empty').text()).toBe('No expenses yet')
-      expect(charts.instances.filter((c) => c.setOption.mock.calls.length)).toHaveLength(1)
-      expect(wrapper!.find('.abele-finance-sidebar__period-empty').text()).toBe(
-        'Nothing in May 2024'
-      )
-      // Recent means through the period's end, so older transactions are still listed under it.
-      expect(shown()).toContain('after.md')
-      // A month with money restores the summary; chart navigation stays available.
-      await period('2024-03-01', '2024-03-31')
-      expect(wrapper!.find('.abele-finance-sidebar__period-empty').exists()).toBe(false)
-      expect(summary()).toMatchObject({ Income: formatAmount(100) })
-    }
-  )
-
-  it('restores chart navigation when leaving an empty period', async () => {
+  it('keeps charts available beside the empty-period summary instead of zero summary rows', async () => {
     await sidebar()
     await period('2024-05-01', '2024-05-31')
-    expect(wrapper!.find('.abele-finance-sidebar__chart-tabs').exists()).toBe(false)
-    expect(wrapper!.find('.abele-finance-sidebar__period-empty').exists()).toBe(true)
+    expect(wrapper!.findAll('.abele-finance-sidebar__summary-row')).toHaveLength(0)
+    expect(
+      wrapper!
+        .findAllComponents(Tabs)
+        .some((c) => c.classes().includes('abele-finance-sidebar__chart-tabs'))
+    ).toBe(true)
+    expect(wrapper!.find('.abele-finance-sidebar__pie-empty').text()).toBe('No expenses yet')
+    expect(charts.instances.filter((c) => c.setOption.mock.calls.length)).toHaveLength(1)
+    expect(wrapper!.find('.abele-finance-sidebar__period-empty').text()).toBe('Nothing in May 2024')
+    // Recent means through the period's end, so older transactions are still listed under it.
+    expect(shown()).toContain('after.md')
+    // A month with money restores the summary; chart navigation stays available.
     await period('2024-03-01', '2024-03-31')
     expect(wrapper!.find('.abele-finance-sidebar__period-empty').exists()).toBe(false)
-    expect(wrapper!.find('.abele-finance-sidebar__chart-tabs').exists()).toBe(true)
     expect(summary()).toMatchObject({ Income: formatAmount(100) })
   })
 
