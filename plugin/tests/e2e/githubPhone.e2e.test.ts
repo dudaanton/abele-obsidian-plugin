@@ -455,7 +455,7 @@ describe.skipIf(!available)('a pull request on a phone', () => {
       )
     expect((await menuAfter(prepared.name!)).items).toEqual([
       'Go to definition of startApp',
-      'Find references to startApp',
+      'Find references to startApp (text search fallback)',
       'Copy startApp',
     ])
     expect((await menuAfter(prepared.brace!)).items).toEqual([])
