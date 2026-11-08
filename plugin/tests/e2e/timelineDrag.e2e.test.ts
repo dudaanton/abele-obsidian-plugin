@@ -11,7 +11,7 @@ const shots = shotDir('timeline-drag')
 const RUN_ID = randomUUID()
 const probe = (footer: boolean) => String.raw`(async () => {
   const wait = ms => new Promise(r => setTimeout(r, ms))
-  const until = async fn => { for (let i = 0; i < 100; i++) { const v = fn(); if (v) return v; await wait(100) } throw Error('timeline not ready') }
+  const until = async (label, fn) => { for (let i = 0; i < 100; i++) { const v = fn(); if (v) return v; await wait(100) } throw Error('timeline not ready: '+label) }
   const folder = ${JSON.stringify(`Sample drag probe ${RUN_ID}`)}
   const day = offset => { const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()+offset); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0') }
   const report = {phase:'setup',events:[]}
@@ -36,7 +36,7 @@ const probe = (footer: boolean) => String.raw`(async () => {
     for (const [name, offset, done] of fixture)
       await write(name,'---\ntype: task\ndate: '+day(offset)+'\n'+(done?'completed: '+day(offset)+'\n':'')+'labels:\n  - sample-drag\ngroups:\n  - "[['+folder+'/Sample group]]"\n---\n'+name+'\n')
     // Every written task is in the store with its date, completion, label and group.
-    await until(() => fixture.every(([name, offset, done]) => {
+    await until('fixture task metadata', () => fixture.every(([name, offset, done]) => {
       const task=window.__abeleTest.GlobalStore.getInstance().tasksList.value?.tasks.get(folder+'/'+name+'.md')
       return task?.loaded && task.date?.format('YYYY-MM-DD')===day(offset) && !!task.completedAt===done && task.labels.includes('sample-drag') && task.groups.length
     }))
@@ -44,21 +44,27 @@ const probe = (footer: boolean) => String.raw`(async () => {
     await leaf.setViewState(${footer} ? { type:'markdown', state:{file:folder+'/Sample group.md',mode:'source',source:false},active:true } : {type:'abele-timeline-sidebar-view',active:true})
     await app.workspace.revealLeaf(leaf)
     app.workspace.setActiveLeaf(leaf,{focus:true})
-    if (${footer}) await until(() => { const s=leaf.view.containerEl.querySelector('.cm-scroller'); if(s) s.scrollTop=s.scrollHeight; return leaf.view.containerEl.querySelector('.abele-timeline') })
-    const root = await until(() => leaf.view.containerEl.querySelector('.abele-timeline'))
+    if (${footer}) await until('group footer mount', () => { const s=leaf.view.containerEl.querySelector('.cm-scroller'); if(s) s.scrollTop=s.scrollHeight; return leaf.view.containerEl.querySelector('.abele-timeline') })
+    const root = await until('timeline mount', () => leaf.view.containerEl.querySelector('.abele-timeline'))
     if (!${footer}) {
+      await until('visible sidebar task publication', () => {
+        const pane=root.closest('.abele-timeline-sidebar'), rect=pane?.getBoundingClientRect()
+        report.sidebar={active:app.workspace.activeLeaf===leaf,connected:root.isConnected,width:rect?.width,height:rect?.height,rows:root.querySelectorAll('.abele-task-view').length}
+        return report.sidebar.active && rect?.width>0 && rect?.height>0 &&
+          root.querySelector('[data-abele-anchor="task:'+folder+'/Sample moving.md"]')
+      })
       root.querySelector('.abele-task-label-filter').click()
-      const option=await until(() => [...document.querySelectorAll('.menu-item')].find(x=>x.textContent.trim().startsWith('sample-drag (')))
+      const option=await until('fixture label menu option', () => [...document.querySelectorAll('.menu-item')].find(x=>x.textContent.trim().startsWith('sample-drag (')))
       option.click()
     }
     // Only the fixture's rows are mounted (the filter applied), with titles and date labels painted.
-    await until(() => !document.querySelector('.menu') && ['Sample moving','Sample future'].every(n=>root.querySelector('[data-abele-anchor="task:'+folder+'/'+n+'.md"]')?.textContent.includes(n)) &&
+    await until('filtered task rows and painted dates', () => !document.querySelector('.menu') && ['Sample moving','Sample future'].every(n=>root.querySelector('[data-abele-anchor="task:'+folder+'/'+n+'.md"]')?.textContent.includes(n)) &&
       [...root.querySelectorAll('.abele-task-view')].every(el=>el.dataset.abeleAnchor?.startsWith('task:'+folder+'/')) &&
       [...root.querySelectorAll('.timeline__date')].every(el=>el.textContent.trim()))
     const scroller=${footer} ? leaf.view.containerEl.querySelector('.cm-scroller') : root.closest('.abele-timeline-sidebar')
     const row=()=>root.querySelector('[data-abele-anchor="task:'+folder+'/Sample moving.md"]')
     const dates=()=>[...root.querySelectorAll('.abele-timeline__date-block')].map(x=>x.dataset.abeleAnchor)
-    await until(row)
+    await until('moving row', row)
     const align=()=> { scroller.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:1})); scroller.scrollTop+=row().getBoundingClientRect().top-scroller.getBoundingClientRect().top-240 }
     // The aligned row has stopped moving: same scroll and geometry for six painted frames.
     const settle=async()=> {
@@ -143,7 +149,7 @@ const probe = (footer: boolean) => String.raw`(async () => {
     if (window.__e2eHost) {
       const nativePoint=async()=>{
         let last='',stable=0,point
-        await until(()=>{
+        await until('native row hit and stable geometry', ()=>{
           const r=row().getBoundingClientRect(),x=Math.round(r.left+r.width/2),y=Math.round(r.top+10),hit=document.elementFromPoint(x,y)
           const signature=JSON.stringify([r.x,r.y,r.width,r.height]),reachable=row().contains(hit)&&y>=0&&y<usableBottom()
           stable=reachable&&signature===last?stable+1:0;last=signature;point={x,y,rect:r.toJSON(),hit:hit?.className}
@@ -261,6 +267,8 @@ describe.skipIf(!available)('timeline drag in native scroll panes', () => {
         )
         await reloadApp(`app.emulateMobile(${mobile})`)
       }
+      // Establish a fresh page before the footer probe, outside its evaluation job.
+      if (onPhone() && footer) await reloadApp('window.location.reload()')
       const raw = await evalLong(probe(footer), 120_000)
       if (raw.startsWith('Error:')) throw new Error(raw)
       const result = JSON.parse(raw)
