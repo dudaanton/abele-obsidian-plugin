@@ -54,17 +54,17 @@ const script = `(async () => {
     const child=await comments.createOnMessage(parent,'sample-reply',quote,start);ids.push(child.commentId)
     report.sameWriter=chats.activeSession.value===child
     await child.addUserNote('An invented side question about these words.')
-    const back=await until(()=>document.querySelector('.abele-ai-chat__header .lucide-corner-up-left'))
-    back.closest('.abele-obsidian-icon').click()
+    const back=await until(()=>document.querySelector('.abele-ai-chat__header .abele-chat-parent-back'))
+    back.click()
     await until(()=>document.querySelector('[data-reply-return]'));await wait(250)
     report.back=measure();await shoot('back-to-selected-passage')
     const nested=await comments.createOnMessage(parent,'sample-reply',quote,start);ids.push(nested.commentId)
     const saved=await window.__abeleTest.ChatStorage.getInstance().prepareDiscussion(child.currentChatFile.value)
     report.savedQuestion=saved.snapshot.messages[0]?.content
     await nested.addUserNote('Another invented side question.')
-    const crumb=await until(()=>document.querySelector('.abele-comment-trail .abele-breadcrumbs__item:not(.abele-breadcrumbs__item_current)'))
-    crumb.click();await until(()=>document.querySelector('[data-reply-return]'));await wait(250)
-    report.trail=measure();await shoot('trail-to-selected-passage')
+    const parentBack=await until(()=>document.querySelector('.abele-ai-chat__header .abele-chat-parent-back'))
+    parentBack.click();await until(()=>document.querySelector('[data-reply-return]'));await wait(250)
+    report.reopenedBack=measure();await shoot('reopened-back-to-selected-passage')
     await wait(2700)
     report.cleared=!document.querySelector('[data-reply-return]')
   } catch(error) {report.error=String(error.message??error)+'\\n'+String(error.stack??'')} finally {
@@ -104,7 +104,7 @@ describe.runIf(available)('returning from a comment to its reply passage', () =>
     expect(report.sameWriter).toBe(true)
     expect(report.savedQuestion).toBe('An invented side question about these words.')
   })
-  it.each(['back', 'trail'])(
+  it.each(['back', 'reopenedBack'])(
     '%s returns to the selected repeated passage, not the reply start',
     (action) => {
       expect(report.occurrences).toBe(2)
