@@ -160,5 +160,8 @@ it.each([
     } finally {
       await disk.rm(root, { recursive: true, force: true })
     }
-  }
+  },
+  // Real restart, retry and cleanup perform dozens of fsync barriers plus thousands
+  // of path checks; allow shared-disk contention without changing recovery assertions.
+  30_000
 )
