@@ -146,7 +146,8 @@ const probeLib = `(() => {
       window.fetch = async (url, init) => {
         if (typeof url !== 'string' || !url.startsWith(FAKE)) return realFetch(url, init)
         const body = JSON.parse(init.body)
-        const last = body.messages[body.messages.length - 1]
+        const last = body.messages.findLast(message => message.role === 'user')
+    if (!last) throw Error('Provider request has no user message')
         const content = typeof last.content === 'string' ? last.content : (last.content || []).map((p) => p.text || '').join('')
         state.requests.push(content)
         const enc = new TextEncoder()

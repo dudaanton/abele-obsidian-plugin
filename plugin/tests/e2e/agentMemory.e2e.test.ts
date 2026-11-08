@@ -3,7 +3,7 @@
  * that chat sends carries it, and another agent's prompt does not. Then the same item is
  * changed through `remember`'s `replace` and dropped with `forget`, and the prompt follows.
  *
- * No model is asked — the tool is taken from the live session exactly as a turn would get it
+ * No model is asked — a fake provider captures the request, and the tool is taken from the live session exactly as a turn would get it
  * and called directly, so this runs without a key. What it proves that the unit tests cannot is
  * the wiring in the bundle: the session binding, the registry the settings screen reads, and
  * the save. Every item it adds is removed again, and the agents' memory is put back as found.
@@ -22,6 +22,8 @@ interface Report {
   chatMemory: string[]
   otherMemory: string[]
   promptHasItem: boolean
+  requestHasSnapshot: boolean
+  basePromptHasItem: boolean
   otherPromptHasItem: boolean
   tooLong: string
   forgetOffered: boolean
@@ -42,8 +44,10 @@ const script = `(async () => {
   const registry = t.AgentRegistry.getInstance()
   const service = t.ChatService.getInstance()
   service.ensureInitialized()
-  // A fresh vault window may have no chat yet: open one tab of its own, closed again at the end.
-  const ownTab = service.activeSession.value ? null : await service.newTab()
+  // Use a disposable session so the provider probe never changes an existing conversation.
+  const priorTab = service.activeTabId.value
+  const ownTab = await service.newTab()
+  if (!ownTab) throw Error('No disposable chat available')
   const session = service.activeSession.value
   if (!session) return JSON.stringify({ error: 'no active chat session' })
 
@@ -51,6 +55,17 @@ const script = `(async () => {
   const other = registry.list({ includeUtility: true }).find((a) => a.id !== chatAgent.id)
   const before = new Map(registry.list({ includeUtility: true }).map((a) => [a.id, JSON.stringify(a.memory || [])]))
 
+  const realFetch = window.fetch
+  const requests = []
+  const FAKE = 'https://sample-memory-provider.invalid/v1'
+  window.fetch = async (url, init) => {
+    if (typeof url !== 'string' || !url.startsWith(FAKE)) return realFetch(url, init)
+    requests.push(JSON.parse(init.body).messages)
+    const chunk = { choices: [{ delta: { content: 'Remembered.' }, finish_reason: 'stop' }] }
+    return new Response('data: ' + JSON.stringify(chunk) + '\\n\\ndata: [DONE]\\n\\n', { headers: { 'Content-Type': 'text/event-stream' } })
+  }
+  session.resolveModel = () => ({ id: 'fake', name: 'Fake', baseUrl: FAKE, apiKey: 'none', contextWindow: 100000, maxTokens: 100, supportsReasoning: false })
+  for (const key of ['generateTitle', 'generateSummary', 'generateRecap', 'autoCompactIfNeeded']) session.summarizer[key] = async () => undefined
   const report = { chatAgent: chatAgent.name, otherAgent: other ? other.name : '' }
   try {
     // By section, memory is offered as its section until the agent opens it; the tools
@@ -72,8 +87,16 @@ const script = `(async () => {
     }
     report.chatMemory = (registry.get(chatAgent.id).memory || []).map((m) => m.text)
     report.otherMemory = other ? (registry.get(other.id).memory || []).map((m) => m.text) : []
-    report.promptHasItem = (await service.getSystemPrompt(session)).includes('${MARK}')
-    report.otherPromptHasItem = other ? (await registry.buildSystemPrompt(other)).includes('${MARK}') : false
+    report.promptHasItem = (await service.getTurnContext(session)).includes('${MARK}')
+    report.otherPromptHasItem = other ? registry.memoryPrompt(other).includes('${MARK}') : false
+
+    report.basePromptHasItem = (await service.getSystemPrompt(session)).includes('${MARK}')
+    await session.sendMessage('Check the sample memory')
+    if (session.error.value) throw Error(session.error.value)
+    const messages = requests[0] || []
+    const user = messages.findIndex(message => message.role === 'user' && message.content === 'Check the sample memory')
+    const snapshot = messages.findIndex(message => message.role === 'system' && typeof message.content === 'string' && message.content.startsWith('Current context snapshot') && message.content.includes('${MARK}'))
+    report.requestHasSnapshot = user >= 0 && snapshot > user
 
     const forget = offered('forget') ? bound.find((x) => x.name === 'forget') : undefined
     report.forgetOffered = !!forget
@@ -81,14 +104,15 @@ const script = `(async () => {
       const changed = await tool.execute('e2e', { text: '${CHANGED}', replace: 'probe item' })
       report.changedResult = changed.content[0].text
       report.afterChange = (registry.get(chatAgent.id).memory || []).map((m) => m.text)
-      const prompt = await service.getSystemPrompt(session)
+      const prompt = await service.getTurnContext(session)
       report.promptHasChanged = prompt.includes('${CHANGED}') && !prompt.includes('${MARK}')
       const gone = await forget.execute('e2e', { text: '${CHANGED}' })
       report.forgetResult = gone.content[0].text
       report.afterForget = (registry.get(chatAgent.id).memory || []).map((m) => m.text)
-      report.promptAfterForget = (await service.getSystemPrompt(session)).includes('${CHANGED}')
+      report.promptAfterForget = (await service.getTurnContext(session)).includes('${CHANGED}')
     }
   } finally {
+    window.fetch = realFetch
     for (const agent of registry.list({ includeUtility: true })) {
       const was = before.get(agent.id)
       if (was !== undefined) agent.memory = JSON.parse(was)
@@ -97,7 +121,8 @@ const script = `(async () => {
     report.restored = registry.list({ includeUtility: true }).every(
       (a) => JSON.stringify(a.memory || []) === before.get(a.id)
     )
-    if (ownTab) await service.closeTab(ownTab)
+    if (ownTab) await service.deleteChat(ownTab)
+    if (priorTab) service.activeTabId.value = priorTab
   }
   return JSON.stringify(report)
 })()`
@@ -127,6 +152,8 @@ describe.skipIf(!available)('agent memory in the running app', () => {
 
   it('puts it in that chat prompt and not in another agent prompt', () => {
     expect(report.promptHasItem).toBe(true)
+    expect(report.basePromptHasItem).toBe(false)
+    expect(report.requestHasSnapshot).toBe(true)
     expect(report.otherPromptHasItem).toBe(false)
   })
 
