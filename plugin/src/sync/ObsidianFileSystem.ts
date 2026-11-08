@@ -2900,13 +2900,19 @@ export class ObsidianFileSystem implements FileSystem {
       yield* ledger.all()
       return
     }
+    const budget = new SyncTaskBudget()
     let snapshot = inventory.ledgerRows
     if (!snapshot || snapshot.revision !== revision) {
-      snapshot = { revision, rows: await Array.fromAsync(ledger.all()) }
+      const rows: StateEntry[] = []
+      for await (const row of ledger.all()) {
+        const pause = budget.metadataRow()
+        if (pause !== undefined) await pause
+        rows.push(row)
+      }
+      snapshot = { revision, rows }
       if (revision === (await clock.call(ledger))) inventory.ledgerRows = snapshot
       else inventory.ledgerRows = undefined
     }
-    const budget = new SyncTaskBudget()
     for (const row of snapshot.rows) {
       const pause = budget.metadataRow()
       if (pause !== undefined) await pause
