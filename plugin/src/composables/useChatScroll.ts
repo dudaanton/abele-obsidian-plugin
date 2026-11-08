@@ -11,6 +11,7 @@ export interface ReadingPlace {
   messageId: string
   offset: number
   hidden: number
+  window?: { first: string; last: string }
 }
 interface ChatScrollOptions {
   windowCost?: (start: number, end: number) => number
@@ -182,12 +183,14 @@ export function useChatScroll(options: ChatScrollOptions) {
     hasOlder,
     hasNewer,
     start: olderCount,
+    end: windowEnd,
     showOlder,
     expandOlder,
     showNewer,
     trim: trimRenderWindow,
     reset: resetRenderWindow,
     showFrom: showRenderMessagesFrom,
+    restore: restoreRenderWindow,
   } = useChatRenderWindow(
     () => messages.value,
     (wasAtTail) => {
@@ -517,7 +520,21 @@ export function useChatScroll(options: ChatScrollOptions) {
     )
     const messageId = first?.dataset.messageId
     if (!first || !messageId) return
-    places.set(tabId, { messageId, offset: offsetOf(first, el), hidden: olderCount.value })
+    const rows = Array.from(el.querySelectorAll<HTMLElement>('[data-message-id]'))
+    // messages already belongs to the incoming tab in a pre-flush tab watcher. Read
+    // the outgoing window's identities from its DOM, including folded tool runs.
+    const firstRow = rows[0]
+    const lastRow = rows.at(-1)
+    const firstId = firstRow?.dataset.runIds?.split(' ')[0] ?? firstRow?.dataset.messageId
+    const lastId = lastRow?.dataset.runIds?.split(' ').at(-1) ?? lastRow?.dataset.messageId
+    const place = {
+      messageId,
+      offset: offsetOf(first, el),
+      hidden: olderCount.value,
+      window: firstId && lastId ? { first: firstId, last: lastId } : undefined,
+    }
+    console.debug('[chat-scroll] remember place', { tabId, ...place })
+    places.set(tabId, place)
   }
 
   /**
@@ -529,13 +546,27 @@ export function useChatScroll(options: ChatScrollOptions) {
   const returnTo = async (place: ReadingPlace) => {
     const index = messages.value.findIndex((m) => m.id === place.messageId)
     if (index >= 0) {
-      showMessagesFrom(Math.max(0, index - 5))
+      const first = messages.value.findIndex((m) => m.id === place.window?.first)
+      let last = messages.value.findIndex((m) => m.id === place.window?.last)
+      if (first >= 0 && last >= index && first <= index) {
+        while (messages.value[last + 1]?.role === 'tool-result') last++
+        cancelIdlePrefetch()
+        leaveMarker()
+        restoreRenderWindow(first, last + 1)
+      } else showMessagesFrom(Math.max(0, index - 5))
       await nextTick()
       const el = messagesContainer.value
       const target = el?.querySelector<HTMLElement>(
         `[data-message-id="${CSS.escape(place.messageId)}"]`
       )
       if (el && target) {
+        console.debug('[chat-scroll] restore place', {
+          messageId: place.messageId,
+          savedOffset: place.offset,
+          mountedOffset: offsetOf(target, el),
+          start: olderCount.value,
+          end: windowEnd.value,
+        })
         anchors.anchor = { el: target, offset: place.offset }
         // Measured here too: a place already in position is not scrolled to, and a keyboard
         // opening next would otherwise keep the distance to the end of the tab just left.

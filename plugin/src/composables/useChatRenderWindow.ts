@@ -92,6 +92,14 @@ export function useChatRenderWindow<T>(
       return
     range.value = { first: target, last: newest(target, capacity) }
   }
+  /** A previously measured window must keep its row/group boundaries on remount. */
+  const restore = (first: number, last: number) => {
+    const start = Math.max(0, Math.min(first, total.value))
+    range.value = {
+      first: start,
+      last: Math.max(start, Math.min(last, total.value)),
+    }
+  }
 
   watch(
     total,
@@ -136,6 +144,7 @@ export function useChatRenderWindow<T>(
     showNewer,
     expandOlder,
     showFrom,
+    restore,
     trim,
     reset,
   }

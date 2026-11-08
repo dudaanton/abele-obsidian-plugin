@@ -158,29 +158,47 @@ describe('coming back to a chat the reader had scrolled up in', () => {
     await container.trigger('scroll')
     const before = model.topMessage()
     expect(before?.id).toBe('a70')
+    const retained = container
+      .findAll('[data-message-id]')
+      .map((row) => row.attributes('data-message-id'))
 
     await switchTo('b', model)
     await switchTo('a', model)
 
     expect(model.topMessage()).toEqual(before)
+    expect(
+      container.findAll('[data-message-id]').map((row) => row.attributes('data-message-id'))
+    ).toEqual(retained)
   })
 
-  it('reveals the older messages they had scrolled back into', async () => {
-    const { container, model } = await open()
-    // To the top, which reveals the page above; then settle on something in it.
-    model.scrollTo(0)
-    await container.trigger('scroll')
-    await settle()
-    model.scrollTo(5 * HEIGHT)
-    await container.trigger('scroll')
-    const before = model.topMessage()
-    expect(before?.id).toBe('a36')
+  it.each([
+    [5 * HEIGHT, 'a36'],
+    [15 * HEIGHT + 40, 'a46'],
+  ] as const)(
+    'reveals the older messages they had scrolled back into at %i',
+    async (position, id) => {
+      const { container, model } = await open()
+      // To the top, which reveals the page above; then settle on something in it.
+      model.scrollTo(0)
+      await container.trigger('scroll')
+      await settle()
+      model.scrollTo(position)
+      await container.trigger('scroll')
+      const before = model.topMessage()
+      expect(before?.id).toBe(id)
+      const retained = container
+        .findAll('[data-message-id]')
+        .map((row) => row.attributes('data-message-id'))
 
-    await switchTo('b', model)
-    await switchTo('a', model)
+      await switchTo('b', model)
+      await switchTo('a', model)
 
-    expect(model.topMessage()).toEqual(before)
-  })
+      expect(model.topMessage()).toEqual(before)
+      expect(
+        container.findAll('[data-message-id]').map((row) => row.attributes('data-message-id'))
+      ).toEqual(retained)
+    }
+  )
 
   it('keeps that place even when replies arrived while they were away', async () => {
     const { container, model } = await open()
