@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalAsync } from './helpers/githubLive'
 import { evalJson, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
@@ -9,32 +10,82 @@ import { dismissOwnNotices } from './helpers/ownNotices'
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
 const mobile = process.env.CANVAS_OPENING_MOBILE === '1'
-const DIR = 'Sample canvas opening'
+const DIR = 'Sample canvas opening ' + randomUUID()
 const SHOTS = shotDir('canvas-opening')
-const run = <T>(body: string): T =>
-  evalAsync<T>(
-    `(async () => {
-  const wait = ms => new Promise(r => setTimeout(r, ms))
-  const dir = ${JSON.stringify(DIR)}
-  ${body}
-})()`,
-    120_000
-  )
-const capture = (name: string) => {
-  const path = `${SHOTS}/${name}.png`
-  if (onPhone()) screenshot(path)
-  else
-    run(
-      `const img = await require('@electron/remote').getCurrentWebContents().capturePage(); require('fs').writeFileSync(${JSON.stringify(path)}, img.toPNG()); return true`
-    )
-}
 
 describe.skipIf(!available).each(mobile ? [true] : onPhone() ? [false] : [false, true])(
   'new native Canvas opening (mobile=%s)',
   openingCases
 )
 function openingCases(mobile: boolean): void {
-  const shoot = (name: string) => capture(`${mobile ? 'mobile' : 'desktop'}-${name}`)
+  const dir = `${DIR}-${mobile ? 'mobile' : 'desktop'}`
+  let files: string[] = []
+  let folderOwned = false
+  const leaves = new Set<string>()
+  let saved: { layout: unknown; preference: boolean } | undefined
+  const run = <T>(body: string): T => {
+    const result = evalAsync<{
+      value: T
+      error?: string
+      files: string[]
+      leaves: string[]
+      folderOwned: boolean
+    }>(
+      `(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms))
+        const dir = ${JSON.stringify(dir)}, files = ${JSON.stringify(files)}
+        let folderOwned = ${JSON.stringify(folderOwned)}
+        const before = new Set(); app.workspace.iterateAllLeaves(leaf => { before.add(leaf.id) })
+        let value, error
+        try { value = await (async () => { ${body} })() }
+        catch (failure) { error = String(failure.stack || failure) }
+        const leaves = []; app.workspace.iterateAllLeaves(leaf => { if (!before.has(leaf.id)) leaves.push(leaf.id) })
+        return { value, error, files, leaves, folderOwned }
+      })()`,
+      120_000
+    )
+    // Retain ownership even when a probe throws or its page globals disappear.
+    files = result.files
+    folderOwned = result.folderOwned
+    result.leaves.forEach((id) => leaves.add(id))
+    if (result.error) throw new Error(result.error)
+    return result.value
+  }
+  const shoot = (name: string) => {
+    const path = `${SHOTS}/${mobile ? 'mobile' : 'desktop'}-${name}.png`
+    if (onPhone()) screenshot(path)
+    else
+      run(
+        `const img = await require('@electron/remote').getCurrentWebContents().capturePage(); require('fs').writeFileSync(${JSON.stringify(path)}, img.toPNG()); return true`
+      )
+  }
+  const cleanup = () => {
+    if (!saved) return
+    run(`
+      const config = window.__abeleTest.AbeleConfig.getInstance()
+      const saved = ${JSON.stringify(saved)}, ids = new Set(${JSON.stringify([...leaves])})
+      const owned = []; app.workspace.iterateAllLeaves(leaf => {
+        if (ids.has(leaf.id) || files.includes(leaf.view.file?.path) || (folderOwned && leaf.view.file?.path.startsWith(dir + '/'))) owned.push(leaf)
+      })
+      config.canvasViewer = false
+      try {
+        for (const leaf of owned) leaf.detach()
+        for (const path of files) { const file = app.vault.getAbstractFileByPath(path); if (file) await app.vault.delete(file, true) }
+        if (folderOwned) { const folder = app.vault.getAbstractFileByPath(dir); if (folder) await app.vault.delete(folder, true) }
+      } finally {
+        try { await app.workspace.changeLayout(saved.layout) }
+        finally {
+          config.canvasViewer = saved.preference
+          delete window.__canvasNavigation; delete window.__canvasEmbedLeaf
+        }
+      }
+      return true
+    `)
+    saved = undefined
+    files = []
+    folderOwned = false
+    leaves.clear()
+  }
   let size: number[] | null = null
   beforeAll(async () => {
     if (mobile && !onPhone()) {
@@ -42,37 +93,37 @@ function openingCases(mobile: boolean): void {
       evalRaw(`require('@electron/remote').getCurrentWindow().setContentSize(390, 844)`)
       await reloadApp('app.emulateMobile(true)')
     }
-    run(`
-      if (app.vault.getAbstractFileByPath(dir)) throw new Error('Synthetic folder already exists')
-      window.__canvasOpeningLayout = app.workspace.getLayout()
-      window.__canvasOpeningPreference = window.__abeleTest.AbeleConfig.getInstance().canvasViewer
-      window.__canvasOpeningFiles = []
-      await app.vault.createFolder(dir)
-      window.__canvasOpeningOwned = true
-      window.__abeleTest.AbeleConfig.getInstance().canvasViewer = true
-      return true
-    `)
+    saved = run(
+      `return { layout: app.workspace.getLayout(), preference: window.__abeleTest.AbeleConfig.getInstance().canvasViewer }`
+    )
+    try {
+      run(`
+        if (app.vault.getAbstractFileByPath(dir)) throw new Error('Synthetic folder already exists')
+        await app.vault.createFolder(dir)
+        folderOwned = true
+        window.__abeleTest.AbeleConfig.getInstance().canvasViewer = true
+        return true
+      `)
+    } catch (error) {
+      cleanup()
+      throw error
+    }
   }, 120_000)
   afterAll(async () => {
-    run(`
-      window.__abeleTest.AbeleConfig.getInstance().canvasViewer = false
-      const paths = window.__canvasOpeningFiles ?? []
-      const leaves = []; app.workspace.iterateAllLeaves(l => { if (paths.includes(l.view.file?.path) || l.view.file?.path.startsWith(dir + '/')) leaves.push(l) })
-      leaves.forEach(l => l.detach())
-      for (const path of paths) { const file = app.vault.getAbstractFileByPath(path); if (file) await app.vault.delete(file, true) }
-      if (window.__canvasOpeningOwned) { const folder = app.vault.getAbstractFileByPath(dir); if (folder) await app.vault.delete(folder, true) }
-      if (window.__canvasOpeningLayout) await app.workspace.changeLayout(window.__canvasOpeningLayout)
-      if (window.__canvasOpeningPreference !== undefined) window.__abeleTest.AbeleConfig.getInstance().canvasViewer = window.__canvasOpeningPreference
-      delete window.__canvasNavigation; delete window.__canvasOpeningFiles; delete window.__canvasOpeningOwned; delete window.__canvasOpeningLayout; delete window.__canvasOpeningPreference
-      return true
-    `)
-    if (size) {
-      evalRaw(
-        `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]}, ${size[1]})`
-      )
-      await reloadApp('app.emulateMobile(false)')
+    try {
+      cleanup()
+    } finally {
+      try {
+        if (size) {
+          evalRaw(
+            `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]}, ${size[1]})`
+          )
+          await reloadApp('app.emulateMobile(false)')
+        }
+      } finally {
+        dismissOwnNotices('Could not open diagram')
+      }
     }
-    dismissOwnNotices('Could not open diagram')
   }, 120_000)
 
   it('navigates host-opened canvases with Back and Forward without renderer entries', () => {
@@ -81,7 +132,7 @@ function openingCases(mobile: boolean): void {
       const bytes = JSON.stringify({ nodes: [{ id: 'sample', type: 'text', text: 'Navigation sample', x: 0, y: 0, width: 240, height: 120 }], edges: [] })
       const canvas = await app.vault.create(dir + '/sample-navigation.canvas', bytes)
       const note = await app.vault.create(dir + '/sample-navigation.md', 'Navigation origin')
-      window.__canvasOpeningFiles.push(canvas.path, note.path)
+      files.push(canvas.path, note.path)
       const leaf = app.workspace.getLeaf('tab')
       window.__canvasNavigation = { leaf, canvas, note, bytes }
       await leaf.openFile(note); await app.workspace.revealLeaf(leaf)
@@ -116,7 +167,7 @@ function openingCases(mobile: boolean): void {
       // The viewer round trip above independently asserts compact source byte equality.
       const bytes = ${JSON.stringify(['{', '\t"nodes":[],', '\t"edges":[]', '}'].join('\n'))}
       const canvas = await app.vault.create(dir + '/sample-native-navigation.canvas', bytes)
-      window.__canvasOpeningFiles.push(canvas.path)
+      files.push(canvas.path)
       await leaf.openFile(canvas); await wait(400)
       const action = leaf.view.containerEl.querySelector('[aria-label="Open in Obsidian Canvas"]')
       if (!action) throw Error('Missing native opt-out action')
@@ -143,7 +194,7 @@ function openingCases(mobile: boolean): void {
       const bytes = '{"nodes":[],"edges":[]}'
       const canvas = await app.vault.create(dir + '/sample-native-compact.canvas', bytes)
       const note = await app.vault.create(dir + '/sample-native-compact.md', 'Native return')
-      window.__canvasOpeningFiles.push(canvas.path, note.path)
+      files.push(canvas.path, note.path)
       const leaf = app.workspace.getLeaf('tab')
       await leaf.openFile(canvas); await app.workspace.revealLeaf(leaf); await wait(400)
       const action = leaf.view.containerEl.querySelector('[aria-label="Open in Obsidian Canvas"]')
@@ -164,8 +215,8 @@ function openingCases(mobile: boolean): void {
       const canvas = await app.vault.create(dir + '/sample-picture.canvas', JSON.stringify({ nodes: [
         { id: 'alpha', type: 'text', text: 'Sample picture', x: 0, y: 0, width: 240, height: 120 }
       ], edges: [] }))
-      const note = await app.vault.create(dir + '/sample-embed.md', '![[sample-picture.canvas]]')
-      window.__canvasOpeningFiles.push(canvas.path, note.path)
+      const note = await app.vault.create(dir + '/sample-embed.md', '![[' + canvas.path + ']]')
+      files.push(canvas.path, note.path)
       const leaf = app.workspace.getLeaf('tab')
       window.__canvasEmbedLeaf = leaf
       await leaf.openFile(note, { state: { mode: 'preview' } })
@@ -220,7 +271,7 @@ function openingCases(mobile: boolean): void {
       await wait(600)
       const file = app.vault.getFiles().find(f => f.extension === 'canvas' && !before.has(f.path))
       if (!file) throw new Error('Native command did not create a Canvas')
-      window.__canvasOpeningFiles.push(file.path)
+      files.push(file.path)
       const v = app.workspace.activeLeaf.view
       return { type: v.getViewType(), bytes: await app.vault.read(file), nodes: v.viewer?.graph.nodes.length ?? -1,
         error: [...document.querySelectorAll('.notice')].some(n => /Could not open diagram/.test(n.textContent)) }
@@ -245,7 +296,7 @@ function openingCases(mobile: boolean): void {
         if(!app.commands.executeCommandById('canvas:new-file'))throw Error('Native canvas command unavailable')
         await wait(600)
         const file=app.vault.getFiles().find(f=>f.extension==='canvas'&&!before.has(f.path))
-        if(file)window.__canvasOpeningFiles.push(file.path)
+        if(file)files.push(file.path)
         return file?.parent?.path===inbox
       } finally {
         app.vault.setConfig('newFileLocation',location);app.vault.setConfig('newFileFolderPath',folder)
@@ -261,7 +312,7 @@ function openingCases(mobile: boolean): void {
       const path = dir + '/sample-actions.canvas'
       const bytes = JSON.stringify({ nodes: [], edges: [] })
       const file = await app.vault.create(path, bytes)
-      window.__canvasOpeningFiles.push(path)
+      files.push(path)
       const leaf = app.workspace.getLeaf('tab')
       await leaf.openFile(file); await app.workspace.revealLeaf(leaf); await wait(400)
       const view = leaf.view
@@ -281,7 +332,7 @@ function openingCases(mobile: boolean): void {
       if (file.basename !== 'sample-command-renamed') throw new Error('Rename command did not save the new title')
       await app.fileManager.renameFile(file, dir + '/sample-explorer-renamed.canvas')
       await wait(200)
-      window.__canvasOpeningFiles.push(file.path)
+      files.push(file.path)
       const moved = view.file === file && title.textContent === file.basename && view.getDisplayText() === file.basename
         && await app.vault.read(file) === bytes
       const service = window.__abeleTest.ChatService.getInstance()
@@ -314,8 +365,8 @@ function openingCases(mobile: boolean): void {
     'opens a valid empty native file %s and preserves its bytes',
     (bytes) => {
       const result = run<{ type: string; bytes: string; nodes: number; status: string }>(`
-      const path = dir + '/sample-empty-' + window.__canvasOpeningFiles.length + '.canvas'
-      const file = await app.vault.create(path, ${JSON.stringify(bytes)}); window.__canvasOpeningFiles.push(path)
+      const path = dir + '/sample-empty-' + files.length + '.canvas'
+      const file = await app.vault.create(path, ${JSON.stringify(bytes)}); files.push(path)
       const leaf = app.workspace.getLeaf('tab'); await leaf.openFile(file); await app.workspace.revealLeaf(leaf); await wait(600)
       return { type: leaf.view.getViewType(), bytes: await app.vault.read(file), nodes: leaf.view.viewer?.graph.nodes.length ?? -1, status: leaf.view.viewer?.status.textContent ?? 'No viewer' }
     `)
@@ -332,7 +383,7 @@ function openingCases(mobile: boolean): void {
     const result = run<{ pending: string; saved: string; same: boolean; text: string }>(`
       window.__abeleTest.AbeleConfig.getInstance().canvasViewer = false
       const file = await app.vault.create(dir + '/sample-pending.canvas', '')
-      window.__canvasOpeningFiles.push(file.path)
+      files.push(file.path)
       const leaf = app.workspace.getLeaf('tab'); await leaf.openFile(file); await app.workspace.revealLeaf(leaf)
       const native = leaf.view
       native.canvas.setData({ nodes: [{ id: 'sample', type: 'text', text: 'Delayed sample content', x: 0, y: 0, width: 200, height: 100 }], edges: [] })
@@ -388,9 +439,9 @@ function openingCases(mobile: boolean): void {
         other: string
       }>(`
       const graph = ${JSON.stringify(graph)}, serialized = JSON.stringify(graph), encoded = JSON.stringify(serialized)
-      const path = dir + '/sample-encoded-' + window.__canvasOpeningFiles.length + '.canvas'
+      const path = dir + '/sample-encoded-' + files.length + '.canvas'
       window.__abeleTest.AbeleConfig.getInstance().canvasViewer = false
-      const file = await app.vault.create(path, serialized); window.__canvasOpeningFiles.push(path)
+      const file = await app.vault.create(path, serialized); files.push(path)
       const nativeLeaf = app.workspace.getLeaf('tab')
       await nativeLeaf.setViewState({ type: 'canvas', state: { file: path }, active: true })
       await app.vault.modify(file, encoded)
@@ -399,8 +450,8 @@ function openingCases(mobile: boolean): void {
       const native = nativeLeaf.view.getViewType()
       const viewerLeaf = app.workspace.getLeaf('tab')
       await viewerLeaf.setViewState({ type: 'abele-canvas', state: { file: path }, active: true })
-      const otherPath = dir + '/sample-valid-' + window.__canvasOpeningFiles.length + '.canvas'
-      const otherFile = await app.vault.create(otherPath, '{"nodes":[],"edges":[]}'); window.__canvasOpeningFiles.push(otherPath)
+      const otherPath = dir + '/sample-valid-' + files.length + '.canvas'
+      const otherFile = await app.vault.create(otherPath, '{"nodes":[],"edges":[]}'); files.push(otherPath)
       const otherLeaf = app.workspace.getLeaf('tab')
       await otherLeaf.setViewState({ type: 'canvas', state: { file: otherPath }, active: true }); await wait(600)
       await app.workspace.revealLeaf(viewerLeaf); await wait(100)
@@ -431,14 +482,14 @@ function openingCases(mobile: boolean): void {
       const bytes = JSON.stringify(graph)
       const file = await app.vault.create(dir + '/sample-edit.canvas', bytes)
       const broken = await app.vault.create(dir + '/sample-broken.canvas', bytes)
-      window.__canvasOpeningFiles.push(file.path, broken.path)
+      files.push(file.path, broken.path)
       const editedLeaf = app.workspace.getLeaf('tab'); await editedLeaf.setViewState({ type: 'canvas', state: { file: file.path }, active: true })
       const brokenLeaf = app.workspace.getLeaf('tab'); await brokenLeaf.setViewState({ type: 'canvas', state: { file: broken.path }, active: true })
       await app.vault.modify(broken, '{"nodes":[]')
       graph.nodes[0].text = 'Unsaved sample content'
       editedLeaf.view.canvas.setData(graph)
       const other = await app.vault.create(dir + '/sample-other.canvas', '{"nodes":[],"edges":[]}')
-      window.__canvasOpeningFiles.push(other.path)
+      files.push(other.path)
       const otherLeaf = app.workspace.getLeaf('tab'); await otherLeaf.setViewState({ type: 'canvas', state: { file: other.path }, active: true })
       window.__abeleTest.AbeleConfig.getInstance().canvasViewer = true
       app.workspace.trigger('layout-change'); await wait(600)
