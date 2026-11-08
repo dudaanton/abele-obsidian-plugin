@@ -13,40 +13,38 @@ async function inspectToolPermissions(label: string) {
     const report = JSON.parse(
       await evalLong(`(async () => {
       const wait = ms => new Promise(r => setTimeout(r, ms));
-      let row;
+      let editor;
       for (let i=0;i<100;i++) {
-        const heading = [...document.querySelectorAll('.abele-tool-modes__group > .abele-fold-heading')].find(el => el.textContent.includes('Node'));
-        if(heading?.getAttribute('aria-expanded') === 'false')heading.click();
-        row = [...document.querySelectorAll('.abele-tool-modes__action')].find(el => el.textContent.includes('Hand work'));
-        if(row)break;
+        editor=document.querySelector('.abele-agent-editor .abele-tool-modes');
+        if(editor?.querySelector('.abele-tool-modes__group'))break;
         await wait(50);
       }
-      if(!row)throw Error('Node action permissions did not appear');
-      row.querySelector('.abele-tool-modes__members-toggle').click();
-      await wait(100);
-      row.scrollIntoView({block:'start'});
-      return JSON.stringify([...row.querySelectorAll('.abele-tool-modes__members .setting-item')].map(el => ({name:el.querySelector('code').textContent,mode:el.querySelector('select').value})));
+      if(!editor)throw Error('Agent tool permissions did not appear');
+      for(const heading of editor.querySelectorAll('.abele-disclosure__control[aria-expanded="false"]'))heading.click();
+      let delegate;
+      for(let i=0;i<100;i++) {
+        delegate=[...editor.querySelectorAll('.abele-tool-modes__row')].find(el=>el.querySelector('.setting-item-name')?.textContent.trim()==='Delegate to agent');
+        if(delegate)break;
+        await wait(50);
+      }
+      if(!delegate)throw Error('Ordinary Delegate permission did not appear');
+      delegate.scrollIntoView({block:'center'});
+      return JSON.stringify({
+        actions:editor.querySelectorAll('.abele-tool-modes__action').length,
+        headings:[...editor.querySelectorAll('.abele-disclosure__control .abele-fold-heading__text')].map(el=>el.textContent.trim()),
+        nodeSwitches:[...editor.querySelectorAll('.abele-tool-modes__row')].filter(el=>/node_delegate|node_command|node_git_integrate|Hand work to a node agent/.test(el.textContent)).length,
+        delegateModes:[...delegate.querySelectorAll('select option')].map(el=>el.value),
+        delegateMode:delegate.querySelector('select').value
+      });
     })()`)
-    ) as { name: string; mode: string }[]
-    expect(report.map((row) => row.name)).toEqual(
-      expect.arrayContaining([
-        'node_delegate',
-        'node_delegations',
-        'node_delegation_send',
-        'node_delegation_status',
-        'node_delegation_cancel',
-        'node_command_run',
-        'node_command_status',
-        'node_command_cancel',
-        'node_git_integrate',
-      ])
     )
-    expect(report.every((row) => row.mode === 'off')).toBe(true)
-    columnShot(`${shots}/${label}-node-tools-off.png`)
-    await evalLong(
-      `(() => {const rows=[...document.querySelectorAll('.abele-tool-modes__members .setting-item')];rows.at(-1)?.scrollIntoView({block:'end'});return true})()`
-    )
-    columnShot(`${shots}/${label}-node-tools-off-end.png`)
+    // Folder access replaced per-tool node switches; ordinary Delegate still has its own mode.
+    expect(report.actions).toBe(0)
+    expect(report.nodeSwitches).toBe(0)
+    expect(report.headings).not.toEqual(expect.arrayContaining(['Node']))
+    expect(report.delegateModes).toEqual(['off', 'ask', 'auto'])
+    expect(report.delegateMode).toBe('off')
+    columnShot(`${shots}/${label}-folder-node-permissions.png`)
   } finally {
     await evalLong(
       `(() => {document.querySelector('.abele-agent-editor')?.closest('.modal-container')?.querySelector('.modal-close-button')?.click();return true})()`
@@ -252,7 +250,7 @@ it('shows durable command approvals, output and every terminal outcome', async (
 }, 90000)
 
 it.skipIf(onPhone())(
-  'shows node actions Off in ordinary agent tool permissions',
+  'keeps node access in folders and ordinary delegation in agent tool permissions',
   async () => {
     await inspectToolPermissions('desktop')
   },

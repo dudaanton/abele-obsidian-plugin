@@ -50,8 +50,9 @@ it('returns through native history after language definition and reference jumps
       await wait(200);await leaf.history.back();await at('src/source.ts',4);
       await leaf.history.forward();await at('src/definition.ts',7);
       await menuJump('Find references',7);
-      await until(()=>[...document.querySelectorAll('.abele-github-definition__place')].some(el=>el.textContent==='src/definition.ts:12'));
-      [...document.querySelectorAll('.abele-github-definition__place')].find(el=>el.textContent==='src/definition.ts:12').closest('.suggestion-item').click();
+      const reference=()=>[...document.querySelectorAll('[data-reference-file="src/definition.ts"] [data-reference-row]')].find(el=>el.querySelector('.abele-github-search__number')?.textContent==='12');
+      await until(()=>reference());
+      reference().click();
       await at('src/definition.ts',12);
       await wait(200);await leaf.history.back();await at('src/definition.ts',7);
       await leaf.history.forward();await at('src/definition.ts',12);
@@ -97,8 +98,8 @@ it.each([false, true])(
       await until(()=>pane.querySelector('.cm-searchMatch')?.textContent==='v07');
       if(getComputedStyle(pane.querySelector('.cm-searchMatch')).backgroundColor==='rgba(0, 0, 0, 0)')throw Error('Search destination has no visible highlight');
       await wait(1200);
-      const content = pane.querySelector('.abele-file-view__file');
-      const card = content;
+      const content = pane.querySelector('.abele-file-view');
+      const card = pane.querySelector('.abele-file-view__file');
       const height = card.getBoundingClientRect().height - 24;
       content.style.flex = '0 0 auto';
       content.style.height = height+'px';

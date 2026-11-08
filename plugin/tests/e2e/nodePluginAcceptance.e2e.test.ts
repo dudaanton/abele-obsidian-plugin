@@ -79,7 +79,7 @@ it.each([false, true])(
       await shot('editor-changed-on-disk');
       fileLeaf.detach();fileLeaf=null;
       await nodePanel.select('feature');
-      client.nodePath.createWorkspace=async()=>({job_id:'sample-create-job'});
+      client.nodePath.createWorkspace=async()=>({workspace_id:'sample-created-workspace',job_id:'sample-create-job'});
       client.getJob=()=>new Promise(resolve=>{finish=resolve});
       const menu=await nodePanel.menu();
       [...menu.querySelectorAll('.menu-item')].find(item=>item.textContent.trim().startsWith('New worktree')).click();
