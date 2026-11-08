@@ -32,7 +32,7 @@
       "yardstickMs": 31.5,
       "bare": {
         "readCompileMs": 145,
-        "modulesMs": 26.1,
+        "modulesMs": 55.0,
         "onloadMs": 190.6,
         "layoutMs": 190.6,
         "enableMs": 382.2,
@@ -41,7 +41,7 @@
       },
       "workspace": {
         "readCompileMs": 146.1,
-        "modulesMs": 26.1,
+        "modulesMs": 55.0,
         "onloadMs": 136.4,
         "layoutMs": 136.4,
         "enableMs": 602.7,
