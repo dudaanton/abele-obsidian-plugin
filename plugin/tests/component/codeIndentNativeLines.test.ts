@@ -161,6 +161,25 @@ it('keeps the registered extension through vault setting changes and editor reco
   try {
     registerCodeIndentGuides(host as unknown as Plugin)
     expect(extensions).toHaveLength(1)
+    const reading = document.createElement('div')
+    const pre = document.createElement('pre')
+    const code = document.createElement('code')
+    code.className = 'language-js'
+    code.textContent = 'root\n  child\n'
+    pre.append(code)
+    reading.append(pre)
+    document.body.append(reading)
+    host.registerMarkdownPostProcessor.mock.calls[0][0](reading)
+    expect(code.querySelector('.abele-code-line')).not.toBeNull()
+    // Highlighting can finish after the markdown postprocessor has returned.
+    const highlighted = document.createElement('span')
+    highlighted.className = 'token'
+    highlighted.textContent = 'child'
+    code.replaceChildren('root\n  ', highlighted, '\n')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(code.querySelector('.abele-code-line')).not.toBeNull()
+    expect(code.querySelector('.token')?.textContent).toBe('child')
+    reading.remove()
     expect(host.registerDomEvent).toHaveBeenCalledTimes(1)
     expect(host.app.workspace.onLayoutReady).toHaveBeenCalledTimes(1)
     const registered = extensions[0]

@@ -344,6 +344,7 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
   diagnosticHost.codeIndentGuideDiagnostics = settings.inspect
   const blocks = new Set<WeakRef<HTMLElement>>()
   const remembered = new WeakSet<HTMLElement>()
+  const blockObservers = new WeakMap<HTMLElement, MutationObserver>()
   const process = readingGuideProcessor(settings)
   plugin.registerMarkdownPostProcessor((root) => {
     process(root)
@@ -354,6 +355,15 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
       if (remembered.has(code)) continue
       remembered.add(code)
       blocks.add(new WeakRef(code))
+      // Syntax highlighting can replace our rows after postprocessing has returned.
+      // Keep only a weak target here so a retired reading pane remains collectible.
+      const target = new WeakRef(code)
+      const observer = new code.ownerDocument.defaultView.MutationObserver(() => {
+        const current = target.deref()
+        if (current?.isConnected) process(current)
+      })
+      observer.observe(code, { childList: true, subtree: true })
+      blockObservers.set(code, observer)
     }
   }, 1000)
   plugin.registerEditorExtension(codeGuideExtension(settings))
@@ -416,7 +426,10 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
     documents.clear()
     for (const ref of blocks) {
       const code = ref.deref()
-      if (code) clearReadingGuides(code)
+      if (code) {
+        blockObservers.get(code)?.disconnect()
+        clearReadingGuides(code)
+      }
     }
   })
   plugin.app.workspace.onLayoutReady(() => {
