@@ -100,6 +100,10 @@ it.each([false, true])(
       await wait(1200);
       const content = pane.querySelector('.abele-file-view');
       const card = pane.querySelector('.abele-file-view__file');
+      // A short card normally grows to fill its viewport. Measure its natural content
+      // before making the viewport slightly shorter, so the fixture has real overflow.
+      card.style.flex = '0 0 auto';
+      await new Promise(resolve=>requestAnimationFrame(resolve));
       const height = card.getBoundingClientRect().height - 24;
       content.style.flex = '0 0 auto';
       content.style.height = height+'px';
@@ -109,8 +113,10 @@ it.each([false, true])(
       await leaf.setViewState({type:'abele-node-file',active:true,state:tab});
       await until(()=>pane.querySelector('.abele-file-view__header') && pane.querySelector('.cm-line'));
       await wait(1200);
+      const viewport = pane.querySelector('.abele-file-view');
+      if(viewport!==content)throw Error('Linked file viewport was replaced during navigation');
       const header = pane.querySelector('.abele-file-view__header');
-      const result = {range:content.scrollHeight-content.clientHeight,scroll:content.scrollTop,headerTop:header.getBoundingClientRect().top-content.getBoundingClientRect().top};
+      const result = {range:viewport.scrollHeight-viewport.clientHeight,scroll:viewport.scrollTop,headerTop:header.getBoundingClientRect().top-viewport.getBoundingClientRect().top,viewportHeight:viewport.clientHeight,cardHeight:card.getBoundingClientRect().height,connected:viewport.isConnected};
       require('fs').writeFileSync(${JSON.stringify(shots + '/')}+${JSON.stringify(phone ? 'phone' : 'desktop')}+'-short-linked-file.png',(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG());
       return JSON.stringify(result);
     } finally {
@@ -120,6 +126,7 @@ it.each([false, true])(
   })()`)
       ) as { range: number; scroll: number; headerTop: number }
     const result = phone ? await withEmulatedPhone(probe) : await probe()
+    console.info('short linked file viewport', { phone, ...result })
     expect(result.range).toBeGreaterThan(0)
     expect(result.range).toBeLessThan(96)
     expect(result.scroll).toBe(0)
