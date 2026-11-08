@@ -16,6 +16,16 @@ if (skippedServerTests.length)
 const fixture = process.env.ABELE_SYNC_DIR ? verifySyncFixture(process.env.ABELE_SYNC_DIR) : null
 const missingFixture = path.resolve(__dirname, 'tests/helpers/missingSyncFixture.ts')
 
+// These fixtures keep large vaults, native transfers or IndexedDB histories alive.
+// Use Vitest's later, serial project group so a shard never runs several of them
+// alongside its ordinary tests. The other shard retains its ordinary worker pool.
+const nativeLane = [
+  'tests/integration/native*.test.ts',
+  'tests/integration/*Scale.test.ts',
+  'tests/integration/inspectionCacheQuota.test.ts',
+  'tests/integration/syncInventoryTasks.test.ts',
+]
+
 /**
  * Fast tier: unit + integration. No running Obsidian required, so this is what CI and the
  * pre-commit hook run. End-to-end tests live in `vitest.e2e.config.ts` and are opt-in.
@@ -74,21 +84,35 @@ export default defineConfig({
     // override these bounded defaults for a different measured runner quota.
     maxWorkers: process.env.ABELE_FAST_SHARD_PLAN ? 4 : 3,
     ...(process.env.ABELE_FAST_SHARD_PLAN ? { sequence: { sequencer: FastSequencer } } : {}),
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'ordinary',
+          // Keep includes on each project: Vite concatenates inherited arrays.
+          include: [
+            'tests/unit/**/*.test.ts',
+            'tests/harness/**/*.test.ts',
+            'tests/integration/**/*.test.ts',
+            'tests/component/**/*.test.ts',
+          ],
+          exclude: [...configDefaults.exclude, ...skippedServerTests, ...nativeLane],
+          sequence: { groupOrder: 0 },
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'native',
+          include: nativeLane,
+          fileParallelism: false,
+          sequence: { groupOrder: 1 },
+        },
+      },
+    ],
     // Vitest 4 keeps a re-used spy's call history. Each case still starts with fresh calls.
     clearMocks: true,
     environment: 'happy-dom',
-    // Includes the complexity tier: those assertions describe how much work an algorithm may
-    // do, they run against the in-memory fake vault in milliseconds, and they are the guard
-    // that stops group resolution from silently going quadratic again.
-    include: [
-      'tests/unit/**/*.test.ts',
-      // Test infrastructure has its own home, but remains part of the fast gate.
-      'tests/harness/**/*.test.ts',
-      'tests/integration/**/*.test.ts',
-      // Component tier: Vue components mounted against happy-dom. It computes no layout, so
-      // these assert what reaches the DOM and in what order, never how it looks.
-      'tests/component/**/*.test.ts',
-    ],
     // Skip before collection: these files import server modules unavailable without a fixture.
     exclude: [...configDefaults.exclude, ...skippedServerTests],
     // Fails the test that leaves a delayed settings or chat write behind — see the file.

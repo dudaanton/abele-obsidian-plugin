@@ -98,6 +98,7 @@ it.each(['inventory', 'directories', 'files'] as const)(
 )
 
 it('waits through a long host rebuild without walking the vault', async () => {
+  vi.useFakeTimers()
   const app = buildFakeVault([{ path: 'sample.md', content: 'x' }])
   let clean = false
   const marks: boolean[] = []
@@ -110,16 +111,31 @@ it('waits through a long host rebuild without walking the vault', async () => {
   const listing = Array.fromAsync(fs.list())
   let heartbeats = 0
   const heartbeat = setInterval(() => heartbeats++, 20)
-  await new Promise((resolve) => setTimeout(resolve, 2200))
-  clearInterval(heartbeat)
-  expect(heartbeats).toBeGreaterThan(50)
-  expect(diskWalk).not.toHaveBeenCalled()
-  expect(marks).toEqual([true])
-  clean = true
-  app.emit('metadataCache', 'resolved')
-  expect((await listing).map((file) => file.path)).toEqual(['sample.md'])
-  expect(diskWalk).not.toHaveBeenCalled()
-  expect(marks).toEqual([true, false])
+  try {
+    // Advance the host's elapsed time without charging process suspension to sync.
+    // A non-yielding poll still blocks this advance; the heartbeat and no-walk
+    // assertions exercise the same pending-index state for the full interval.
+    await vi.advanceTimersByTimeAsync(2200)
+    expect(heartbeats).toBeGreaterThan(50)
+    expect(diskWalk).not.toHaveBeenCalled()
+    expect(marks).toEqual([true])
+    clean = true
+    app.emit('metadataCache', 'resolved')
+    await vi.advanceTimersByTimeAsync(50)
+    expect((await listing).map((file) => file.path)).toEqual(['sample.md'])
+    expect(diskWalk).not.toHaveBeenCalled()
+    expect(marks).toEqual([true, false])
+  } finally {
+    // A failed assertion must not leave the index poll running in the reused worker.
+    try {
+      clean = true
+      clearInterval(heartbeat)
+      await vi.advanceTimersByTimeAsync(50)
+      await listing
+    } finally {
+      vi.useRealTimers()
+    }
+  }
 })
 
 it('uses the settled host stat after a file changed while the app was closed', async () => {
