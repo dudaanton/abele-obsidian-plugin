@@ -112,6 +112,7 @@ import { mountPhoneSyncAction } from './sync/phoneSyncAction'
 import { openAbeleSettings } from './components/settings/settingsTab'
 // Keep the extracted section last so its dependencies do not reorder the existing styles.
 import { registerAiFeatures } from '@/startup/registerAiFeatures'
+import { deferredWorkspaceUi } from '@/startup/workspaceUi'
 
 // Every module imported above has run its top-level code by now. See `helpers/loadMarks.ts`.
 markLoad('evalEnd')
@@ -128,6 +129,7 @@ export default class AbelePlugin extends Plugin {
   private unloaded = false
   private syncStarted = false
   private vueApp: VueApp | null = null
+  private workspaceUi: ReturnType<typeof deferredWorkspaceUi> | null = null
   private headerCommands: HeaderCommands | null = null
 
   async initializeVue() {
@@ -137,7 +139,8 @@ export default class AbelePlugin extends Plugin {
     rootContainer.id = 'abele-vue-root'
     document.body.appendChild(rootContainer)
 
-    this.vueApp = createApp(VueEntry)
+    this.workspaceUi = deferredWorkspaceUi(VueEntry)
+    this.vueApp = createApp(this.workspaceUi.root)
 
     // Catch errors from Teleport unmounting when CM6 removes widget DOM
     let suppressedSeen = false
@@ -684,6 +687,7 @@ export default class AbelePlugin extends Plugin {
           markLoad('layoutEnd')
         })
       markLoad('onloadEnd')
+      if (!this.unloaded) this.workspaceUi?.start(this)
     }
   }
 
@@ -832,6 +836,7 @@ export default class AbelePlugin extends Plugin {
       this.headerCommands?.stop()
       this.headerCommands = null
       // Unmount Vue BEFORE store cleanup so Teleport components unmount cleanly
+      this.workspaceUi?.stop()
       if (this.vueApp) {
         this.vueApp.unmount()
         document.getElementById('abele-vue-root')?.remove()
