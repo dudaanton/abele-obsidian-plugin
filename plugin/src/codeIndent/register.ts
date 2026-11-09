@@ -345,6 +345,7 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
   const blocks = new Set<WeakRef<HTMLElement>>()
   const remembered = new WeakSet<HTMLElement>()
   const blockObservers = new WeakMap<HTMLElement, MutationObserver>()
+  const repairResets = new Map<MutationObserver, { win: Window; timer: number }>()
   const draw = readingGuideProcessor(settings)
   const process = (code: HTMLElement, clear = false) => {
     const observer = blockObservers.get(code)
@@ -371,13 +372,28 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
       // Keep only a weak target here so a retired reading pane remains collectible.
       const target = new WeakRef(code)
       let repairs = 0
+      let paused = false
       const observer = new code.ownerDocument.defaultView.MutationObserver(() => {
         const current = target.deref()
         if (!current?.isConnected) return
+        if (!settings().enabled) return
         if (current.firstElementChild?.classList.contains('abele-code-line')) return
-        // A renderer repeatedly replacing the block must still yield. Ordinary
-        // late highlighting needs one repair; cap automatic repairs per block.
+        // Count only consecutive repairs before the page yields, not the
+        // block's lifetime. Resume a suspended block on a later task.
+        if (!repairResets.has(observer)) {
+          const win = current.ownerDocument.defaultView
+          const timer = win.setTimeout(() => {
+            repairResets.delete(observer)
+            repairs = 0
+            if (!paused || unloaded) return
+            paused = false
+            const latest = target.deref()
+            if (latest?.isConnected) process(latest)
+          }, 0)
+          repairResets.set(observer, { win, timer })
+        }
         if (repairs >= 8) {
+          paused = true
           observer.disconnect()
           return
         }
@@ -440,6 +456,8 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
   )
   plugin.register(() => {
     unloaded = true
+    for (const { win, timer } of repairResets.values()) win.clearTimeout(timer)
+    repairResets.clear()
     delete diagnosticHost.codeIndentGuideDiagnostics
     for (const observer of observers.values()) observer.disconnect()
     observers.clear()

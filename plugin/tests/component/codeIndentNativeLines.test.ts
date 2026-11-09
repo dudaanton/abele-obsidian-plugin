@@ -42,9 +42,13 @@ it.each([false, true])('settles non-idempotent reading passes (repeated: %s)', a
     if (passes < 12 && (repeated || passes === 2)) code.textContent = 'root\n  child\n'
     draw(code, size)
   })
+  let enabled = true
   const host = {
     app: {
-      vault: { getConfig: vi.fn(), on: vi.fn() },
+      vault: {
+        getConfig: (key: string) => (key === 'showIndentGuide' ? enabled : undefined),
+        on: vi.fn(),
+      },
       workspace: { on: vi.fn(), onLayoutReady: vi.fn(), iterateAllLeaves: vi.fn() },
     },
     registerEditorExtension: vi.fn(),
@@ -60,6 +64,7 @@ it.each([false, true])('settles non-idempotent reading passes (repeated: %s)', a
   code.textContent = 'root\n  child\n'
   pre.append(code)
   document.body.append(pre)
+  let highlighting: MutationObserver | undefined
   try {
     registerCodeIndentGuides(host as unknown as Plugin)
     const process = host.registerMarkdownPostProcessor.mock.calls[0][0]
@@ -76,7 +81,37 @@ it.each([false, true])('settles non-idempotent reading passes (repeated: %s)', a
     await new Promise((resolve) => setTimeout(resolve, 30))
     expect(passes).toBe(4)
     expect(code.querySelectorAll(':scope > .abele-code-line')).toHaveLength(2)
+    enabled = false
+    for (let turn = 0; turn < 9; turn++) {
+      code.textContent = 'root\n  child\n'
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    expect(passes).toBe(4)
+    enabled = true
+    // Independent highlighting turns must never exhaust a lifetime quota.
+    for (let turn = 0; turn < 9; turn++) {
+      code.textContent = 'root\n  child\n'
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      expect(code.querySelectorAll(':scope > .abele-code-line')).toHaveLength(2)
+    }
+    expect(passes).toBe(13)
+    if (repeated) {
+      let replacements = 0
+      highlighting = new MutationObserver(() => {
+        if (replacements < 10 && code.querySelector('.abele-code-line')) {
+          replacements++
+          code.textContent = 'root\n  child\n'
+        }
+      })
+      highlighting.observe(code, { childList: true })
+      code.textContent = 'root\n  child\n'
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect(replacements).toBe(10)
+      expect(code.querySelectorAll(':scope > .abele-code-line')).toHaveLength(2)
+      expect(passes).toBeLessThanOrEqual(25)
+    }
   } finally {
+    highlighting?.disconnect()
     for (const [cleanup] of host.register.mock.calls) (cleanup as () => void)()
     pre.remove()
     drawing.mockRestore()
