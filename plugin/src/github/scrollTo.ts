@@ -23,6 +23,8 @@ export type Locate = () => number | null | { estimate: number }
 export interface PinOptions {
   /** Keep a nearly fitting pane whole when the requested line is already visible. */
   keepVisibleInShortPane?: boolean
+  /** Full target height when the located point represents a box rather than a point. */
+  targetHeight?: () => number
   /** Pixels of what comes before the target left visible above it. */
   context?: number
   /** Give up when the target has not appeared in this long. */
@@ -35,6 +37,7 @@ export interface PinOptions {
 
 const DEFAULTS: Required<PinOptions> = {
   keepVisibleInShortPane: false,
+  targetHeight: () => 0,
   context: 16,
   waitMs: 10_000,
   stillMs: 700,
@@ -158,7 +161,8 @@ export function pinIntoView(from: Element, locate: Locate, options: PinOptions =
           range >= 0 &&
           range < padding &&
           contentTop >= padding &&
-          contentTop < container.clientHeight
+          contentTop < container.clientHeight &&
+          contentTop + o.targetHeight() <= container.clientHeight
         )
           container.scrollTop = 0
         else placeAt(container, top, padding)

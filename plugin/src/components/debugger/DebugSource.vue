@@ -302,6 +302,11 @@ async function draw() {
     unpin = pinIntoView(host.value, () => drawn.targetTop(), {
       context: (scrollParent(host.value)?.clientHeight ?? 192) / 2,
       keepVisibleInShortPane: true,
+      targetHeight: () => {
+        if (!editor || !props.range) return Infinity
+        const line = editor.state.doc.line(Math.min(props.range.start, editor.state.doc.lines))
+        return editor.lineBlockAt(line.from).height
+      },
     })
   }
   console.debug('[debugger] Source mounted', props.path, props.line)
