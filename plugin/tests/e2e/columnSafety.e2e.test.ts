@@ -28,10 +28,14 @@ function show(text: string, mode = 'source') {
     `await leaf.setViewState({type:'markdown',state:{file:${JSON.stringify(NOTE)},mode:${JSON.stringify(mode)},source:false}});return true`,
     'open ' + mode
   )
-  evaluate(
-    `if(${JSON.stringify(mode)}==='source'){view.editor.setValue(${JSON.stringify(text)});view.editor.setCursor({line:view.editor.lineCount()-1,ch:0})}await wait(500);return true`,
-    'render ' + mode
-  )
+  if (mode === 'source') {
+    evaluate(`view.editor.setValue(${JSON.stringify(text)});return true`, 'replace editor source')
+    evaluate(
+      `view.editor.setCursor({line:view.editor.lineCount()-1,ch:0});return true`,
+      'move editor caret'
+    )
+  }
+  evaluate(`await wait(500);return true`, 'settle layout ' + mode)
 }
 async function shot(name: string) {
   const path = SHOTS + '/' + name + '.png'
