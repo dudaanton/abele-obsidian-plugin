@@ -27,21 +27,40 @@ function replaceBoundary(code, before, after, id) {
   return code.replace(before, after)
 }
 const helper = `
+// Keep replay batches small even on hosts where a time-based checkpoint is coarse.
+function replayWork(options) {
+  const work = new ScanWork(options);
+  let remaining = 64;
+  return {
+    step() {
+      if (--remaining === 0) {
+        remaining = 64;
+        return work.yield();
+      }
+      return work.step();
+    }
+  };
+}
 // An additive replay needs tracked restore evidence, not discovery of unrelated new files.
 // Destructive, restored and review-pending work retains the complete inventory path.
 async function additiveReplayEntries(fs, state, scheduling = {}) {
   if (!fs.listChildren || !state.getMeta) return null;
   const journal = await state.getJournal();
-  if (!journal?.ops.length || journal.ops.some(op =>
-    !['create', 'modify'].includes(op.op) || op.prefer === 'mine')) return null;
+  if (!journal?.ops.length) return null;
+  const work = replayWork(scheduling);
+  for (const op of journal.ops) {
+    const checkpoint = work.step();
+    if (checkpoint) await checkpoint;
+    if (!['create', 'modify'].includes(op.op) || op.prefer === 'mine') return null;
+  }
   if (await state.getMeta('server-restore-reconciling')) return null;
   const raw = await state.getMeta('content-reconciliation');
   if (raw && JSON.parse(raw).phase !== 'complete') return null;
   const entries = [];
-  const work = new ScanWork(scheduling);
   for await (const entry of state.all()) {
     entries.push(entry);
-    await work.step();
+    const checkpoint = work.step();
+    if (checkpoint) await checkpoint;
   }
   return entries;
 }
@@ -822,6 +841,11 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
       } else if (file.endsWith('/localPaths.js')) {
         code = replaceOnce(
           code,
+          '    const work = new ScanWork(opts);\n    const inventory =',
+          '    const work = replayWork(opts);\n    const inventory ='
+        )
+        code = replaceOnce(
+          code,
           '    static async forPath(fs, path, state) {',
           `    static async forPath(fs, path, state) {
         // A sibling may create a parent between index absence and live lstat.
@@ -846,9 +870,10 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
     if (replayEntries === null) await inventory.rememberDirectories(state, opts);
     else {
       const read = new Set();
-      const work = new ScanWork(opts);
+      const work = replayWork(opts);
       for (const entry of replayEntries) {
-        await work.step();
+        const checkpoint = work.step();
+        if (checkpoint) await checkpoint;
         const segments = wirePath(entry.wirePath).split('/');
         let parent = '';
         for (let n = 0; n < segments.length; n++) {
@@ -857,7 +882,8 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
             // Read complete directories, never a target-filtered host inventory.
             for (const child of await fs.listChildren(parent)) {
               inventory.add(child);
-              await work.step();
+              const checkpoint = work.step();
+              if (checkpoint) await checkpoint;
             }
             read.add(parent);
           }

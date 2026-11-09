@@ -9,6 +9,42 @@ import {
 } from '@abele/sync-sdk/core'
 import { selectiveFrom } from '@/sync/connection'
 
+it('yields while classifying a large additive replay journal', async () => {
+  const { refreshLocalPaths } = await import(
+    '../../node_modules/@abele/sync-sdk/dist/internal/core/localPaths.js'
+  )
+  const state = new MemoryStateStore()
+  let visits = 0,
+    longest = 0
+  state.getJournal = async () => ({
+    batchId: 'sample-batch',
+    idempotencyKey: 'sample-request',
+    startedAt: new Date().toISOString(),
+    ops: Array.from({ length: 1024 }, () => ({
+      get op() {
+        longest = Math.max(longest, ++visits)
+        return 'create' as const
+      },
+      path: 'sample.md',
+      sha: 'a'.repeat(64),
+      size: 1,
+      mtime: 1,
+    })),
+  })
+  await refreshLocalPaths(
+    Object.assign(new MemoryFileSystem(), { listChildren: async () => [] }),
+    state,
+    {
+      yieldTask: async () => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+        visits = 0
+      },
+    }
+  )
+  expect(longest).toBeGreaterThan(0)
+  expect(longest).toBeLessThanOrEqual(64)
+})
+
 it('resumes a named upload before enumerating 33000 unrelated files', async () => {
   const fs = new MemoryFileSystem(),
     state = new MemoryStateStore()
