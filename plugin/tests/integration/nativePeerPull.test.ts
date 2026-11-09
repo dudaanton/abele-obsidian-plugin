@@ -20,6 +20,7 @@ import { TokenOffloadCoordinator } from '@/sync/tokenOffloadCoordinator'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { collectHeap } from '../helpers/collectHeap'
 import { WatchReports } from '../../node_modules/@abele/sync-sdk/dist/internal/core/watchReports.js'
+import { deferred } from '../helpers/deferred'
 
 function discardFinishedFakeTransactions(db: IDBDatabase): void {
   // The fake retains finished transactions as history, unlike the browser. At
@@ -72,6 +73,7 @@ for (const fault of [
   'acknowledgement-reads',
   'acknowledgement-yields',
   'acknowledgement-parent-race',
+  'acknowledgement-parent-pending',
 ] as const)
   it(
     `bounds native peer installation persistence and retained payloads by a batch (${fault})`,
@@ -230,8 +232,24 @@ for (const fault of [
       }) as typeof db.transaction
       // Only this case's own files count. A call for another root is passed through untouched.
       const own = (path: string) => path.startsWith(root + '/')
+      const parentCreated = deferred<void>(),
+        parentAcknowledged = deferred<void>()
+      let parentPaused = false
       const fs = {
         ...disk,
+        mkdir: async (...args: Parameters<typeof disk.mkdir>) => {
+          const result = await disk.mkdir(...args)
+          if (
+            fault === 'acknowledgement-parent-pending' &&
+            String(args[0]) === join(root, 'Notes/Section 0') &&
+            !parentPaused
+          ) {
+            parentPaused = true
+            parentCreated.resolve()
+            await parentAcknowledged.promise
+          }
+          return result
+        },
         link: async (from: string, to: string) => {
           if (!own(from)) return disk.link(from, to)
           expect(durableDirectories.has(from.slice(root.length + 1))).toBe(true)
@@ -715,6 +733,48 @@ for (const fault of [
             ? Reflect.get(files, Symbol.for('abele.sync.inventory-pass-v1')).call(
                 files,
                 async () => {
+                  if (fault === 'acknowledgement-parent-pending' && !parentPaused) {
+                    // The kernel made the parent, but its creator has not yet
+                    // acknowledged it into the pass. Check that exact window.
+                    const creating = Reflect.get(files, 'makeParents').call(
+                      files,
+                      'Notes/Section 0/sample.bin'
+                    )
+                    await parentCreated.promise
+                    const candidates = files.trustedPathCandidates!
+                    let answered = false
+                    const lookup = candidates.lookup('', 'Notes').then((rows) => {
+                      answered = true
+                      return rows
+                    })
+                    const live = candidates.lstat('Notes')
+                    try {
+                      await Promise.resolve()
+                      await Promise.resolve()
+                      expect(
+                        answered,
+                        'index absence must wait for our pending parent creation'
+                      ).toBe(false)
+                      // Cancelling a reader releases it without cancelling the mkdir.
+                      const cancellation = new AbortController()
+                      const indexSignal = Symbol.for('abele.sync.index-wait-signal-v1')
+                      Reflect.get(files, indexSignal).call(files, cancellation.signal)
+                      const stoppedLookup = candidates.lookup('', 'Notes')
+                      const stoppedLive = candidates.lstat('Notes')
+                      cancellation.abort(new Error('sample candidate read cancelled'))
+                      await Promise.all([
+                        expect(stoppedLookup).rejects.toThrow('sample candidate read cancelled'),
+                        expect(stoppedLive).rejects.toThrow('sample candidate read cancelled'),
+                      ])
+                      Reflect.get(files, indexSignal).call(files)
+                    } finally {
+                      parentAcknowledged.resolve()
+                      await creating
+                      await live
+                      await lookup
+                    }
+                    expect(await lookup).toBeUndefined()
+                  }
                   if (fault === 'directory-interruption')
                     await Reflect.get(files, directoryPort).call(files)
                   return rawRun()
@@ -1294,6 +1354,7 @@ for (const fault of [
         }
         expect(await new WriteJournal(host).currentEntries()).toEqual([])
       } finally {
+        parentAcknowledged.resolve()
         channels?.mockRestore()
         clock?.mockRestore()
         state.close()

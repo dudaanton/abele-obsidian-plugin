@@ -375,11 +375,17 @@ export class ObsidianFileSystem implements FileSystem {
         if (directory) assertPhysicalPath(directory)
         assertPhysicalPath(name)
         if (name.includes('/')) return undefined
+        const child = directory ? directory + '/' + name : name
+        const pending = this.parentCreationWait(child)
+        if (pending !== undefined) {
+          await pending
+          // A host index miss predates our acknowledged parent. Re-enumerate it.
+          return undefined
+        }
         const rows = indexedPathBucket(this.app.vault, directory, name, this.indexWaitSignal?.())
         if (rows === undefined) return undefined
         // An installed parent may precede its host index row. Its existing physical
         // spelling fallback remains authoritative until that row arrives.
-        const child = directory ? directory + '/' + name : name
         if (
           rows.length === 0 &&
           (this.inventory?.publishedParents?.has(child) ||
@@ -421,6 +427,10 @@ export class ObsidianFileSystem implements FileSystem {
         assertPhysicalPath(path)
         if (!this.withinFileScope(path))
           throw new EngineError('protocol', 'Candidate path is outside the connection')
+        // A lookup may have captured absence before the creator registered its
+        // work. Let that work publish its inventory revision before the live check.
+        const pending = this.parentCreationWait(path)
+        if (pending !== undefined) await pending
         const stat = await native.pathCandidateStat(path)
         if (!stat) return null
         return stat.kind === 'directory' && typeof stat.birth === 'number'
@@ -2296,13 +2306,46 @@ export class ObsidianFileSystem implements FileSystem {
           this.parentRevision(path, inventory)
         ))
       : undefined
+    const parts = folderOf(path).replace(/^\/$/, '').split('/').filter(Boolean)
+    const parents = parts.map((_, at) => this.pathKey(parts.slice(0, at + 1).join('/')))
+    let acknowledge!: () => void
+    const completed = new Promise<void>((resolve) => {
+      acknowledge = resolve
+    })
+    for (const parent of parents) {
+      const pending = this.parentCreations.get(parent) ?? new Set<Promise<void>>()
+      pending.add(completed)
+      this.parentCreations.set(parent, pending)
+    }
     try {
       await makeParents(this.disk, path, known)
       this.rememberAvailableParents(folderOf(path).replace(/^\/$/, ''))
     } catch (error) {
       known?.clear()
       throw error
+    } finally {
+      acknowledge()
+      for (const parent of parents) {
+        const pending = this.parentCreations.get(parent)
+        if (pending !== undefined) {
+          pending.delete(completed)
+          if (!pending.size) this.parentCreations.delete(parent)
+        }
+      }
     }
+  }
+
+  private readonly parentCreations = new Map<string, Set<Promise<void>>>()
+
+  /** Only wait for our own in-flight mkdir acknowledgements, never for host indexing. */
+  private parentCreationWait(path: string): Promise<void> | undefined {
+    const pending = this.parentCreations.get(this.pathKey(path))
+    if (!pending) return undefined
+    const signal = this.runIndexSignal ?? this.indexWaitSignal?.()
+    return (async () => {
+      for (const completed of pending) await waitForSyncRead(completed, signal)
+      this.runtimeFence?.assertReady()
+    })()
   }
 
   /**
