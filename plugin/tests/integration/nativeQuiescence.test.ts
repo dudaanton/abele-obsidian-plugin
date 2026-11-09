@@ -35,6 +35,17 @@ async function measured<T>(work: () => Promise<T>) {
   return { result, cpu, ms: performance.now() - started }
 }
 
+function periodicCpuBudget(nativePassCpuMs: number): number {
+  // Host speed changes CPU time even when filesystem work is identical. Counters
+  // below are the regression oracle; CPU is a generous, same-host safety ceiling.
+  // Inspection includes ledger/path checks: allow sixteen bare native passes.
+  return Math.max(5000, nativePassCpuMs * 16)
+}
+
+it.each([1, 2, 4])('allows unchanged inspection work on a %sx slower host', (slowdown) => {
+  expect(2600 * slowdown).toBeLessThan(periodicCpuBudget(500 * slowdown))
+})
+
 it.each(['pull', 'upload'] as const)(
   'settles a watched 33000-file native vault after %s without another full filesystem pass or content read',
   async (phase) => {
@@ -211,6 +222,21 @@ it.each(['pull', 'upload'] as const)(
       expect(enumeratedEntries).toBeLessThan(128)
       expect(idle.cpu.totalMs).toBeLessThan(5000)
 
+      // Measure one extra full probe pass with the same async-hooks instrumentation
+      // as inspection. Use native calls so calibration cannot warm adapter caches.
+      probes = reads = enumeratedEntries = 0
+      const nativePass = await measured(async () => {
+        for (const path of paths) await native.stat(join(root, path))
+      })
+      expect(probes).toBe(count)
+      expect(reads).toBe(0)
+      const periodicCpuLimitMs = periodicCpuBudget(nativePass.cpu.totalMs)
+      console.log('native full probe pass calibration', {
+        probes,
+        cpuMs: nativePass.cpu.totalMs,
+        periodicCpuLimitMs,
+      })
+
       now += 300000
       probes = reads = enumeratedEntries = 0
       // Keep timer gaps as diagnostics, but cap synchronous task CPU below. The test
@@ -253,7 +279,7 @@ it.each(['pull', 'upload'] as const)(
       // per file plus fixed scope/private-directory work, never an extra full pass.
       expect(probes).toBeLessThan(count * 2 + 1024)
       expect(enumeratedEntries).toBeLessThan(count * 2 + 1024)
-      expect(taskCpu.totalMs).toBeLessThan(5000)
+      expect(taskCpu.totalMs).toBeLessThan(periodicCpuLimitMs)
       expect(engine.status.state).toBe('idle')
 
       let since = 0
