@@ -92,7 +92,8 @@ it('keeps hundreds of streamed work turns bounded through disconnect, restart, r
       const openMs=performance.now()-opened;
       const probe={tx:0,txMs:0,longTasks:0,longMs:0,idbTx:0,idbTxMs:0,fetchedEvents:0};
       const store=client.store,original=store.transaction;
-      const stopEvents=client.onEvent(e=>{if(e.stream_id===sid)probe.fetchedEvents++});
+      const recentEvents=[];
+      const stopEvents=client.onEvent(e=>{if(e.stream_id===sid){probe.fetchedEvents++;recentEvents.push({type:e.type,seq:e.seq});if(recentEvents.length>16)recentEvents.shift()}});
       const idbTransaction=IDBDatabase.prototype.transaction;
       IDBDatabase.prototype.transaction=function(...args){const t=performance.now(),tx=idbTransaction.apply(this,args);tx.addEventListener('complete',()=>{probe.idbTx++;probe.idbTxMs+=performance.now()-t},{once:true});return tx};
       store.transaction=async function(work){const t=performance.now();try{return await original.call(this,work)}finally{probe.tx++;probe.txMs+=performance.now()-t}};
@@ -104,7 +105,11 @@ it('keeps hundreds of streamed work turns bounded through disconnect, restart, r
           const list=chat().querySelector('.abele-ai-chat__messages');list.scrollTop=list.scrollHeight;
           const started=performance.now();
           const sending=presenter().send('work '+tag+' 12 60');
-          await until(()=>[...chat().querySelectorAll('.abele-chat-msg')].some(m=>m.textContent.includes(tag+' word0:')),'First streamed words');
+          try {
+            await until(()=>[...chat().querySelectorAll('.abele-chat-msg')].some(m=>m.textContent.includes(tag+' word0:')),'First streamed words');
+          } catch (error) {
+            throw Error(String(error)+'; '+JSON.stringify({tag,connected:client.connected,state:connection.state.value,error:presenter().error.value,draftNotice:presenter().draftNotice.value,received:recentEvents,projected:presenter().messages.value.slice(-3).map(m=>({role:m.role,content:m.content?.slice(-250)})),visible:[...chat().querySelectorAll('.abele-chat-msg')].slice(-3).map(m=>m.textContent.slice(-250))}));
+          }
           firstMs.push(performance.now()-started);
           if(turn===37&&!${onPhone()}) {
             const image=await require('@electron/remote').getCurrentWindow().webContents.capturePage();
@@ -205,6 +210,9 @@ it('keeps hundreds of streamed work turns bounded through disconnect, restart, r
     if (first.heap !== null && last.heap !== null)
       expect(last.heap - first.heap).toBeLessThan(128 * 1048576)
     console.log('ENDLESS_SESSION ' + JSON.stringify({ seeded, turns: 300, reports }))
+  } catch (error) {
+    console.error('Endless session node log: ' + node.logs())
+    throw error
   } finally {
     node.reconnect()
   }

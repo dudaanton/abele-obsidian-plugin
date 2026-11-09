@@ -175,7 +175,15 @@ const background = (ms, label) => {
   }, ms)
 }
 const turn = async (content, uuid) => {
-  const text = typeof content === 'string' ? content : JSON.stringify(content)
+  const text =
+    typeof content === 'string'
+      ? content
+      : Array.isArray(content)
+        ? content
+            .filter((block) => block.type === 'text')
+            .map((block) => block.text)
+            .join('\n')
+        : JSON.stringify(content)
   // The real CLI frames every input it takes as a command before anything else.
   emit({ type: 'command_lifecycle', command_uuid: 'cmd-' + turns, state: 'started' })
   if (/^\/compact(\s|$)/.test(text)) {
