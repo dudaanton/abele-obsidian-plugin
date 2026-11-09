@@ -553,7 +553,10 @@ export function syncPlacementPlugin() {
                   await this.placer.pending.read(change.file_id) !== null) { eligible = false; break; }
               const path = await this.placer.targetOf(change, null);
               plans.push({ path, sha: change.sha, size: change.size, mtime: change.mtime ?? 0 });
-            } } catch { eligible = false; }
+            } } catch (error) {
+              console.debug('[abele-sync] native cohort preflight unavailable', { files: group.length, error });
+              eligible = false;
+            }
             if (!eligible) return split();
             // Preserve rollback identity through the host's placement/error boundary.
             const notifications = [], refused = new Error('Native cohort requires ordinary placement');
@@ -575,7 +578,12 @@ export function syncPlacementPlugin() {
                   }, report);
                   await batch.apply(group);
                   if (report.held.length || report.deferred || report.rejected?.length ||
-                      report.applied + report.skipped !== group.length) throw refused;
+                      report.applied + report.skipped !== group.length) {
+                    console.debug('[abele-sync] native cohort requires ordinary placement', {
+                      files: group.length, report,
+                    });
+                    throw refused;
+                  }
                   await flush();
                 });
                 const cleanup = new PendingPullWrites(this.state, view, true, this.client, this.opts.signal);

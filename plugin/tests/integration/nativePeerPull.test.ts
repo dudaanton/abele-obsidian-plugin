@@ -70,6 +70,7 @@ for (const fault of [
   'install-fingerprint-invalidated',
   'second-ledger-abort',
   'acknowledgement-reads',
+  'acknowledgement-yields',
   'acknowledgement-parent-race',
 ] as const)
   it(
@@ -96,7 +97,7 @@ for (const fault of [
           : 2048
         : fault.startsWith('install-fingerprint-single')
           ? 1
-          : fault === 'acknowledgement-reads' || fault === 'acknowledgement-parent-race'
+          : fault.startsWith('acknowledgement-')
             ? 32
             : fault === 'batch-tail'
               ? 65
@@ -319,8 +320,7 @@ for (const fault of [
         new ObsidianFileSystem(app as unknown as App, {
           storage: host,
           ledger: state,
-          ...(fault === 'acknowledgement-reads' ||
-          fault === 'acknowledgement-parent-race' ||
+          ...(fault.startsWith('acknowledgement-') ||
           fault === 'directory-interruption' ||
           fault === 'path-candidates'
             ? { prepareStartupInventory: async () => {} }
@@ -564,6 +564,26 @@ for (const fault of [
       }
       sample()
       const expected = new ExpectedWrites()
+      // Force time-based scan checkpoints even on an idle host. Scheduler waits
+      // must not turn a native cohort into per-file durable commits.
+      const now = performance.now.bind(performance)
+      let checkpoints = 0
+      const clock =
+        fault === 'acknowledgement-yields'
+          ? vi.spyOn(performance, 'now').mockImplementation(() => now() + ++checkpoints * 10)
+          : undefined
+      let schedulerYields = 0
+      const Channel = globalThis.MessageChannel
+      const channels = clock
+        ? vi.spyOn(globalThis, 'MessageChannel').mockImplementation(
+            class extends Channel {
+              constructor() {
+                super()
+                schedulerYields++
+              }
+            }
+          )
+        : undefined
       try {
         let stopAfter = 512
         const rawRun = () =>
@@ -691,9 +711,7 @@ for (const fault of [
         // Indexed hosts run pull inside the engine's inventory pass, including
         // publication proofs for parents that the host has not indexed yet.
         const run = () =>
-          directoryCase ||
-          fault === 'acknowledgement-reads' ||
-          fault === 'acknowledgement-parent-race'
+          directoryCase || fault.startsWith('acknowledgement-')
             ? Reflect.get(files, Symbol.for('abele.sync.inventory-pass-v1')).call(
                 files,
                 async () => {
@@ -1187,6 +1205,7 @@ for (const fault of [
           return
         }
         const report = await run()
+        if (clock) expect(schedulerYields).toBeGreaterThanOrEqual(count)
         if (fault === 'path-candidates') {
           console.log('[path-candidate-counts]', {
             installed,
@@ -1206,7 +1225,7 @@ for (const fault of [
           expect(directoryCalls).toBeLessThanOrEqual(4)
           expect(directoryItems).toBeLessThanOrEqual(count * 4)
         }
-        if (fault === 'acknowledgement-reads' || fault === 'acknowledgement-parent-race')
+        if (fault.startsWith('acknowledgement-'))
           expect(contentReads, 'pull acknowledgement must reuse installed transfer bytes').toBe(0)
         if (count >= 33000) {
           await collectHeap()
@@ -1244,6 +1263,7 @@ for (const fault of [
             hostCommits,
             maxCommitBytes,
             fault,
+            ...(clock ? { schedulerYields } : {}),
             elapsedMs: performance.now() - started,
             flushes: Object.fromEntries(flushes),
             rss,
@@ -1274,6 +1294,8 @@ for (const fault of [
         }
         expect(await new WriteJournal(host).currentEntries()).toEqual([])
       } finally {
+        channels?.mockRestore()
+        clock?.mockRestore()
         state.close()
         host.close()
         await disk.rm(root, { recursive: true, force: true })
