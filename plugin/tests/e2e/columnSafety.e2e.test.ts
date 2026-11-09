@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { randomUUID } from 'node:crypto'
 import { evalRaw, isObsidianRunning, hasTestApi, runCli } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { tap, longPress, screenshot } from './helpers/phone'
@@ -6,15 +7,30 @@ import { shotDir } from './helpers/shots'
 import { createColumns } from '../../src/columns/operations'
 
 targets('desktop', 'phone')
-const NOTE = 'Sample column safety.md'
+const NOTE = 'Sample column safety ' + randomUUID() + '.md'
+let fixtureOwned = false
 const SHOTS = shotDir('column-safety')
 const available = isObsidianRunning() && hasTestApi()
 const prelude = `const wait=ms=>new Promise(r=>setTimeout(r,ms));const leaf=app.workspace.getLeavesOfType('markdown').find(l=>l.view.file?.path===${JSON.stringify(NOTE)});const view=leaf?.view;const root=()=>view.getMode()==='preview'?view.previewMode.containerEl:view.editor.cm.dom;`
-const evaluate = <T>(code: string): T =>
-  JSON.parse(evalRaw(`(async()=>JSON.stringify(await(async()=>{${prelude}${code}})()))()`)) as T
+const evaluate = <T>(code: string, phase = 'probe'): T => {
+  console.debug('Column safety: ' + phase)
+  const raw = evalRaw(`(async()=>JSON.stringify(await(async()=>{${prelude}${code}})()))()`)
+  if (raw.startsWith('Error:')) throw new Error('Column safety ' + phase + ': ' + raw)
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    throw new Error('Column safety ' + phase + ': invalid probe response: ' + raw.slice(0, 400))
+  }
+}
 function show(text: string, mode = 'source') {
+  evaluate(`await app.vault.modify(view.file,${JSON.stringify(text)});return true`, 'write ' + mode)
   evaluate(
-    `await app.vault.modify(view.file,${JSON.stringify(text)});await leaf.setViewState({type:'markdown',state:{file:${JSON.stringify(NOTE)},mode:${JSON.stringify(mode)},source:false}});if(${JSON.stringify(mode)}==='source'){view.editor.setValue(${JSON.stringify(text)});view.editor.setCursor({line:view.editor.lineCount()-1,ch:0})}await wait(500);return true`
+    `await leaf.setViewState({type:'markdown',state:{file:${JSON.stringify(NOTE)},mode:${JSON.stringify(mode)},source:false}});return true`,
+    'open ' + mode
+  )
+  evaluate(
+    `if(${JSON.stringify(mode)}==='source'){view.editor.setValue(${JSON.stringify(text)});view.editor.setCursor({line:view.editor.lineCount()-1,ch:0})}await wait(500);return true`,
+    'render ' + mode
   )
 }
 async function shot(name: string) {
@@ -52,16 +68,31 @@ function menu(title: string) {
 const textInFrame = (body: string) => createColumns(body, 'two') + '\n\nAfter.\n'
 
 describe.skipIf(!available)('column source and menu safety', () => {
-  beforeAll(() =>
+  const cleanup = () => {
+    if (!fixtureOwned) return
     evaluate(
-      `if(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}))throw Error('fixture exists');const file=await app.vault.create(${JSON.stringify(NOTE)},'Start.');await app.workspace.getLeaf('tab').openFile(file);app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();return true`
+      `document.querySelectorAll('.menu').forEach(menu=>menu.remove());for(const l of app.workspace.getLeavesOfType('markdown'))if(l.view.file?.path===${JSON.stringify(NOTE)})l.detach();const f=app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)});if(f)await app.vault.delete(f);return true`,
+      'cleanup'
     )
-  )
-  afterAll(() =>
+    fixtureOwned = false
+  }
+  beforeAll(() => {
     evaluate(
-      `document.querySelectorAll('.menu').forEach(menu=>menu.remove());for(const l of app.workspace.getLeavesOfType('markdown'))if(l.view.file?.path===${JSON.stringify(NOTE)}){await l.view.save();l.detach()}const f=app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)});if(f)await app.vault.delete(f);return true`
+      `if(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}))throw Error('fixture exists');await app.vault.create(${JSON.stringify(NOTE)},'Start.');return true`,
+      'create fixture'
     )
-  )
+    fixtureOwned = true
+    try {
+      evaluate(
+        `await app.workspace.getLeaf('tab').openFile(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}));app.workspace.leftSplit.collapse();app.workspace.rightSplit.collapse();return true`,
+        'open fixture'
+      )
+    } catch (error) {
+      cleanup()
+      throw error
+    }
+  })
+  afterAll(cleanup)
 
   it('does not offer mutating commands on parent prose or quoted code examples', () => {
     for (const text of [
@@ -312,7 +343,7 @@ describe.skipIf(!available)('column source and menu safety', () => {
     await shot('inline-math-entry')
   })
   it('links retain their native context menu rather than column operations', async () => {
-    show(textInFrame('A [[Sample column safety|sample link]].'), 'preview')
+    show(textInFrame('A [[' + NOTE.slice(0, -3) + '|sample link]].'), 'preview')
     click(point('.abele-column a.internal-link'), true)
     const titles = evaluate<string[]>(
       `await wait(500);return [...document.querySelectorAll('.menu-item-title')].map(e=>e.textContent)`
