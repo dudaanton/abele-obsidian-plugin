@@ -5,6 +5,7 @@ import { EditorState, StateEffect, StateField, type Extension } from '@codemirro
 import { Decoration, EditorView, type MeasureRequest } from '@codemirror/view'
 import { codeGuideExtension, registerCodeIndentGuides } from '@/codeIndent/register'
 import { nativeCodeLines } from '@/codeIndent/nativeLines'
+import * as readingGuides from '@/codeIndent/readingGuides'
 
 it('preserves fractional layout insets and measures the entire leading indent', () => {
   const row = document.createElement('div')
@@ -32,6 +33,56 @@ it('preserves fractional layout insets and measures the entire leading indent', 
 })
 
 const DOC = 'prose\n```js\nroot\n  child\n\n    deep\n```\n  prose'
+it.each([false, true])('settles non-idempotent reading passes (repeated: %s)', async (repeated) => {
+  const draw = readingGuides.drawReadingGuides
+  let passes = 0
+  // Cap the simulation so a regression fails without starving the runner.
+  const drawing = vi.spyOn(readingGuides, 'drawReadingGuides').mockImplementation((code, size) => {
+    passes++
+    if (passes < 12 && (repeated || passes === 2)) code.textContent = 'root\n  child\n'
+    draw(code, size)
+  })
+  const host = {
+    app: {
+      vault: { getConfig: vi.fn(), on: vi.fn() },
+      workspace: { on: vi.fn(), onLayoutReady: vi.fn(), iterateAllLeaves: vi.fn() },
+    },
+    registerEditorExtension: vi.fn(),
+    registerMarkdownPostProcessor: vi.fn(),
+    registerInterval: vi.fn(),
+    registerEvent: vi.fn(),
+    register: vi.fn(),
+    registerDomEvent: vi.fn(),
+  }
+  const interval = vi.spyOn(window, 'setInterval').mockReturnValue(1)
+  const pre = document.createElement('pre')
+  const code = document.createElement('code')
+  code.textContent = 'root\n  child\n'
+  pre.append(code)
+  document.body.append(pre)
+  try {
+    registerCodeIndentGuides(host as unknown as Plugin)
+    const process = host.registerMarkdownPostProcessor.mock.calls[0][0]
+    process(pre)
+    const token = document.createElement('span')
+    token.className = 'token'
+    token.textContent = 'child'
+    code.replaceChildren('root\n  ', token, '\n')
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(passes).toBe(2)
+    expect(code.querySelectorAll(':scope > .abele-code-line')).toHaveLength(2)
+    process(pre)
+    host.app.workspace.onLayoutReady.mock.calls[0][0]()
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(passes).toBe(4)
+    expect(code.querySelectorAll(':scope > .abele-code-line')).toHaveLength(2)
+  } finally {
+    for (const [cleanup] of host.register.mock.calls) (cleanup as () => void)()
+    pre.remove()
+    drawing.mockRestore()
+    interval.mockRestore()
+  }
+})
 // Obsidian's line/background decorators and token spans need not have equivalent
 // public syntax-tree node names. This editor deliberately has no HyperMD parser.
 const native = StateField.define({
