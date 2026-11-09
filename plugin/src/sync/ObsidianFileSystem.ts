@@ -114,7 +114,7 @@ type DirectoryInfo = { path: string; identity: string; mtime: number }
 type InventoryChild = { path: string; kind: 'file' | 'directory'; identity?: string }
 async function readConditionalRecord(disk: DataAdapter, io: BoundedVaultIo, path: string) {
   const native = nativeChunkPort(disk)
-  if (!native.open || !native.fullPath) return new Uint8Array(await disk.readBinary(path))
+  if (!native.open || !native.fullPath) return io.readAll(path)
   const source = await io.openRead(path)
   try {
     if (source.size > MAX_CHUNK_BYTES)
@@ -3592,7 +3592,7 @@ export class ObsidianFileSystem implements FileSystem {
 
   async read(path: string): Promise<Uint8Array> {
     try {
-      const bytes = new Uint8Array(await this.disk.readBinary(path))
+      const bytes = await this.io.readAll(path)
       this.observedBases.set(this.pathKey(path), { sha: await sha256(bytes) })
       return bytes
     } catch (cause) {

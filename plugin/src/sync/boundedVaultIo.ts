@@ -402,11 +402,26 @@ export class BoundedVaultIo {
   openRead(path: string, expected?: SourceStamp): Promise<ChunkSource> {
     return this.openSource(path, expected, false)
   }
+  /** Legacy consumers still need complete bytes, but native results stay chunked. */
+  async readAll(path: string): Promise<Uint8Array> {
+    const source = await this.openSource(path, undefined, true, undefined, true)
+    try {
+      const bytes = new Uint8Array(source.size)
+      for (let at = 0; at < bytes.length; at += MAX_CHUNK_BYTES) {
+        bytes.set(await source.read(at, Math.min(MAX_CHUNK_BYTES, bytes.length - at)), at)
+      }
+      await source.assertUnchanged()
+      return bytes
+    } finally {
+      await source.close()
+    }
+  }
   private async openSource(
     path: string,
     expected: SourceStamp | undefined,
     wholeFileUpload: boolean,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    requireChunks = false
   ): Promise<ChunkSource> {
     const original = stampOf(await this.stat(path))
     if (expected && original.generation !== expected.generation)
@@ -427,6 +442,11 @@ export class BoundedVaultIo {
     let fallback: Uint8Array | null = null
     const meter = mobileReadMeter()
     if (!handle && !access) {
+      if (requireChunks && !small)
+        throw new EngineError(
+          'io',
+          'Bounded file reads are unavailable; local bytes retained for retry'
+        )
       if (!wholeFileUpload && original.size > PHONE_FALLBACK_BYTES)
         throw new EngineError(
           'io',
