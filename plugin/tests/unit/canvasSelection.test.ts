@@ -128,10 +128,14 @@ describe('canvas selection geometry', () => {
       edges: [],
     }
     const ids = new Set(g.nodes.map((n) => n.id)),
-      start = performance.now(),
+      nodes = g.nodes,
+      cards = [...g.nodes],
       moving = moveIds(g, ids)
     for (let i = 0; i < 30; i++) movePreview(g, moving, i, i)
-    expect(performance.now() - start).toBeLessThan(150)
+    // Work, not wall time: previewing moves the existing cards in place and never rebuilds
+    // the graph, so the array and every card object are the ones that went in.
+    expect(g.nodes).toBe(nodes)
+    expect(g.nodes.every((n, i) => n === cards[i])).toBe(true)
     expect(g.nodes[100].x).toBe(30000)
   })
 })
