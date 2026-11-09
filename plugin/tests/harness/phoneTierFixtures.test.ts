@@ -2,14 +2,16 @@ import { readFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { expect, it, vi } from 'vitest'
 import { transformSync } from 'esbuild'
+import { chatTreeSearchFixture } from '../e2e/helpers/chatTreeSearchFixture'
 
 const code = readFileSync('tests/e2e/chatTree.e2e.test.ts', 'utf8')
 const declaration = code.slice(code.indexOf('const probe ='), code.indexOf('\ndescribe.skipIf'))
 const probe = new Function(
   'SHOTS',
   'randomUUID',
+  'chatTreeSearchFixture',
   transformSync(declaration + '\nreturn probe', { loader: 'ts' }).code
-)('', randomUUID)
+)('', randomUUID, chatTreeSearchFixture)
 
 it('cleans chat-tree storage when setup fails after creating its directory', async () => {
   const files = new Map<string, unknown>()

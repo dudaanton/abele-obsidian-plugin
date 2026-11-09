@@ -7,6 +7,7 @@ import { CHAT_TREE_SOURCE, chatTreeSource, type ChatTreeSource } from '@/chats/c
 import { useVault } from '../helpers/testEnv'
 import ChatToolModes from '@/components/ChatToolModes.vue'
 import { Menu, Platform } from 'obsidian'
+import { chatTreeSearchFixture } from '../e2e/helpers/chatTreeSearchFixture'
 
 let source: ChatTreeSource
 it.each(['Target', '', 'Sample', 'Sample/Child'])(
@@ -344,6 +345,29 @@ it('searches open chats first, then closed chats when requested', async () => {
   expect(source.open).toHaveBeenCalledWith('closed')
   expect(view.emitted('close')).toHaveLength(1)
 })
+
+it.each([true, false])(
+  'finds only the current closed fixture despite an older open fixture on phone=%s',
+  async (phone) => {
+    Platform.isPhone = phone
+    const fixture = chatTreeSearchFixture('sample-run')
+    source.root.value = [
+      { kind: 'chat', id: 'older', title: 'Sample navigation chat', open: true, at: 1 },
+      { kind: 'chat', id: 'current', title: fixture.title, open: false, at: 2 },
+    ]
+    const view = show()
+    const input = view.get('input[type="search"]')
+    ;(input.element as HTMLInputElement).value = fixture.query
+    await input.trigger('input')
+    expect(view.text()).toContain('No matches')
+    expect(view.find('[data-chat="older"]').exists()).toBe(false)
+    expect(view.find('[data-chat="current"]').exists()).toBe(false)
+    await view.get('[aria-label="Search closed chats"]').trigger('click')
+    expect(view.find('[data-chat="current"]').exists()).toBe(true)
+    expect(view.find('[data-chat="older"]').exists()).toBe(false)
+    expect(view.text()).not.toContain('No matches')
+  }
+)
 
 it('moves keyboard focus from search into the tree and opens with Enter', async () => {
   const view = show()

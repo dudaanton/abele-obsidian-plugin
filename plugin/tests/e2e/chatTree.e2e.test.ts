@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { chatTreeSearchFixture } from './helpers/chatTreeSearchFixture'
 import { describe, expect, it } from 'vitest'
 import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { withEmulatedPhone } from './helpers/emulatedPhone'
@@ -20,6 +21,7 @@ const probe = (label: string) => `(async () => {
   const priorNodes = service.closedNodeChats.value.slice()
   const sampleNodeId = 'node:sample-tree-registration:sample-tree-session'
   const fixture = ${JSON.stringify(randomUUID())}
+  const navigation = ${JSON.stringify(chatTreeSearchFixture(randomUUID()))}
   const folder = 'Synthetic navigation sample ' + fixture
   const childFolder = 'Synthetic child ' + fixture
   const storageFolder = '2099-02-' + fixture
@@ -72,7 +74,7 @@ const probe = (label: string) => `(async () => {
     }
     const first = await service.newTab(); created.push(first)
     const session = service.getSession(first)
-    session.chatTitle.value = 'Sample navigation chat'
+    session.chatTitle.value = navigation.title
     await wait(100)
     if (root.querySelector('.abele-chat-parent-back, .abele-comment-trail')) throw Error('Top-level chat has parent navigation')
     await shot('top-level-header')
@@ -248,7 +250,7 @@ const probe = (label: string) => `(async () => {
     await shot('current-nested-chat')
     current().click()
     const back = await until(() => root.querySelector('.abele-chat-parent-back'))
-    if (!back.classList.contains('clickable-icon') || back.getAttribute('aria-label') !== 'Back to Sample navigation chat') throw Error('Parent Back button missing its title or kit style')
+    if (!back.classList.contains('clickable-icon') || back.getAttribute('aria-label') !== 'Back to ' + navigation.title) throw Error('Parent Back button missing its title or kit style')
     if (!back.nextElementSibling?.classList.contains('abele-chat-switch')) throw Error('Back is not before the chooser')
     const box = back.getBoundingClientRect(), ink = back.querySelector('svg').getBoundingClientRect()
     if (box.height <= ink.height || parseFloat(getComputedStyle(back).paddingLeft) <= 0) throw Error('Back lost its native box')
@@ -276,7 +278,7 @@ const probe = (label: string) => `(async () => {
     await until(() => root.querySelector('.abele-chat-parent-back')?.getAttribute('aria-label') === 'Back to ' + longParent)
     if (root.querySelector('.abele-ai-chat__header').textContent.includes(longParent)) throw Error('Parent title leaked into the header')
     await shot('nested-header-long-parent')
-    session.chatTitle.value = 'Sample navigation chat'
+    session.chatTitle.value = navigation.title
     root.querySelector('.abele-chat-parent-back').click()
     await until(() => service.activeTabId.value === first)
     if (app.workspace.activeLeaf !== leaf) throw Error('Back changed the current pane')
@@ -286,7 +288,7 @@ const probe = (label: string) => `(async () => {
     await until(() => document.querySelector('.abele-chat-tree__closed'))
     await shot('closed')
     const search = document.querySelector('.abele-chat-tree input[type="search"]')
-    search.value = 'Sample navigation'; search.dispatchEvent(new Event('input', { bubbles: true }))
+    search.value = navigation.query; search.dispatchEvent(new Event('input', { bubbles: true }))
     await until(() => document.querySelector('.abele-chat-tree').textContent.includes('No matches'))
     await shot('no-matches')
     document.querySelector('.abele-chat-tree [aria-label="Search closed chats"]').click()
@@ -320,7 +322,7 @@ const probe = (label: string) => `(async () => {
     await until(() => !document.querySelector('.abele-folder-access'))
     if (!document.querySelector('.abele-chat-tree')) current().click()
     const row = await until(() => document.querySelector('[data-chat="' + reopened.id + '"]'))
-    const more = row.querySelector('[aria-label="Sample navigation chat: more"]')
+    const more = row.querySelector('[aria-label="' + navigation.title + ': more"]')
     if (more) clickAt(more)
     else {
       const r = row.getBoundingClientRect()
