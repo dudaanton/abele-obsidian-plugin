@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { withEmulatedPhone } from './helpers/emulatedPhone'
@@ -18,15 +19,14 @@ const probe = (label: string) => `(async () => {
   const prior = service.activeTabId.value
   const priorNodes = service.closedNodeChats.value.slice()
   const sampleNodeId = 'node:sample-tree-registration:sample-tree-session'
-  const folder = 'Synthetic navigation sample'
-  const path = service.folders.path('') + '/2099-02'
+  const fixture = ${JSON.stringify(randomUUID())}
+  const folder = 'Synthetic navigation sample ' + fixture
+  const childFolder = 'Synthetic child ' + fixture
+  const storageFolder = '2099-02-' + fixture
+  const path = service.folders.path('') + '/' + storageFolder
+  let directoryOwned = false
   if (service.folders.paths.includes(folder)) throw Error('Synthetic folder already exists')
   if (app.vault.getAbstractFileByPath(path)) throw Error('Synthetic storage directory already exists')
-  await app.vault.createFolder(path)
-  const markerContent = '{"fetch_url":"auto"}'
-  const marker = await app.vault.create(path + '/_folder.abeleaccess', markerContent)
-  await service.folders.reload()
-  if (service.folders.paths.includes('2099-02')) throw Error('Disk folder became a logical folder')
   const created = [], files = []
   let leaf, narrowLeaf, ownsLeaf = false, pictureCount = 0
   const priorWidth = app.workspace.rightSplit.containerEl?.getBoundingClientRect().width
@@ -41,6 +41,12 @@ const probe = (label: string) => `(async () => {
     require('fs').writeFileSync(path, image.toPNG())
   }
   try {
+    await app.vault.createFolder(path)
+    directoryOwned = true
+    const markerContent = '{"fetch_url":"auto"}'
+    const marker = await app.vault.create(path + '/_folder.abeleaccess', markerContent)
+    await service.folders.reload()
+    if (service.folders.paths.includes(storageFolder)) throw Error('Disk folder became a logical folder')
     leaf = app.isMobile ? null : app.workspace.getLeavesOfType('abele-ai-sidebar-view').find(item => item.getRoot() === app.workspace.rightSplit)
     if (!leaf) {
       leaf = app.isMobile ? app.workspace.getLeaf('tab') : app.workspace.getRightLeaf(true); ownsLeaf = true
@@ -81,17 +87,17 @@ const probe = (label: string) => `(async () => {
     name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     await until(() => service.folders.paths.includes(folder))
     if (!app.isMobile) {
-      await service.folders.create(folder, 'Synthetic child')
+      await service.folders.create(folder, childFolder)
       await service.tree.refresh()
       const folderRow = path => document.querySelector('.abele-chat-tree__folder[data-path="' + path + '"]')
-      const childPath = folder + '/Synthetic child'
+      const childPath = folder + '/' + childFolder
       const childRow = await until(() => folderRow(childPath))
       if (childRow.getAttribute('draggable') !== 'true') throw Error('Folder is not draggable')
       childRow.dispatchEvent(new DragEvent('dragstart', { bubbles: true }))
       document.querySelector('.abele-chat-tree__list').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true }))
-      await until(() => service.folders.paths.includes('Synthetic child'))
+      await until(() => service.folders.paths.includes(childFolder))
       await service.tree.refresh()
-      folderRow('Synthetic child').dispatchEvent(new DragEvent('dragstart', { bubbles: true }))
+      folderRow(childFolder).dispatchEvent(new DragEvent('dragstart', { bubbles: true }))
       folderRow(folder).dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true }))
       if (!folderRow(folder).classList.contains('is-being-dragged-over')) await wait(100)
       if (!folderRow(folder).classList.contains('is-being-dragged-over')) throw Error('Folder target has no highlight')
@@ -102,10 +108,10 @@ const probe = (label: string) => `(async () => {
       await shot('folder-drag-nested')
       folderRow(childPath).dispatchEvent(new DragEvent('dragstart', { bubbles: true }))
       document.querySelector('.abele-chat-tree__list').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true }))
-      await until(() => service.folders.paths.includes('Synthetic child'))
+      await until(() => service.folders.paths.includes(childFolder))
       await service.tree.refresh(); await wait(100)
       await shot('folder-drag-top')
-      await service.folders.remove('Synthetic child')
+      await service.folders.remove(childFolder)
     }
     await service.folders.setNodeScope(folder, [{ kind: 'node', node_id: 'sample-folder-node', access: 'read' }])
     await session.createInDirectory(path)
@@ -434,16 +440,16 @@ const probe = (label: string) => `(async () => {
     await shot('plus-at-cap')
     return { composer: { focusedComposer, blurredComposer }, closedTogether: !service.tabOrder.value.includes(second), inherited, dropped, moved: true, overflow, width: bounds.width, viewport: innerWidth, sidebarWidth: root.getBoundingClientRect().width, pictures: pictureCount }
   } finally {
-    if (service.folders.paths.includes('Synthetic child')) await service.folders.remove('Synthetic child')
+    if (service.folders.paths.includes(childFolder)) await service.folders.remove(childFolder)
     service.closedNodeChats.value=priorNodes.slice();service.saveTabs();await service.folders.forgetNode(sampleNodeId)
     for (const id of created) {
       const session = service.getSession(id)
       if (session) { session.isStreaming.value = false; session.pendingQuestions.value = null; await service.closeTab(id) }
     }
     for (const file of files) if (file && app.vault.getAbstractFileByPath(file.path)) await app.vault.delete(file)
-    await service.folders.remove(folder)
+    if (service.folders.paths.includes(folder)) await service.folders.remove(folder)
     const directory = app.vault.getAbstractFileByPath(path)
-    if (directory) await app.vault.delete(directory, true)
+    if (directoryOwned && directory) await app.vault.delete(directory, true)
     narrowLeaf?.detach()
     if (leaf?.view.containerEl.querySelector('.abele-chat-switch__current')?.getAttribute('aria-expanded') === 'true') leaf.view.containerEl.querySelector('.abele-chat-switch__current').click()
     if (ownsLeaf) leaf?.detach()
