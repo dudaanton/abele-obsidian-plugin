@@ -904,7 +904,7 @@ export class ObsidianFileSystem implements FileSystem {
         if (inventory) this.recordInventoryChange(inventory, file.path, false)
       }),
       this.app.vault.on('delete', (file) => {
-        if (file.children) this.directories.deleted(file.path)
+        if ('children' in file) this.directories.deleted(file.path)
         invalidate(file)
       }),
       this.app.vault.on('rename', (file, previous) => invalidate(file, previous)),
