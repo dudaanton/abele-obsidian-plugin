@@ -700,6 +700,18 @@ export function useChatScroll(options: ChatScrollOptions) {
       const el = messagesContainer.value
       // Asked again: the reader may have scrolled away in the tick between.
       if (!el || !shouldAutoScroll || fingerDown) return
+      // Native scrollbar movement can precede its DOM scroll event. A queued
+      // mutation must not overwrite it when the unchanged range rules out a
+      // layout clamp. A new container has no followed height until its first follow.
+      if (
+        !sendScrollPending &&
+        followedHeight !== null &&
+        el.scrollHeight === followedHeight &&
+        el.scrollTop < Math.min(observedScrollTop, el.scrollHeight - el.clientHeight)
+      ) {
+        onMessagesScroll()
+        return
+      }
       scrollContainerTo(el, el.scrollHeight, sendScrollPending ? 'send' : 'follow')
       sendScrollPending = false
     })
@@ -856,6 +868,7 @@ export function useChatScroll(options: ChatScrollOptions) {
   }
   const observe = (el: HTMLElement) => {
     observedContainer = el
+    followedHeight = null
     el.addEventListener('scrollend', onNativeScrollEnd)
     let mutationQueued = false
     let initialFollowPending = true

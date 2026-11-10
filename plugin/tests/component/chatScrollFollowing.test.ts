@@ -88,17 +88,57 @@ it.each([false, true])(
   }
 )
 
-it('batches markdown mutations into the next frame before measuring layout', async () => {
-  const { box, measure } = await open()
-  await advance(100)
-  measure.mockClear()
-  for (let i = 0; i < 10; i++) {
+it.each([false, true])(
+  'batches mutations before measuring layout (streaming: %s)',
+  async (live) => {
+    const { box, measure, isStreaming } = await open()
+    isStreaming.value = live
+    await advance(100)
+    measure.mockClear()
+    for (let i = 0; i < 10; i++) {
+      box.lastElementChild!.append(document.createElement('span'))
+      await advance(0)
+    }
+    expect(measure).not.toHaveBeenCalled()
+    await advance(17)
+    expect(measure).toHaveBeenCalled()
+  }
+)
+
+it.each([false, true])(
+  'preserves a scrollbar move during queued mutations (input delivered: %s)',
+  async (input) => {
+    const { box, scroll } = await open()
+    await advance(100)
     box.lastElementChild!.append(document.createElement('span'))
     await advance(0)
+    if (input) scroll.readerTakesOver(new MouseEvent('mousedown'))
+    // Overlay scrollbars can move on the compositor before DOM input is delivered.
+    const reading = box.scrollTop - 120
+    box.scrollTop = reading
+    await advance(17)
+    expect(box.scrollTop).toBe(reading)
+    expect(scroll.shouldAutoScroll).toBe(false)
   }
-  expect(measure).not.toHaveBeenCalled()
-  await advance(17)
-  expect(measure).toHaveBeenCalled()
+)
+
+it('does not dirty style before measuring repeated idle native scrolls', async () => {
+  const { box, scroll, measure, isStreaming } = await open()
+  isStreaming.value = false
+  await advance(100)
+  const remove = vi.spyOn(box.classList, 'remove')
+  const dirtyReads = vi.fn()
+  measure.mockImplementation(() => {
+    if (remove.mock.calls.length) dirtyReads()
+    return box.children.length * 100
+  })
+  scroll.readerTakesOver(new MouseEvent('mousedown'))
+  for (let i = 0; i < 20; i++) {
+    box.scrollTop -= 10
+    remove.mockClear()
+    scroll.onMessagesScroll()
+  }
+  expect(dirtyReads).not.toHaveBeenCalled()
 })
 
 it('settles dirty markdown in the layout observer before waiting for another frame', async () => {
@@ -467,6 +507,7 @@ async function open() {
   )
   const container = ref<HTMLElement | null>(null)
   const streamingContent = ref('Reply')
+  const isStreaming = ref(true)
   let afterLayout: (() => void) | undefined
   let scroll!: ReturnType<typeof useChatScroll>
   wrapper = mount(
@@ -477,7 +518,7 @@ async function open() {
           messages,
           streamingContent,
           streamingThinking: ref(''),
-          isStreaming: ref(true),
+          isStreaming,
           composing: ref(false),
         })
         onUpdated(() => {
@@ -530,6 +571,7 @@ async function open() {
   }
   return {
     measure: contentHeight,
+    isStreaming,
     resized: () => {
       for (const observer of observers)
         if (observer.targets.has(box.lastElementChild!)) observer.callback()

@@ -306,7 +306,8 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
     if (steady)
       console.debug('[chat-scroll] release reading anchor', { scrollTop: container?.scrollTop })
     steady = null
-    if (!anchor) container?.classList.remove('abele-ai-chat__messages_steady')
+    if (!anchor && container?.classList.contains('abele-ai-chat__messages_steady'))
+      container.classList.remove('abele-ai-chat__messages_steady')
   }
 
   /** Takes back out of the scroll whatever moved the block since it was last looked at. */
