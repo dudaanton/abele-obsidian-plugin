@@ -857,10 +857,10 @@ export function useChatScroll(options: ChatScrollOptions) {
   const observe = (el: HTMLElement) => {
     observedContainer = el
     el.addEventListener('scrollend', onNativeScrollEnd)
-    mutObserver = new MutationObserver(() => {
+    let mutationQueued = false
+    const measureMutation = () => {
       // Hidden under the opened composer; it is put right when the composer closes.
-      if (composing.value) return
-      observeMessageSizes(el)
+      if (composing.value || observedContainer !== el) return
       // A message that has just rendered its markdown changes the subtree and the layout
       // with it — which is exactly when the anchor needs putting back.
       anchors.holdLayout(keepGapCurrent)
@@ -868,6 +868,25 @@ export function useChatScroll(options: ChatScrollOptions) {
       // Floor removal is the last layout write above. Edge discovery belongs to
       // the next frame, when the browser has laid out that write, not this microtask.
       scheduleReveal(el)
+    }
+    mutObserver = new MutationObserver(() => {
+      // Register new hosts immediately so their first layout can report a resize
+      // even when the batched geometry pass has not run yet. This reads no layout.
+      observeMessageSizes(el)
+      // Page swaps and reading holds need correction before native clamping can
+      // become a scroll event. Ordinary markdown mutations have no such hold:
+      // batch them at the frame boundary instead of forcing layout after every
+      // renderer microtask while the reader scrolls.
+      if (anchors.anchor || anchors.keepingReader) {
+        measureMutation()
+        return
+      }
+      if (mutationQueued) return
+      mutationQueued = true
+      anchors.nextFrame(el.win, () => {
+        mutationQueued = false
+        measureMutation()
+      })
     })
     mutObserver.observe(el, {
       childList: true,

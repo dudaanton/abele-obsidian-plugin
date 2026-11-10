@@ -226,6 +226,60 @@ describe('the floor under a changing conversation', () => {
     expect(events.filter((event) => event === 'write scroll')).toHaveLength(1)
   })
 
+  it.each([true, false])(
+    'coalesces unanchored mutation bursts (following: %s)',
+    async (following) => {
+      let mutated!: () => void
+      vi.stubGlobal(
+        'MutationObserver',
+        class {
+          constructor(callback: () => void) {
+            mutated = callback
+          }
+          observe() {}
+          disconnect() {}
+        }
+      )
+      const container = document.createElement('div')
+      document.body.append(container)
+      const range = vi.fn(() => 1000)
+      Object.defineProperties(container, {
+        scrollHeight: { get: range },
+        clientHeight: { get: () => 400 },
+      })
+      wrapper = mount(
+        defineComponent({
+          setup() {
+            const scroll = useChatScroll({
+              messagesContainer: ref(container),
+              messages: ref([]),
+              streamingContent: ref(''),
+              streamingThinking: ref(''),
+              isStreaming: ref(false),
+              composing: ref(false),
+            })
+            scroll.shouldAutoScroll = following
+            return () => h('div')
+          },
+        })
+      )
+      await nextTick()
+      await advance(60)
+      range.mockClear()
+      mutated()
+      mutated()
+      mutated()
+      expect(range).not.toHaveBeenCalled()
+      await advance(17)
+      const reads = range.mock.calls.length
+      expect(reads).toBeGreaterThan(0)
+      range.mockClear()
+      mutated()
+      await advance(17)
+      expect(range).toHaveBeenCalledTimes(reads)
+    }
+  )
+
   it('cancels the losing frame fallback instead of retaining its callback until timeout', async () => {
     const { container, anchors } = conversation(0)
     const before = vi.getTimerCount()

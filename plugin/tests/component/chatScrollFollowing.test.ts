@@ -88,8 +88,7 @@ it.each([false, true])(
   }
 )
 
-// BUG: Deferring correction still loses native input distance in live page swaps.
-it.fails('batches markdown mutations into the next frame before measuring layout', async () => {
+it('batches markdown mutations into the next frame before measuring layout', async () => {
   const { box, measure } = await open()
   await advance(100)
   measure.mockClear()
@@ -102,20 +101,16 @@ it.fails('batches markdown mutations into the next frame before measuring layout
   expect(measure).toHaveBeenCalled()
 })
 
-// BUG: Layout-observer correction still causes native direction reversals.
-it.fails(
-  'settles dirty markdown in the layout observer before waiting for another frame',
-  async () => {
-    const { box, measure, resized } = await open()
-    await advance(100)
-    measure.mockClear()
-    box.lastElementChild!.append(document.createElement('span'))
-    await advance(0)
-    expect(measure).not.toHaveBeenCalled()
-    resized()
-    expect(measure).toHaveBeenCalled()
-  }
-)
+it('settles dirty markdown in the layout observer before waiting for another frame', async () => {
+  const { box, measure, resized } = await open()
+  await advance(100)
+  measure.mockClear()
+  box.lastElementChild!.append(document.createElement('span'))
+  await advance(0)
+  expect(measure).not.toHaveBeenCalled()
+  resized()
+  expect(measure).toHaveBeenCalled()
+})
 
 it('keeps following when content layout reports a scroll before its resize', async () => {
   const { box, scroll, grow } = await open()
