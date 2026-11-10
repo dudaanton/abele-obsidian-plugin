@@ -129,7 +129,10 @@ export class DirectEntryDurability {
       const cohort = pending.splice(0)
       const generation = this.dirty.get(directory)
       try {
-        await cohort[0].flush(directory)
+        // A waiter can arrive during the preceding syscall. If that barrier
+        // cleared the dirty generation, it covers this waiter too. A mutation
+        // during the syscall leaves a generation behind and still needs a flush.
+        if (generation !== undefined) await cohort[0].flush(directory)
         this.failed.delete(directory)
         if (this.dirty.get(directory) === generation) this.dirty.delete(directory)
         for (const waiter of cohort) waiter.resolve()

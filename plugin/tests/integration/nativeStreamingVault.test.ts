@@ -84,6 +84,9 @@ async function measure(recordsOnly = false) {
               return handle.write(bytes, offset, length, position)
             },
             sync: async () => {
+              // Keep the root barrier in flight while independent rename chains
+              // reach it, as happens with slower directory I/O on other hosts.
+              if (path === root) await new Promise((resolve) => setTimeout(resolve, 20))
               synced.set(path, (synced.get(path) ?? 0) + 1)
               syncs++
               await handle.sync()

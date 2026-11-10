@@ -2,6 +2,53 @@ import { expect, it } from 'vitest'
 import { DirectEntryDurability, directEntryDurability } from '@/sync/directEntryDurability'
 import { deferred } from '../helpers/deferred'
 
+it('shares an in-flight barrier with late waiters when no namespace mutation intervenes', async () => {
+  const dirty = new DirectEntryDurability()
+  dirty.changed('sample.md')
+  const entered = deferred<void>(),
+    release = deferred<void>()
+  let syncs = 0
+  const flush = async () => {
+    syncs++
+    entered.resolve()
+    await release.promise
+  }
+  const first = dirty.flushAncestors('sample.md', flush)
+  await entered.promise
+  const late = dirty.flushAncestors('sample.md', flush)
+  release.resolve()
+  await Promise.all([first, late])
+  expect(syncs).toBe(1)
+})
+
+it('flushes again for a late waiter after an in-flight mutation or failed barrier', async () => {
+  for (const fail of [false, true]) {
+    const dirty = new DirectEntryDurability()
+    dirty.changed('sample.md')
+    const entered = deferred<void>(),
+      release = deferred<void>()
+    let syncs = 0
+    const first = dirty.flushAncestors('sample.md', async () => {
+      syncs++
+      entered.resolve()
+      await release.promise
+      if (fail) throw new Error('sample sync failure')
+    })
+    const outcome = first.catch((error: unknown) => error)
+    await entered.promise
+    if (!fail) dirty.changed('second.md')
+    const late = dirty.flushAncestors('sample.md', async () => {
+      syncs++
+    })
+    release.resolve()
+    await late
+    if (fail) expect(await outcome).toMatchObject({ message: 'sample sync failure' })
+    else expect(await outcome).toBeUndefined()
+    expect(syncs).toBe(2)
+    await dirty.settled()
+  }
+})
+
 it('adopts clean pre-reload durability facts without losing dirty entries or directory proofs', async () => {
   const legacy = {
     dirty: new Map([['notes', 3]]),
