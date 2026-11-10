@@ -1,6 +1,69 @@
 import { expect, it, vi } from 'vitest'
 import { VaultDirectories } from '@/sync/vaultDirectories'
 
+it('coalesces unrelated deletion bursts without rewriting or repeatedly reading ledgers', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const app = buildFakeVault([])
+  app.saveLocalStorage(
+    'abele-sync-local-directories-v1',
+    Array.from({ length: 3000 }, (_, n) => ({
+      path: `Shared/Folder-${n}`,
+      birth: 1,
+      identity: `id-${n}`,
+    }))
+  )
+  const dirs = new VaultDirectories(app.vault.adapter, app, undefined, undefined, () => 'Shared')
+  const load = vi.spyOn(app, 'loadLocalStorage')
+  const save = vi.spyOn(app, 'saveLocalStorage')
+  for (let n = 0; n < 1000; n++) dirs.deleted(`Outside/Folder-${n}`)
+  await Promise.resolve()
+  expect(load).not.toHaveBeenCalled()
+  for (let n = 0; n < 1000; n++) {
+    dirs.deleted(`Shared/Missing-${n}`)
+    dirs.deleted(`Shared/Missing-${n}`)
+  }
+  expect(load).not.toHaveBeenCalled()
+  await Promise.resolve()
+  expect(load).toHaveBeenCalledTimes(2)
+  expect(save).not.toHaveBeenCalled()
+})
+
+it.each(['lookup', 'microtask'] as const)(
+  'retires a duplicated deletion burst once (%s)',
+  async (flush) => {
+    const { buildFakeVault } = await import('../helpers/fakeVault')
+    const app = buildFakeVault([])
+    const rows = Array.from({ length: 1000 }, (_, n) => ({
+      path: `Shared/Folder-${n}`,
+      birth: 1,
+      identity: `id-${n}`,
+    }))
+    app.saveLocalStorage('abele-sync-local-directories-v1', rows)
+    app.saveLocalStorage(
+      'abele-sync-empty-directory-removals-v1',
+      rows.map(({ path, birth }) => ({ path, birth }))
+    )
+    const dirs = new VaultDirectories(app.vault.adapter, app)
+    dirs.beginInventory()
+    expect(dirs.knownIdentity('Shared/Folder-0')).toBe('id-0')
+    const save = vi.spyOn(app, 'saveLocalStorage')
+    for (const row of rows) {
+      dirs.deleted(row.path)
+      dirs.deleted(row.path)
+    }
+    expect(save).not.toHaveBeenCalled()
+    if (flush === 'microtask') await Promise.resolve()
+    expect(dirs.knownIdentity('Shared/Folder-0')).toBeUndefined()
+    expect(save.mock.calls.map(([key]) => key)).toEqual([
+      'abele-sync-local-directories-v1',
+      'abele-sync-empty-directory-removals-v1',
+    ])
+    await Promise.resolve()
+    expect(save).toHaveBeenCalledTimes(2)
+    dirs.endInventory()
+  }
+)
+
 it('retires deleted subtree evidence and removal intents only inside its scope', async () => {
   const { buildFakeVault } = await import('../helpers/fakeVault')
   const app = buildFakeVault([{ path: 'Sample/Nested/file.md', content: 'sample' }])

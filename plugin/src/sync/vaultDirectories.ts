@@ -34,6 +34,8 @@ export class DirectoryScopeError extends EngineError {
 export class VaultDirectories {
   private inventoryUsers = 0
   private identitySnapshot: Map<string, { birth: number; identity: string }> | undefined
+  private readonly deletedPaths = new Set<string>()
+  private deletionFlushScheduled = false
   beginInventory(): void {
     this.inventoryUsers++
   }
@@ -45,11 +47,37 @@ export class VaultDirectories {
   }
   /** A confirmed deletion retires evidence even when a replacement has the same birth. */
   deleted(path: string): void {
-    const retained = (one: { path: string }) =>
-      !this.includes(one.path) || (one.path !== path && !one.path.startsWith(path + '/'))
-    this.save(this.records().filter(retained))
-    this.saveRemovals(this.removals().filter(retained))
-    this.invalidateInventory()
+    const roots = typeof this.scope === 'function' ? [this.scope()] : this.scope
+    // An ancestor deletion also covers a scoped root, without retiring foreign records.
+    if (!this.includes(path) && !roots.some((root) => root?.startsWith(path + '/'))) return
+    this.deletedPaths.add(path)
+    if (this.deletionFlushScheduled) return
+    this.deletionFlushScheduled = true
+    queueMicrotask(() => {
+      this.deletionFlushScheduled = false
+      this.flushDeletions()
+    })
+  }
+  private flushDeletions(): void {
+    if (!this.deletedPaths.size) return
+    const retained = (one: { path: string }) => {
+      if (!this.includes(one.path)) return true
+      // Probe ancestors rather than comparing every record against every deleted path.
+      let path = one.path
+      for (;;) {
+        if (this.deletedPaths.has(path)) return false
+        const slash = path.lastIndexOf('/')
+        if (slash < 0) return true
+        path = path.slice(0, slash)
+      }
+    }
+    const records = schema.parse(this.storage.loadLocalStorage(KEY) ?? [])
+    const removals = removalSchema.parse(this.storage.loadLocalStorage(REMOVALS) ?? [])
+    const keptRecords = records.filter(retained)
+    const keptRemovals = removals.filter(retained)
+    if (keptRecords.length !== records.length) this.save(keptRecords)
+    if (keptRemovals.length !== removals.length) this.saveRemovals(keptRemovals)
+    this.deletedPaths.clear()
   }
   constructor(
     private readonly disk: DirectoryAdapter,
@@ -86,6 +114,7 @@ export class VaultDirectories {
     return crossesSymlink(path, this.symlink, seen)
   }
   private records() {
+    this.flushDeletions()
     return schema.parse(this.storage.loadLocalStorage(KEY) ?? [])
   }
   private save(records: z.infer<typeof schema>) {
@@ -97,6 +126,7 @@ export class VaultDirectories {
     this.identitySnapshot = undefined
   }
   private removals() {
+    this.flushDeletions()
     return removalSchema.parse(this.storage.loadLocalStorage(REMOVALS) ?? [])
   }
   private saveRemovals(removals: z.infer<typeof removalSchema>) {
@@ -353,6 +383,7 @@ export class VaultDirectories {
   }
   /** Saved evidence only: a candidate probe must never certify a replacement. */
   knownIdentity(path: string, birth?: number): string | undefined {
+    this.flushDeletions()
     this.assertPath(path, 'known identity', true)
     let saved: { birth: number; identity: string } | undefined
     if (this.inventoryUsers) {
@@ -368,6 +399,7 @@ export class VaultDirectories {
     if (stat?.type !== 'folder' || (await this.linked(path)))
       throw new EngineError('io', 'Received directory is unavailable')
     if (advisory && this.inventoryUsers) {
+      this.flushDeletions()
       this.identitySnapshot ??= new Map(this.records().map((one) => [one.path, one]))
       const saved = this.identitySnapshot.get(path)
       if (saved?.birth === stat.ctime) return saved.identity
