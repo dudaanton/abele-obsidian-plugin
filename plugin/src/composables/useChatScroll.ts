@@ -858,6 +858,7 @@ export function useChatScroll(options: ChatScrollOptions) {
     observedContainer = el
     el.addEventListener('scrollend', onNativeScrollEnd)
     let mutationQueued = false
+    let initialFollowPending = true
     const measureMutation = () => {
       // Hidden under the opened composer; it is put right when the composer closes.
       if (composing.value || observedContainer !== el) return
@@ -873,6 +874,14 @@ export function useChatScroll(options: ChatScrollOptions) {
       // Register new hosts immediately so their first layout can report a resize
       // even when the batched geometry pass has not run yet. This reads no layout.
       observeMessageSizes(el)
+      // A replacement container starts at the top even when this chat is still
+      // following. Settle its first rendered content on Vue's tick, without
+      // waiting for a frame (which a background tab may not receive).
+      // Consume this once per mount, not once per markdown mutation.
+      if (initialFollowPending && shouldAutoScroll && !composing.value) {
+        initialFollowPending = false
+        doScroll()
+      }
       // Page swaps and reading holds need correction before native clamping can
       // become a scroll event. Ordinary markdown mutations have no such hold:
       // batch them at the frame boundary instead of forcing layout after every
@@ -911,7 +920,10 @@ export function useChatScroll(options: ChatScrollOptions) {
     })
     sizeObserver.observe(el)
     observeMessageSizes(el)
-    anchors.nextFrame(el.win, revealUntilScrollable)
+    anchors.nextFrame(el.win, () => {
+      initialFollowPending = false
+      if (observedContainer === el) revealUntilScrollable()
+    })
   }
 
   let revealQueued = false
