@@ -811,10 +811,13 @@ it('walks from source through stepping, recording, analysis, a crash, restart an
     if(!record)throw Error('Restart did not carry the record point');
     // The gutter-toggle branch removes a record point with a click; editing stays in its menu.
     press(record);
-    await until(()=>marginAt(6),'record point removed');
+    // Removing the final capture can open its completed run. Check the source's own
+    // gutter even when that tab is hidden, then bring it back for the next source action.
+    await until(()=>marginAt(6,source.containerEl),'record point removed');
+    await app.workspace.revealLeaf(source);
     if(document.querySelector('.abele-trace-point'))throw Error('Gutter click opened the point editor');
     await shot('journey-record-point-click-removed');
-    press(marginAt(6));
+    press(marginAt(6,source.containerEl));
     await goOn();
     await until(()=>paused()&&document.querySelector('.abele-debug-panel__where')?.textContent.includes(':6'),'breakpoint hit after restart');
     await shot('journey-restarted-breakpoint');
