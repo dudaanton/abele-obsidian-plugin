@@ -43,6 +43,14 @@ export class VaultDirectories {
   invalidateInventory(): void {
     this.identitySnapshot = undefined
   }
+  /** A confirmed deletion retires evidence even when a replacement has the same birth. */
+  deleted(path: string): void {
+    const retained = (one: { path: string }) =>
+      !this.includes(one.path) || (one.path !== path && !one.path.startsWith(path + '/'))
+    this.save(this.records().filter(retained))
+    this.saveRemovals(this.removals().filter(retained))
+    this.invalidateInventory()
+  }
   constructor(
     private readonly disk: DirectoryAdapter,
     private readonly storage: LocalStorage,

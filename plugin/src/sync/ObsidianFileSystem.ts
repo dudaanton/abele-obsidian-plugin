@@ -903,7 +903,10 @@ export class ObsidianFileSystem implements FileSystem {
       this.app.vault.on('modify', (file) => {
         if (inventory) this.recordInventoryChange(inventory, file.path, false)
       }),
-      this.app.vault.on('delete', (file) => invalidate(file)),
+      this.app.vault.on('delete', (file) => {
+        if (file.children) this.directories.deleted(file.path)
+        invalidate(file)
+      }),
       this.app.vault.on('rename', (file, previous) => invalidate(file, previous)),
     ]
     const stopConfig = observeAdapterConfig(
@@ -4539,6 +4542,10 @@ export class ObsidianFileSystem implements FileSystem {
       }),
       this.app.vault.on('modify', (file) => changed(file, false, !(file instanceof TFolder))),
       this.app.vault.on('delete', (file) => {
+        if ('children' in file) {
+          this.directories.deleted(file.path)
+          this.candidateDirectories = new WeakMap()
+        }
         changed(file)
         this.invalidateRootChain([file.path])
       }),

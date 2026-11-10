@@ -1,6 +1,39 @@
 import { expect, it, vi } from 'vitest'
 import { VaultDirectories } from '@/sync/vaultDirectories'
 
+it('retires deleted subtree evidence and removal intents only inside its scope', async () => {
+  const { buildFakeVault } = await import('../helpers/fakeVault')
+  const app = buildFakeVault([{ path: 'Sample/Nested/file.md', content: 'sample' }])
+  const directories = new VaultDirectories(app.vault.adapter, app)
+  const parent = await directories.identity('Sample')
+  const nested = await directories.identity('Sample/Nested')
+  const birth = (await app.vault.adapter.stat('Sample'))!.ctime
+  app.saveLocalStorage('abele-sync-empty-directory-removals-v1', [
+    { path: 'Sample', birth, files: [] },
+    { path: 'Sample/Nested', birth, files: [] },
+  ])
+  const scoped = new VaultDirectories(
+    app.vault.adapter,
+    app,
+    undefined,
+    undefined,
+    () => 'Sample/Nested'
+  )
+  scoped.beginInventory()
+  try {
+    expect(scoped.knownIdentity('Sample/Nested')).toBe(nested)
+    scoped.deleted('Sample')
+    expect(scoped.knownIdentity('Sample/Nested')).toBeUndefined()
+    expect(await scoped.identity('Sample/Nested', true)).not.toBe(nested)
+    expect(await directories.identity('Sample')).toBe(parent)
+    expect(app.loadLocalStorage('abele-sync-empty-directory-removals-v1')).toEqual([
+      { path: 'Sample', birth, files: [] },
+    ])
+  } finally {
+    scoped.endInventory()
+  }
+})
+
 it('does not rewrite pending removals for a directory download with no removals', async () => {
   const { buildFakeVault } = await import('../helpers/fakeVault')
   const app = buildFakeVault([{ path: 'Sample/file.md', content: 'sample' }])
@@ -19,7 +52,9 @@ it('does not save unchanged directory identities on another inventory', async ()
   await Array.fromAsync(dirs.list())
   const save = vi.spyOn(app, 'saveLocalStorage')
   await Array.fromAsync(dirs.list())
-  expect(save.mock.calls.filter(([key]) => key === 'abele-sync-local-directories-v1')).toHaveLength(0)
+  expect(save.mock.calls.filter(([key]) => key === 'abele-sync-local-directories-v1')).toHaveLength(
+    0
+  )
 })
 
 it('loads existing directory identities once per advisory inventory, but reloads before effects', async () => {

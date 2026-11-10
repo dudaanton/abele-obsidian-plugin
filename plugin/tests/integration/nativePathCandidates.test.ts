@@ -13,10 +13,25 @@ import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { scopedFileSystem } from '@/sync/scopedFileSystem'
 import { LocalPaths } from '../../node_modules/@abele/sync-sdk/dist/internal/core/localPaths.js'
 
-async function fixture(paths = ['Notes/Folder/K.md']) {
+async function fixture(paths = ['Notes/Folder/K.md'], folderBirth?: number) {
   const root = await disk.realpath(await disk.mkdtemp(join(tmpdir(), 'sample-candidates-')))
   await disk.mkdir(join(root, 'Notes/Folder'), { recursive: true })
-  const app = nativeVault(root, disk, paths)
+  const port = new Proxy(disk, {
+    get(target, key) {
+      if (key !== 'lstat' || folderBirth === undefined) return Reflect.get(target, key)
+      return async (...args: Parameters<typeof disk.lstat>) => {
+        const stat = await disk.lstat(...args)
+        return new Proxy(stat, {
+          get(value, field) {
+            return field === 'birthtimeMs' && args[0] === join(root, 'Notes/Folder')
+              ? folderBirth
+              : Reflect.get(value, field)
+          },
+        })
+      }
+    },
+  })
+  const app = nativeVault(root, port, paths)
   Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
   const lifetime = new AbortController()
   const files = new ObsidianFileSystem(app as unknown as App, {
@@ -111,7 +126,9 @@ it.each(['file', 'symlink', 'directory'] as const)(
               if (path === 'Notes/Folder') {
                 checks++
                 Reflect.get(one.files, 'recordInventoryChange').call(
-                  one.files, Reflect.get(one.files, 'inventory'), 'Other/sample.md'
+                  one.files,
+                  Reflect.get(one.files, 'inventory'),
+                  'Other/sample.md'
                 )
               }
               return candidates.lstat(path)
@@ -248,9 +265,7 @@ it('lists group occupancy with a busy index without claiming directory ownership
     const files = new ObsidianFileSystem(one.app as unknown as App, {
       discovery: { roots: [], includes: () => true },
     })
-    expect(await files.listChildren('Notes')).toEqual([
-      { path: 'Notes/Folder', kind: 'directory' },
-    ])
+    expect(await files.listChildren('Notes')).toEqual([{ path: 'Notes/Folder', kind: 'directory' }])
     expect(await files.listChildren('Notes/Folder')).toEqual([
       { path: 'Notes/Folder/K.md', kind: 'file' },
     ])
@@ -465,24 +480,50 @@ it('retains the physical fallback for a certified folder missing from the curren
   }
 })
 
-it('refreshes a folder candidate after an indexed delete and recreation in the same pass', async () => {
-  const one = await fixture()
-  try {
-    const pass = Reflect.get(one.files, Symbol.for('abele.sync.inventory-pass-v1')) as <T>(
-      work: () => Promise<T>
-    ) => Promise<T>
-    await pass.call(one.files, async () => {
-      const before = await one.files.trustedPathCandidates!.lookup('Notes', 'Folder')
-      const folder = one.app.vault.getAbstractFileByPath('Notes/Folder')!
-      await disk.rename(join(one.root, 'Notes/Folder'), join(one.root, 'Retained'))
-      one.app.emit('vault', 'delete', folder)
-      await disk.mkdir(join(one.root, 'Notes/Folder'))
-      one.app.emit('vault', 'create', folder)
-      const after = await one.files.trustedPathCandidates!.lookup('Notes', 'Folder')
-      expect(after?.[0]?.identity).not.toBe(before?.[0]?.identity)
-      await expect(LocalPaths.forPath(one.files, 'Notes/Folder/Restored.md')).resolves.toBeDefined()
-    })
-  } finally {
-    await one.close()
+it.each(['inventory', 'watcher'] as const)(
+  'refreshes a folder candidate after an indexed delete and recreation (%s)',
+  async (mode) => {
+    // Distinct directories can share a birth timestamp on coarse-resolution filesystems.
+    const one = await fixture(undefined, 1700000000000)
+    try {
+      const pass = Reflect.get(one.files, Symbol.for('abele.sync.inventory-pass-v1')) as <T>(
+        work: () => Promise<T>
+      ) => Promise<T>
+      const work = async () => {
+        const before = await one.files.trustedPathCandidates!.lookup('Notes', 'Folder')
+        const folder = one.app.vault.getAbstractFileByPath('Notes/Folder')!
+        await disk.rename(join(one.root, 'Notes/Folder'), join(one.root, 'Retained'))
+        one.app.emit('vault', 'delete', folder)
+        await disk.mkdir(join(one.root, 'Notes/Folder'))
+        one.app.emit('vault', 'create', folder)
+        const after = await one.files.trustedPathCandidates!.lookup('Notes', 'Folder')
+        expect(before?.[0]?.identity).toEqual(expect.any(String))
+        expect(after?.[0]?.identity).toEqual(expect.any(String))
+        expect(after?.[0]?.identity).not.toBe(before?.[0]?.identity)
+        await expect(
+          LocalPaths.forPath(one.files, 'Notes/Folder/Restored.md')
+        ).resolves.toBeDefined()
+      }
+      if (mode === 'inventory') await pass.call(one.files, work)
+      else {
+        const timers = ['setInterval', 'clearInterval'] as const
+        const previous = timers.map((key) => Object.getOwnPropertyDescriptor(window, key))
+        for (const key of timers)
+          Object.defineProperty(window, key, { configurable: true, value: globalThis[key] })
+        let stop: (() => void) | undefined
+        try {
+          stop = one.files.watch(() => {})
+          await work()
+        } finally {
+          stop?.()
+          timers.forEach((key, i) => {
+            if (previous[i]) Object.defineProperty(window, key, previous[i]!)
+            else Reflect.deleteProperty(window, key)
+          })
+        }
+      }
+    } finally {
+      await one.close()
+    }
   }
-})
+)
