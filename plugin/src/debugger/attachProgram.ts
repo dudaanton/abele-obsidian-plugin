@@ -143,8 +143,16 @@ export async function attachToProgram(
   binding.reattach = () => askAndAttachProgram(presenter, show)
   // A source can be unreadable or slow to open. The attached session must already be selected
   // before those optional file reads, so a previous detached view cannot remain on screen.
-  await show(started.debug_session_id)
-  await removeForgottenBreakpoints(previous, binding, forgotten)
+  binding.restoringPoints = forgotten.length > 0
+  try {
+    // Capture metadata goes before the adapter's final auto-continue. Until reconciliation
+    // holds a stable stop, its cached capture frames must not be inspected as a normal pause.
+    await show(started.debug_session_id)
+    await removeForgottenBreakpoints(previous, binding, forgotten)
+  } finally {
+    binding.restoringPoints = false
+  }
+  if (forgotten.length) await binding.refresh()
   // Prefer mapped source. Check the ordinary file API before opening an adapter-provided
   // path: ignored build outputs can be admitted for debugging but refused by file browsing.
   const main =

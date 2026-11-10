@@ -388,6 +388,7 @@ export class DebuggerBinding {
       const epoch = this.controller.snapshot?.stop_epoch
       if (this.controller.loadedStackEpoch === epoch) this.loadedEpoch = epoch
       if (
+        !this.restoringPoints &&
         this.controller.session.status === 'paused' &&
         epoch !== this.loadedEpoch &&
         !this.trace?.isRecordStop()
