@@ -1,6 +1,8 @@
 import { expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import ts from 'typescript'
+import { chatTreeSearchFixture } from '../e2e/helpers/chatTreeSearchFixture'
 
 it('sends syntactically valid JavaScript to the chat tree live host', () => {
   const text = readFileSync('tests/e2e/chatTree.e2e.test.ts', 'utf8')
@@ -14,8 +16,11 @@ it('sends syntactically valid JavaScript to the chat tree live host', () => {
   visit(source)
   expect(initializer).not.toBe('')
   const code = ts.transpile(`const probe = ${initializer}`)
-  const probe = new Function('SHOTS', `${code}; return probe`)('synthetic-shots') as (
-    label: string
-  ) => string
+  const probe = new Function(
+    'SHOTS',
+    'randomUUID',
+    'chatTreeSearchFixture',
+    `${code}; return probe`
+  )('synthetic-shots', randomUUID, chatTreeSearchFixture) as (label: string) => string
   expect(() => new Function(probe('desktop'))).not.toThrow()
 })
