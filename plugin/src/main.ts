@@ -102,7 +102,7 @@ import { pendingTeardown, recordTeardown } from './sync/teardownBarrier'
 import { tokenUi, TokenUi } from './sync/tokenUi'
 import { SyncStartupTimeline, timedSyncTransport } from './sync/startupTimeline'
 import { openDeviceReviews } from './sync/openDeviceReviews'
-import { transportOf } from './sync/environment'
+import { hostTransport } from './sync/environment'
 import { watchTheFront, watchSyncQuit } from './sync/phone'
 import type { TokenEngines } from './sync/tokenEngines'
 import { renderStatus, type SyncStatus } from './sync/status'
@@ -429,9 +429,9 @@ export default class AbelePlugin extends Plugin {
           }
           if (typeof reviewId !== 'string')
             throw new Error('Device review identity requires recovery')
-          // Refuse an unsupported transport before acquiring the review handle.
+          // Local host startup is independent of network availability or runtime support.
           const transport = timedSyncTransport(
-            transportOf(
+            hostTransport(
               process.env.NODE_ENV !== 'production' ? { fetch: syncTransportForTests() } : {}
             ),
             this.syncTimeline
@@ -544,10 +544,7 @@ export default class AbelePlugin extends Plugin {
             this.tokenHostStartup.error =
               (error as Error)?.message || 'Token host initialization failed'
           }
-          console.error(
-            '[Abele] retired access cleanup requires recovery',
-            (error as Error)?.message
-          )
+          console.error('[Abele] token sync host initialization failed', (error as Error)?.message)
         }
       })
       if (this.unloaded) return

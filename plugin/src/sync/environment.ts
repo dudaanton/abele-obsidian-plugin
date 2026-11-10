@@ -1,4 +1,4 @@
-import { Platform, type App } from 'obsidian'
+import { Platform } from 'obsidian'
 import { PHONE_POLL_MS, phoneSocket } from './phone'
 import { wsFor } from './transport'
 import { mobileTransport } from './mobileTransport'
@@ -30,6 +30,19 @@ export interface SyncServiceDeps {
 export function transportOf(deps: SyncServiceDeps): typeof fetch {
   if (deps.fetch) return deps.fetch
   return Platform.isMobile ? mobileTransport() : desktopTransport()
+}
+
+/**
+ * Opening the host's local stores must not require a supported network runtime.
+ * Resolve on first request so layout emulation can install its native dependency after
+ * reload. Unsupported mobile requests still fail closed, without a requestUrl fallback.
+ */
+export function hostTransport(deps: SyncServiceDeps): typeof fetch {
+  let transport: typeof fetch | undefined
+  return async (input, init) => {
+    transport ??= transportOf(deps)
+    return transport(input, init)
+  }
 }
 
 /** A phone's refuses to open, whatever a test hands in: a phone must never hold one. */
