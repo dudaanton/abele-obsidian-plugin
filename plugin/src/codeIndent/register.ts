@@ -344,50 +344,16 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
   diagnosticHost.codeIndentGuideDiagnostics = settings.inspect
   const blocks = new Set<WeakRef<HTMLElement>>()
   const remembered = new WeakSet<HTMLElement>()
-  const blockObservers = new WeakMap<HTMLElement, MutationObserver>()
-  const draw = readingGuideProcessor(settings)
-  const process = (code: HTMLElement, clear = false) => {
-    const observer = blockObservers.get(code)
-    // Disconnect discards pending records too. None of our writes, including
-    // settings refreshes, may schedule another reading pass.
-    observer?.disconnect()
-    try {
-      if (clear) clearReadingGuides(code)
-      draw(code)
-    } finally {
-      observer?.observe(code, { childList: true, subtree: true })
-    }
-  }
+  const process = readingGuideProcessor(settings)
   plugin.registerMarkdownPostProcessor((root) => {
+    process(root)
     for (const code of [
       ...(root.matches('pre > code') ? [root] : []),
       ...Array.from(root.querySelectorAll<HTMLElement>('pre > code')),
     ]) {
-      process(code)
       if (remembered.has(code)) continue
       remembered.add(code)
       blocks.add(new WeakRef(code))
-      // Syntax highlighting can replace our rows after postprocessing has returned.
-      // Keep only a weak target here so a retired reading pane remains collectible.
-      const target = new WeakRef(code)
-      let repairs = 0
-      const observer = new code.ownerDocument.defaultView.MutationObserver(() => {
-        const current = target.deref()
-        if (!current?.isConnected) return
-        if (!settings().enabled) return
-        if (current.firstElementChild?.classList.contains('abele-code-line')) return
-        // Allow several late highlighting passes, but never fight a renderer
-        // indefinitely. This budget belongs to the element's lifetime, across
-        // task boundaries and settings refreshes; no timer replenishes it.
-        if (repairs >= 32) {
-          observer.disconnect()
-          return
-        }
-        repairs++
-        process(current)
-      })
-      observer.observe(code, { childList: true, subtree: true })
-      blockObservers.set(code, observer)
     }
   }, 1000)
   plugin.registerEditorExtension(codeGuideExtension(settings))
@@ -414,7 +380,8 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
         blocks.delete(ref)
         continue
       }
-      process(code, tabSizeChanged)
+      if (tabSizeChanged) clearReadingGuides(code)
+      process(code)
     }
   }
   const listen = (doc: Document) => {
@@ -449,10 +416,7 @@ export function registerCodeIndentGuides(plugin: Plugin): void {
     documents.clear()
     for (const ref of blocks) {
       const code = ref.deref()
-      if (code) {
-        blockObservers.get(code)?.disconnect()
-        clearReadingGuides(code)
-      }
+      if (code) clearReadingGuides(code)
     }
   })
   plugin.app.workspace.onLayoutReady(() => {

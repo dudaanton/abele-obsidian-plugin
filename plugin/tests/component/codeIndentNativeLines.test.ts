@@ -5,67 +5,6 @@ import { EditorState, StateEffect, StateField, type Extension } from '@codemirro
 import { Decoration, EditorView, type MeasureRequest } from '@codemirror/view'
 import { codeGuideExtension, registerCodeIndentGuides } from '@/codeIndent/register'
 import { nativeCodeLines } from '@/codeIndent/nativeLines'
-import * as readingGuides from '@/codeIndent/readingGuides'
-
-it('bounds repairs when a renderer replaces rows after every repair across tasks', async () => {
-  vi.useFakeTimers()
-  const callbacks = new Map<MutationObserver, MutationCallback>()
-  const observing = new Set<MutationObserver>()
-  const observe = vi.spyOn(window, 'MutationObserver').mockImplementation(function (callback) {
-    const observer = {
-      observe: () => observing.add(observer),
-      disconnect: () => observing.delete(observer),
-      takeRecords: () => [],
-    } as unknown as MutationObserver
-    callbacks.set(observer, callback)
-    return observer
-  })
-  const host = {
-    app: {
-      vault: { getConfig: vi.fn(), on: vi.fn() },
-      workspace: { on: vi.fn(), onLayoutReady: vi.fn(), iterateAllLeaves: vi.fn() },
-    },
-    registerEditorExtension: vi.fn(),
-    registerMarkdownPostProcessor: vi.fn(),
-    registerInterval: vi.fn(),
-    registerEvent: vi.fn(),
-    register: vi.fn(),
-    registerDomEvent: vi.fn(),
-  }
-  const pre = document.createElement('pre')
-  const code = document.createElement('code')
-  code.textContent = 'root\n  child\n'
-  pre.append(code)
-  document.body.append(pre)
-  const draw = readingGuides.drawReadingGuides
-  let repairs = 0
-  const render = vi.spyOn(readingGuides, 'drawReadingGuides').mockImplementation((block, size) => {
-    draw(block, size)
-    repairs++
-    window.setTimeout(() => {
-      block.textContent = 'root\n  child\n'
-      const [observer, callback] = [...callbacks].at(-1)
-      if (observing.has(observer)) callback([], observer)
-    }, 1)
-  })
-  try {
-    registerCodeIndentGuides(host as unknown as Plugin)
-    host.registerMarkdownPostProcessor.mock.calls[0][0](pre)
-    await vi.advanceTimersByTimeAsync(10_000)
-    expect(repairs).toBeGreaterThan(1)
-    expect(repairs).toBeLessThanOrEqual(33)
-    expect(code.textContent).toBe('root\n  child\n')
-    const count = repairs
-    await vi.advanceTimersByTimeAsync(10_000)
-    expect(repairs).toBe(count)
-  } finally {
-    for (const [cleanup] of host.register.mock.calls) (cleanup as () => void)()
-    pre.remove()
-    render.mockRestore()
-    observe.mockRestore()
-    vi.useRealTimers()
-  }
-})
 
 it('preserves fractional layout insets and measures the entire leading indent', () => {
   const row = document.createElement('div')
@@ -93,91 +32,6 @@ it('preserves fractional layout insets and measures the entire leading indent', 
 })
 
 const DOC = 'prose\n```js\nroot\n  child\n\n    deep\n```\n  prose'
-it.each([false, true])('settles non-idempotent reading passes (repeated: %s)', async (repeated) => {
-  const draw = readingGuides.drawReadingGuides
-  let passes = 0
-  // Cap the simulation so a regression fails without starving the runner.
-  const drawing = vi.spyOn(readingGuides, 'drawReadingGuides').mockImplementation((code, size) => {
-    passes++
-    if (passes < 12 && (repeated || passes === 2)) code.textContent = 'root\n  child\n'
-    draw(code, size)
-  })
-  let enabled = true
-  const host = {
-    app: {
-      vault: {
-        getConfig: (key: string) => (key === 'showIndentGuide' ? enabled : undefined),
-        on: vi.fn(),
-      },
-      workspace: { on: vi.fn(), onLayoutReady: vi.fn(), iterateAllLeaves: vi.fn() },
-    },
-    registerEditorExtension: vi.fn(),
-    registerMarkdownPostProcessor: vi.fn(),
-    registerInterval: vi.fn(),
-    registerEvent: vi.fn(),
-    register: vi.fn(),
-    registerDomEvent: vi.fn(),
-  }
-  const interval = vi.spyOn(window, 'setInterval').mockReturnValue(1)
-  const pre = document.createElement('pre')
-  const code = document.createElement('code')
-  code.textContent = 'root\n  child\n'
-  pre.append(code)
-  document.body.append(pre)
-  let highlighting: MutationObserver | undefined
-  try {
-    registerCodeIndentGuides(host as unknown as Plugin)
-    const process = host.registerMarkdownPostProcessor.mock.calls[0][0]
-    process(pre)
-    const token = document.createElement('span')
-    token.className = 'token'
-    token.textContent = 'child'
-    code.replaceChildren('root\n  ', token, '\n')
-    await new Promise((resolve) => setTimeout(resolve, 30))
-    expect(passes).toBe(2)
-    expect(code.querySelectorAll(':scope > .abele-code-line')).toHaveLength(2)
-    process(pre)
-    host.app.workspace.onLayoutReady.mock.calls[0][0]()
-    await new Promise((resolve) => setTimeout(resolve, 30))
-    expect(passes).toBe(4)
-    expect(code.querySelectorAll(':scope > .abele-code-line')).toHaveLength(2)
-    enabled = false
-    for (let turn = 0; turn < 9; turn++) {
-      code.textContent = 'root\n  child\n'
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    expect(passes).toBe(4)
-    enabled = true
-    // Several independent highlighting turns remain within the repair budget.
-    for (let turn = 0; turn < 9; turn++) {
-      code.textContent = 'root\n  child\n'
-      await new Promise((resolve) => setTimeout(resolve, 30))
-      expect(code.querySelectorAll(':scope > .abele-code-line')).toHaveLength(2)
-    }
-    expect(passes).toBe(13)
-    if (repeated) {
-      let replacements = 0
-      highlighting = new MutationObserver(() => {
-        if (replacements < 10 && code.querySelector('.abele-code-line')) {
-          replacements++
-          code.textContent = 'root\n  child\n'
-        }
-      })
-      highlighting.observe(code, { childList: true })
-      code.textContent = 'root\n  child\n'
-      await new Promise((resolve) => setTimeout(resolve, 50))
-      expect(replacements).toBe(10)
-      expect(code.querySelectorAll(':scope > .abele-code-line')).toHaveLength(2)
-      expect(passes).toBeLessThanOrEqual(25)
-    }
-  } finally {
-    highlighting?.disconnect()
-    for (const [cleanup] of host.register.mock.calls) (cleanup as () => void)()
-    pre.remove()
-    drawing.mockRestore()
-    interval.mockRestore()
-  }
-})
 // Obsidian's line/background decorators and token spans need not have equivalent
 // public syntax-tree node names. This editor deliberately has no HyperMD parser.
 const native = StateField.define({
@@ -307,25 +161,6 @@ it('keeps the registered extension through vault setting changes and editor reco
   try {
     registerCodeIndentGuides(host as unknown as Plugin)
     expect(extensions).toHaveLength(1)
-    const reading = document.createElement('div')
-    const pre = document.createElement('pre')
-    const code = document.createElement('code')
-    code.className = 'language-js'
-    code.textContent = 'root\n  child\n'
-    pre.append(code)
-    reading.append(pre)
-    document.body.append(reading)
-    host.registerMarkdownPostProcessor.mock.calls[0][0](reading)
-    expect(code.querySelector('.abele-code-line')).not.toBeNull()
-    // Highlighting can finish after the markdown postprocessor has returned.
-    const highlighted = document.createElement('span')
-    highlighted.className = 'token'
-    highlighted.textContent = 'child'
-    code.replaceChildren('root\n  ', highlighted, '\n')
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(code.querySelector('.abele-code-line')).not.toBeNull()
-    expect(code.querySelector('.token')?.textContent).toBe('child')
-    reading.remove()
     expect(host.registerDomEvent).toHaveBeenCalledTimes(1)
     expect(host.app.workspace.onLayoutReady).toHaveBeenCalledTimes(1)
     const registered = extensions[0]
