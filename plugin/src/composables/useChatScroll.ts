@@ -694,9 +694,12 @@ export function useChatScroll(options: ChatScrollOptions) {
     scheduleReveal(el)
   }
 
+  let followQueued = false
   const doScroll = () => {
-    if (!shouldAutoScroll || fingerDown) return
+    if (!shouldAutoScroll || fingerDown || followQueued) return
+    followQueued = true
     void nextTick(() => {
+      followQueued = false
       const el = messagesContainer.value
       // Asked again: the reader may have scrolled away in the tick between.
       if (!el || !shouldAutoScroll || fingerDown) return
@@ -871,7 +874,6 @@ export function useChatScroll(options: ChatScrollOptions) {
     followedHeight = null
     el.addEventListener('scrollend', onNativeScrollEnd)
     let mutationQueued = false
-    let initialFollowPending = true
     const measureMutation = () => {
       // Hidden under the opened composer; it is put right when the composer closes.
       if (composing.value || observedContainer !== el) return
@@ -887,12 +889,12 @@ export function useChatScroll(options: ChatScrollOptions) {
       // Register new hosts immediately so their first layout can report a resize
       // even when the batched geometry pass has not run yet. This reads no layout.
       observeMessageSizes(el)
-      // A replacement container starts at the top even when this chat is still
-      // following. Settle its first rendered content on Vue's tick, without
-      // waiting for a frame (which a background tab may not receive).
-      // Consume this once per mount, not once per markdown mutation.
-      if (initialFollowPending && shouldAutoScroll && !composing.value) {
-        initialFollowPending = false
+      // Following is a viewport destination, just like a held anchor. Leaving
+      // one line of rendered growth unfollowed until rAF lets native input start
+      // from a stale end; the later follow then consumes part of that gesture.
+      // Settle on Vue's tick, without the extra holdLayout range measurement.
+      // Once input takes ownership, unanchored mutations remain frame-batched.
+      if (shouldAutoScroll && !composing.value) {
         doScroll()
       }
       // Page swaps and reading holds need correction before native clamping can
@@ -934,7 +936,6 @@ export function useChatScroll(options: ChatScrollOptions) {
     sizeObserver.observe(el)
     observeMessageSizes(el)
     anchors.nextFrame(el.win, () => {
-      initialFollowPending = false
       if (observedContainer === el) revealUntilScrollable()
     })
   }
