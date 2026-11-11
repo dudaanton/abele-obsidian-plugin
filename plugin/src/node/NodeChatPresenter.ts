@@ -994,13 +994,23 @@ export class NodeChatPresenter implements ChatPresentationSession {
       await this.draftWrite
       const online = () =>
         !this.destroyed && this.connection.state.value === 'connected' && client.connected
+      const admissionDeadline = Date.now() + 30000
+      const recoverBeforeAdmission = async () => {
+        const remaining = admissionDeadline - Date.now()
+        if (
+          !online() &&
+          !this.destroyed &&
+          this.connection.state.value !== 'offline' &&
+          remaining > 0
+        )
+          await this.connection.waitUntilConnected(this.lifetimeAbort.signal, remaining)
+        if (!online())
+          throw new OfflineTurnError(uiMessage('streamB.draftNotSentBecauseTheNodeIs.f195f2'))
+      }
       // A closed socket can outlive the displayed state until the next retry tick.
       // Use the connection's bounded recovery lifetime before admission, never replay
       // a send after it has entered the durable outbox.
-      if (!online() && !this.destroyed && this.connection.state.value !== 'offline')
-        await this.connection.waitUntilConnected(this.lifetimeAbort.signal)
-      if (!online())
-        throw new OfflineTurnError(uiMessage('streamB.draftNotSentBecauseTheNodeIs.f195f2'))
+      await recoverBeforeAdmission()
       if (this.descriptionRequested && this.nodeDescription.value === undefined) {
         await this.describe()
         if (this.nodeDescription.value === undefined)
@@ -1049,26 +1059,30 @@ export class NodeChatPresenter implements ChatPresentationSession {
       })
       const operation_id = crypto.randomUUID()
       operationId = operation_id
-      await client.store.transaction((s) => {
-        // The final fence runs under the store lock, not before an asynchronous SDK enqueue.
-        if (!online())
-          throw new OfflineTurnError(uiMessage('streamB.draftNotSentBecauseTheNodeIs.f195f2'))
-        s.operationRequests ??= {}
-        s.operationRequests[operation_id] = { method: 'session.send', params }
-        s.outbox.push({ operation_id, method: 'session.send', params })
-        // Clear only this submission, atomically with admission, even if the view closes.
-        const state = s as NodeClientState
-        setOwnerStopped(state.delegation, this.reference.sessionId, false)
-        if (guarded && expected) {
-          state.turnDrafts ??= {}
-          state.turnDrafts[operation_id] = {
-            sessionId: this.reference.sessionId,
-            text: submittedDraft,
+      const admit = () =>
+        client.store.transaction((s) => {
+          // The final fence runs under the store lock, not before an asynchronous SDK enqueue.
+          if (!online()) return false
+          s.operationRequests ??= {}
+          s.operationRequests[operation_id] = { method: 'session.send', params }
+          s.outbox.push({ operation_id, method: 'session.send', params })
+          // Clear only this submission, atomically with admission, even if the view closes.
+          const state = s as NodeClientState
+          setOwnerStopped(state.delegation, this.reference.sessionId, false)
+          if (guarded && expected) {
+            state.turnDrafts ??= {}
+            state.turnDrafts[operation_id] = {
+              sessionId: this.reference.sessionId,
+              text: submittedDraft,
+            }
           }
-        }
-        if (state.chatDrafts?.[this.reference.sessionId]?.text === submittedDraft)
-          delete state.chatDrafts[this.reference.sessionId]
-      })
+          if (state.chatDrafts?.[this.reference.sessionId]?.text === submittedDraft)
+            delete state.chatDrafts[this.reference.sessionId]
+          return true
+        })
+      // Preparation and waiting for the store lock can outlast the transport.
+      // Recover outside the lock, and retry only a transaction that wrote nothing.
+      while (!(await admit())) await recoverBeforeAdmission()
       retain = false
       await client.flush()
       const receipt = await client.operationResult(operation_id)

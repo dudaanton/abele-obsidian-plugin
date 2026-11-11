@@ -120,6 +120,79 @@ it('rejects a disconnect that occurs while preparing a connected turn', async ()
   presenter.destroy()
 })
 
+it.each(['preparation', 'store lock'])(
+  'recovers a connection lost during %s before durable admission',
+  async (phase) => {
+    const { presenter, client, store, connection } = await setup()
+    connection.state.value = 'connected'
+    const connected = vi.spyOn(client, 'connected', 'get').mockReturnValue(true)
+    const recovery = deferred<boolean>()
+    connection.waitUntilConnected = vi.fn(() => recovery.promise)
+    const flush = vi.spyOn(client, 'flush').mockResolvedValue(undefined)
+    vi.spyOn(client, 'operationResult').mockResolvedValue(undefined)
+    vi.spyOn(client, 'cursor').mockImplementation(async () => {
+      // The transport can close while asynchronous send preparation is pending.
+      if (phase === 'preparation') connected.mockReturnValue(false)
+      else {
+        const transaction = store.transaction.bind(store)
+        vi.spyOn(store, 'transaction').mockImplementationOnce((work) =>
+          transaction((s) => {
+            connected.mockReturnValue(false)
+            return work(s)
+          })
+        )
+      }
+      return 3
+    })
+    try {
+      const sending = presenter.send('Sample first turn')
+      await vi.waitFor(() => expect(connection.waitUntilConnected).toHaveBeenCalledOnce())
+      expect(await store.transaction((s) => s.outbox)).toEqual([])
+      // Recovery must not hold the store lock needed by connect().
+      await store.transaction((s) => {
+        s.cursors[reference.sessionId] = 4
+      })
+      connected.mockReturnValue(true)
+      recovery.resolve(true)
+      await sending
+      const outbox = await store.transaction((s) => s.outbox)
+      expect(outbox).toHaveLength(1)
+      expect(outbox[0].params).toHaveProperty('observed_seq', 3)
+      expect(flush).toHaveBeenCalledOnce()
+      expect(presenter.draftNotice.value).toBe('')
+      expect(presenter.draft.value.text).toBe('')
+    } finally {
+      recovery.resolve(false)
+      presenter.destroy()
+    }
+  }
+)
+
+it('never retries admission after a durable send loses its transport', async () => {
+  const { presenter, client, store, connection } = await setup()
+  connection.state.value = 'connected'
+  const connected = vi.spyOn(client, 'connected', 'get').mockReturnValue(true)
+  connection.waitUntilConnected = vi.fn().mockResolvedValue(true)
+  vi.spyOn(client, 'cursor').mockResolvedValue(0)
+  const flush = vi.spyOn(client, 'flush').mockImplementation(async () => {
+    connected.mockReturnValue(false)
+    throw new Error('Sample transport closed after admission')
+  })
+  try {
+    await presenter.send('Sample durable turn')
+    const admitted = await store.transaction((s) => s.outbox)
+    expect(admitted).toHaveLength(1)
+    connected.mockReturnValue(true)
+    await presenter.refresh()
+    expect(await store.transaction((s) => s.outbox)).toEqual(admitted)
+    expect(flush).toHaveBeenCalledOnce()
+    expect(connection.waitUntilConnected).not.toHaveBeenCalled()
+    expect(presenter.draft.value.text).toBe('')
+  } finally {
+    presenter.destroy()
+  }
+})
+
 it('does not restore an admitted draft when the chat closes while confirmation is pending', async () => {
   const { presenter, client, store, connection } = await setup()
   connection.state.value = 'connected'
