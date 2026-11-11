@@ -5,6 +5,7 @@ import { shotDir } from './helpers/shots'
 import { withEmulatedPhone } from './helpers/emulatedPhone'
 import { NODE_PANEL_FIXTURE } from './helpers/nodePanelFixture'
 import { withNativeInput } from './helpers/nativeInput'
+import { settledHoverTarget } from './helpers/hoverTarget'
 
 targets('desktop')
 const SHOTS = shotDir('abele-compare-editing')
@@ -109,24 +110,28 @@ function probe(device: string) {
       if(Number(strip.getAttribute('aria-valuenow'))<20)throw Error('Overview did not navigate')
       await shot('overview-scrolled')
       if(${JSON.stringify(device)} === 'desktop') {
-        const mark = strip.querySelector('.abele-change-overview__mark_changed')
-        const box = mark.getBoundingClientRect()
-        const x = box.left + box.width/2, y = box.top + box.height/2
-        const hit = document.elementFromPoint(x,y)
-        if(hit !== mark && !mark.contains(hit))throw Error('Overview marker is covered: '+hit?.outerHTML)
         require('@electron/remote').getCurrentWindow().focus()
+        await until(()=>document.hasFocus())
         for(let i=0;i<2;i++)document.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerType:'mouse'}))
         const cdp = require('@electron/remote').getCurrentWebContents().debugger
         const owned = !cdp.isAttached()
         if(owned)cdp.attach('1.3')
         try {
-          await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x,y,button:'none'})
-          mark.dispatchEvent(new PointerEvent('pointerover',{bubbles:true,pointerType:'mouse',relatedTarget:document.body,clientX:x,clientY:y}))
-          await until(()=>[...document.querySelectorAll('.tooltip')].some(el=>el.textContent.includes('Lines')))
-          await shot('overview-tooltip')
+          // Leave any previous hover first. CodeMirror measures estimated line heights after
+          // scrolling; marker presence alone does not mean its screen coordinates are stable.
           await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x:20,y:20,button:'none'})
-          mark.dispatchEvent(new PointerEvent('pointerout',{bubbles:true,pointerType:'mouse',relatedTarget:document.body}))
-        } finally {if(owned)cdp.detach()}
+          const {element:mark,x,y} = await (${settledHoverTarget.toString()})(
+            ()=>document.querySelector('.abele-change-overview__mark_changed')
+          )
+          const label = mark.getAttribute('aria-label')
+          if(!label?.includes('Lines'))throw Error('Overview marker has no line-range information: '+label)
+          await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x,y,button:'none'})
+          await until(()=>mark.isConnected && [...document.querySelectorAll('.tooltip')].some(el=>el.textContent===label && el.getBoundingClientRect().width>0 && getComputedStyle(el).visibility==='visible'))
+          await shot('overview-tooltip')
+        } finally {
+          try { await cdp.sendCommand('Input.dispatchMouseEvent',{type:'mouseMoved',x:20,y:20,button:'none'}) }
+          finally {if(owned)cdp.detach()}
+        }
       }
       strip.dispatchEvent(new KeyboardEvent('keydown',{key:'Home',bubbles:true}))
       await wait(250)
