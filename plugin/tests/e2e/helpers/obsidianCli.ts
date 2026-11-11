@@ -367,7 +367,9 @@ export function evalRaw(code: string, timeoutMs?: number): string {
   return evalRawFramed(code, timeoutMs, false)
 }
 
-/** Only reads and absolute setters/cleanup that remain safe if the first call ran. */
+/** Only reads and absolute setters/cleanup that remain safe if the first call ran.
+ * Returned script errors remain raw text for callers to diagnose; only lost answers retry.
+ */
 export function evalRawIdempotent(code: string, timeoutMs?: number): string {
   return evalRawFramed(code, timeoutMs, true)
 }
@@ -383,7 +385,7 @@ function evalRawFramed(code: string, timeoutMs: number | undefined, idempotent: 
   })()`
   const output = run(['eval', `code=${wrapped}`], timeoutMs, idempotent, TARGET_VAULT, id)
   const reply = evalReply<string>(output, id)
-  if (reply.hasValue && /^Error:/.test(reply.value)) throw new Error(reply.value)
+  if (!idempotent && reply.hasValue && /^Error:/.test(reply.value)) throw new Error(reply.value)
   return reply.hasValue ? reply.value : reply.logs || '(no output)'
 }
 
