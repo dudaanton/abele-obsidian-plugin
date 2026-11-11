@@ -215,7 +215,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
   private readonly ownerStoppedTurnStarts = new Set<number>()
   private readonly backgroundStoppedRuns = new Set<string>()
   private endBackgroundTurn?: () => void
-  private readonly titleAbort = new AbortController()
+  private readonly lifetimeAbort = new AbortController()
   private titleAttempted = false
 
   constructor(
@@ -672,7 +672,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
         const title = await generateChatTitle(
           this.messages.value,
           ChatService.getInstance().getAuxiliaryModelConfig(),
-          this.titleAbort.signal
+          this.lifetimeAbort.signal
         )
         if (!title || this.destroyed || this.label.value !== original) return
         // A rename made elsewhere during generation wins over this convenience title.
@@ -994,10 +994,11 @@ export class NodeChatPresenter implements ChatPresentationSession {
       await this.draftWrite
       const online = () =>
         !this.destroyed && this.connection.state.value === 'connected' && client.connected
-      // Connection state can lag a socket reconnect. Wait before admission, never replay
+      // A closed socket can outlive the displayed state until the next retry tick.
+      // Use the connection's bounded recovery lifetime before admission, never replay
       // a send after it has entered the durable outbox.
-      for (let attempt = 0; !online() && !this.destroyed && attempt < 5; attempt++)
-        await new Promise<void>((resolve) => window.setTimeout(resolve, 100))
+      if (!online() && !this.destroyed && this.connection.state.value !== 'offline')
+        await this.connection.waitUntilConnected(this.lifetimeAbort.signal)
       if (!online())
         throw new OfflineTurnError(uiMessage('streamB.draftNotSentBecauseTheNodeIs.f195f2'))
       if (this.descriptionRequested && this.nodeDescription.value === undefined) {
@@ -1498,7 +1499,7 @@ export class NodeChatPresenter implements ChatPresentationSession {
   }
   destroy(): void {
     this.destroyed = true
-    this.titleAbort.abort()
+    this.lifetimeAbort.abort()
     if (this.refreshTimer !== undefined) window.clearTimeout(this.refreshTimer)
     this.releaseBackgroundTurn()
     this.backgroundStoppedRuns.clear()
