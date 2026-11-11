@@ -4,15 +4,31 @@ export function scrollCompletion(el: HTMLElement) {
   const initiallyScrollable = el.scrollHeight > el.clientHeight
   let released = false
   let ended = false
+  let moved = false
+  let movedUp = false
+  let previousTop = el.scrollTop
   let resolve: (() => void) | undefined
   let timer: number | undefined
+  const onScroll = () => {
+    const top = el.scrollTop
+    if (top !== previousTop) moved = true
+    if (top < previousTop) movedUp = true
+    previousTop = top
+    ended = false
+  }
   const onEnd = () => {
-    if (!released) return
+    // The last native movement can finish while the mouse is still held. A
+    // later movement invalidates it; release itself need not cause a new event.
+    if (!released && !moved) return
     ended = true
     resolve?.()
   }
+  el.addEventListener('scroll', onScroll)
   el.addEventListener('scrollend', onEnd)
   return {
+    get movedUp() {
+      return movedUp
+    },
     releasing() {
       released = true
     },
@@ -28,6 +44,7 @@ export function scrollCompletion(el: HTMLElement) {
       })
     },
     stop() {
+      el.removeEventListener('scroll', onScroll)
       el.removeEventListener('scrollend', onEnd)
       win.clearTimeout(timer)
     },

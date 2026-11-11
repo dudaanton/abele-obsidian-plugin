@@ -51,3 +51,22 @@ it('reveals the overlay with native wheel input and then reads fresh thumb geome
   ])
   expect(point).toEqual({ x: 514, y: 583.6 })
 })
+
+it.each([0, 10, 2400])('leaves no net reveal scroll with %s pixels of overflow', async (range) => {
+  const el = document.createElement('div')
+  Object.defineProperties(el, {
+    clientHeight: { value: 600 },
+    scrollHeight: { value: 600 + range },
+  })
+  el.scrollTop = range
+  await prepareScrollbarDrag(
+    el,
+    async (_method, params) => {
+      if (params.type === 'mouseWheel')
+        el.scrollTop = Math.max(0, Math.min(range, el.scrollTop + Number(params.deltaY)))
+    },
+    async () => {},
+    scrollbarDragPoint
+  )
+  expect(el.scrollTop).toBe(range)
+})

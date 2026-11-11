@@ -723,7 +723,9 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
       dragTrace.mark('release-ack')
       buttonDown = false
       await dragCompletion.wait()
-      if (dragStartTop > 0 && el.scrollTop >= dragStartTop)
+      // History paging rebases scrollTop during a real drag. Require observed
+      // upward movement, not a smaller final coordinate in the new page.
+      if (dragStartTop > 0 && !dragCompletion.movedUp)
         throw Error('Native scrollbar drag did not move upward')
       dragCompletion.stop()
     } else await gesture(-box().clientHeight * 0.35)
