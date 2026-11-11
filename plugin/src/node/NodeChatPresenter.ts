@@ -994,7 +994,9 @@ export class NodeChatPresenter implements ChatPresentationSession {
       await this.draftWrite
       const online = () =>
         !this.destroyed && this.connection.state.value === 'connected' && client.connected
-      const admissionDeadline = Date.now() + 30000
+      // Allow one normal two-second retry tick to settle, then return the composer
+      // to its retained draft instead of waiting through transport backoff.
+      const admissionDeadline = Date.now() + 2500
       const recoverBeforeAdmission = async () => {
         const remaining = admissionDeadline - Date.now()
         if (

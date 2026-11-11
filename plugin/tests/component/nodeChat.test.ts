@@ -18,69 +18,103 @@ import { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import { NodeConnection } from '@/node/NodeService'
 
-it('accepts a send during restart recovery after the displayed connection outlives its socket', async () => {
-  useVault([])
-  vi.useFakeTimers()
-  const store = Object.assign(new MemoryClientStore(), { close: vi.fn() })
-  const client = new NodeClient(
-    { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: 'sample-token' },
-    store
-  )
-  const connected = vi.spyOn(client, 'connected', 'get').mockReturnValue(false)
-  vi.spyOn(client, 'subscribe').mockResolvedValue(undefined)
-  vi.spyOn(client, 'head').mockResolvedValue(0)
-  vi.spyOn(client, 'sessionState').mockRejectedValue(new Error('Session controls unavailable'))
-  vi.spyOn(client, 'sessionCommands').mockResolvedValue({
-    session_id: 'sample-session',
-    commands: [],
-    seq: 0,
-  })
-  const connection = new NodeConnection(client, store as NodeClientStore)
-  connection.state.value = 'connected'
-  // The retry loop owns recovery; the send must survive its normal two-second interval.
-  vi.spyOn(connection, 'start').mockImplementation(() => {
-    connection.state.value = 'connecting'
-    window.setTimeout(() => {
-      connected.mockReturnValue(true)
-      connection.state.value = 'connected'
-    }, 2000)
-  })
-  const flush = vi.spyOn(client, 'flush').mockImplementation(async () => {
-    await store.transaction((state) => {
-      const operation = state.outbox.shift()!
-      state.results[operation.operation_id] = { result: {} }
+it.each(['transient reconnect', 'unreachable', 'offline'])(
+  'settles the composer promptly when sending during %s',
+  async (mode) => {
+    useVault([])
+    vi.useFakeTimers()
+    const store = Object.assign(new MemoryClientStore(), { close: vi.fn() })
+    const client = new NodeClient(
+      { url: 'ws://127.0.0.1:7777/channel', profile: 'local-token-v1', token: 'sample-token' },
+      store
+    )
+    const connected = vi.spyOn(client, 'connected', 'get').mockReturnValue(false)
+    vi.spyOn(client, 'subscribe').mockResolvedValue(undefined)
+    vi.spyOn(client, 'head').mockResolvedValue(0)
+    vi.spyOn(client, 'sessionState').mockRejectedValue(new Error('Session controls unavailable'))
+    vi.spyOn(client, 'sessionCommands').mockResolvedValue({
+      session_id: 'sample-session',
+      commands: [],
+      seq: 0,
     })
-  })
-  const presenter = new NodeChatPresenter(
-    {
-      kind: 'node-session',
-      nodeId: 'sample-node',
-      registrationId: 'sample-registration',
-      sessionId: 'sample-session',
-      title: 'Sample session',
-    },
-    connection
-  )
-  try {
-    await presenter.refresh()
-    presenter.draft.value.text = 'Sample words after restart'
-    const sending = presenter.send(presenter.draft.value.text)
-    await vi.advanceTimersByTimeAsync(600)
-    expect(flush).not.toHaveBeenCalled()
-    await vi.advanceTimersByTimeAsync(1500)
-    await sending
-    expect(flush).toHaveBeenCalledOnce()
-    expect(presenter.draftNotice.value).toBe('')
-    expect(presenter.draft.value.text).toBe('')
-    expect(await client.pending()).toEqual([])
-  } finally {
-    presenter.destroy()
-    connection.destroy()
-    vi.clearAllTimers()
-    vi.useRealTimers()
-    vi.restoreAllMocks()
+    const connection = new NodeConnection(client, store as NodeClientStore)
+    connection.state.value =
+      mode === 'offline' ? 'offline' : mode === 'unreachable' ? 'connecting' : 'connected'
+    // The retry loop owns recovery; the send must survive its normal two-second interval.
+    vi.spyOn(connection, 'start').mockImplementation(() => {
+      connection.state.value = 'connecting'
+      if (mode === 'transient reconnect')
+        window.setTimeout(() => {
+          connected.mockReturnValue(true)
+          connection.state.value = 'connected'
+        }, 2000)
+    })
+    const flush = vi.spyOn(client, 'flush').mockImplementation(async () => {
+      await store.transaction((state) => {
+        const operation = state.outbox.shift()!
+        state.results[operation.operation_id] = { result: {} }
+      })
+    })
+    const presenter = new NodeChatPresenter(
+      {
+        kind: 'node-session',
+        nodeId: 'sample-node',
+        registrationId: 'sample-registration',
+        sessionId: 'sample-session',
+        title: 'Sample session',
+      },
+      connection
+    )
+    const wrapper = mount(NodeChatView, {
+      props: { presenter },
+      global: { stubs: { VoiceRecorder: true } },
+    })
+    try {
+      await presenter.refresh()
+      const text = 'Sample words after restart'
+      const send = vi.spyOn(presenter, 'send')
+      await wrapper.get('textarea').setValue(text)
+      await wrapper.get('textarea').trigger('keydown', { key: 'Enter', shiftKey: true })
+      expect(send).toHaveBeenCalledOnce()
+      const sending = send.mock.results[0].value
+      await vi.advanceTimersByTimeAsync(600)
+      expect(flush).not.toHaveBeenCalled()
+      if (mode === 'transient reconnect') {
+        expect(wrapper.find('.abele-chat-input__spinner').exists()).toBe(true)
+        await vi.advanceTimersByTimeAsync(1500)
+        await sending
+        expect(flush).toHaveBeenCalledOnce()
+        expect(presenter.draftNotice.value).toBe('')
+        expect(presenter.draft.value.text).toBe('')
+      } else {
+        // A stopped peer must not keep the composer busy for the transport's full timeout.
+        await vi.advanceTimersByTimeAsync(1900)
+        await flushPromises()
+        expect(wrapper.find('.abele-node-chat__draft-note').exists()).toBe(true)
+        expect(wrapper.find('.abele-chat-input__spinner').exists()).toBe(false)
+        await sending
+        expect(wrapper.get('textarea').element.value).toBe(text)
+        expect(wrapper.get('.abele-node-chat__draft-note').text()).toContain('not sent')
+        expect(await client.pending()).toEqual([])
+        // Recovery after the grace expired cannot send the retained draft in the background.
+        connected.mockReturnValue(true)
+        connection.state.value = 'connected'
+        await vi.advanceTimersByTimeAsync(30000)
+        expect(flush).not.toHaveBeenCalled()
+        expect(presenter.draft.value.text).toBe(text)
+      }
+      expect(wrapper.find('.abele-chat-input__spinner').exists()).toBe(false)
+      expect(await client.pending()).toEqual([])
+    } finally {
+      wrapper.unmount()
+      presenter.destroy()
+      connection.destroy()
+      vi.clearAllTimers()
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    }
   }
-})
+)
 
 it.each(['offline', 'disconnect during admission'])(
   'keeps a submission in the composer across closing and reload, and sends only on request (%s)',
