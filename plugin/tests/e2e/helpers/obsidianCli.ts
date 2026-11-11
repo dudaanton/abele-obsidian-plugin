@@ -299,6 +299,7 @@ export function vaultCli(name: string): VaultCli {
       })()`
       const output = run(['eval', `code=${wrapped}`], timeoutMs, false, name, id)
       const reply = evalReply<string>(output, id)
+      if (reply.hasValue && /^Error:/.test(reply.value)) throw new Error(reply.value)
       return reply.hasValue ? reply.value : reply.logs || '(no output)'
     },
     evalAwaitPrivate: <T>(expression: string, timeoutMs?: number): T => {
@@ -382,6 +383,7 @@ function evalRawFramed(code: string, timeoutMs: number | undefined, idempotent: 
   })()`
   const output = run(['eval', `code=${wrapped}`], timeoutMs, idempotent, TARGET_VAULT, id)
   const reply = evalReply<string>(output, id)
+  if (reply.hasValue && /^Error:/.test(reply.value)) throw new Error(reply.value)
   return reply.hasValue ? reply.value : reply.logs || '(no output)'
 }
 

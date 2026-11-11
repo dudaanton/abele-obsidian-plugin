@@ -80,6 +80,17 @@ function gone(pid: number): boolean {
 }
 
 describe('an Obsidian CLI reply independent of process exit', () => {
+  it('reports app errors before JSON parsing', async () => {
+    await withCli(() => {
+      expect(() => defaultCli!.evalRaw("throw Error('sample setup failed')", IO_TIMEOUT)).toThrow(
+        'Error: sample setup failed'
+      )
+      expect(() => defaultCli!.evalRaw("'Error: sample returned failure'", IO_TIMEOUT)).toThrow(
+        'Error: sample returned failure'
+      )
+    })
+  }, 60_000)
+
   it('accepts the completed eval reply when the CLI keeps its output pipe open', async () => {
     await withCli(async (cli, pid) => {
       expect(cli.evalAwait("'ok'", IO_TIMEOUT)).toBe('ok')
@@ -174,9 +185,9 @@ describe('an Obsidian CLI reply independent of process exit', () => {
         )
       ).toBe('done')
       expect(effects()).toBe(1)
-      expect(cli.evalRaw('Promise.reject(new Error("Sample setup failure"))', IO_TIMEOUT)).toBe(
-        'Error: Sample setup failure'
-      )
+      expect(() =>
+        cli.evalRaw('Promise.reject(new Error("Sample setup failure"))', IO_TIMEOUT)
+      ).toThrow('Error: Sample setup failure')
       await expect.poll(() => gone(pid()), { timeout: IO_TIMEOUT }).toBe(true)
     })
   }, 240_000)

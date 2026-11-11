@@ -1,3 +1,5 @@
+import { COLUMNS_FIXTURE_PREFIX, columnsFixtureCleanup } from './helpers/columnsFixture'
+import { randomUUID } from 'node:crypto'
 /** Native callouts as columns: renderer, source bindings and editor transitions. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
@@ -15,8 +17,11 @@ import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
-const FOLDER = 'Sample columns probe'
-const NOTE = `${FOLDER}/Columns.md`
+const RUN = randomUUID()
+const FOLDER = COLUMNS_FIXTURE_PREFIX + RUN
+const NOTE = `${FOLDER}/Columns ${RUN}.md`
+const EMBED = `Sample embed ${RUN}`
+const PICTURE = `Sample picture ${RUN}.svg`
 const BODY = [
   'Before the columns.',
   '',
@@ -35,7 +40,7 @@ const BODY = [
   '> > x^2 + y^2 = 1',
   '> > $$',
   '> >',
-  '> > ![[Sample picture.svg]]',
+  `> > ![[${PICTURE}]]`,
   '>',
   '> > [!abele-column] Second',
   '> > Second column paragraph.',
@@ -46,7 +51,7 @@ const BODY = [
   '> > | --- | --- | --- |',
   '> > | Alpha | Beta | Gamma |',
   '> >',
-  '> > ![[Sample embed]]',
+  `> > ![[${EMBED}]]`,
   '',
   'After the columns.',
   '',
@@ -121,16 +126,18 @@ function layout(): Layout {
 }
 
 describe.skipIf(!available)('note columns foundation', () => {
-  let size: number[]
+  let size: number[] | undefined
+  const cleanup = (stale = false) => asyncEval(columnsFixtureCleanup(FOLDER, stale))
   beforeAll(() => {
     if (!onPhone())
       size = evalJson<number[]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
+    cleanup(true)
     asyncEval(`
       app.workspace.leftSplit.collapse(); app.workspace.rightSplit.collapse();
       if(app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)})) throw Error('fixture already exists');
       await app.vault.createFolder(${JSON.stringify(FOLDER)});
-      await app.vault.create(${JSON.stringify(FOLDER + '/Sample embed.md')},'Embedded paragraph.');
-      await app.vault.create(${JSON.stringify(FOLDER + '/Sample picture.svg')},'<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><rect x="5" y="5" width="110" height="30" fill="none" stroke="currentColor"/></svg>');
+      await app.vault.create(${JSON.stringify(FOLDER + '/' + EMBED + '.md')},'Embedded paragraph.');
+      await app.vault.create(${JSON.stringify(FOLDER + '/' + PICTURE)},'<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><rect x="5" y="5" width="110" height="30" fill="none" stroke="currentColor"/></svg>');
       const file=await app.vault.create(${JSON.stringify(NOTE)},${JSON.stringify(BODY)});
       await app.workspace.getLeaf('tab').openFile(file);
       return true;
@@ -138,18 +145,21 @@ describe.skipIf(!available)('note columns foundation', () => {
   }, 60_000)
 
   afterAll(async () => {
-    if (!onPhone()) {
-      await reloadApp('app.emulateMobile(false)')
-      evalRaw(
-        `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]},${size[1]})`
-      )
+    try {
+      cleanup()
+    } finally {
+      try {
+        asyncEval(`await app.plugins.enablePlugin('abele');return true`)
+      } finally {
+        if (!onPhone()) {
+          await reloadApp('app.emulateMobile(false)')
+          if (size)
+            evalRaw(
+              `require('@electron/remote').getCurrentWindow().setContentSize(${size[0]},${size[1]})`
+            )
+        }
+      }
     }
-    asyncEval(`
-      await app.plugins.enablePlugin('abele');
-      for(const l of app.workspace.getLeavesOfType('markdown')) if(l.view.file?.path?.startsWith(${JSON.stringify(FOLDER + '/')})) l.detach();
-      const folder=app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)}); if(folder) await app.vault.delete(folder,true);
-      return true;
-    `)
   }, 90_000)
 
   for (const mode of ['preview', 'source'] as const) {
