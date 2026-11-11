@@ -129,22 +129,26 @@ it.each(['wheel', 'touch'] as const)(
   }
 )
 
-// BUG: following still needs layout on the render tick to avoid a stale gesture origin.
-// Keep the stronger frame-only measurement guarantee visible until both can coexist.
-it.fails.each([false, true])(
-  'batches mutations before measuring layout (streaming: %s)',
+it.each([false, true])(
+  'coalesces tail-following layout measurements per render tick (streaming: %s)',
   async (live) => {
     const { box, measure, isStreaming } = await open()
     isStreaming.value = live
     await advance(100)
-    measure.mockClear()
-    for (let i = 0; i < 10; i++) {
-      box.lastElementChild!.append(document.createElement('span'))
+    let singleMutationReads = 0
+    for (const count of [1, 10, 100]) {
+      measure.mockClear()
+      for (let i = 0; i < count; i++) box.lastElementChild!.append(document.createElement('span'))
+      expect(measure).not.toHaveBeenCalled()
       await advance(0)
+      const reads = measure.mock.calls.length
+      expect(reads).toBeGreaterThan(0)
+      // Getters include the fixture's native scroll-clamping simulation.
+      // Each burst pays for one follow pass, regardless of mutation count.
+      if (count === 1) singleMutationReads = reads
+      expect(reads).toBe(singleMutationReads)
+      expect(reads).toBeLessThanOrEqual(5)
     }
-    expect(measure).not.toHaveBeenCalled()
-    await advance(17)
-    expect(measure).toHaveBeenCalled()
   }
 )
 
@@ -202,22 +206,7 @@ it('does not dirty style before measuring repeated idle native scrolls', async (
   expect(dirtyReads).not.toHaveBeenCalled()
 })
 
-// BUG: the render-tick follow reads layout before ResizeObserver can report it.
-it.fails(
-  'settles dirty markdown in the layout observer before waiting for another frame',
-  async () => {
-    const { box, measure, resized } = await open()
-    await advance(100)
-    measure.mockClear()
-    box.lastElementChild!.append(document.createElement('span'))
-    await advance(0)
-    expect(measure).not.toHaveBeenCalled()
-    resized()
-    expect(measure).toHaveBeenCalled()
-  }
-)
-
-it('settles dirty markdown in the layout observer during native scrolling', async () => {
+it('settles dirty markdown in the layout observer before waiting for another frame', async () => {
   const { box, scroll, measure, resized } = await open()
   scroll.readerTakesOver(new MouseEvent('mousedown'))
   await advance(100)

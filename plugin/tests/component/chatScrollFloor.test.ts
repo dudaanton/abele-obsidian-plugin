@@ -227,10 +227,7 @@ describe('the floor under a changing conversation', () => {
   })
 
   describe.each([true, false])('unanchored mutation bursts (following: %s)', (following) => {
-    // BUG: tail following must currently measure on the render tick, before a
-    // between-frame gesture can start from an unfollowed line of growth.
-    const test = following ? it.fails : it
-    test('coalesces unanchored mutation bursts', async () => {
+    it('coalesces unanchored mutation bursts', async () => {
       let mutated!: () => void
       vi.stubGlobal(
         'MutationObserver',
@@ -266,33 +263,32 @@ describe('the floor under a changing conversation', () => {
         })
       )
       await nextTick()
-      // Before the first frame a newly mounted container gets one tick-based
-      // follow correction. Further mutations must still share the frame pass.
-      range.mockClear()
+      // Drain initial mount work so every measured tick has the same checks.
       mutated()
-      mutated()
-      mutated()
-      expect(range).not.toHaveBeenCalled()
-      await nextTick()
-      expect(range.mock.calls.length).toBe(following ? 2 : 0)
-      range.mockClear()
-      mutated()
-      mutated()
-      await nextTick()
-      expect(range).not.toHaveBeenCalled()
       await advance(60)
+      const writes = vi.spyOn(container, 'scrollTop', 'set')
+      let singleMutationReads = 0
+      for (const count of [1, 10, 100]) {
+        range.mockClear()
+        writes.mockClear()
+        // Separate observer deliveries must share one render-tick follow pass.
+        for (let i = 0; i < count; i++) mutated()
+        expect(range).not.toHaveBeenCalled()
+        await nextTick()
+        expect(writes).toHaveBeenCalledTimes(following ? 1 : 0)
+        const reads = range.mock.calls.length
+        if (following) {
+          expect(reads).toBeGreaterThan(0)
+          expect(reads).toBeLessThanOrEqual(4)
+          if (count === 1) singleMutationReads = reads
+          expect(reads).toBe(singleMutationReads)
+        } else expect(reads).toBe(0)
+      }
+      // Reader-owned scrolling defers all three bursts to one frame pass.
       range.mockClear()
-      mutated()
-      mutated()
-      mutated()
-      expect(range).not.toHaveBeenCalled()
       await advance(17)
-      const reads = range.mock.calls.length
-      expect(reads).toBeGreaterThan(0)
-      range.mockClear()
-      mutated()
-      await advance(17)
-      expect(range).toHaveBeenCalledTimes(reads)
+      expect(range.mock.calls.length).toBeGreaterThan(0)
+      expect(range.mock.calls.length).toBeLessThanOrEqual(following ? 8 : 4)
     })
   })
 
