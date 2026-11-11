@@ -5,6 +5,39 @@ import { DebuggerService } from '@/debugger/DebuggerService'
 import { registerDebuggerSelection } from '@/debugger/selection'
 
 const cleanups: (() => void)[] = []
+it('keeps the drawer probe on the retained Debug leaf across layout deduplication', async () => {
+  const { drawerLeaf } = await import('../e2e/helpers/drawerLeaf')
+  const root = {}
+  let layout: (() => void) | undefined
+  const retained = { getRoot: () => root, detach: vi.fn() }
+  const opened = { getRoot: () => root, detach: vi.fn() }
+  const leaves = [retained]
+  const workspace = {
+    rightSplit: root,
+    leftSplit: {},
+    getLeavesOfType: () => leaves,
+    getRightLeaf: vi.fn(() => {
+      leaves.push(opened)
+      return opened
+    }),
+    on: (_event: string, callback: () => void) => {
+      layout = callback
+    },
+    onLayoutReady: vi.fn(),
+  }
+  const plugin = {
+    app: { loadLocalStorage: () => null, workspace },
+    register: (stop: () => void) => cleanups.push(stop),
+    registerEvent: vi.fn(),
+  } as unknown as Plugin
+  registerDebuggerSelection(plugin, 'sample-debug-view')
+  const selected = drawerLeaf(workspace as never, 'sample-debug-view')
+  // Opening/revealing a view emits layout-change before the probe measures it.
+  layout?.()
+  expect(selected.detach).not.toHaveBeenCalled()
+  expect(selected).toBe(retained)
+  expect(workspace.getRightLeaf).not.toHaveBeenCalled()
+})
 it('loads a deferred Debug title without a saved selection and removes later reload duplicates', async () => {
   const ready: (() => Promise<void>)[] = []
   let layout: (() => void) | undefined

@@ -10,6 +10,7 @@ import {
 } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
+import { drawerLeaf } from './helpers/drawerLeaf'
 
 targets('desktop')
 const shots = shotDir('abele-drawer-switch')
@@ -53,8 +54,16 @@ const probe = (type: string, phone: boolean) => `(async () => {
       await wait(500)
       await until(() => ws.rightSplit.containerEl.offsetWidth === 0)
     }
-    const leaf = ws.getRightLeaf(true); leaves.push(leaf)
-    await leaf.setViewState({ type: ${JSON.stringify(type)}, active: true })
+    // A restored singleton may detach a new duplicate on layout-change. Reuse its
+    // sidebar leaf, as the product does, instead of measuring the discarded copy.
+    const existing = ws.getLeavesOfType(${JSON.stringify(type)})
+    const leaf = (${drawerLeaf.toString()})(ws, ${JSON.stringify(type)})
+    if (!leaf) throw Error('No drawer leaf available')
+    if (!existing.includes(leaf)) {
+      leaves.push(leaf)
+      await leaf.setViewState({ type: ${JSON.stringify(type)}, active: true })
+    }
+    await leaf.loadIfDeferred?.()
     await ws.revealLeaf(leaf); ws.rightSplit.expand()
     if (!app.isMobile) ws.rightSplit.setSize(390)
     const content = leaf.view.containerEl
