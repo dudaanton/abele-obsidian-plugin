@@ -335,7 +335,14 @@ it('waits briefly for a transient connection state before admitting a turn exact
     new MemoryClientStore()
   )
   const state = ref('connected')
-  const presenter = new NodeChatPresenter(reference, { client, state } as unknown as NodeConnection)
+  let recover!: (ready: boolean) => void
+  const recovery = new Promise<boolean>((resolve) => (recover = resolve))
+  const waitUntilConnected = vi.fn(() => recovery)
+  const presenter = new NodeChatPresenter(reference, {
+    client,
+    state,
+    waitUntilConnected,
+  } as unknown as NodeConnection)
   const connected = vi.spyOn(client, 'connected', 'get').mockReturnValue(false)
   const flush = vi.spyOn(client, 'flush').mockResolvedValue(undefined)
   vi.spyOn(client, 'cursor').mockResolvedValue(0)
@@ -343,8 +350,12 @@ it('waits briefly for a transient connection state before admitting a turn exact
   try {
     const sending = presenter.send('Sample input during reconnect')
     await new Promise((resolve) => window.setTimeout(resolve, 30))
+    expect(waitUntilConnected).toHaveBeenCalledOnce()
+    expect(flush).not.toHaveBeenCalled()
+    expect(await client.pending()).toHaveLength(0)
     connected.mockReturnValue(true)
     state.value = 'connected'
+    recover(true)
     await sending
     expect(presenter.error.value).toBe('')
     expect(flush).toHaveBeenCalledOnce()
