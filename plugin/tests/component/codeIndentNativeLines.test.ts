@@ -7,6 +7,66 @@ import { codeGuideExtension, registerCodeIndentGuides } from '@/codeIndent/regis
 import { nativeCodeLines } from '@/codeIndent/nativeLines'
 import * as readingGuides from '@/codeIndent/readingGuides'
 
+it('bounds repairs when a renderer replaces rows after every repair across tasks', async () => {
+  vi.useFakeTimers()
+  const callbacks = new Map<MutationObserver, MutationCallback>()
+  const observing = new Set<MutationObserver>()
+  const observe = vi.spyOn(window, 'MutationObserver').mockImplementation(function (callback) {
+    const observer = {
+      observe: () => observing.add(observer),
+      disconnect: () => observing.delete(observer),
+      takeRecords: () => [],
+    } as unknown as MutationObserver
+    callbacks.set(observer, callback)
+    return observer
+  })
+  const host = {
+    app: {
+      vault: { getConfig: vi.fn(), on: vi.fn() },
+      workspace: { on: vi.fn(), onLayoutReady: vi.fn(), iterateAllLeaves: vi.fn() },
+    },
+    registerEditorExtension: vi.fn(),
+    registerMarkdownPostProcessor: vi.fn(),
+    registerInterval: vi.fn(),
+    registerEvent: vi.fn(),
+    register: vi.fn(),
+    registerDomEvent: vi.fn(),
+  }
+  const pre = document.createElement('pre')
+  const code = document.createElement('code')
+  code.textContent = 'root\n  child\n'
+  pre.append(code)
+  document.body.append(pre)
+  const draw = readingGuides.drawReadingGuides
+  let repairs = 0
+  const render = vi.spyOn(readingGuides, 'drawReadingGuides').mockImplementation((block, size) => {
+    draw(block, size)
+    repairs++
+    window.setTimeout(() => {
+      block.textContent = 'root\n  child\n'
+      const [observer, callback] = [...callbacks].at(-1)
+      if (observing.has(observer)) callback([], observer)
+    }, 1)
+  })
+  try {
+    registerCodeIndentGuides(host as unknown as Plugin)
+    host.registerMarkdownPostProcessor.mock.calls[0][0](pre)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(repairs).toBeGreaterThan(1)
+    expect(repairs).toBeLessThanOrEqual(33)
+    expect(code.textContent).toBe('root\n  child\n')
+    const count = repairs
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(repairs).toBe(count)
+  } finally {
+    for (const [cleanup] of host.register.mock.calls) (cleanup as () => void)()
+    pre.remove()
+    render.mockRestore()
+    observe.mockRestore()
+    vi.useRealTimers()
+  }
+})
+
 it('preserves fractional layout insets and measures the entire leading indent', () => {
   const row = document.createElement('div')
   row.className = 'cm-line HyperMD-codeblock-bg abele-code-guides'
@@ -88,7 +148,7 @@ it.each([false, true])('settles non-idempotent reading passes (repeated: %s)', a
     }
     expect(passes).toBe(4)
     enabled = true
-    // Independent highlighting turns must never exhaust a lifetime quota.
+    // Several independent highlighting turns remain within the repair budget.
     for (let turn = 0; turn < 9; turn++) {
       code.textContent = 'root\n  child\n'
       await new Promise((resolve) => setTimeout(resolve, 30))
