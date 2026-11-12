@@ -9,6 +9,7 @@ import { shotDir } from './helpers/shots'
 import { CANVAS_TRACE_DUMP, CANVAS_TRACE_INSTALL } from './helpers/canvasTrace'
 import { dismissOwnNotices } from './helpers/ownNotices'
 import { canvasChrome, menuItem } from './helpers/canvasChrome'
+import { canvasCondition } from './helpers/canvasCondition'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -20,15 +21,42 @@ const PRELUDE = `
   const read = async () => JSON.parse(await app.vault.read(app.vault.getAbstractFileByPath(path)))
   const button = label => view()?.contentEl.querySelector('[aria-label="'+label+'"]')
 `
+let timing: { started: number; phase: number; calls: number; driverMs: number } | undefined
+const measured = <T>(kind: string, action: () => T): T => {
+  const started = performance.now()
+  try {
+    return action()
+  } finally {
+    if (timing) {
+      const ms = Math.round(performance.now() - started)
+      timing.calls++
+      timing.driverMs += ms
+      console.info('Canvas attachment driver:', { kind, ms })
+    }
+  }
+}
+const phase = (name: string) => {
+  if (!timing) return
+  const now = performance.now()
+  console.info('Canvas attachment phase:', {
+    name,
+    ms: Math.round(now - timing.phase),
+    totalMs: Math.round(now - timing.started),
+    calls: timing.calls,
+    driverMs: timing.driverMs,
+  })
+  timing.phase = now
+  timing.calls = timing.driverMs = 0
+}
 const run = <T>(body: string): T =>
-  evalAsync<T>(
-    `(async () => { ${PRELUDE} return JSON.stringify(await (async () => { ${body} })()) })()`
+  measured('eval', () =>
+    evalAsync<T>(
+      `(async () => { ${PRELUDE} return JSON.stringify(await (async () => { ${body} })()) })()`
+    )
   )
 const until = async (expression: string) => {
   try {
-    await expect
-      .poll(() => run<boolean>(`return !!(${expression})`), { timeout: 10_000 })
-      .toBe(true)
+    expect(run<boolean>(canvasCondition(`return !!(${expression})`))).toBe(true)
   } catch (error) {
     console.info('Canvas trace at a failed wait:', expression, JSON.stringify(traced()))
     throw error
@@ -56,24 +84,23 @@ const press = async (expression: string, corner = false) => {
   // last in a card's More) is scrolled to, as a person swipes the sheet up, then pressed in sight.
   const reach = `const at=(()=>{${geometry}})();if(!at){const el=${expression};if(el?.closest('.menu'))el.scrollIntoView({block:'nearest'})}return at`
   // The place found when it was first reachable, not asked again: a control can move between.
-  let found: number[] | null = null
-  await expect
-    .poll(() => (found = run<number[] | null>(reach)), { timeout: 10_000 })
-    .not.toBeNull()
-    .catch((error: unknown) => {
-      console.info(
-        'Canvas press found no reachable point:',
-        expression,
-        JSON.stringify(
-          run(`const el=${expression},r=el?.getBoundingClientRect();return {rect:r?.toJSON(),inner:[innerWidth,innerHeight],
+  let found: number[]
+  try {
+    found = run<number[]>(canvasCondition(reach))
+  } catch (error) {
+    console.info(
+      'Canvas press found no reachable point:',
+      expression,
+      JSON.stringify(
+        run(`const el=${expression},r=el?.getBoundingClientRect();return {rect:r?.toJSON(),inner:[innerWidth,innerHeight],
             hit:r&&document.elementFromPoint(Math.round(r.left+${corner ? '10' : 'r.width/2'}),Math.round(r.top+${corner ? '10' : 'r.height/2'}))?.outerHTML?.slice(0,160)}`)
-        ),
-        JSON.stringify(traced())
-      )
-      throw error
-    })
-  const [x, y] = found!
-  if (onPhone()) tap(x, y)
+      ),
+      JSON.stringify(traced())
+    )
+    throw error
+  }
+  const [x, y] = found
+  if (onPhone()) measured('tap', () => tap(x, y))
   else
     await withNativeInput(() =>
       run(`
@@ -85,7 +112,7 @@ const press = async (expression: string, corner = false) => {
 }
 /** A tap or click at a point of the screen. */
 const at = async ([x, y]: number[]) => {
-  if (onPhone()) tap(x, y)
+  if (onPhone()) measured('tap', () => tap(x, y))
   else
     await withNativeInput(() =>
       run(`
@@ -118,7 +145,7 @@ const type = async (text: string) => {
       return field.value.slice(0,field.selectionStart)+${JSON.stringify(text)}+field.value.slice(field.selectionEnd)`)
     if (text === '\b') typeText(text)
     else {
-      typeText(text, 'keys')
+      measured('type', () => typeText(text, 'keys'))
       await expect
         .poll(() => run<string>('return document.activeElement?.value'), { timeout: 10_000 })
         .toBe(expected)
@@ -138,7 +165,7 @@ const type = async (text: string) => {
 }
 const shot = (name: string) => {
   const path = `${SHOTS}/${name}.png`
-  if (onPhone()) screenshot(path)
+  if (onPhone()) measured('screenshot', () => screenshot(path))
   else
     run(
       `const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(path)},image.toPNG());return true`
@@ -631,68 +658,80 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
   }, 120_000)
 
   it('keeps inserted attachments usable after native rename and folder move, including pointer-driven undo', async () => {
-    run(`
+    timing = { started: performance.now(), phase: performance.now(), calls: 0, driverMs: 0 }
+    try {
+      run(`
       await app.vault.createFolder(${JSON.stringify(DIR + '/sample-assets')})
       for(const name of ['sample-image.svg','sample-drawing.svg'])await app.vault.create(${JSON.stringify(DIR + '/sample-assets/')}+name,'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><path d="M0 0L40 40"/></svg>')
       // Discard the preceding retained failure via its normal user action before this scenario.
       return true
     `)
-    // The preceding native-handoff test deliberately leaves a conflicted draft.
-    if (run<boolean>('return view().documentLease.document.session.dirty')) {
-      await click('Discard local draft')
-      await press(textButton('.abele-canvas-choice', 'Discard local draft'))
-      await saved()
-    }
-    for (const name of ['sample-image.svg', 'sample-drawing.svg']) {
-      await click('Add note or attachment')
-      await press('document.querySelector(".prompt-input")')
-      await type(name)
-      await press(
-        `[...document.querySelectorAll('.suggestion-item')].find(el=>el.textContent.includes(${JSON.stringify(DIR + '/sample-assets/')}+${JSON.stringify(name)}))`
+      // The preceding native-handoff test deliberately leaves a conflicted draft.
+      if (run<boolean>('return view().documentLease.document.session.dirty')) {
+        await click('Discard local draft')
+        await press(textButton('.abele-canvas-choice', 'Discard local draft'))
+        await saved()
+      }
+      phase('setup')
+      for (const name of ['sample-image.svg', 'sample-drawing.svg']) {
+        await click('Add note or attachment')
+        await press('document.querySelector(".prompt-input")')
+        await type(name)
+        await press(
+          `[...document.querySelectorAll('.suggestion-item')].find(el=>el.textContent.includes(${JSON.stringify(DIR + '/sample-assets/')}+${JSON.stringify(name)}))`
+        )
+        await saved()
+        phase(`insert ${name}`)
+      }
+      // Opening the host rename dialog is navigation; its text and Save use real input.
+      run(
+        `app.fileManager.promptForFileRename(app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets/sample-image.svg')}));return true`
       )
+      await until('document.activeElement?.matches(".rename-textarea")')
+      await type('sample-renamed')
+      await press('document.querySelector(".mod-file-rename button.mod-cta")')
+      await until(
+        `!document.querySelector('.mod-file-rename') && !!app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets/sample-renamed.svg')}) &&
+         view().viewer.graph.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-assets/sample-renamed.svg')})`
+      )
+      phase('native rename')
+      // Host event stimulus, shared by desktop and physical-phone checks.
+      run(
+        `await app.fileManager.renameFile(app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets')}),${JSON.stringify(DIR + '/sample-moved')});return true`
+      )
+      await until(
+        `view().viewer.graph.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/sample-drawing.svg')})`
+      )
+      phase('folder move')
+      await click('Fit diagram')
+      await press(
+        `view().contentEl.querySelector('[data-card-id="'+view().viewer.graph.nodes.find(n=>n.file?.endsWith('/sample-drawing.svg')).id+'"]')`
+      )
+      await click('Delete selected card')
       await saved()
+      phase('pointer delete')
+      await click('Undo canvas change')
+      await saved()
+      phase('pointer undo')
+      const result = run<{ image: boolean; drawing: boolean; stale: boolean }>(
+        `const data=await read();return {image:data.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/sample-renamed.svg')}),drawing:data.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/sample-drawing.svg')}),stale:data.nodes.some(n=>n.file?.includes('/sample-assets/'))}`
+      )
+      shot('renamed-attachments')
+      phase('persisted references and screenshot')
+      expect(result).toEqual({ image: true, drawing: true, stale: false })
+      await press(
+        `view().contentEl.querySelector('[data-card-id="'+view().viewer.graph.nodes.find(n=>n.file?.endsWith('/sample-drawing.svg')).id+'"]')`
+      )
+      await click('Open selected card')
+      await until(
+        `app.workspace.getActiveFile()?.path===${JSON.stringify(DIR + '/sample-moved/sample-drawing.svg')}`
+      )
+      phase('open moved attachment')
+      await reopen()
+      phase('reopen canvas')
+    } finally {
+      phase('finished')
+      timing = undefined
     }
-    // Opening the host rename dialog is navigation; its text and Save use real input.
-    run(
-      `app.fileManager.promptForFileRename(app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets/sample-image.svg')}));return true`
-    )
-    await until('document.activeElement?.matches(".rename-textarea")')
-    await type('sample-renamed')
-    await press('document.querySelector(".mod-file-rename button.mod-cta")')
-    await until(
-      `!document.querySelector('.mod-file-rename') && !!app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets/sample-renamed.svg')})`
-    )
-    await until(
-      `view().viewer.graph.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-assets/sample-renamed.svg')})`
-    )
-    // Host event stimulus, shared by desktop and physical-phone checks.
-    run(
-      `await app.fileManager.renameFile(app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets')}),${JSON.stringify(DIR + '/sample-moved')});return true`
-    )
-    await until(
-      `view().viewer.graph.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/sample-drawing.svg')})`
-    )
-    await click('Fit diagram')
-    await new Promise((resolve) => setTimeout(resolve, 350))
-    await press(
-      `view().contentEl.querySelector('[data-card-id="'+view().viewer.graph.nodes.find(n=>n.file?.endsWith('/sample-drawing.svg')).id+'"]')`
-    )
-    await click('Delete selected card')
-    await saved()
-    await click('Undo canvas change')
-    await saved()
-    const result = run<{ image: boolean; drawing: boolean; stale: boolean }>(
-      `const data=await read();return {image:data.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/sample-renamed.svg')}),drawing:data.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/sample-drawing.svg')}),stale:data.nodes.some(n=>n.file?.includes('/sample-assets/'))}`
-    )
-    shot('renamed-attachments')
-    expect(result).toEqual({ image: true, drawing: true, stale: false })
-    await press(
-      `view().contentEl.querySelector('[data-card-id="'+view().viewer.graph.nodes.find(n=>n.file?.endsWith('/sample-drawing.svg')).id+'"]')`
-    )
-    await click('Open selected card')
-    await until(
-      `app.workspace.getActiveFile()?.path===${JSON.stringify(DIR + '/sample-moved/sample-drawing.svg')}`
-    )
-    await reopen()
   }, 120_000)
 })
