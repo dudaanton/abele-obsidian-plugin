@@ -290,32 +290,39 @@ export async function realDrag(
   to: { x: number; y: number }
 ): Promise<void> {
   await withNativeInput(async () => {
+    // Pressing inside an existing selection starts native drag-and-drop instead of selecting
+    // text, which can leave a CDP mouse move waiting for that native drag to finish.
+    evalRaw('window.getSelection()?.removeAllRanges()', 30_000)
     await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', ...from, button: 'none' })
-    await cdp('Input.dispatchMouseEvent', {
-      type: 'mousePressed',
-      ...from,
-      button: 'left',
-      buttons: 1,
-      clickCount: 1,
-    })
-    for (const t of [0.25, 0.5, 0.75, 1]) {
-      const x = Math.round(from.x + (to.x - from.x) * t)
-      const y = Math.round(from.y + (to.y - from.y) * t)
+    try {
       await cdp('Input.dispatchMouseEvent', {
-        type: 'mouseMoved',
-        x,
-        y,
+        type: 'mousePressed',
+        ...from,
         button: 'left',
         buttons: 1,
+        clickCount: 1,
+      })
+      for (const t of [0.25, 0.5, 0.75, 1]) {
+        const x = Math.round(from.x + (to.x - from.x) * t)
+        const y = Math.round(from.y + (to.y - from.y) * t)
+        await cdp('Input.dispatchMouseEvent', {
+          type: 'mouseMoved',
+          x,
+          y,
+          button: 'left',
+          buttons: 1,
+        })
+      }
+    } finally {
+      // A lost press response can still mean the button went down. Release before unlocking.
+      await cdp('Input.dispatchMouseEvent', {
+        type: 'mouseReleased',
+        ...to,
+        button: 'left',
+        buttons: 0,
+        clickCount: 1,
       })
     }
-    await cdp('Input.dispatchMouseEvent', {
-      type: 'mouseReleased',
-      ...to,
-      button: 'left',
-      buttons: 0,
-      clickCount: 1,
-    })
   })
 }
 
