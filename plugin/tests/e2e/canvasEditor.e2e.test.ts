@@ -14,6 +14,7 @@ import {
   canvasTypingState,
   shortCanvasQuery,
   canvasAttachmentNames,
+  canvasWaitParts,
 } from './helpers/canvasCondition'
 
 targets('desktop', 'phone')
@@ -60,19 +61,64 @@ const phase = (name: string) => {
   timing.phase = now
   timing.calls = timing.driverMs = 0
 }
+function reportWait(expression: string): void {
+  if (!timing) return
+  try {
+    const diagnostics = evalAsync(`(async () => { ${PRELUDE}
+      const parts={}
+      for(const expression of ${JSON.stringify(canvasWaitParts(expression))}) {
+        try {parts[expression]=await eval('(async()=>!!('+expression+'))()')}
+        catch(error) {parts[expression]={error:String(error)}}
+      }
+      const renamed=${JSON.stringify(DIR + '/sample-assets/sample-renamed.svg')}
+      return JSON.stringify({parts,
+        rename:{open:!!document.querySelector('.mod-file-rename'),
+          textareaValue:document.querySelector('.mod-file-rename .rename-textarea')?.value??null,
+          fileExists:!!app.vault.getAbstractFileByPath(renamed),
+          canvasPointsAtFile:!!view()?.viewer?.graph.nodes.some(n=>n.file===renamed)},
+        assetFiles:app.vault.getFiles().filter(file=>file.path.startsWith(${JSON.stringify(DIR + '/sample-assets/')})).map(file=>file.path),
+        nodeFilePaths:view()?.viewer?.graph.nodes.map(node=>node.file).filter(Boolean)??[],
+        activeValue:document.activeElement?.value??null})
+    })()`)
+    console.info('Canvas failed wait parts:', expression, JSON.stringify(diagnostics))
+  } catch (error) {
+    console.info('Canvas wait diagnostics failed:', String(error))
+  }
+}
 const run = <T>(body: string, kind = 'run', argument = body): T =>
   measured(
     kind,
-    () =>
-      evalAsync<T>(
-        `(async () => { ${PRELUDE} return JSON.stringify(await (async () => { ${body} })()) })()`
-      ),
+    () => {
+      try {
+        return evalAsync<T>(
+          `(async () => { ${PRELUDE} return JSON.stringify(await (async () => { ${body} })()) })()`
+        )
+      } catch (error) {
+        reportWait(argument)
+        throw error
+      }
+    },
     argument
   )
 const until = async (expression: string, kind = 'until') => {
   try {
     expect(run<boolean>(canvasCondition(`return !!(${expression})`), kind, expression)).toBe(true)
   } catch (error) {
+    reportWait(expression)
+    console.info('Canvas trace at a failed wait:', expression, JSON.stringify(traced()))
+    throw error
+  }
+}
+/** Native rename retains the original host polling and separate ten-second waits. */
+const untilFromHost = async (expression: string) => {
+  try {
+    await expect
+      .poll(() => run<boolean>(`return !!(${expression})`, 'until', expression), {
+        timeout: 10_000,
+      })
+      .toBe(true)
+  } catch (error) {
+    reportWait(expression)
     console.info('Canvas trace at a failed wait:', expression, JSON.stringify(traced()))
     throw error
   }
@@ -103,6 +149,7 @@ const press = async (expression: string, corner = false) => {
   try {
     found = run<number[]>(canvasCondition(reach), 'press', `geometry: ${expression}`)
   } catch (error) {
+    reportWait(expression)
     console.info(
       'Canvas press found no reachable point:',
       expression,
@@ -717,13 +764,15 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
       run(
         `app.fileManager.promptForFileRename(app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets/' + ATTACHMENTS.image)}));return true`
       )
-      await until('document.activeElement?.matches(".rename-textarea")')
+      await untilFromHost('document.activeElement?.matches(".rename-textarea")')
       // Native rename may normalize its field while input settles. Verify the saved path below.
       await type('sample-renamed', false)
       await press('document.querySelector(".mod-file-rename button.mod-cta")')
-      await until(
-        `!document.querySelector('.mod-file-rename') && !!app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets/sample-renamed.svg')}) &&
-         view().viewer.graph.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-assets/sample-renamed.svg')})`
+      await untilFromHost(
+        `!document.querySelector('.mod-file-rename') && !!app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets/sample-renamed.svg')})`
+      )
+      await untilFromHost(
+        `view().viewer.graph.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-assets/sample-renamed.svg')})`
       )
       phase('native rename')
       // Host event stimulus, shared by desktop and physical-phone checks.

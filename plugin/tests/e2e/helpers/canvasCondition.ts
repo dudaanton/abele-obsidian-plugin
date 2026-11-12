@@ -1,5 +1,33 @@
 import { WAIT_PRELUDE } from './wait'
 
+/** Keep nested predicates and quoted paths intact when reporting independent wait parts. */
+export function canvasWaitParts(expression: string): string[] {
+  const parts: string[] = []
+  let depth = 0,
+    quote = '',
+    escaped = false,
+    start = 0
+  for (let i = 0; i < expression.length; i++) {
+    const char = expression[i]
+    if (quote) {
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === quote) quote = ''
+      continue
+    }
+    if (char === '"' || char === "'" || char === '`') quote = char
+    else if ('([{'.includes(char)) depth++
+    else if (')]}'.includes(char)) depth--
+    else if (depth === 0 && ['&&', '||'].includes(expression.slice(i, i + 2))) {
+      parts.push(expression.slice(start, i).trim())
+      start = i + 2
+      i++
+    }
+  }
+  parts.push(expression.slice(start).trim())
+  return parts
+}
+
 /** Poll in the page: a readiness retry must not launch another native driver process. */
 export const canvasCondition = (body: string, timeoutMs = 10_000): string => `
   ${WAIT_PRELUDE}

@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import {
   canvasCondition,
   canvasAttachmentNames,
+  canvasWaitParts,
   canvasTypingState,
   shortCanvasQuery,
 } from '../e2e/helpers/canvasCondition'
@@ -12,6 +13,58 @@ const evaluate = (body: string, probe: () => unknown) =>
   new Function('probe', `return (async()=>{${body}})()`)(probe)
 
 describe('canvas condition evaluated inside the page', () => {
+  it('captures separate rename conditions, actual asset names and node paths on failure', async () => {
+    const source = readFileSync(resolve(__dirname, '../e2e/canvasEditor.e2e.test.ts'), 'utf8')
+    const body = source
+      .slice(source.indexOf('function reportWait('), source.indexOf('const run ='))
+      .replace('expression: string', 'expression')
+      .replace('): void', ')')
+    let script = ''
+    const report = new Function(
+      'timing',
+      'evalAsync',
+      'PRELUDE',
+      'DIR',
+      'canvasWaitParts',
+      'console',
+      `${body}; return reportWait`
+    )(
+      true,
+      (code: string) => {
+        script = code
+      },
+      'const view=()=>app.sampleView',
+      'Sample',
+      canvasWaitParts,
+      { info: vi.fn() }
+    )
+    const closed = "!document.querySelector('.mod-file-rename')"
+    const exists = "!!app.vault.getAbstractFileByPath('Sample/sample-assets/sample-renamed.svg')"
+    report(`${closed} && ${exists}`)
+    const actualPath = 'Sample/sample-assets/Sample-renamed.svg'
+    const result = JSON.parse(
+      await new Function('app', 'document', `return ${script}`)(
+        {
+          vault: { getAbstractFileByPath: () => null, getFiles: () => [{ path: actualPath }] },
+          sampleView: { viewer: { graph: { nodes: [{ file: actualPath }] } } },
+        },
+        { querySelector: () => null, activeElement: null }
+      )
+    )
+    expect(result).toEqual({
+      parts: { [closed]: true, [exists]: false },
+      rename: { open: false, textareaValue: null, fileExists: false, canvasPointsAtFile: false },
+      assetFiles: [actualPath],
+      nodeFilePaths: [actualPath],
+      activeValue: null,
+    })
+  })
+
+  it('reports each top-level wait condition independently without splitting quoted or nested code', () => {
+    expect(
+      canvasWaitParts(`!dialog && files.some(f=>f.path==='sample&&file.svg') && (ready || pending)`)
+    ).toEqual(['!dialog', "files.some(f=>f.path==='sample&&file.svg')", '(ready || pending)'])
+  })
   it('waits locally and returns the first reachable geometry', async () => {
     let calls = 0
     const point = [20, 40]
