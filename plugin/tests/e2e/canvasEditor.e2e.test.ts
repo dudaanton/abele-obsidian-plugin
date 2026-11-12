@@ -9,7 +9,7 @@ import { shotDir } from './helpers/shots'
 import { CANVAS_TRACE_DUMP, CANVAS_TRACE_INSTALL } from './helpers/canvasTrace'
 import { dismissOwnNotices } from './helpers/ownNotices'
 import { canvasChrome, menuItem } from './helpers/canvasChrome'
-import { canvasCondition } from './helpers/canvasCondition'
+import { canvasCondition, canvasTypingState, shortCanvasQuery } from './helpers/canvasCondition'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -22,7 +22,8 @@ const PRELUDE = `
   const button = label => view()?.contentEl.querySelector('[aria-label="'+label+'"]')
 `
 let timing: { started: number; phase: number; calls: number; driverMs: number } | undefined
-const measured = <T>(kind: string, action: () => T): T => {
+let clickLabel: string | undefined
+const measured = <T>(kind: string, action: () => T, argument = ''): T => {
   const started = performance.now()
   try {
     return action()
@@ -31,7 +32,12 @@ const measured = <T>(kind: string, action: () => T): T => {
       const ms = Math.round(performance.now() - started)
       timing.calls++
       timing.driverMs += ms
-      console.info('Canvas attachment driver:', { kind, ms })
+      console.info('Canvas attachment driver:', {
+        kind,
+        argument: argument.replace(/\s+/g, ' ').slice(0, 300),
+        click: clickLabel,
+        ms,
+      })
     }
   }
 }
@@ -48,15 +54,18 @@ const phase = (name: string) => {
   timing.phase = now
   timing.calls = timing.driverMs = 0
 }
-const run = <T>(body: string): T =>
-  measured('eval', () =>
-    evalAsync<T>(
-      `(async () => { ${PRELUDE} return JSON.stringify(await (async () => { ${body} })()) })()`
-    )
+const run = <T>(body: string, kind = 'run', argument = body): T =>
+  measured(
+    kind,
+    () =>
+      evalAsync<T>(
+        `(async () => { ${PRELUDE} return JSON.stringify(await (async () => { ${body} })()) })()`
+      ),
+    argument
   )
-const until = async (expression: string) => {
+const until = async (expression: string, kind = 'until') => {
   try {
-    expect(run<boolean>(canvasCondition(`return !!(${expression})`))).toBe(true)
+    expect(run<boolean>(canvasCondition(`return !!(${expression})`), kind, expression)).toBe(true)
   } catch (error) {
     console.info('Canvas trace at a failed wait:', expression, JSON.stringify(traced()))
     throw error
@@ -86,7 +95,7 @@ const press = async (expression: string, corner = false) => {
   // The place found when it was first reachable, not asked again: a control can move between.
   let found: number[]
   try {
-    found = run<number[]>(canvasCondition(reach))
+    found = run<number[]>(canvasCondition(reach), 'press', `geometry: ${expression}`)
   } catch (error) {
     console.info(
       'Canvas press found no reachable point:',
@@ -100,7 +109,7 @@ const press = async (expression: string, corner = false) => {
     throw error
   }
   const [x, y] = found
-  if (onPhone()) measured('tap', () => tap(x, y))
+  if (onPhone()) measured('press', () => tap(x, y), `${expression} at ${x},${y}`)
   else
     await withNativeInput(() =>
       run(`
@@ -112,7 +121,7 @@ const press = async (expression: string, corner = false) => {
 }
 /** A tap or click at a point of the screen. */
 const at = async ([x, y]: number[]) => {
-  if (onPhone()) measured('tap', () => tap(x, y))
+  if (onPhone()) measured('press', () => tap(x, y), `point: ${x},${y}`)
   else
     await withNativeInput(() =>
       run(`
@@ -127,10 +136,22 @@ const chrome = canvasChrome({ run, press: (e) => press(e), until, at, phone: onP
  * Presses what does `label` on the canvas's tool bar, its column, the bar over the picked or a menu.
  * Leaving a field is a press on empty canvas in sight: on a phone, not on the keyboard over it.
  */
-const click = (label: string, allowDisabled = false) =>
-  label === 'Save text'
-    ? at(chrome.emptySpotInSight() ?? chrome.emptySpot())
-    : chrome.click(label, allowDisabled)
+const click = async (label: string, allowDisabled = false) => {
+  const started = performance.now()
+  clickLabel = label
+  try {
+    if (label === 'Save text') await at(chrome.emptySpotInSight() ?? chrome.emptySpot())
+    else await chrome.click(label, allowDisabled)
+  } finally {
+    if (timing)
+      console.info('Canvas attachment action:', {
+        kind: 'click',
+        argument: label,
+        ms: Math.round(performance.now() - started),
+      })
+    clickLabel = undefined
+  }
+}
 /** How far down the page a person sees: above a phone's keyboard when it is up. */
 const SEEN = `Math.min(innerHeight-(parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0),window.visualViewport?visualViewport.offsetTop+visualViewport.height:innerHeight)`
 const type = async (text: string) => {
@@ -138,17 +159,15 @@ const type = async (text: string) => {
     // DOM focus precedes the native keyboard. Wait for it, then use its keys directly:
     // a failed XCUITest focused-field attempt can partially type before falling back.
     // `typeText` itself waits until the keyboard takes input.
-    await until(`document.activeElement?.matches('input,textarea') &&
-      (parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height')) > 1 ||
-       innerHeight - (window.visualViewport?.height ?? innerHeight) > 1)`)
-    const expected = run<string>(`const field=document.activeElement;
-      return field.value.slice(0,field.selectionStart)+${JSON.stringify(text)}+field.value.slice(field.selectionEnd)`)
+    const { expected } = run<{ expected: string }>(
+      canvasTypingState(text),
+      'type',
+      `keyboard readiness and selection for ${JSON.stringify(text)}`
+    )
     if (text === '\b') typeText(text)
     else {
-      measured('type', () => typeText(text, 'keys'))
-      await expect
-        .poll(() => run<string>('return document.activeElement?.value'), { timeout: 10_000 })
-        .toBe(expected)
+      measured('type', () => typeText(text, 'keys'), JSON.stringify(text))
+      await until(`document.activeElement?.value===${JSON.stringify(expected)}`, 'type')
     }
   } else
     await withNativeInput(() =>
@@ -165,7 +184,7 @@ const type = async (text: string) => {
 }
 const shot = (name: string) => {
   const path = `${SHOTS}/${name}.png`
-  if (onPhone()) measured('screenshot', () => screenshot(path))
+  if (onPhone()) measured('screenshot', () => screenshot(path), name)
   else
     run(
       `const image=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(path)},image.toPNG());return true`
@@ -175,7 +194,8 @@ const textButton = (root: string, text: string) =>
   `[...document.querySelectorAll(${JSON.stringify(root + ' button')})].find(el=>el.textContent===${JSON.stringify(text)})`
 const saved = () =>
   until(
-    "view()?.documentLease && !view().documentLease.document.session.dirty && !button('Add text card').disabled"
+    "view()?.documentLease && !view().documentLease.document.session.dirty && !button('Add text card').disabled",
+    'saved'
   )
 const restoreProcess = () =>
   run(
@@ -660,14 +680,16 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
   it('keeps inserted attachments usable after native rename and folder move, including pointer-driven undo', async () => {
     timing = { started: performance.now(), phase: performance.now(), calls: 0, driverMs: 0 }
     try {
-      run(`
+      const { queries, dirty } = run<{ queries: Record<string, string>; dirty: boolean }>(`
       await app.vault.createFolder(${JSON.stringify(DIR + '/sample-assets')})
       for(const name of ['sample-image.svg','sample-drawing.svg'])await app.vault.create(${JSON.stringify(DIR + '/sample-assets/')}+name,'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><path d="M0 0L40 40"/></svg>')
       // Discard the preceding retained failure via its normal user action before this scenario.
-      return true
+      const paths=app.vault.getFiles().map(file=>file.path)
+      const query=${shortCanvasQuery.toString()}
+      return {queries: Object.fromEntries(['sample-image.svg','sample-drawing.svg'].map(name=>[name,query(${JSON.stringify(DIR + '/sample-assets/')}+name,paths)])),dirty:view().documentLease.document.session.dirty}
     `)
       // The preceding native-handoff test deliberately leaves a conflicted draft.
-      if (run<boolean>('return view().documentLease.document.session.dirty')) {
+      if (dirty) {
         await click('Discard local draft')
         await press(textButton('.abele-canvas-choice', 'Discard local draft'))
         await saved()
@@ -675,10 +697,11 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
       phase('setup')
       for (const name of ['sample-image.svg', 'sample-drawing.svg']) {
         await click('Add note or attachment')
+        // Keep the real tap that raises the native keyboard; shorten only its search text.
         await press('document.querySelector(".prompt-input")')
-        await type(name)
+        await type(queries[name])
         await press(
-          `[...document.querySelectorAll('.suggestion-item')].find(el=>el.textContent.includes(${JSON.stringify(DIR + '/sample-assets/')}+${JSON.stringify(name)}))`
+          `(() => {const items=[...document.querySelectorAll('.suggestion-item')];return items.length===1 && items.find(el=>el.textContent.includes(${JSON.stringify(DIR + '/sample-assets/')}+${JSON.stringify(name)}))})()`
         )
         await saved()
         phase(`insert ${name}`)
