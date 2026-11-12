@@ -15,6 +15,7 @@ import {
   shortCanvasQuery,
   canvasAttachmentNames,
   canvasWaitParts,
+  CANVAS_RENAME_KEYBOARD,
 } from './helpers/canvasCondition'
 
 targets('desktop', 'phone')
@@ -22,6 +23,7 @@ const available = isObsidianRunning() && hasTestApi()
 const DIR = `Sample human canvas ${randomUUID()}`
 const SHOTS = shotDir('canvas-editor')
 const ATTACHMENTS = canvasAttachmentNames(randomUUID())
+const RENAMED_ATTACHMENT = `${ATTACHMENTS.image.slice(0, -4)}-renamed`
 const PRELUDE = `
   const path = ${JSON.stringify(`${DIR}/Sample diagram.canvas`)}
   const view = () => app.workspace.getLeavesOfType('abele-canvas').find(leaf => leaf.view.file?.path === path)?.view
@@ -70,7 +72,7 @@ function reportWait(expression: string): void {
         try {parts[expression]=await eval('(async()=>!!('+expression+'))()')}
         catch(error) {parts[expression]={error:String(error)}}
       }
-      const renamed=${JSON.stringify(DIR + '/sample-assets/sample-renamed.svg')}
+      const renamed=${JSON.stringify(DIR + '/sample-assets/' + RENAMED_ATTACHMENT + '.svg')}
       return JSON.stringify({parts,
         rename:{open:!!document.querySelector('.mod-file-rename'),
           textareaValue:document.querySelector('.mod-file-rename .rename-textarea')?.value??null,
@@ -765,14 +767,15 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
         `app.fileManager.promptForFileRename(app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets/' + ATTACHMENTS.image)}));return true`
       )
       await untilFromHost('document.activeElement?.matches(".rename-textarea")')
-      // Native rename may normalize its field while input settles. Verify the saved path below.
-      await type('sample-renamed', false)
+      // Test-side keyboard settings keep the host rename input literal on the phone.
+      run(CANVAS_RENAME_KEYBOARD)
+      await type(RENAMED_ATTACHMENT, false)
       await press('document.querySelector(".mod-file-rename button.mod-cta")')
       await untilFromHost(
-        `!document.querySelector('.mod-file-rename') && !!app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets/sample-renamed.svg')})`
+        `!document.querySelector('.mod-file-rename') && !!app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets/' + RENAMED_ATTACHMENT + '.svg')})`
       )
       await untilFromHost(
-        `view().viewer.graph.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-assets/sample-renamed.svg')})`
+        `view().viewer.graph.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-assets/' + RENAMED_ATTACHMENT + '.svg')})`
       )
       phase('native rename')
       // Host event stimulus, shared by desktop and physical-phone checks.
@@ -794,7 +797,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
       await saved()
       phase('pointer undo')
       const result = run<{ image: boolean; drawing: boolean; stale: boolean }>(
-        `const data=await read();return {image:data.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/sample-renamed.svg')}),drawing:data.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/' + ATTACHMENTS.drawing)}),stale:data.nodes.some(n=>n.file?.includes('/sample-assets/'))}`
+        `const data=await read();return {image:data.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/' + RENAMED_ATTACHMENT + '.svg')}),drawing:data.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/' + ATTACHMENTS.drawing)}),stale:data.nodes.some(n=>n.file?.includes('/sample-assets/'))}`
       )
       shot('renamed-attachments')
       phase('persisted references and screenshot')

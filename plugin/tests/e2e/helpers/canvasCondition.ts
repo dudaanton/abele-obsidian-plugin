@@ -1,5 +1,13 @@
 import { WAIT_PRELUDE } from './wait'
 
+export const CANVAS_RENAME_KEYBOARD = `
+  const field = document.querySelector('.mod-file-rename .rename-textarea')
+  if (!field) throw new Error('Native rename textarea is missing')
+  for (const key of ['autocorrect', 'autocapitalize', 'autocomplete']) field.setAttribute(key, 'off')
+  field.spellcheck = false
+  return true
+`
+
 /** Keep nested predicates and quoted paths intact when reporting independent wait parts. */
 export function canvasWaitParts(expression: string): string[] {
   const parts: string[] = []

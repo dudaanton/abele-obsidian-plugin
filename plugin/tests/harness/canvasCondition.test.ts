@@ -5,6 +5,7 @@ import {
   canvasCondition,
   canvasAttachmentNames,
   canvasWaitParts,
+  CANVAS_RENAME_KEYBOARD,
   canvasTypingState,
   shortCanvasQuery,
 } from '../e2e/helpers/canvasCondition'
@@ -25,6 +26,7 @@ describe('canvas condition evaluated inside the page', () => {
       'evalAsync',
       'PRELUDE',
       'DIR',
+      'RENAMED_ATTACHMENT',
       'canvasWaitParts',
       'console',
       `${body}; return reportWait`
@@ -35,6 +37,7 @@ describe('canvas condition evaluated inside the page', () => {
       },
       'const view=()=>app.sampleView',
       'Sample',
+      'sample-renamed',
       canvasWaitParts,
       { info: vi.fn() }
     )
@@ -93,6 +96,13 @@ describe('canvas condition evaluated inside the page', () => {
 })
 
 describe('canvas picker input', () => {
+  it('disables host keyboard corrections before typing the native rename', () => {
+    const field = document.createElement('textarea')
+    new Function('document', CANVAS_RENAME_KEYBOARD)({ querySelector: () => field })
+    for (const key of ['autocorrect', 'autocapitalize', 'autocomplete'])
+      expect(field.getAttribute(key)).toBe('off')
+    expect(field.spellcheck).toBe(false)
+  })
   it('types a native rename once and leaves verification to the persisted end state', async () => {
     const source = readFileSync(resolve(__dirname, '../e2e/canvasEditor.e2e.test.ts'), 'utf8')
     const body = source
