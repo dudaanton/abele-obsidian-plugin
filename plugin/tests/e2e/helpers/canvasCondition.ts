@@ -18,7 +18,14 @@ export const canvasTypingState = (text: string): string =>
   return {expected: field.value.slice(0,field.selectionStart) + ${JSON.stringify(text)} + field.value.slice(field.selectionEnd)}
 `)
 
-/** A conservative fuzzy match: only the intended full path may contain the query in order.
+/** Distinct leading tokens and a short run id keep native picker input cheap. */
+export const canvasAttachmentNames = (id: string) => ({
+  image: `qx${id.slice(0, 4)}.svg`,
+  drawing: `wz${id.slice(0, 4)}.svg`,
+})
+
+/** Prefer a unique fuzzy query, bounded by the filename and ten native keystrokes.
+ * If basenames collide, the caller still selects the intended suggestion by its full path.
  * Self-contained because the fixture evaluates it in the page against the current file index. */
 export function shortCanvasQuery(target: string, paths: string[]): string {
   const name = target.slice(target.lastIndexOf('/') + 1).toLowerCase()
@@ -27,7 +34,7 @@ export function shortCanvasQuery(target: string, paths: string[]): string {
     for (const char of path.toLowerCase()) if (char === query[at]) at++
     return at === query.length
   }
-  for (let length = 1; length <= name.length; length++) {
+  for (let length = 1; length <= Math.min(name.length, 10); length++) {
     for (let start = 0; start + length <= name.length; start++) {
       const query = name.slice(start, start + length)
       if (!/^[a-z0-9._-]+$/.test(query)) continue
@@ -35,5 +42,5 @@ export function shortCanvasQuery(target: string, paths: string[]): string {
         return query
     }
   }
-  return target
+  return name.slice(0, 10)
 }

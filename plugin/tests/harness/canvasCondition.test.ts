@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   canvasCondition,
+  canvasAttachmentNames,
   canvasTypingState,
   shortCanvasQuery,
 } from '../e2e/helpers/canvasCondition'
@@ -37,6 +38,24 @@ describe('canvas condition evaluated inside the page', () => {
 })
 
 describe('canvas picker input', () => {
+  it('gives both attachment fixtures short, distinct searchable names', () => {
+    const names = Object.values(canvasAttachmentNames('abcd-1234'))
+    expect(new Set(names).size).toBe(2)
+    const paths = names.map((name) => `Sample canvas abcd-1234/sample-assets/${name}`)
+    for (const [index, name] of names.entries()) {
+      expect(name.length).toBeLessThanOrEqual(10)
+      const query = shortCanvasQuery(paths[index], [...paths, 'Other/sample-image.svg'])
+      expect(query.length).toBeLessThanOrEqual(name.length)
+      let matches = 0
+      for (const path of paths) {
+        let at = 0
+        for (const char of path.toLowerCase()) if (char === query[at]) at++
+        if (at === query.length) matches++
+      }
+      expect(matches).toBe(1)
+    }
+  })
+
   it('uses a short query which only the complete target path can match', () => {
     const target = 'Sample/sample-assets/sample-image.svg'
     const paths = [target, 'Sample/sample-assets/sample-drawing.svg', 'Other/image.md']
@@ -50,8 +69,19 @@ describe('canvas picker input', () => {
     expect(matches).toEqual([target])
   })
 
-  it('distinguishes equal basenames using their full path', () => {
-    expect(shortCanvasQuery('One/a.svg', ['One/a.svg', 'Two/a.svg'])).toBe('One/a.svg')
+  it('keeps the filename fallback when equal basenames cannot be distinguished', () => {
+    expect(shortCanvasQuery('One/a.svg', ['One/a.svg', 'Two/a.svg'])).toBe('a.svg')
+  })
+
+  it('never sends a directory or more than ten characters to the keyboard', () => {
+    for (const name of ['sample-image.svg', 'sample-drawing.svg', 'qx1234.svg', 'wz5678.svg']) {
+      const target = `Sample long directory/another directory/${name}`
+      const query = shortCanvasQuery(target, [target, `Other/${name}`])
+      expect(query.length).toBeLessThanOrEqual(10)
+      expect(query.length).toBeLessThanOrEqual(name.length)
+      expect(query).not.toContain('/')
+      expect(name).toContain(query)
+    }
   })
 
   it('can run inside the page without module bindings', () => {

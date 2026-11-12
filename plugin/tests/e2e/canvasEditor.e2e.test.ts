@@ -9,12 +9,18 @@ import { shotDir } from './helpers/shots'
 import { CANVAS_TRACE_DUMP, CANVAS_TRACE_INSTALL } from './helpers/canvasTrace'
 import { dismissOwnNotices } from './helpers/ownNotices'
 import { canvasChrome, menuItem } from './helpers/canvasChrome'
-import { canvasCondition, canvasTypingState, shortCanvasQuery } from './helpers/canvasCondition'
+import {
+  canvasCondition,
+  canvasTypingState,
+  shortCanvasQuery,
+  canvasAttachmentNames,
+} from './helpers/canvasCondition'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
 const DIR = `Sample human canvas ${randomUUID()}`
 const SHOTS = shotDir('canvas-editor')
+const ATTACHMENTS = canvasAttachmentNames(randomUUID())
 const PRELUDE = `
   const path = ${JSON.stringify(`${DIR}/Sample diagram.canvas`)}
   const view = () => app.workspace.getLeavesOfType('abele-canvas').find(leaf => leaf.view.file?.path === path)?.view
@@ -682,11 +688,11 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
     try {
       const { queries, dirty } = run<{ queries: Record<string, string>; dirty: boolean }>(`
       await app.vault.createFolder(${JSON.stringify(DIR + '/sample-assets')})
-      for(const name of ['sample-image.svg','sample-drawing.svg'])await app.vault.create(${JSON.stringify(DIR + '/sample-assets/')}+name,'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><path d="M0 0L40 40"/></svg>')
+      for(const name of ${JSON.stringify(Object.values(ATTACHMENTS))})await app.vault.create(${JSON.stringify(DIR + '/sample-assets/')}+name,'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><path d="M0 0L40 40"/></svg>')
       // Discard the preceding retained failure via its normal user action before this scenario.
       const paths=app.vault.getFiles().map(file=>file.path)
       const query=${shortCanvasQuery.toString()}
-      return {queries: Object.fromEntries(['sample-image.svg','sample-drawing.svg'].map(name=>[name,query(${JSON.stringify(DIR + '/sample-assets/')}+name,paths)])),dirty:view().documentLease.document.session.dirty}
+      return {queries: Object.fromEntries(${JSON.stringify(Object.values(ATTACHMENTS))}.map(name=>[name,query(${JSON.stringify(DIR + '/sample-assets/')}+name,paths)])),dirty:view().documentLease.document.session.dirty}
     `)
       // The preceding native-handoff test deliberately leaves a conflicted draft.
       if (dirty) {
@@ -695,7 +701,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
         await saved()
       }
       phase('setup')
-      for (const name of ['sample-image.svg', 'sample-drawing.svg']) {
+      for (const name of Object.values(ATTACHMENTS)) {
         await click('Add note or attachment')
         // Keep the real tap that raises the native keyboard; shorten only its search text.
         await press('document.querySelector(".prompt-input")')
@@ -708,7 +714,7 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
       }
       // Opening the host rename dialog is navigation; its text and Save use real input.
       run(
-        `app.fileManager.promptForFileRename(app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets/sample-image.svg')}));return true`
+        `app.fileManager.promptForFileRename(app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets/' + ATTACHMENTS.image)}));return true`
       )
       await until('document.activeElement?.matches(".rename-textarea")')
       await type('sample-renamed')
@@ -723,12 +729,12 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
         `await app.fileManager.renameFile(app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets')}),${JSON.stringify(DIR + '/sample-moved')});return true`
       )
       await until(
-        `view().viewer.graph.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/sample-drawing.svg')})`
+        `view().viewer.graph.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/' + ATTACHMENTS.drawing)})`
       )
       phase('folder move')
       await click('Fit diagram')
       await press(
-        `view().contentEl.querySelector('[data-card-id="'+view().viewer.graph.nodes.find(n=>n.file?.endsWith('/sample-drawing.svg')).id+'"]')`
+        `view().contentEl.querySelector('[data-card-id="'+view().viewer.graph.nodes.find(n=>n.file?.endsWith(${JSON.stringify('/' + ATTACHMENTS.drawing)})).id+'"]')`
       )
       await click('Delete selected card')
       await saved()
@@ -737,17 +743,17 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
       await saved()
       phase('pointer undo')
       const result = run<{ image: boolean; drawing: boolean; stale: boolean }>(
-        `const data=await read();return {image:data.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/sample-renamed.svg')}),drawing:data.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/sample-drawing.svg')}),stale:data.nodes.some(n=>n.file?.includes('/sample-assets/'))}`
+        `const data=await read();return {image:data.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/sample-renamed.svg')}),drawing:data.nodes.some(n=>n.file===${JSON.stringify(DIR + '/sample-moved/' + ATTACHMENTS.drawing)}),stale:data.nodes.some(n=>n.file?.includes('/sample-assets/'))}`
       )
       shot('renamed-attachments')
       phase('persisted references and screenshot')
       expect(result).toEqual({ image: true, drawing: true, stale: false })
       await press(
-        `view().contentEl.querySelector('[data-card-id="'+view().viewer.graph.nodes.find(n=>n.file?.endsWith('/sample-drawing.svg')).id+'"]')`
+        `view().contentEl.querySelector('[data-card-id="'+view().viewer.graph.nodes.find(n=>n.file?.endsWith(${JSON.stringify('/' + ATTACHMENTS.drawing)})).id+'"]')`
       )
       await click('Open selected card')
       await until(
-        `app.workspace.getActiveFile()?.path===${JSON.stringify(DIR + '/sample-moved/sample-drawing.svg')}`
+        `app.workspace.getActiveFile()?.path===${JSON.stringify(DIR + '/sample-moved/' + ATTACHMENTS.drawing)}`
       )
       phase('open moved attachment')
       await reopen()
