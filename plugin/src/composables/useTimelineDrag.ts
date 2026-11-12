@@ -285,7 +285,7 @@ export function useTimelineDrag(
         if (candidate && !candidate.touch && candidate.id === event.pointerId) {
           x = event.clientX
           y = event.clientY
-          void end(event.type === 'pointercancel')
+          void end(event.type !== 'pointerup')
         }
       }
       const touchStart = (event: TouchEvent) => {
@@ -334,10 +334,14 @@ export function useTimelineDrag(
       const blur = () => {
         void end(true)
       }
+      const visibility = () => {
+        if (doc.hidden) blur()
+      }
       el.addEventListener('pointerdown', pointerDown)
       doc.addEventListener('pointermove', pointerMove)
       doc.addEventListener('pointerup', pointerEnd)
       doc.addEventListener('pointercancel', pointerEnd)
+      doc.addEventListener('lostpointercapture', pointerEnd, true)
       el.addEventListener('touchstart', touchStart, { passive: true })
       doc.addEventListener('touchmove', touchMove, { passive: false })
       doc.addEventListener('touchend', touchEnd, { passive: false })
@@ -347,6 +351,8 @@ export function useTimelineDrag(
       el.addEventListener('contextmenu', suppress, true)
       el.addEventListener('dragstart', suppress)
       win.addEventListener('blur', blur)
+      win.addEventListener('pagehide', blur)
+      doc.addEventListener('visibilitychange', visibility)
       dispose = () => {
         clearVisual()
         candidate = null
@@ -357,6 +363,7 @@ export function useTimelineDrag(
         doc.removeEventListener('pointermove', pointerMove)
         doc.removeEventListener('pointerup', pointerEnd)
         doc.removeEventListener('pointercancel', pointerEnd)
+        doc.removeEventListener('lostpointercapture', pointerEnd, true)
         el.removeEventListener('touchstart', touchStart)
         doc.removeEventListener('touchmove', touchMove)
         doc.removeEventListener('touchend', touchEnd)
@@ -366,6 +373,8 @@ export function useTimelineDrag(
         el.removeEventListener('contextmenu', suppress, true)
         el.removeEventListener('dragstart', suppress)
         win.removeEventListener('blur', blur)
+        win.removeEventListener('pagehide', blur)
+        doc.removeEventListener('visibilitychange', visibility)
       }
     },
     { flush: 'post' }

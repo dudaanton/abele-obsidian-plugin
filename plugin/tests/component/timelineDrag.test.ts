@@ -80,6 +80,53 @@ afterEach(() => {
 })
 
 describe('timeline task dragging', () => {
+  it.each(['lostpointercapture', 'pagehide', 'blur', 'visibilitychange'])(
+    'cancels edge scrolling and restores the list on %s',
+    async (ending) => {
+      const current = sample('sample-current', '2030-06-15')
+      const write = vi.spyOn(current, 'writeTaskToFile').mockResolvedValue(undefined)
+      await render([current, sample('sample-past', '2030-06-14')])
+      useDragClock()
+      await pointer('pointerdown', 80, 190, row().element)
+      await pointer('pointermove', 80, 205)
+      await pointer('pointermove', 80, 490)
+      await vi.advanceTimersByTimeAsync(600)
+      if (ending === 'visibilitychange') {
+        vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+        document.dispatchEvent(new Event(ending))
+      } else if (ending === 'pagehide' || ending === 'blur') window.dispatchEvent(new Event(ending))
+      else await pointer(ending, 80, 490, row().element)
+      await flushPromises()
+      const stopped = owner.scrollTop
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(owner.scrollTop).toBe(stopped)
+      expect(document.querySelector('.abele-timeline__drag-card')).toBeNull()
+      expect(days()).toEqual(['date:2030-06-15'])
+      expect(view.get('.abele-timeline__overdue').attributes('style') ?? '').not.toContain('hidden')
+      expect(write).not.toHaveBeenCalled()
+      await pointer('pointerdown', 80, 190, row().element)
+      await pointer('pointermove', 80, 205)
+      expect(document.querySelector('.abele-timeline__drag-card')).not.toBeNull()
+    }
+  )
+
+  it.each(['touchcancel', 'blur', 'dispose'])(
+    'disarms a pending long press on %s',
+    async (ending) => {
+      await render([sample('sample-current', '2030-06-15')])
+      useDragClock()
+      const source = row().element
+      await touch('touchstart', 80, 190)
+      if (ending === 'dispose') view.unmount()
+      else if (ending === 'blur') window.dispatchEvent(new Event('blur'))
+      else await touch('touchcancel', 80, 190)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(vi.getTimerCount()).toBe(0)
+      source.dispatchEvent(new Event('touchmove', { bubbles: true }))
+      expect(document.querySelector('.abele-timeline__drag-card')).toBeNull()
+    }
+  )
+
   it.each(['drop', 'outside', 'escape', 'pointercancel', 'touchend', 'touchcancel'])(
     'hides the overdue control during drag and restores it after %s without removing its row',
     async (ending) => {
