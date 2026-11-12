@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   canvasCondition,
   canvasAttachmentNames,
@@ -38,6 +40,50 @@ describe('canvas condition evaluated inside the page', () => {
 })
 
 describe('canvas picker input', () => {
+  it('types a native rename once and leaves verification to the persisted end state', async () => {
+    const source = readFileSync(resolve(__dirname, '../e2e/canvasEditor.e2e.test.ts'), 'utf8')
+    const body = source
+      .slice(source.indexOf('const type = '), source.indexOf('const shot = '))
+      .replace('text: string', 'text')
+      .replace('run<{ expected: string }>', 'run')
+    const run = vi.fn(() => ({ expected: 'sample-renamed' }))
+    const typeText = vi.fn()
+    const until = vi.fn()
+    const type = new Function(
+      'onPhone',
+      'run',
+      'canvasTypingState',
+      'typeText',
+      'measured',
+      'until',
+      `${body}; return type`
+    )(
+      () => true,
+      run,
+      canvasTypingState,
+      typeText,
+      (_kind: string, action: () => unknown) => action(),
+      until
+    )
+    await type('sample-renamed', false)
+    expect(typeText).toHaveBeenCalledExactlyOnceWith('sample-renamed', 'keys')
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(until).not.toHaveBeenCalled()
+    run.mockReturnValue({ expected: 'qx' })
+    await type('qx')
+    expect(until).toHaveBeenCalledExactlyOnceWith('document.activeElement?.value==="qx"', 'type')
+  })
+
+  it('reports the observed field value when a condition times out', async () => {
+    const page = new Function(
+      'document',
+      `return (async()=>{${canvasCondition('return false', 5)}})()`
+    )
+    await expect(page({ activeElement: { value: 'Sample-renamed' } })).rejects.toThrow(
+      'observed field value: "Sample-renamed"'
+    )
+  })
+
   it('gives both attachment fixtures short, distinct searchable names', () => {
     const names = Object.values(canvasAttachmentNames('abcd-1234'))
     expect(new Set(names).size).toBe(2)

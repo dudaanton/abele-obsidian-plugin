@@ -160,7 +160,7 @@ const click = async (label: string, allowDisabled = false) => {
 }
 /** How far down the page a person sees: above a phone's keyboard when it is up. */
 const SEEN = `Math.min(innerHeight-(parseFloat(getComputedStyle(document.body).getPropertyValue('--keyboard-height'))||0),window.visualViewport?visualViewport.offsetTop+visualViewport.height:innerHeight)`
-const type = async (text: string) => {
+const type = async (text: string, verifyValue = true) => {
   if (onPhone()) {
     // DOM focus precedes the native keyboard. Wait for it, then use its keys directly:
     // a failed XCUITest focused-field attempt can partially type before falling back.
@@ -173,7 +173,8 @@ const type = async (text: string) => {
     if (text === '\b') typeText(text)
     else {
       measured('type', () => typeText(text, 'keys'), JSON.stringify(text))
-      await until(`document.activeElement?.value===${JSON.stringify(expected)}`, 'type')
+      if (verifyValue)
+        await until(`document.activeElement?.value===${JSON.stringify(expected)}`, 'type')
     }
   } else
     await withNativeInput(() =>
@@ -717,7 +718,8 @@ describe.skipIf(!available)('human canvas creation and editing with real input',
         `app.fileManager.promptForFileRename(app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets/' + ATTACHMENTS.image)}));return true`
       )
       await until('document.activeElement?.matches(".rename-textarea")')
-      await type('sample-renamed')
+      // Native rename may normalize its field while input settles. Verify the saved path below.
+      await type('sample-renamed', false)
       await press('document.querySelector(".mod-file-rename button.mod-cta")')
       await until(
         `!document.querySelector('.mod-file-rename') && !!app.vault.getAbstractFileByPath(${JSON.stringify(DIR + '/sample-assets/sample-renamed.svg')}) &&

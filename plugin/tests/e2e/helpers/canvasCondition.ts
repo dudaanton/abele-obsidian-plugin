@@ -4,7 +4,8 @@ import { WAIT_PRELUDE } from './wait'
 export const canvasCondition = (body: string, timeoutMs = 10_000): string => `
   ${WAIT_PRELUDE}
   const ready = await until(async () => { ${body} }, ${timeoutMs}, 50)
-  if (!ready) throw new Error('Canvas condition did not become ready')
+  if (!ready) throw new Error('Canvas condition did not become ready; observed field value: ' +
+    JSON.stringify(typeof document === 'undefined' ? null : document.activeElement?.value ?? null))
   return ready
 `
 
