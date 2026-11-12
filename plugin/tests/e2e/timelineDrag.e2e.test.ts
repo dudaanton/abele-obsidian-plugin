@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { evalLong, evalRaw, hasTestApi, isObsidianRunning, reloadApp } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
@@ -108,6 +108,10 @@ const probe = (footer: boolean) => String.raw`(async () => {
       const el=root.querySelector('.abele-timeline__overdue')
       return el ? {visibility:getComputedStyle(el).visibility,height:el.getBoundingClientRect().height} : null
     }
+    const layoutState=()=>{
+      const el=root.querySelector('.abele-timeline__overdue')
+      return {connected:root.isConnected,active:app.workspace.activeLeaf===leaf,visibility:document.visibilityState,ancestors:el?[el,...function*(node){while(node.parentElement){node=node.parentElement;yield node}}(el)].map(node=>({class:node.className,rect:node.getBoundingClientRect().toJSON(),display:getComputedStyle(node).display,visibility:getComputedStyle(node).visibility})):[]}
+    }
     report.overdueBefore=overdueState()
     const labels=()=>[...root.querySelectorAll('.timeline__date')].map(el=>({day:el.closest('.abele-timeline__date-block').dataset.abeleAnchor,text:el.textContent,height:el.getBoundingClientRect().height}))
     const shortWeekdays=()=>labels().every(label=>/^(?:(?:Today|Tomorrow|Yesterday) · )?(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{2}\.\d{2}(?:\.\d{4})?$/.test(label.text.trim()))
@@ -145,6 +149,7 @@ const probe = (footer: boolean) => String.raw`(async () => {
     await wait(1000)
     report.cancelled=JSON.stringify(dates())===JSON.stringify(initial) && (await app.vault.read(app.vault.getAbstractFileByPath(folder+'/Sample moving.md')))===initialSource
     report.overdueCancel=overdueState()
+    if(report.overdueCancel?.height!==report.overdueBefore?.height)report.cancelLayout=layoutState()
     report.cancelState={ padding:root.querySelector('.abele-timeline__blocks').style.paddingTop, space:root.querySelector('.abele-timeline__anchor-space').style.height, ghost:!!document.querySelector('.abele-timeline__drag-card'), source:!!root.querySelector('.abele-timeline__drag-source'), dragging:!!root.querySelector('.abele-timeline__dragging'), target:!!root.querySelector('.abele-timeline__drop-target'), scroll:[initialScroll,scroller.scrollTop] }
     app.workspace.setActiveLeaf(leaf,{focus:true})
     await wait(200)
@@ -174,9 +179,11 @@ const probe = (footer: boolean) => String.raw`(async () => {
         })
         return point
       }
-      const recordTouch=e=>report.events.push({phase:report.phase,type:e.type,x:e.touches[0]?.clientX,y:e.touches[0]?.clientY,target:e.target.className})
-      document.addEventListener('touchstart',recordTouch,true)
-      cleanups.push(()=>document.removeEventListener('touchstart',recordTouch,true))
+      const recordTouch=e=>report.events.push({phase:report.phase,type:e.type,at:performance.now(),cancelable:e.cancelable,prevented:e.defaultPrevented,x:e.touches?.[0]?.clientX,y:e.touches?.[0]?.clientY,target:e.target.className})
+      for(const type of ['touchstart','touchmove','touchend','touchcancel','pointercancel','lostpointercapture']){
+        document.addEventListener(type,recordTouch,true)
+        cleanups.push(()=>document.removeEventListener(type,recordTouch,true))
+      }
       align(); await settle()
       const b=row().getBoundingClientRect(), bx=b.left+b.width/2, by=b.top+10
       let expanded=false, nativeStart, sourceBefore
@@ -211,6 +218,7 @@ const probe = (footer: boolean) => String.raw`(async () => {
       document.removeEventListener('touchend',record,true); document.removeEventListener('touchmove',beforeMove,true); observer.disconnect(); await wait(1200)
       report.nativeWritten=app.metadataCache.getFileCache(app.vault.getAbstractFileByPath(folder+'/Sample moving.md'))?.frontmatter?.date===day(2)
       report.nativeDrag=expanded
+      if(!expanded)report.nativeLayout=layoutState()
       report.nativeOverdueHidden=nativeOverdueHidden
       report.nativeOverdueRestored=overdueState()?.visibility==='visible'
       report.nativeStart=nativeStart
@@ -237,6 +245,8 @@ const probe = (footer: boolean) => String.raw`(async () => {
     const attempt=async(label,fn)=>{try{await fn()}catch(error){errors.push(label+': '+String(error))}}
     for(const cleanup of cleanups) await attempt('listener cleanup',cleanup)
     await attempt('dismiss gesture',()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
+    // Flush cancellation and its layout rollback before removing the owned view.
+    await attempt('settle gesture cleanup',()=>wait(0))
     if(leaf) {
       await attempt('close fixture view',()=>(${closeFixtureLeaves.toString()})([leaf]))
       // A failed save or empty transition must never leave the owned view mounted.
@@ -263,6 +273,11 @@ const probe = (footer: boolean) => String.raw`(async () => {
 describe.skipIf(!available)('timeline drag in native scroll panes', () => {
   let originalSize: number[] = []
   let originalMobile = false
+  afterEach(async () => {
+    // A failed assertion must not pass a stale WebKit gesture/page to the next file.
+    // Native swipes are atomic driver calls; this also clears page-owned timers/listeners.
+    if (onPhone()) await reloadApp('window.location.reload()')
+  })
   beforeAll(async () => {
     if (!onPhone()) {
       originalSize = JSON.parse(
@@ -271,6 +286,9 @@ describe.skipIf(!available)('timeline drag in native scroll panes', () => {
       originalMobile = evalRaw("document.body.classList.contains('is-mobile')") === 'true'
     }
     await reloadApp('app.emulateMobile(false)')
+    // Both native cases need the same fresh-page boundary, including the first
+    // case after another file's gestures.
+    if (onPhone()) await reloadApp('window.location.reload()')
   })
   afterAll(async () => {
     if (!onPhone()) {
@@ -301,8 +319,6 @@ describe.skipIf(!available)('timeline drag in native scroll panes', () => {
         )
         await reloadApp(`app.emulateMobile(${mobile})`)
       }
-      // Establish a fresh page before the footer probe, outside its evaluation job.
-      if (onPhone() && footer) await reloadApp('window.location.reload()')
       const raw = await evalLong(probe(footer), 120_000)
       if (raw.startsWith('Error:')) throw new Error(raw)
       const result = JSON.parse(raw)
