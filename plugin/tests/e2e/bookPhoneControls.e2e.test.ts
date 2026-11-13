@@ -36,6 +36,7 @@ import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { evalAsync } from './helpers/githubLive'
 import { WAIT_PRELUDE } from './helpers/wait'
+import { sliderTrackPoint } from './helpers/sliderTrackPoint'
 
 // Adapted for a real phone, not yet green there: see docs/Testing.md, "On a real phone".
 targets('desktop')
@@ -309,10 +310,11 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
           view.engine.addEventListener('relocate', relocate)
           // Cross half the drawer even without a fling; a short track-relative swipe
           // otherwise tests the host's release-velocity estimator instead of swipe ownership.
-          const x0 = b.left + b.width * (direction === 1 ? 0.1 : 0.9)
-          const x1 = direction === 1 ? innerWidth - 8 : 8
           const thumbWidth = parseFloat(getComputedStyle(slider).getPropertyValue('--slider-thumb-width')) || 18
           const thumbCenter = b.left + thumbWidth / 2 + (b.width - thumbWidth) * Number(slider.value) / 1000
+          const x0 = (${sliderTrackPoint.toString()})(b.left, b.width, thumbCenter, thumbWidth,
+            b.left + b.width * (direction === 1 ? 0.1 : 0.9))
+          const x1 = direction === 1 ? innerWidth - 8 : 8
           const origin = { x0, x1, sliderLeft: b.left, sliderWidth: b.width,
             value: Number(slider.value), thumbWidth, thumbCenter, startsOnThumb: Math.abs(x0 - thumbCenter) <= thumbWidth / 2 }
           await touch('touchStart', [[x0, y]])
