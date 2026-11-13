@@ -94,6 +94,69 @@ it('handles sheet F2 through its scope before the host window keymap opens note 
     window.removeEventListener('keydown', hostKey, true)
   }
 })
+it('activates row keys on focus even when the workspace scope is current, then restores it', async () => {
+  const workspaceScope = new Scope()
+  const sheetScope = new Scope(workspaceScope)
+  let active = workspaceScope
+  const previous: Scope[] = []
+  const keymap = {
+    pushScope: vi.fn((scope: Scope) => {
+      previous.push(active)
+      active = scope
+    }),
+    popScope: vi.fn(() => {
+      active = previous.pop()!
+    }),
+  }
+  Object.assign(useVault([]), { keymap })
+  const noteRename = vi.fn()
+  const hostKey = (event: KeyboardEvent) => {
+    const result = (
+      active as unknown as {
+        handleKey(event: KeyboardEvent, context: { modifiers: string; key: string }): unknown
+      }
+    ).handleKey(event, { modifiers: '', key: event.key })
+    if (result !== false) noteRename()
+    event.stopImmediatePropagation()
+  }
+  window.addEventListener('keydown', hostKey, true)
+  const view = show({ keyScope: sheetScope })
+  const outside = document.createElement('button')
+  document.body.append(outside)
+  try {
+    const row = view.get('[data-chat="sample"] > .tree-item-self').element as HTMLElement
+    row.focus()
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }))
+    expect(source.rename).toHaveBeenCalledWith('sample')
+    expect(noteRename).not.toHaveBeenCalled()
+    outside.focus()
+    expect(active).toBe(workspaceScope)
+    outside.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }))
+    expect(noteRename).toHaveBeenCalledTimes(1)
+    row.focus()
+    view.unmount()
+    expect(active).toBe(workspaceScope)
+    expect(keymap.popScope).toHaveBeenCalledTimes(2)
+  } finally {
+    outside.remove()
+    window.removeEventListener('keydown', hostKey, true)
+  }
+})
+it('passes F2 outside tree rows to the sheet scope parent', () => {
+  const parent = new Scope()
+  const scope = new Scope(parent)
+  const noteRename = vi.fn(() => false)
+  parent.register([], 'F2', noteRename)
+  show({ keyScope: scope })
+  const result = (
+    scope as unknown as {
+      handleKey(event: KeyboardEvent, context: { modifiers: string; key: string }): unknown
+    }
+  ).handleKey(new KeyboardEvent('keydown', { key: 'F2' }), { modifiers: '', key: 'F2' })
+  expect(result).toBe(false)
+  expect(noteRename).toHaveBeenCalledTimes(1)
+  expect(source.rename).not.toHaveBeenCalled()
+})
 it('renames chats and folders in the same row editor, including F2 and empty cancellation', async () => {
   Object.assign(source, { renaming: shallowRef(null) })
   source.cancelRename = () => {

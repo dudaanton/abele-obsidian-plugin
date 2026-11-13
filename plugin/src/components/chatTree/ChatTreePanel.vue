@@ -25,6 +25,8 @@
       :class="{ 'is-being-dragged-over': dropTop }"
       role="tree"
       :aria-label="t('chatTree.chats')"
+      @focusin="focusRowKeys"
+      @focusout="blurRowKeys"
       @dragover="canDrop('') && ($event.preventDefault(), (dropTop = true))"
       @dragleave.self="dropTop = false"
       @drop.prevent="dropAtTop"
@@ -55,7 +57,8 @@
 <script setup lang="ts">
 import { t } from '@/i18n'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Platform, type Scope } from 'obsidian'
+import { Platform, Scope } from 'obsidian'
+import { GlobalStore } from '@/stores/GlobalStore'
 import Icon from '../obsidian/Icon.vue'
 import Search from '../obsidian/Search.vue'
 import Button from '../obsidian/Button.vue'
@@ -141,12 +144,36 @@ const renameKey = (event: KeyboardEvent) => {
 }
 // The host handles hotkeys on window capture before our DOM listeners. A sheet
 // must claim F2 in its native scope so it cannot rename the underlying note.
+let rowKeyScope: Scope | undefined
+const releaseRowKeys = () => {
+  if (rowKeyScope) GlobalStore.getInstance().app.keymap.popScope(rowKeyScope)
+  rowKeyScope = undefined
+}
+const focusRowKeys = (event: FocusEvent) => {
+  if (!props.keyScope || !(event.target as HTMLElement).closest('.tree-item-self')) return
+  // A host menu or workspace focus change can replace the active sheet scope.
+  // Use a child scope owned by row focus, leaving the sheet's own lifetime alone.
+  rowKeyScope ??= new Scope(props.keyScope)
+  GlobalStore.getInstance().app.keymap.pushScope(rowKeyScope)
+}
+const blurRowKeys = (event: FocusEvent) => {
+  const next = event.relatedTarget as HTMLElement | null
+  if (next?.closest?.('.tree-item-self') && list.value?.contains(next)) return
+  releaseRowKeys()
+}
 watch(
   () => props.keyScope,
   (scope, _, onCleanup) => {
     if (!scope) return
-    const handler = scope.register([], 'F2', (event) => (renameKey(event) ? false : undefined))
-    onCleanup(() => scope.unregister(handler))
+    // A catch-all can decline a key and continue to the parent scope. A keyed
+    // binding returning undefined would stop lookup even outside the tree.
+    const handler = scope.register(null, null, (event, context) =>
+      !context.modifiers && renameKey(event) ? false : undefined
+    )
+    onCleanup(() => {
+      releaseRowKeys()
+      scope.unregister(handler)
+    })
   },
   { immediate: true }
 )

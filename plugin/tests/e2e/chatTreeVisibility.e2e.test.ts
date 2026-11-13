@@ -150,10 +150,31 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         }
         await until(() => files[0].basename === 'Manually chosen sample')
         if (!reopened.manualTitle.value) throw Error('Manual title is not protected')
+        const scopeIds = new Map()
+        const scopeId = scope => {
+          if (!scope) return null
+          if (!scopeIds.has(scope)) scopeIds.set(scope, scopeIds.size + 1)
+          return scopeIds.get(scope)
+        }
+        const scopeState = () => {
+          const win = chatRow().ownerDocument.defaultView
+          const stack = app.keymap.getWindowStack?.(win)
+          const describe = scope => scope && ({
+            id: scopeId(scope), parent: scopeId(scope.parent),
+            keys: scope.keys?.map(binding => ({ key: binding.key, modifiers: binding.modifiers })),
+            container: scope.tabFocusContainerEl?.className,
+          })
+          return { current: describe(stack?.scope), previous: stack?.prevScopes?.map(describe), focus: document.activeElement?.outerHTML }
+        }
+        const scopeBeforeFocus = scopeState()
+        // A keyboard shortcut belongs to the row the user has focused.
+        chatRow().focus()
+        const scopeBeforeF2 = scopeState()
         chatRow().dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }))
         try { await until(editor, 'Keyboard rename after commit') } catch (error) {
           throw Error(error.message + ' ' + JSON.stringify({
             renaming: service.tree.renaming.value,
+            scopeBeforeFocus, scopeBeforeF2, scopeAfterF2: scopeState(),
             row: chatRow()?.outerHTML,
             focus: document.activeElement?.outerHTML,
             menus: [...document.querySelectorAll('.menu')].map(el => ({ style: el.getAttribute('style'), display: getComputedStyle(el).display, visibility: getComputedStyle(el).visibility })),
@@ -195,7 +216,7 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         folderEditor.dispatchEvent(new FocusEvent('blur'))
         await until(() => !document.querySelector('[data-path="' + folder + '"] [contenteditable]'))
         if (!service.folders.paths.includes(folder)) throw Error('Empty rename removed the folder name')
-        return JSON.stringify(true)
+        return JSON.stringify({ passed: true, scopeBeforeFocus, scopeBeforeF2 })
       } finally {
         service.tree.cancelRename()
         document.querySelector('.abele-chat-tree')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
@@ -213,7 +234,9 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
     })()`,
         120_000
       )
-      expect(JSON.parse(result)).toBe(true)
+      const { passed, scopeBeforeFocus, scopeBeforeF2 } = JSON.parse(result)
+      console.log('Chat tree keyboard scopes:', { scopeBeforeFocus, scopeBeforeF2 })
+      expect(passed).toBe(true)
     }
     await run(onPhone() ? 'phone' : 'desktop')
     if (!onPhone()) await withEmulatedPhone(() => run('emulated-phone'))
