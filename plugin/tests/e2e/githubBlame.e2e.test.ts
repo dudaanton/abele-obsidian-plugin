@@ -170,6 +170,7 @@ describe.skipIf(!available)('file blame on a phone', () => {
       count: number
       togglePinned: boolean
       toggleHit: boolean
+      toggleObstruction: string | null
       toggledOff: boolean
     }>(`(async () => {
       ${PRELUDE}
@@ -200,6 +201,7 @@ describe.skipIf(!available)('file blame on a phone', () => {
       const box = toggle.getBoundingClientRect()
       const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
       report.toggleHit = toggle === hit || toggle.contains(hit)
+      report.toggleObstruction = report.toggleHit ? null : hit?.outerHTML.slice(0, 500) ?? 'No hit'
       const shot = ${JSON.stringify(`${SHOTS}/github-blame-sticky.png`)}
       if (window.__e2eHost) await window.__e2eHost.shot(shot)
       else {
@@ -214,7 +216,7 @@ describe.skipIf(!available)('file blame on a phone', () => {
     expect(report.lateRange).toBe(true)
     expect(report.count).toBeLessThan(100)
     expect(report.togglePinned).toBe(true)
-    expect(report.toggleHit).toBe(true)
+    expect(report.toggleHit, report.toggleObstruction ?? undefined).toBe(true)
     expect(report.toggledOff).toBe(true)
   })
 })

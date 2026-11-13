@@ -7,6 +7,14 @@ function css(component: string): string {
   return compileString(source.match(/<style lang="scss">([\s\S]*?)<\/style>/)![1]).css
 }
 
+it('gives teleported file actions a layout box inside the sticky header', () => {
+  const glyphs = css('github/GithubHeader').match(
+    /\.abele-github-header__page-glyphs\s*\{([^}]+)\}/
+  )?.[1]
+  expect(glyphs).toContain('display: inline-flex')
+  expect(glyphs).toContain('flex-shrink: 0')
+})
+
 it('pins file actions together with the breadcrumb over an opaque theme background', () => {
   const header = css('github/GithubHeader').match(
     /\.abele-github-header\.abele-github-header_file\s*\{([^}]+)\}/

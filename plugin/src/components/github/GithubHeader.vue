@@ -243,7 +243,10 @@ const stateTone = (state: string) =>
 <style lang="scss">
 // A page's own glyphs stand in the row as its siblings do.
 .abele-github-header__page-glyphs {
-  display: contents;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: inherit;
 }
 
 // A file or folder pins just its path. The header has no containing box here, so the
