@@ -1651,12 +1651,19 @@ export class TokenEngineRuntime
               return this.prepareScanUpload
             if (name === Symbol.for('abele.sync.finish-scan-uploads-v1'))
               return async () => {
-                await this.localContentScan.finish()
+                // Discovery cancellation must not bypass native upload settlement:
+                // its failure belongs to this pass, never the next prepare/recovery.
+                let failure: unknown
+                try {
+                  await this.localContentScan.finish()
+                } catch (error) {
+                  failure = error
+                }
                 await Promise.all(this.scanUploads)
-                const error = this.scanUploadFailure
+                failure ??= this.scanUploadFailure
                 this.scanUploadFailure = undefined
                 this.scanUploadPrimed = false
-                if (error) throw error
+                if (failure) throw failure
               }
             if (name === Symbol.for('abele.sync.upload-owner-v1'))
               return (path: string) => options.uploadAllowed?.(path) ?? true
