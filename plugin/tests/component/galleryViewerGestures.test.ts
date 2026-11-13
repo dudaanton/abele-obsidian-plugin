@@ -3,6 +3,10 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import GalleryViewer from '@/components/GalleryViewer.vue'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { buildFakeVault } from '../helpers/fakeVault'
+import { openImageInk } from '@/drawing/files'
+import { ShellModal } from '@/modal/ShellModal'
+
+vi.mock('@/drawing/files', () => ({ openImageInk: vi.fn() }))
 
 let wrapper: VueWrapper | undefined
 const images = [0, 1].map((i) => ({
@@ -24,6 +28,38 @@ async function open() {
   await flushPromises()
   return wrapper
 }
+
+it('waits for the viewer backdrop to close before opening the crop editor', async () => {
+  ;(GlobalStore.getInstance() as any)._app = buildFakeVault([{ path: 'sample.png', content: '' }])
+  let finish!: () => void
+  vi.spyOn(ShellModal, 'whenClosed').mockReturnValue(
+    new Promise<void>((resolve) => {
+      finish = resolve
+    })
+  )
+  wrapper = mount(GalleryViewer, {
+    props: {
+      images: [{ url: 'app://sample.png', path: 'sample.png', alt: '', type: 'local' }],
+      startIndex: 0,
+      galleryFilePath: '',
+    },
+    global: { stubs: { teleport: true, ObsidianModal: { template: '<div><slot /></div>' } } },
+  })
+  await flushPromises()
+  await wrapper.get('[aria-label="Crop, turn or mirror this picture"]').trigger('click')
+  expect(wrapper.emitted('close')).toHaveLength(1)
+  expect(openImageInk).not.toHaveBeenCalled()
+  finish()
+  await flushPromises()
+  expect(openImageInk).toHaveBeenCalledWith(
+    expect.anything(),
+    'sample.png',
+    undefined,
+    null,
+    undefined,
+    true
+  )
+})
 
 it('keeps arrow-key navigation, wraps around and closes on Escape', async () => {
   const viewer = await open()

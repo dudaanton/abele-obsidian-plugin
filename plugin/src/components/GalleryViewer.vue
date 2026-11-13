@@ -99,7 +99,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { externalLinkPath, recordExternalOpening } from '@/sync/external/fileAccess'
 import { FileSystemAdapter, Menu, Notice, Platform, TFile } from 'obsidian'
 import { request as requestUrl } from '@/helpers/http'
@@ -115,6 +115,7 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 import { vaultUrl } from '@/helpers/vaultUrl'
 import { openImageInk } from '@/drawing/files'
 import { isDrawable } from '@/drawing/pictureEntries'
+import { ShellModal } from '@/modal/ShellModal'
 
 import type { ViewerImage } from '@/helpers/viewerImage'
 export type { ViewerImage } from '@/helpers/viewerImage'
@@ -194,11 +195,15 @@ const facts = computed(() =>
 const drawable = computed(() => !props.snapshot && isLocal.value && isDrawable(resolveFile()))
 
 // One editor for both: cropping opens it with the frame in hand, drawing with the pen.
-function drawOnImage(crop = false) {
+async function drawOnImage(crop = false) {
   const file = resolveFile()
   if (!file) return
   close()
-  void openImageInk(
+  // Closing unmounts the Vue shell on the next tick; the native backdrop then animates
+  // out. Do not put an active editor behind that still-interactive backdrop.
+  await nextTick()
+  await ShellModal.whenClosed()
+  await openImageInk(
     GlobalStore.getInstance().app,
     file.path,
     props.chatId,
