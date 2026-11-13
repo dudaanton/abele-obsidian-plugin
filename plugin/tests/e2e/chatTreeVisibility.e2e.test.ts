@@ -151,7 +151,15 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         await until(() => files[0].basename === 'Manually chosen sample')
         if (!reopened.manualTitle.value) throw Error('Manual title is not protected')
         chatRow().dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }))
-        await until(editor, 'Keyboard rename after commit')
+        try { await until(editor, 'Keyboard rename after commit') } catch (error) {
+          throw Error(error.message + ' ' + JSON.stringify({
+            renaming: service.tree.renaming.value,
+            row: chatRow()?.outerHTML,
+            focus: document.activeElement?.outerHTML,
+            menus: [...document.querySelectorAll('.menu')].map(el => ({ style: el.getAttribute('style'), display: getComputedStyle(el).display, visibility: getComputedStyle(el).visibility })),
+            sheets: [...document.querySelectorAll('.modal')].map(el => ({ style: el.getAttribute('style'), rect: el.getBoundingClientRect().toJSON() })),
+          }))
+        }
         editor().textContent = 'Discarded sample'
         editor().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
         await until(() => !editor())

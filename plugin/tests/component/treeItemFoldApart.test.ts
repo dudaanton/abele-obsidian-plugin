@@ -3,6 +3,26 @@ import { mount } from '@vue/test-utils'
 import TreeItem from '@/components/obsidian/TreeItem.vue'
 
 describe('independent tree disclosure', () => {
+  it.each(['Enter', 'Escape'])(
+    'returns focus to the row before %s removes its editor',
+    async (key) => {
+      const row = mount(TreeItem, {
+        attachTo: document.body,
+        props: { text: 'Sample name', renaming: true },
+      })
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        const editor = row.get('[contenteditable]').element
+        expect(document.activeElement).toBe(editor)
+        editor.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+        expect(document.activeElement).toBe(row.get('.tree-item-self').element)
+        expect(row.emitted('rename') ?? []).toEqual(key === 'Enter' ? [['Sample name']] : [])
+        expect(row.emitted('rename-cancel') ?? []).toEqual(key === 'Escape' ? [[]] : [])
+      } finally {
+        row.unmount()
+      }
+    }
+  )
   it('ignores a delayed blur from a removed editor after another rename starts', async () => {
     const row = mount(TreeItem, {
       attachTo: document.body,

@@ -164,19 +164,26 @@ const glyph = ref<HTMLElement>()
 const renameReady = ref(false)
 const renameText = ref(props.text)
 let renameFinished = false
-const finishRename = (event?: FocusEvent) => {
+const focusRow = () => {
+  editor.value?.closest<HTMLElement>('.tree-item-self')?.focus({ preventScroll: true })
+}
+const finishRename = (event?: FocusEvent, returnFocus = false) => {
   // A native blur can arrive after its editor was removed and another rename started.
   // Only the current editor can finish the current attempt.
   if (!props.renaming || (event && event.target !== editor.value)) return
   if (renameFinished) return
   renameFinished = true
   const name = editor.value?.textContent?.trim()
+  // Move focus before emitting: removing a focused editable lets the host restore
+  // focus later, which can blur the next editor when another rename starts quickly.
+  if (returnFocus) focusRow()
   if (name) emit('rename', name)
   else emit('rename-cancel')
 }
 const cancelRename = () => {
   if (renameFinished) return
   renameFinished = true
+  focusRow()
   emit('rename-cancel')
 }
 // The host's document keymap handles Enter before an editable row hears it.
@@ -186,7 +193,7 @@ const renameKey = (event: KeyboardEvent) => {
   if (event.key !== 'Enter' && event.key !== 'Escape') return
   event.preventDefault()
   event.stopImmediatePropagation()
-  if (event.key === 'Enter') finishRename()
+  if (event.key === 'Enter') finishRename(undefined, true)
   else cancelRename()
 }
 let renameWindow: Window | null = null
