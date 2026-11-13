@@ -1655,8 +1655,12 @@ export class TokenEngines {
     if (this.closed) return
     const previous = this.progressStates.get(id)
     this.progressStates.set(id, status.state)
+    const runtime = this.live.get(id)
     const publish = () => {
-      void this.changed(id, status, report).catch((error) => this.failed(id, error))
+      if (this.live.get(id) !== runtime) return
+      void this.changed(id, status, report).catch((error) => {
+        if (this.live.get(id) === runtime) this.failed(id, error)
+      })
     }
     if (!report && status.state === 'syncing' && previous === 'syncing')
       this.ui.queueProgress(id, publish)
@@ -1700,7 +1704,18 @@ export class TokenEngines {
     const classification = this.offloadPorts.get(id)?.classification()
     if (classification) activity.classification = classification
     if (runtime) this.refreshNotSynced(id, runtime)
-    const unsent = status.state === 'offline' ? await runtime?.pendingLocalDetails() : undefined
+    let unsent: Awaited<ReturnType<TokenEngineRuntime['pendingLocalDetails']>> | undefined
+    if (status.state === 'offline') {
+      try {
+        unsent = await runtime?.pendingLocalDetails()
+      } catch (error) {
+        // An offline inventory may outlive a retry or host rebuild. Its failure
+        // belongs to that observation, never the replacement connection/pass.
+        if (this.closed || this.live.get(id) !== runtime || this.activityEpoch.get(id) !== epoch)
+          return
+        throw error
+      }
+    }
     if (unsent) activity.pending = unsent.count
     const publications = this.live.get(id)?.publications() ?? []
     activity.pending = (activity.pending ?? 0) + publications.length

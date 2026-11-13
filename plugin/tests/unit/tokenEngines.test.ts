@@ -32,6 +32,55 @@ import { connectionLine, connectionTone } from '@/sync/connectionLine'
 import { backgroundActivity } from '@/sync/backgroundActivity'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 
+it.each(['retry', 'replacement', 'current failure'])(
+  'keeps offline inventory failures owned by their %s observation',
+  async (mode) => {
+    const f = inspectionFixture()
+    f.release()
+    let reject!: (error: unknown) => void
+    try {
+      await f.ui.connect(f.encoded)
+      const id = f.registry.records()[0].id
+      await f.ui.sync(id)
+      const live = Reflect.get(f.host, 'live') as Map<string, TokenEngineRuntime>
+      const old = live.get(id)!
+      vi.spyOn(old, 'pendingLocalDetails').mockReturnValueOnce(
+        new Promise((_resolve, fail) => {
+          reject = fail
+        })
+      )
+      Reflect.get(f.host, 'progressChanged').call(f.host, id, {
+        ...old.engine.status,
+        state: 'offline',
+        lastError: 'Sample network interruption',
+      })
+      expect(reject).toBeTypeOf('function')
+      if (mode === 'replacement') {
+        await Reflect.get(f.host, 'engines').reset()
+        f.host.start()
+        await Reflect.get(f.host, 'engines').settled()
+      }
+      if (mode !== 'current failure') await f.ui.sync(id)
+      const replacement = live.get(id)!
+      if (mode === 'replacement') expect(replacement).not.toBe(old)
+      reject(new DOMException('Sample retired scan cancelled', 'AbortError'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(replacement.engine.status.lastError).toBeNull()
+      if (mode === 'current failure') {
+        expect(f.registry.records()[0].status).toBe('error')
+        expect(f.ui.activity.value[id]?.failure).toMatchObject({ kind: 'AbortError' })
+        return
+      }
+      expect(f.registry.records()[0].status).toBe('idle')
+      expect(f.ui.activity.value[id]?.error).toBeUndefined()
+      expect(f.ui.activity.value[id]?.failure).toBeUndefined()
+    } finally {
+      reject?.(new DOMException('Sample cleanup', 'AbortError'))
+      await f.host.close()
+    }
+  }
+)
+
 it('shows the missing-folder safety stop when both shared items become paused at startup', async () => {
   const f = inspectionFixture()
   try {
