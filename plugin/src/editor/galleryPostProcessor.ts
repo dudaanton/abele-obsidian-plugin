@@ -241,6 +241,10 @@ class GalleryRenderChild extends MarkdownRenderChild {
   ) {
     super(containerEl)
   }
+  onload(): void {
+    const list = GlobalStore.getInstance().galleriesContainers.value
+    if (!list.includes(this.gallery)) list.push(this.gallery)
+  }
   onunload(): void {
     const list = GlobalStore.getInstance().galleriesContainers.value
     const at = list.indexOf(this.gallery)

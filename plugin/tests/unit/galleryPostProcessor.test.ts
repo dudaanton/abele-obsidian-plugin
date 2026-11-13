@@ -21,7 +21,7 @@ interface Section {
   lineEnd: number
 }
 
-let children: Array<{ onunload(): void }>
+let children: Array<{ onload(): void; onunload(): void }>
 
 function context(sourcePath = 'Notes/A.md', section: Section | null = null) {
   children = []
@@ -30,7 +30,7 @@ function context(sourcePath = 'Notes/A.md', section: Section | null = null) {
     docId: 'd',
     frontmatter: null,
     getSectionInfo: () => section,
-    addChild: (child: { onunload(): void }) => {
+    addChild: (child: { onload(): void; onunload(): void }) => {
       children.push(child)
       return child
     },
@@ -253,6 +253,21 @@ describe('a whole document, as MarkdownRenderer hands it over', () => {
 
     children[0].onunload()
 
+    expect(galleries()).toHaveLength(0)
+  })
+
+  it('registers the retained mount again when its render child reloads', () => {
+    const el = render(`<p>::abele-gallery::<br>${EMBED('sample-a.png')}</p>`)
+    galleryPostProcessor(el, context())
+    const gallery = galleries()[0]
+    children[0].onunload()
+    expect(galleries()).toHaveLength(0)
+    children[0].onload()
+    children[0].onload()
+    expect(galleries()).toHaveLength(1)
+    expect(galleries()[0]).toBe(gallery)
+    expect(el.querySelector('[data-gallery-id]')).not.toBeNull()
+    children[0].onunload()
     expect(galleries()).toHaveLength(0)
   })
 
