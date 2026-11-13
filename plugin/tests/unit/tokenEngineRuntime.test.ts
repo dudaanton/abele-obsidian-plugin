@@ -455,6 +455,13 @@ it('continues deferred content after idle and cancels its background timer on in
     await one.runtime.sync()
     const content = Reflect.get(one.runtime, 'localContentScan')
     Reflect.get(content, 'deferred').add('Notes/pending.md')
+    expect(one.runtime.statusWithQuiet().state).toBe('syncing')
+    expect(
+      one.runtime.statusWithQuiet({ ...one.runtime.engine.status, state: 'paused' }).state
+    ).toBe('paused')
+    expect(
+      one.runtime.statusWithQuiet({ ...one.runtime.engine.status, state: 'offline' }).state
+    ).toBe('offline')
     expect(one.runtime.statusWithQuiet().pending).toBeGreaterThan(0)
     const sync = vi.spyOn(one.runtime, 'sync').mockResolvedValue(undefined)
     Reflect.get(one.runtime, 'scheduleLocalContent').call(one.runtime)

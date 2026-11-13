@@ -256,6 +256,9 @@ export class TokenEngineRuntime
     )
     return {
       ...status,
+      ...(status.state === 'idle' && this.localContentScan.pending
+        ? { state: 'syncing' as const }
+        : {}),
       ...(this.fatalFailure !== undefined && !this.userPaused
         ? { state: 'error' as const, lastError: connectionError(this.fatalFailure) }
         : {}),
