@@ -3,6 +3,31 @@ import { mount } from '@vue/test-utils'
 import TreeItem from '@/components/obsidian/TreeItem.vue'
 
 describe('independent tree disclosure', () => {
+  it('ignores a delayed blur from a removed editor after another rename starts', async () => {
+    const row = mount(TreeItem, {
+      attachTo: document.body,
+      props: { text: 'Sample name', renaming: true },
+    })
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      const previous = row.get('[contenteditable]').element
+      previous.textContent = 'First name'
+      previous.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      await row.setProps({ text: 'First name', renaming: false })
+      await row.setProps({ renaming: true })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      const current = row.get('[contenteditable]').element
+      expect(current).not.toBe(previous)
+      previous.dispatchEvent(new FocusEvent('blur'))
+      expect(row.emitted('rename')).toEqual([['First name']])
+      expect(row.emitted('rename-cancel')).toBeUndefined()
+      current.textContent = 'Second name'
+      current.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      expect(row.emitted('rename')).toEqual([['First name'], ['Second name']])
+    } finally {
+      row.unmount()
+    }
+  })
   it('waits for its containing sheet spring before exposing the rename editor', async () => {
     const modal = document.createElement('div')
     modal.className = 'modal'

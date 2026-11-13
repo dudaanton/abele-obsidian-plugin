@@ -16,7 +16,7 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
       ${modalMotion}
       const service = window.__abeleTest.ChatService.getInstance()
       const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
-      const until = async fn => { for (let i = 0; i < 150; i++) { if (fn()) return; await wait(50) } throw Error('Visibility state did not appear: ' + fn) }
+      const until = async (fn, phase = 'Visibility') => { for (let i = 0; i < 150; i++) { if (fn()) return; await wait(50) } throw Error(phase + ' state did not appear: ' + fn) }
       const folder = 'Synthetic visibility collection'
       if (service.folders.paths.includes(folder)) throw Error('Fixture folder already exists')
       const prior = service.activeTabId.value
@@ -131,7 +131,7 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         eventAt(chatRow(), 'contextmenu')
         await until(() => document.querySelector('.menu'))
         action('Rename…')
-        await until(() => document.querySelector('[data-chat="' + reopened.id + '"] [contenteditable]'))
+        await until(() => document.querySelector('[data-chat="' + reopened.id + '"] [contenteditable]'), 'Row-menu rename')
         const editor = () => document.querySelector('[data-chat="' + reopened.id + '"] [contenteditable]')
         if (document.getSelection().toString() !== reopened.chatTitle.value) throw Error('Rename did not select the whole name')
         if (chatRow().querySelector('time, .tree-item-flair-outer')) throw Error('Rename kept row codes or actions')
@@ -151,7 +151,7 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         await until(() => files[0].basename === 'Manually chosen sample')
         if (!reopened.manualTitle.value) throw Error('Manual title is not protected')
         chatRow().dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }))
-        await until(editor)
+        await until(editor, 'Keyboard rename after commit')
         editor().textContent = 'Discarded sample'
         editor().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
         await until(() => !editor())

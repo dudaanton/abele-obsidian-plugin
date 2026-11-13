@@ -164,7 +164,10 @@ const glyph = ref<HTMLElement>()
 const renameReady = ref(false)
 const renameText = ref(props.text)
 let renameFinished = false
-const finishRename = () => {
+const finishRename = (event?: FocusEvent) => {
+  // A native blur can arrive after its editor was removed and another rename started.
+  // Only the current editor can finish the current attempt.
+  if (!props.renaming || (event && event.target !== editor.value)) return
   if (renameFinished) return
   renameFinished = true
   const name = editor.value?.textContent?.trim()
