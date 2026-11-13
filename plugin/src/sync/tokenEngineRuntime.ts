@@ -324,6 +324,7 @@ export class TokenEngineRuntime
       if (!this.active || generation !== this.startupIdleGeneration) return
       if (this.engine.status.state !== 'idle') return
       if (!this.startupReportComplete) return
+      if (this.localContentScan.pending) return
       // A held deletion is a pending decision, even when the exchange itself is quiet.
       if ((this.engine.status.heldDeletes ?? 0) > 0) return
       if (this.quiet.pending) {
@@ -3024,7 +3025,19 @@ export class TokenEngineRuntime
         this.fatalFailure = undefined
         this.engine.resume()
       }
-      await this.syncThroughReviews(retryHeld)
+      do {
+        await this.syncThroughReviews(retryHeld)
+        if (this.runFailure !== undefined) break
+        // A bounded discovery pass is not a completed first upload. Join its
+        // continuation while this connection can read, retaining the per-pass
+        // cancellation, checkpoints and incoming-transfer priority.
+      } while (
+        this.active &&
+        !this.userPaused &&
+        this.engine.status.state === 'idle' &&
+        this.localContentScan.pending &&
+        this.discoveryPriority.available
+      )
       if (this.runFailure !== undefined && !this.yieldedForReview(this.runFailure))
         throw this.runFailure
       await this.outbox.drain(retryHeld)

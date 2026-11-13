@@ -524,7 +524,9 @@ it.each(['confirm', 'restore'] as const)(
         startupMark: (phase) => marks.push(phase),
       })
       await one.runtime.start()
-      await one.runtime.sync()
+      // Join one bounded engine exchange, leaving its continuation to the timer.
+      // The public sync call now joins discovery through to completion itself.
+      await one.runtime.engine.sync()
       const content = Reflect.get(one.runtime, 'localContentScan')
       expect(content.pending).toBe(true)
       expect(await one.runtime.heldDeletes()).toEqual(held)
@@ -556,6 +558,32 @@ it.each(['confirm', 'restore'] as const)(
     }
   }
 )
+
+it('waits for deferred discovery before publishing startup idle without deletion holds', async () => {
+  vi.useFakeTimers()
+  const wire = await server('Notes/sample.md', 'remote')
+  const marks: string[] = []
+  const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+    startupMark: (phase) => marks.push(phase),
+  })
+  try {
+    await one.runtime.start()
+    await one.runtime.engine.sync()
+    // Model the boundary after a bounded pass: core is idle, host work remains.
+    const content = Reflect.get(one.runtime, 'localContentScan')
+    Reflect.get(content, 'deferred').add('Notes/pending.md')
+    expect(await one.runtime.heldDeletes()).toEqual([])
+    await vi.advanceTimersByTimeAsync(500)
+    expect(marks).not.toContain('idle')
+    await one.runtime.sync()
+    await vi.advanceTimersByTimeAsync(500)
+    expect(content.pending).toBe(false)
+    expect(marks).toContain('idle')
+  } finally {
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
 
 it('marks construction, reconciliation and first idle from the running engine', async () => {
   vi.useFakeTimers()

@@ -166,6 +166,9 @@ export class ProgressiveLocalScan {
               this.deferred.add(info.path)
               return true
             }
+            // Native streaming sources retain the full first-upload inventory.
+            // Incoming transfers still get priority through the admission above.
+            if (Reflect.get(target, Symbol.for('abele.sync.scan-upload-source-v1'))) return false
             if (this.failed.has(info.path)) {
               this.deferred.delete(info.path)
               return false
