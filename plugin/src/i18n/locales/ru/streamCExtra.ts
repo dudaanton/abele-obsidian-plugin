@@ -1820,4 +1820,8 @@ export const extra = {
     many: '{size} · {count} строк',
     other: '{size} · {count} строки',
   },
+  'sync.deleteSafetyInstallation': 'Проверяем локальные записи установки.',
+  'sync.deleteSafetyRetained': 'Проверяем сохранённые данные восстановления.',
+  'sync.deleteSafetyListing': 'Собираем список локальных файлов для проверки восстановления.',
+  'sync.deleteSafetyClassification': 'Проверяем локальные маркеры восстановления.',
 } as const

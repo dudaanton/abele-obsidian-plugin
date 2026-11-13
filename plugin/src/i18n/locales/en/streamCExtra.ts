@@ -1749,4 +1749,8 @@ export const extra = {
     one: '{size} · {count} lines',
     other: '{size} · {count} lines',
   },
+  'sync.deleteSafetyInstallation': 'Checking local installation records.',
+  'sync.deleteSafetyRetained': 'Checking retained recovery bytes.',
+  'sync.deleteSafetyListing': 'Listing local files for recovery checks.',
+  'sync.deleteSafetyClassification': 'Checking local recovery markers.',
 } as const

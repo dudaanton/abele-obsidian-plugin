@@ -1786,4 +1786,8 @@ export const extra = {
     one: '{size} · {count} rinda',
     other: '{size} · {count} rindas',
   },
+  'sync.deleteSafetyInstallation': 'Pārbauda lokālos instalēšanas ierakstus.',
+  'sync.deleteSafetyRetained': 'Pārbauda saglabātos atkopšanas datus.',
+  'sync.deleteSafetyListing': 'Izveido lokālo failu sarakstu atkopšanas pārbaudēm.',
+  'sync.deleteSafetyClassification': 'Pārbauda lokālos atkopšanas marķierus.',
 } as const

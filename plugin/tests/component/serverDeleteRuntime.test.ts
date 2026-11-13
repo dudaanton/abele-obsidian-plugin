@@ -6,6 +6,54 @@ import { serverDeleteFailure } from '@/components/sync/serverDelete'
 import { flushPromises, mount } from '@vue/test-utils'
 import ServerDeleteModal from '@/components/sync/ServerDeleteModal.vue'
 import { ExternalRecoveryRequired } from '@/sync/external/recovery'
+import { projectionEvidence } from '@/sync/external/pluginSafety'
+import { useVault } from '../helpers/testEnv'
+
+it('reports the server error after safety checks without treating retained archives as live projections', async () => {
+  const app = useVault([
+    { path: 'Notes/sample.md', content: 'ordinary' },
+    {
+      path: '.abele-sync/connections/previous/retained-removals/sample/victim',
+      content: '{"format":"abele.external"}',
+    },
+  ])
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  ui.connectionChangeGuard = async () => {
+    if (await projectionEvidence(app as never)) throw new ExternalRecoveryRequired()
+  }
+  const remove = vi.fn().mockRejectedValue(new TypeError('network unavailable'))
+  vi.spyOn(ui, 'client').mockReturnValue({ deleteScope: remove } as unknown as V2Client)
+  const failure = await ui.deleteFromServer(id).catch((error) => error)
+  expect(remove).toHaveBeenCalledOnce()
+  expect(serverDeleteFailure('sync.example', failure)).toBe(
+    'No answer from sync.example. It may already be deleted: Try again to find out.'
+  )
+  expect(ui.registry.records().some((row) => row.id === id)).toBe(true)
+  expect(await app.vault.adapter.read('Notes/sample.md')).toBe('ordinary')
+})
+
+it('names the recovery-marker inspection when deletion must wait for local evidence', async () => {
+  const ui = tokenUiFixture(),
+    id = ui.rows.value[0].id
+  ui.runtimeStopLimitMs = 10
+  let release!: () => void
+  ui.connectionChangeGuard = async (_id, _assert, _scope, phase) => {
+    phase?.('classification')
+    await new Promise<void>((resolve) => {
+      release = resolve
+    })
+  }
+  const remove = vi.fn()
+  vi.spyOn(ui, 'client').mockReturnValue({ deleteScope: remove } as unknown as V2Client)
+  try {
+    const error = await ui.deleteFromServer(id).catch((error) => error)
+    expect(serverDeleteFailure('sync.example', error)).toContain('Checking local recovery markers')
+    expect(remove).not.toHaveBeenCalled()
+  } finally {
+    release()
+  }
+})
 
 it.each([
   new Error('sample-response-bytes'),

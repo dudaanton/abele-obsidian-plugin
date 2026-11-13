@@ -3,7 +3,7 @@ import { SyncCancelled } from '@abele/sync-sdk/core'
 import { settingsSyncText } from '@/i18n/settingsSync'
 import { STARTUP_STOP } from './startupSafety'
 import { ActivityHistory, type ConnectionEvents } from './activityHistory'
-import { ServerDeleteWait } from '@/components/sync/serverDelete'
+import { ServerDeleteWait, type DeletionSafetyPhase } from '@/components/sync/serverDelete'
 import { t } from '@/i18n'
 import { englishSyncText, type SyncText } from './presentation'
 import { MobileWholeReadLimitError } from './mobileWholeRead'
@@ -391,7 +391,8 @@ export class TokenUi {
   connectionChangeGuard: (
     id?: string,
     assertCurrent?: () => void,
-    scope?: V2Scope
+    scope?: V2Scope,
+    phase?: (phase: DeletionSafetyPhase) => void
   ) => Promise<void> = async () => {}
   localOnlyChanged: () => void = () => {}
   forgetMissingKeptCopy: (path: string) => Promise<void> = async () => {}
@@ -410,6 +411,7 @@ export class TokenUi {
   }
   private readonly deletionStops = new Map<string, Promise<void>>()
   private readonly deletionGuards = new Map<string, Promise<void>>()
+  private readonly deletionSafetyPhases = new Map<string, DeletionSafetyPhase>()
   private readonly deletionDisconnects = new Map<string, Promise<void>>()
   /** How long a deletion waits before returning a retryable failure. */
   runtimeStopLimitMs = 15000
@@ -1294,11 +1296,18 @@ export class TokenUi {
       let checking = this.deletionGuards.get(id)
       if (checking === undefined) {
         checking = Promise.resolve()
-          .then(() => this.connectionChangeGuard(id, assertCurrent))
-          .finally(() => this.deletionGuards.delete(id))
+          .then(() =>
+            this.connectionChangeGuard(id, assertCurrent, undefined, (phase) =>
+              this.deletionSafetyPhases.set(id, phase)
+            )
+          )
+          .finally(() => {
+            this.deletionGuards.delete(id)
+            this.deletionSafetyPhases.delete(id)
+          })
         this.deletionGuards.set(id, checking)
       }
-      await this.waitForDeletion(checking, 'safety')
+      await this.waitForDeletion(checking, 'safety', () => this.deletionSafetyPhases.get(id))
       assertCurrent()
       if (!attempt.result) {
         requesting()
@@ -1343,7 +1352,8 @@ export class TokenUi {
   }
   private async waitForDeletion(
     work: Promise<void>,
-    stage: 'stop' | 'safety' | 'disconnect'
+    stage: 'stop' | 'safety' | 'disconnect',
+    phase?: () => DeletionSafetyPhase | undefined
   ): Promise<void> {
     let timer: number | undefined
     try {
@@ -1352,7 +1362,7 @@ export class TokenUi {
         new Promise<never>((_, reject) => {
           timer = window.setTimeout(() => {
             console.debug('[Abele Sync] Server deletion is waiting', stage)
-            reject(new ServerDeleteWait(stage))
+            reject(new ServerDeleteWait(stage, phase?.()))
           }, this.runtimeStopLimitMs)
         }),
       ])

@@ -1795,4 +1795,8 @@ export const extra = {
     one: '{size} · {count} Zeile',
     other: '{size} · {count} Zeilen',
   },
+  'sync.deleteSafetyInstallation': 'Lokale Installationsdatensätze werden geprüft.',
+  'sync.deleteSafetyRetained': 'Aufbewahrte Wiederherstellungsdaten werden geprüft.',
+  'sync.deleteSafetyListing': 'Lokale Dateien werden für Wiederherstellungsprüfungen aufgelistet.',
+  'sync.deleteSafetyClassification': 'Lokale Wiederherstellungsmarkierungen werden geprüft.',
 } as const

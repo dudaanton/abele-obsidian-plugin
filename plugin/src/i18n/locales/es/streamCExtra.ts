@@ -1817,4 +1817,9 @@ export const extra = {
     other: '{size} · {count} líneas',
     many: '{size} · {count} líneas',
   },
+  'sync.deleteSafetyInstallation': 'Se están comprobando los registros de instalación locales.',
+  'sync.deleteSafetyRetained': 'Se están comprobando los datos de recuperación conservados.',
+  'sync.deleteSafetyListing':
+    'Se están enumerando los archivos locales para las comprobaciones de recuperación.',
+  'sync.deleteSafetyClassification': 'Se están comprobando los marcadores de recuperación locales.',
 } as const

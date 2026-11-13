@@ -295,8 +295,9 @@ export class TokenEngines {
         assertCurrent()
       }
     }
-    ui.connectionChangeGuard = async (id, assertCurrent = () => {}, scope) => {
+    ui.connectionChangeGuard = async (id, assertCurrent = () => {}, scope, phase) => {
       assertCurrent()
+      phase?.('installation')
       if (this.closed) throw new Error('Connection host closed; recovery required')
       if (!id) {
         // A new connection owns no durable recovery work yet.
@@ -381,8 +382,12 @@ export class TokenEngines {
             store.close()
           }
         }
-        if (deleting) await settleStoppedInstallationsForDeletion(scopedApp, stopped)
+        if (deleting) {
+          phase?.('retained')
+          await settleStoppedInstallationsForDeletion(scopedApp, stopped)
+        }
       }
+      phase?.('retained')
       await requireExternalLifecycleSafety(
         scopedApp,
         factoryOf(this.deps),
@@ -390,7 +395,7 @@ export class TokenEngines {
         true,
         id ? this.ui.registry.records().find((one) => one.id === id)?.ledgerId : undefined,
         assertCurrent,
-        {},
+        { stage: (label) => phase?.(label === 'Listing the vault' ? 'listing' : 'classification') },
         !inspecting,
         false,
         false,

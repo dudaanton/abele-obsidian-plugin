@@ -8,6 +8,44 @@ import { useVault } from '../helpers/testEnv'
 afterEach(() => vi.restoreAllMocks())
 
 describe('bounded persisted external projection inspection', () => {
+  it('keeps private recovery archives out of ordinary vault marker discovery', async () => {
+    const app = useVault([
+      { path: 'Notes/sample.md', content: 'ordinary' },
+      ...Array.from({ length: 256 }, (_, i) => ({
+        path: `.abele-sync/connections/sample/retained-removals/entry-${i}/victim`,
+        content: '{"format":"abele.external"}',
+      })),
+    ])
+    const list = vi.spyOn(app.vault.adapter, 'list')
+    const read = vi.spyOn(app.vault.adapter, 'readBinary')
+    expect(await projectionEvidence(app as never)).toBeNull()
+    expect(list.mock.calls.some(([path]) => path.startsWith('.abele-sync'))).toBe(false)
+    expect(read.mock.calls.map(([path]) => path)).toEqual(['Notes/sample.md'])
+    expect(
+      await projectionEvidence(app as never, () => {}, true, new Set(), {
+        pathsOnly: true,
+        paths: ['.abele-sync/connections/sample/retained-removals/entry-0/victim'],
+      })
+    ).toBe('.abele-sync/connections/sample/retained-removals/entry-0/victim')
+  })
+  it('checks unchanged indexed classification rows without per-file disk checks', async () => {
+    const app = useVault(
+      Array.from({ length: 256 }, (_, i) => ({
+        path: `Notes/sample-${i}.md`,
+        content: 'ordinary',
+        mtime: 1000,
+        ctime: 1000,
+      }))
+    )
+    await projectionEvidence(app as never)
+    const index = vi.spyOn(app.vault, 'getFileByPath')
+    const stat = vi.spyOn(app.vault.adapter, 'stat')
+    const read = vi.spyOn(app.vault.adapter, 'readBinary')
+    expect(await projectionEvidence(app as never)).toBeNull()
+    expect(stat.mock.calls.filter(([path]) => path.endsWith('.md'))).toEqual([])
+    expect(read).not.toHaveBeenCalled()
+    expect(index.mock.calls.length).toBeLessThanOrEqual(256)
+  })
   it('inspects only selected folders and exact group members without reading their neighbours', async () => {
     const app = useVault([
       { path: 'Shared/note.md', content: 'ordinary' },

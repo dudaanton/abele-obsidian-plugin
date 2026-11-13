@@ -3860,6 +3860,19 @@ answers awaiting local settlement (`push-receipt:*`), including their original o
 result and ledger base. Settlement retires the owning answer and retry schedule in one
 transaction. Unreadable scheduling records are retained for review rather than discarded.
 These records are device-local metadata; they are not synced or transferred with a connection.
+Projection classifications are checkpointed per completed inspection in the vault's host
+database, so disconnecting or replacing a connection retains that work. Settled indexed
+inventories enumerate names without reading every file; new untracked content is examined
+in bounded background passes. Tracked edits and explicit file events are not deferred.
+While candidates remain unexamined, the scanner preserves missing tracked identities and
+postpones rename publication rather than inferring deletion from partial content evidence.
+An incomplete content pass preserves existing deletion holds and queued decisions;
+only a complete pass can settle them. Matching durable scan hints count as completed work
+before the cold-file budget is charged, so restart discovery can advance without rereading.
+Cold indexed files use bounded concurrent reads with time-based cooperative yields. A saved
+verified hash matching the current index needs no content read. Index metadata alone cannot
+supply a hash for previously unknown bytes. Private recovery archives are not live vault
+projections: their journal owners and explicit recovery paths retain the independent checks.
 Pull cleanup owners and retained stage aliases commit with the exact ledger update;
 private bytes wait for durable acknowledgement. Cleanup retires owners in a final batch,
 and connection departure drains committed cleanup before dropping its authority.

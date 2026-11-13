@@ -7773,5 +7773,45 @@
     "englishHash": "3cec1a95dd6b8f350048b17c895647f571e46456e7dff9334fb9513b098fa999",
     "context": "Static PDF fallback for viewport-based Bases views",
     "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.deleteSafetyInstallation": {
+    "englishHash": "c88eab1677f94d2a667b19194bf00517f57a86ca90914667ef9bf6ece6188806",
+    "context": "Server deletion safety check phase while preserving local recovery evidence",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deleteSafetyRetained": {
+    "englishHash": "44444919f5703135d105db827947432fc9cefb193e2bb4ba5be08c29123c102f",
+    "context": "Server deletion safety check phase while preserving local recovery evidence",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deleteSafetyListing": {
+    "englishHash": "0223746c3bfda287db319cbbd202dd48bdb05f8a4ec4c77f1eb908abcdefb1b3",
+    "context": "Server deletion safety check phase while preserving local recovery evidence",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deleteSafetyClassification": {
+    "englishHash": "3afc78b26bdfd2a4996d675b3a30b902c4863e3444a431a43efc981d6d151eaf",
+    "context": "Server deletion safety check phase while preserving local recovery evidence",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

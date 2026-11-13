@@ -31,14 +31,22 @@ export const serverDeleteSource = shallowRef<ServerDeleteSource | null>(null)
 export const READ_ONLY =
   'This key can only read. Only someone who can change these files can delete them.'
 
+export type DeletionSafetyPhase = 'installation' | 'retained' | 'listing' | 'classification'
+const safetyPhases = {
+  installation: 'sync.deleteSafetyInstallation',
+  retained: 'sync.deleteSafetyRetained',
+  listing: 'sync.deleteSafetyListing',
+  classification: 'sync.deleteSafetyClassification',
+} as const
 export class ServerDeleteWait extends Error {
-  constructor(stage: 'stop' | 'safety' | 'disconnect') {
+  constructor(stage: 'stop' | 'safety' | 'disconnect', phase?: DeletionSafetyPhase) {
     super(
       (stage === 'stop'
         ? 'Sync is still stopping.'
         : stage === 'safety'
           ? 'Safety check is still running.'
           : 'Local disconnect is still finishing.') +
+        (stage === 'safety' && phase ? ' ' + t(safetyPhases[phase]) : '') +
         ' Local files are kept. Try Delete from the server again.'
     )
   }

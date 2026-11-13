@@ -29,10 +29,11 @@ import {
   cacheableInspectionIdentity,
   projectionInspectionIdentity,
   sameInspectionIdentity,
+  trustedProjectionInspectionIdentity,
   type InspectionEntry,
 } from './inspectionIdentity'
 
-import { CommitOpSchema } from '@abele/sync-sdk/protocol'
+import { CommitOpSchema, caseKey } from '@abele/sync-sdk/protocol'
 import { z } from 'zod'
 import { TokenConnectionRegistry } from '../tokenConnectionRegistry'
 import type { DeviceConnection } from '../connection'
@@ -398,6 +399,10 @@ export async function projectionEvidence(
   const scope = inspection.scope ?? connectionRoot(app)
   const included = (path: string) =>
     (!inspection.pathsOnly || !!inspection.paths?.includes(path)) &&
+    // Private archives are recovery evidence, never live vault projections. Exact
+    // journal-named recovery paths are still inspected below and by their owners.
+    (!(caseKey(path) === '.abele-sync' || caseKey(path).startsWith('.abele-sync/')) ||
+      !!inspection.paths?.includes(path)) &&
     !isDeviceLocalPluginState(path, app.vault.configDir) &&
     (!scope || withinRoot(path, scope)) &&
     (inspection.roots === undefined ||
@@ -504,10 +509,20 @@ export async function projectionEvidence(
     }
     return adapter.readBinary(path) // Stat-bounded portable/mobile candidate only.
   }
+  const task = new SyncTaskBudget()
   const inspect = async (path: string) => {
-    await readOnly(() => assertVaultPath(vaultDisk(app.vault), path))
+    const pause = task.metadataRow(inspection.signal)
+    if (pause) await pause
     if (!includeControl && path === IGNORE_FILE) return
     assertCurrent()
+    const saved = previous.get(path)
+    if (saved && trustedProjectionInspectionIdentity(app, path, saved)) {
+      inventory.set(path, saved)
+      inspected.push(saved)
+      if (saved.marker && !ownedPaths.has(path.normalize('NFC').toLowerCase())) evidence ??= path
+      return
+    }
+    await readOnly(() => assertVaultPath(vaultDisk(app.vault), path))
     const before = await stat(path)
     assertCurrent()
     if (!before || before.type !== 'file') return
