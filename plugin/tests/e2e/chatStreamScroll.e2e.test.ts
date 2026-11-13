@@ -19,6 +19,7 @@
  * Requires Obsidian running with the development build — see docs/Testing.md.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { readingPositionReachable } from './helpers/readerGestureReadiness'
 import {
   evalJson,
   evalLong,
@@ -204,7 +205,12 @@ const script = (phone: boolean) => `(async () => {
     if (!(await until(() => !chatEl.classList.contains('abele-keyboard-open'), 3000))) throw new Error('the composer kept the keyboard up')`
         : ''
     }
-    await wait(200)
+    // The source has arrived, but charts and paragraphs can still be rendering.
+    // A scroll past the current range would silently clamp and never move at all.
+    if (!(await until(() => {
+      const q = reading(el)
+      return q && (${readingPositionReachable.toString()})(el, offset(el, q), READ_AT)
+    }, 5000))) throw new Error('the rendered reply has no room below the reading paragraph')
 
     // The reader takes over and scrolls the paragraph to near the top.
     report.scrollTrace.length = 0

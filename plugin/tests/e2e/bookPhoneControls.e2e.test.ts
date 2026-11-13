@@ -37,6 +37,7 @@ import { shotDir } from './helpers/shots'
 import { evalAsync } from './helpers/githubLive'
 import { WAIT_PRELUDE } from './helpers/wait'
 import { sliderTrackPoint } from './helpers/sliderTrackPoint'
+import { drawersClosed } from './helpers/readerGestureReadiness'
 
 // Adapted for a real phone, not yet green there: see docs/Testing.md, "On a real phone".
 targets('desktop')
@@ -295,7 +296,11 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
         for (const direction of [1, -1]) {
           app.workspace.leftSplit.collapse()
           app.workspace.rightSplit.collapse()
-          await wait(400)
+          // collapsed becomes true before the closing motion removes the backdrop.
+          // Until it leaves, the next touch can hit it rather than the track below.
+          if (!(await until(() => (${drawersClosed.toString()})([
+            app.workspace.leftSplit, app.workspace.rightSplit,
+          ])))) throw new Error('The sidebars did not finish closing before the track swipe')
           const slider = view.contentEl.querySelector('.abele-book-reader__footer input[type=range]')
           const b = slider.getBoundingClientRect(), y = b.top + b.height / 2
           const before = location(), seeks = [], changes = [], emissions = [], relocations = []
@@ -316,7 +321,9 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
             b.left + b.width * (direction === 1 ? 0.1 : 0.9))
           const x1 = direction === 1 ? innerWidth - 8 : 8
           const origin = { x0, x1, sliderLeft: b.left, sliderWidth: b.width,
-            value: Number(slider.value), thumbWidth, thumbCenter, startsOnThumb: Math.abs(x0 - thumbCenter) <= thumbWidth / 2 }
+            value: Number(slider.value), thumbWidth, thumbCenter, startsOnThumb: Math.abs(x0 - thumbCenter) <= thumbWidth / 2,
+            hitTrack: document.elementFromPoint(Math.round(x0), Math.round(y)) === slider }
+          if (!origin.hitTrack) throw new Error('The exposed track is covered before the sidebar swipe')
           await touch('touchStart', [[x0, y]])
           for (let i = 1; i <= 10; i++) {
             await touch('touchMove', [[x0 + (x1 - x0) * i / 10, y]])
