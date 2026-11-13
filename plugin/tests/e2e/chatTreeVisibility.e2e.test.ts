@@ -157,7 +157,7 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
           return scopeIds.get(scope)
         }
         const scopeState = () => {
-          const win = chatRow().ownerDocument.defaultView
+          const win = chatRow()?.ownerDocument.defaultView ?? window
           const stack = app.keymap.getWindowStack?.(win)
           const describe = scope => scope && ({
             id: scopeId(scope), parent: scopeId(scope.parent),
@@ -184,7 +184,11 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         editor().textContent = 'Discarded sample'
         editor().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
         await until(() => !editor())
-        if (reopened.chatTitle.value !== 'Manually chosen sample') throw Error('Escape renamed the chat')
+        if (reopened.chatTitle.value !== 'Manually chosen sample') throw Error('Escape renamed the chat ' + JSON.stringify({
+          title: reopened.chatTitle.value, renaming: service.tree.renaming.value,
+          scopeBeforeFocus, scopeBeforeF2, scopeAfterEscape: scopeState(),
+        }))
+        if (!document.querySelector('.abele-chat-tree')) throw Error('Escape closed the tree instead of cancelling the edit')
         const oldContainer = document.querySelector('.abele-chat-tree').closest('.modal-container')
         document.querySelector('.abele-chat-tree').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
         await until(() => !document.querySelector('.abele-chat-tree'))

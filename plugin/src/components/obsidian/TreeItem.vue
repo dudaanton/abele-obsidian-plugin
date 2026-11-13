@@ -58,7 +58,7 @@
           spellcheck="false"
           @click.stop
           @keydown="renameKey"
-          @blur="finishRename"
+          @blur="blurRename"
           >{{ renameText }}</span
         >
         <span v-else class="abele-tree-item__text">{{ text }}</span>
@@ -179,6 +179,11 @@ const finishRename = (event?: FocusEvent, returnFocus = false) => {
   if (returnFocus) focusRow()
   if (name) emit('rename', name)
   else emit('rename-cancel')
+}
+const blurRename = (event: FocusEvent) => {
+  // A host key handler can blur the editor before Escape reaches it. Let the
+  // rest of this event turn cancel the attempt before treating blur as a commit.
+  queueMicrotask(() => finishRename(event))
 }
 const cancelRename = () => {
   if (renameFinished) return

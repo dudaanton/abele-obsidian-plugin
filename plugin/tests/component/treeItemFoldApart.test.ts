@@ -3,6 +3,28 @@ import { mount } from '@vue/test-utils'
 import TreeItem from '@/components/obsidian/TreeItem.vue'
 
 describe('independent tree disclosure', () => {
+  it.each(['blur-first', 'keydown-first'])(
+    'discards an edit on Escape with %s delivery',
+    async (order) => {
+      const row = mount(TreeItem, {
+        attachTo: document.body,
+        props: { text: 'Original name', renaming: true },
+      })
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        const editor = row.get('[contenteditable]').element
+        editor.textContent = 'Discarded name'
+        if (order === 'blur-first') editor.dispatchEvent(new FocusEvent('blur'))
+        editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        if (order === 'keydown-first') editor.dispatchEvent(new FocusEvent('blur'))
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        expect(row.emitted('rename')).toBeUndefined()
+        expect(row.emitted('rename-cancel')).toEqual([[]])
+      } finally {
+        row.unmount()
+      }
+    }
+  )
   it.each(['Enter', 'Escape'])(
     'returns focus to the row before %s removes its editor',
     async (key) => {

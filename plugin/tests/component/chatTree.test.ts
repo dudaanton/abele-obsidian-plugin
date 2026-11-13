@@ -157,6 +157,59 @@ it('passes F2 outside tree rows to the sheet scope parent', () => {
   expect(noteRename).toHaveBeenCalledTimes(1)
   expect(source.rename).not.toHaveBeenCalled()
 })
+it('cancels the inline edit before the host sheet Escape handler blurs it', async () => {
+  Object.assign(source, { renaming: shallowRef({ kind: 'chat', id: 'sample' }) })
+  source.cancelRename = vi.fn(() => {
+    source.renaming!.value = null
+  })
+  source.rename = vi.fn(() => {
+    source.renaming!.value = null
+  })
+  const scope = new Scope()
+  let active = scope
+  Object.assign(useVault([]), {
+    keymap: {
+      pushScope: (child: Scope) => {
+        active = child
+      },
+      popScope: () => {
+        active = scope
+      },
+    },
+  })
+  const closeSheet = vi.fn(() => {
+    ;(document.activeElement as HTMLElement)?.blur()
+    return false
+  })
+  scope.register([], 'Escape', closeSheet)
+  const hostKey = (event: KeyboardEvent) => {
+    const result = (
+      active as unknown as {
+        handleKey(event: KeyboardEvent, context: { modifiers: string; key: string }): unknown
+      }
+    ).handleKey(event, { modifiers: '', key: event.key })
+    if (result === false) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+  }
+  window.addEventListener('keydown', hostKey, true)
+  const view = show({ keyScope: scope })
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const editor = view.get('[contenteditable]').element
+    editor.textContent = 'Discarded name'
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(source.cancelRename).toHaveBeenCalledTimes(1)
+    expect(source.rename).not.toHaveBeenCalled()
+    expect(closeSheet).not.toHaveBeenCalled()
+    expect(view.find('[contenteditable]').exists()).toBe(false)
+    expect(document.activeElement).toBe(view.get('[data-chat="sample"] > .tree-item-self').element)
+  } finally {
+    window.removeEventListener('keydown', hostKey, true)
+  }
+})
 it('renames chats and folders in the same row editor, including F2 and empty cancellation', async () => {
   Object.assign(source, { renaming: shallowRef(null) })
   source.cancelRename = () => {

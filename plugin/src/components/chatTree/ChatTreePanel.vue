@@ -153,7 +153,25 @@ const focusRowKeys = (event: FocusEvent) => {
   if (!props.keyScope || !(event.target as HTMLElement).closest('.tree-item-self')) return
   // A host menu or workspace focus change can replace the active sheet scope.
   // Use a child scope owned by row focus, leaving the sheet's own lifetime alone.
-  rowKeyScope ??= new Scope(props.keyScope)
+  if (!rowKeyScope) {
+    rowKeyScope = new Scope(props.keyScope)
+    rowKeyScope.register(null, null, (key) => {
+      const target = key.target as HTMLElement
+      if (
+        key.key !== 'Escape' ||
+        key.isComposing ||
+        !target?.matches?.('[contenteditable]') ||
+        !list.value?.contains(target) ||
+        !source.value.renaming?.value
+      )
+        return
+      // Claim Escape before the sheet can close and blur the editor. The host
+      // stops propagation, so the editor's own window listener still cancels
+      // synchronously before a pending blur commit can run.
+      key.preventDefault()
+      return false
+    })
+  }
   GlobalStore.getInstance().app.keymap.pushScope(rowKeyScope)
 }
 const blurRowKeys = (event: FocusEvent) => {
