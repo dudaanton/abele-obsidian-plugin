@@ -282,6 +282,16 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
   let streamingAt = 0, stop = false, touchDown = false, buttonDown = false, keyDown = false
   const records = []
   const trace = []
+  // Keep product corrections on the same clock as native receipt and frame geometry.
+  // Do not read layout in the logging hook: that would change the race being observed.
+  const realDebug = console.debug
+  console.debug = (...args) => {
+    if (phone && size === 'long' && state === 'running-tool' && row?.move === 'to top' &&
+      typeof args[0] === 'string' && args[0].startsWith('[chat-scroll]'))
+      trace.push({ at: performance.now(), gestureIndex, product: args })
+    realDebug.apply(console, args)
+  }
+  let gestureIndex = 0, gestureAnchor = null
   let dragTrace, dragCompletion
   let receivedInputs = 0
   let ignoredInputs = 0
@@ -363,7 +373,14 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
       measureFollowingOrigin?.()
       const viewport = el.getBoundingClientRect()
       trace.push({ at: performance.now(), frameAt: now, gestureActive, move: row.move, scrollTop: el.scrollTop,
-        scrollHeight: el.scrollHeight, direction, anchorOffset: previousAnchor?.isConnected ? offset(previousAnchor) : null })
+        scrollHeight: el.scrollHeight, direction, anchorOffset: previousAnchor?.isConnected ? offset(previousAnchor) : null,
+        ...(phone && size === 'long' && state === 'running-tool' && row.move === 'to top' ? {
+          gestureIndex, fixedAnchorId: gestureAnchor?.dataset.messageId,
+          fixedAnchorOffset: gestureAnchor?.isConnected ? offset(gestureAnchor) : null,
+          firstId: el.querySelector('[data-message-id]')?.dataset.messageId,
+          lastId: [...el.querySelectorAll('[data-message-id]')].at(-1)?.dataset.messageId,
+          olderHeight: el.querySelector('.abele-ai-chat__older')?.getBoundingClientRect().height || 0,
+        } : {}) })
       // Queued sends and status rows are rendered content too. Measuring only message
       // IDs misreported the visible queued-send row as a 33 px empty region.
       const blocks = [...el.children]
@@ -406,6 +423,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
     report.rows.push(row)
   }
   const gesture = async (dy, steps = 12, fast = false) => {
+    gestureIndex++
     const el = box(), rect = el.getBoundingClientRect()
     // The chat gutter avoids scrolling a code/output block's own nested viewport instead.
     const x = rect.left + 8, y = rect.top + rect.height / 2
@@ -422,6 +440,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
       first = el.querySelector('[data-message-id]')?.dataset.messageId
       olderHeight = el.querySelector('.abele-ai-chat__older')?.getBoundingClientRect().height || 0
       anchor = visibleAnchor(); at = anchor ? offset(anchor) : null
+      gestureAnchor = anchor
       room = dy < 0 ? before : el.scrollHeight - el.clientHeight - before
       endAtStart = !!item(session.messages.value.at(-1)?.id)
     }
@@ -485,7 +504,19 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
       room < Math.abs(dy) && moved >= room - 2
     const globalBoundary = dy < 0 ? !!item('m0') && el.scrollTop < 1 :
       coveredInitialEnd || !!boundaryGeometry || (!!item(session.messages.value.at(-1)?.id) && el.scrollHeight - el.scrollTop - el.clientHeight < 2)
-    ;(row.gestures ||= []).push({ dy, fast, room, before, after: el.scrollTop, globalBoundary,
+    // Inspect candidate row/header heights outside the active gesture, only for
+    // the failing focused state. This distinguishes actual layout increments
+    // from the native touch threshold without adding per-frame subtree walks.
+    if (phone && size === 'long' && state === 'running-tool' && row.move === 'to top') {
+      trace.push({ at: performance.now(), gestureIndex, phase: 'settled',
+        moved, requested: Math.abs(dy), lost: Math.abs(dy) - moved,
+        elements: [...el.querySelectorAll('.abele-ai-chat__older, [data-message-id], [data-message-id] *')]
+          .map(e => { const r = e.getBoundingClientRect(); return {
+            tag: e.tagName, className: e.getAttribute('class'), id: e.closest('[data-message-id]')?.dataset.messageId,
+            top: r.top, height: r.height,
+          } }).filter(e => e.height > 0 && (Math.abs(e.height - 15) < 2 || Math.abs(e.height - 30) < 2)) })
+    }
+    ;(row.gestures ||= []).push({ gestureIndex, dy, fast, room, before, after: el.scrollTop, globalBoundary,
       boundaryGeometry,
       originUpdates,
       coveredInitialEnd,
@@ -798,6 +829,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
     row.bottomGap = box().scrollHeight - box().scrollTop - box().clientHeight
   } catch (e) { report.error = String(e?.stack || e) }
   finally {
+    console.debug = realDebug
     window.removeEventListener('wheel', nativeInput, true)
     window.removeEventListener('touchmove', nativeInput, true)
     window.removeEventListener('touchstart', nativeInput, true)

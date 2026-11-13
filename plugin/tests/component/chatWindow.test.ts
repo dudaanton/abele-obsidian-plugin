@@ -142,6 +142,23 @@ describe('a conversation that fits', () => {
 })
 
 describe('scrolling back', () => {
+  it('prefetches a viewport ahead from touch input before its coalesced scroll event arrives', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
+    const wrapper = mountChat()
+    const container = wrapper.find('.abele-ai-chat__messages')
+    Object.defineProperties(container.element, {
+      scrollTop: { value: 828, writable: true, configurable: true },
+      clientHeight: { value: 562, configurable: true },
+      scrollHeight: { value: 3000, configurable: true },
+    })
+    await container.trigger('touchstart', { touches: [{ clientY: 200 }] })
+    await container.trigger('touchmove', { touches: [{ clientY: 481 }] })
+    await nextTick()
+    // The input handler must use the same viewport lead as the scroll handler.
+    // Waiting for a later event at 266px lets a 281px native step clamp at zero.
+    expect(mounted(wrapper)).toBe(DEFAULT_TAIL_PAGE_SIZE * 2)
+  })
+
   it('reveals the previous page when the reader reaches the top', async () => {
     messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
     const wrapper = mountChat()

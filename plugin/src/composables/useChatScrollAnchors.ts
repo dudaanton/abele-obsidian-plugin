@@ -72,6 +72,12 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
       anchor.ids = options.messageAnchorIds?.(anchor.el) ?? [anchor.el.dataset.messageId ?? '']
       anchor.at = anchor.offset + container.scrollTop
       const height = container.scrollHeight
+      console.debug('[chat-scroll] capture page anchor', {
+        ids: anchor.ids,
+        offset: anchor.offset,
+        at: anchor.at,
+        scrollHeight: height,
+      })
       container.classList.add('abele-ai-chat__messages_steady')
       holdFloor(container, height)
     }

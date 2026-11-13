@@ -305,7 +305,14 @@ export function useChatScroll(options: ChatScrollOptions) {
     const el = messagesContainer.value
     const ahead =
       event?.type === 'wheel' ? Math.abs((event as WheelEvent).deltaY) : Math.abs(touchDelta)
-    if (up && el && el.scrollTop < LOAD_OLDER_THRESHOLD_PX + ahead) loadOlder()
+    // Compositor input can outrun/coalesce the scroll event that prefetches a
+    // viewport ahead. Use that same lead here, before the next native step can
+    // clamp at a virtual edge and discard the remaining finger travel.
+    const lead =
+      fingerDown || wheelScrolling
+        ? Math.max(LOAD_OLDER_THRESHOLD_PX, el?.clientHeight ?? 0)
+        : LOAD_OLDER_THRESHOLD_PX
+    if (up && el && el.scrollTop < lead + ahead) loadOlder()
     else if (down && el) {
       if (
         !hasNewer.value &&
@@ -313,8 +320,7 @@ export function useChatScroll(options: ChatScrollOptions) {
           el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_EPSILON_PX)
       )
         shouldAutoScroll = true
-      if (el.scrollHeight - el.scrollTop - el.clientHeight < LOAD_OLDER_THRESHOLD_PX + ahead)
-        loadNewer()
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < lead + ahead) loadNewer()
     } else if (event?.type === 'touchstart') checkEdges()
   }
 
