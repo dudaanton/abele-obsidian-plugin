@@ -45,7 +45,7 @@ import { t } from '@/i18n'
  * opposite corner, sides from the opposite side, the inside moves it; a kept shape holds while any
  * of them is dragged. The picture's long press does nothing here, so the handles win on a phone.
  */
-import { computed, ref, watchEffect } from 'vue'
+import { computed, onBeforeUnmount, ref, watchEffect } from 'vue'
 import { dragRect, type CropHandle, type CropRect } from '@/drawing/crop'
 
 const props = defineProps<{
@@ -142,6 +142,8 @@ const HANDLES: CropHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
 
 const frame = ref<HTMLElement | null>(null)
 const held = ref<CropHandle | null>(null)
+let stopDrag: (() => void) | undefined
+onBeforeUnmount(() => stopDrag?.())
 
 const pct = (v: number) => `${(v * 100).toFixed(4)}%`
 const frameStyle = computed(() => ({
@@ -155,13 +157,15 @@ function hold(handle: CropHandle, e: PointerEvent) {
   const box = frame.value?.parentElement?.getBoundingClientRect()
   if (!box || !box.width || !box.height || e.button > 0 || pinched) return
   e.preventDefault()
+  stopDrag?.()
   const start = { ...props.rect }
   const from = { x: e.clientX, y: e.clientY }
   const target = e.currentTarget as HTMLElement
+  const doc = target.ownerDocument
   target.setPointerCapture?.(e.pointerId)
   held.value = handle
   const move = (m: PointerEvent) => {
-    if (pinched) return
+    if (m.pointerId !== e.pointerId || pinched) return
     emit(
       'update:rect',
       dragRect(
@@ -174,16 +178,23 @@ function hold(handle: CropHandle, e: PointerEvent) {
       )
     )
   }
-  const drop = () => {
+  const drop = (event: PointerEvent) => {
+    if (event.pointerId !== e.pointerId) return
     emit('commit')
-    held.value = null
-    target.removeEventListener('pointermove', move)
-    target.removeEventListener('pointerup', drop)
-    target.removeEventListener('pointercancel', drop)
+    stopDrag?.()
   }
-  target.addEventListener('pointermove', move)
-  target.addEventListener('pointerup', drop)
-  target.addEventListener('pointercancel', drop)
+  stopDrag = () => {
+    held.value = null
+    doc.removeEventListener('pointermove', move, true)
+    doc.removeEventListener('pointerup', drop, true)
+    doc.removeEventListener('pointercancel', drop, true)
+    stopDrag = undefined
+  }
+  // Capture may move to the editor surface during a touch gesture. Follow this pointer
+  // in the owning document so its new target cannot strand the handle's drag listeners.
+  doc.addEventListener('pointermove', move, true)
+  doc.addEventListener('pointerup', drop, true)
+  doc.addEventListener('pointercancel', drop, true)
 }
 
 // Arrows move the frame by a hundredth; with Shift they move its far corner, so it resizes.

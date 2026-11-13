@@ -5,6 +5,47 @@ import { zoomAt, type Camera } from '@/drawing/camera'
 
 afterEach(() => vi.restoreAllMocks())
 
+it('keeps resizing when pointer capture is transferred to the editor surface', () => {
+  const stage = document.createElement('div')
+  document.body.append(stage)
+  const wrapper = mount(CropFrame, {
+    attachTo: stage,
+    props: { rect: { x: 0, y: 0, w: 1, h: 1 }, ratio: null, picture: 1, surface: stage },
+  })
+  const handle = wrapper.get('.abele-crop-frame__handle_se').element
+  vi.spyOn(handle.parentElement!.parentElement!, 'getBoundingClientRect').mockReturnValue({
+    width: 400,
+    height: 400,
+  } as DOMRect)
+  const pointer = (target: Element, type: string, pointerId: number, clientX: number) =>
+    target.dispatchEvent(
+      new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId,
+        pointerType: 'touch',
+        clientX,
+        clientY: clientX,
+        button: 0,
+      })
+    )
+  try {
+    pointer(handle, 'pointerdown', 1, 400)
+    // Captured events target the capture owner, rather than the original handle.
+    pointer(stage, 'pointermove', 2, 200)
+    expect(wrapper.emitted('update:rect')).toBeUndefined()
+    pointer(stage, 'pointermove', 1, 200)
+    expect(wrapper.emitted('update:rect')?.[0]?.[0]).toMatchObject({ w: 0.5, h: 0.5 })
+    pointer(stage, 'pointerup', 1, 200)
+    expect(wrapper.emitted('commit')).toHaveLength(1)
+    pointer(stage, 'pointermove', 1, 100)
+    expect(wrapper.emitted('update:rect')).toHaveLength(1)
+  } finally {
+    wrapper.unmount()
+    stage.remove()
+  }
+})
+
 it.each([
   ['frame', 'background'],
   ['background', 'frame'],
