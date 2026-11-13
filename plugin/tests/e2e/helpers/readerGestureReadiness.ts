@@ -10,7 +10,11 @@ export function readingPositionReachable(
 
 /** A collapsed drawer keeps its backdrop until its closing motion has finished. */
 export function drawersClosed(
-  drawers: { collapsed: boolean; backdropEl: { isConnected: boolean } }[]
+  drawers: { collapsed: boolean; backdropEl: { isConnected: boolean } }[],
+  sharedBackdrops = 0
 ) {
-  return drawers.every((drawer) => drawer.collapsed && !drawer.backdropEl.isConnected)
+  return (
+    sharedBackdrops === 0 &&
+    drawers.every((drawer) => drawer.collapsed && !drawer.backdropEl.isConnected)
+  )
 }

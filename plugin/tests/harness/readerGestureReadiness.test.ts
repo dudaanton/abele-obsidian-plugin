@@ -17,3 +17,9 @@ it('waits for the closing drawer backdrop to leave before starting the opposite 
   drawer.collapsed = false
   expect(drawersClosed([drawer])).toBe(false)
 })
+
+it('waits for the shared phone backdrop even when both drawer backdrops are detached', () => {
+  const drawers = [{ collapsed: true, backdropEl: { isConnected: false } }]
+  expect(drawersClosed(drawers, 1)).toBe(false)
+  expect(drawersClosed(drawers, 0)).toBe(true)
+})

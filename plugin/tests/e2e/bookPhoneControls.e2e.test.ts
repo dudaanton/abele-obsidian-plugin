@@ -296,11 +296,13 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
         for (const direction of [1, -1]) {
           app.workspace.leftSplit.collapse()
           app.workspace.rightSplit.collapse()
-          // collapsed becomes true before the closing motion removes the backdrop.
+          // Phones use shared root/navbar backdrops, separate from each drawer's own.
+          // collapsed becomes true before the closing motion removes those backdrops.
           // Until it leaves, the next touch can hit it rather than the track below.
           if (!(await until(() => (${drawersClosed.toString()})([
             app.workspace.leftSplit, app.workspace.rightSplit,
-          ])))) throw new Error('The sidebars did not finish closing before the track swipe')
+          ], document.querySelectorAll('.workspace-drawer-backdrop, .workspace-drawer-navbar-backdrop').length))))
+            throw new Error('The sidebars did not finish closing before the track swipe')
           const slider = view.contentEl.querySelector('.abele-book-reader__footer input[type=range]')
           const b = slider.getBoundingClientRect(), y = b.top + b.height / 2
           const before = location(), seeks = [], changes = [], emissions = [], relocations = []
@@ -323,7 +325,15 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
           const origin = { x0, x1, sliderLeft: b.left, sliderWidth: b.width,
             value: Number(slider.value), thumbWidth, thumbCenter, startsOnThumb: Math.abs(x0 - thumbCenter) <= thumbWidth / 2,
             hitTrack: document.elementFromPoint(Math.round(x0), Math.round(y)) === slider }
-          if (!origin.hitTrack) throw new Error('The exposed track is covered before the sidebar swipe')
+          if (!origin.hitTrack) {
+            const hit = document.elementFromPoint(Math.round(x0), Math.round(y))
+            await shoot('footer-sidebar-covered-' + direction)
+            throw new Error('The exposed track is covered before the sidebar swipe: ' + JSON.stringify({
+              direction, origin, y, hitTag: hit?.tagName, hitClass: hit?.className,
+              overlays: [...document.querySelectorAll('.workspace-drawer-backdrop, .workspace-drawer-navbar-backdrop')]
+                .map(e => ({ className: e.className, opacity: getComputedStyle(e).opacity })),
+            }))
+          }
           await touch('touchStart', [[x0, y]])
           for (let i = 1; i <= 10; i++) {
             await touch('touchMove', [[x0 + (x1 - x0) * i / 10, y]])
