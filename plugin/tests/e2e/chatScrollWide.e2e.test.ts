@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { evalJson, evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
-import { withNativeInput } from './helpers/nativeInput'
+import { nativeInputProbe } from './helpers/nativeInput'
 import { wideScript } from './helpers/chatScrollWide'
 import { targets } from './helpers/target'
 
@@ -20,9 +20,7 @@ it.runIf(isObsidianRunning() && hasTestApi())(
       // large enough for the wide pane without changing gesture or pixel budgets.
       evalRaw("require('@electron/remote').getCurrentWebContents().setZoomFactor(0.8)")
       evalRaw("require('@electron/remote').getCurrentWindow().setContentSize(2000, 1100)")
-      const report = await withNativeInput(async () =>
-        JSON.parse(await evalLong(wideScript(), 90_000))
-      )
+      const report = JSON.parse(await evalLong(nativeInputProbe(wideScript()), 90_000))
       console.info('wide-scroll-matrix', JSON.stringify(report))
       expect(report.error).toBeUndefined()
       expect(report.width).toBeGreaterThanOrEqual(1450)

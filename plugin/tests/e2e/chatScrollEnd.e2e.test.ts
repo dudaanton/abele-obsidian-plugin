@@ -15,7 +15,7 @@ import {
   states,
   type Report,
 } from './helpers/chatScrollMatrix'
-import { withNativeInput } from './helpers/nativeInput'
+import { nativeInputProbe } from './helpers/nativeInput'
 import { targets } from './helpers/target'
 
 targets('desktop')
@@ -45,10 +45,9 @@ describe.runIf(isObsidianRunning() && hasTestApi())('End from earlier chat histo
         it.each(states)(
           `${length} / %s`,
           async (state) => {
-            const report = await withNativeInput(
-              async () =>
-                JSON.parse(await evalLong(endScript(length, state, phone), 60_000)) as Report
-            )
+            const report = JSON.parse(
+              await evalLong(nativeInputProbe(endScript(length, state, phone)), 60_000)
+            ) as Report
             console.info(
               'scroll-end-matrix',
               JSON.stringify({ phone, size: length, state, ...report })
@@ -67,9 +66,9 @@ describe.runIf(isObsidianRunning() && hasTestApi())('End from earlier chat histo
           120_000
         )
       it('follows later streamed lines after returning to the tail', async () => {
-        const report = await withNativeInput(
-          async () => JSON.parse(await evalLong(followScript(phone), 120_000)) as Report
-        )
+        const report = JSON.parse(
+          await evalLong(nativeInputProbe(followScript(phone)), 120_000)
+        ) as Report
         console.info('scroll-follow-matrix', JSON.stringify({ phone, ...report }))
         expect(report.error).toBeUndefined()
         expect(report.evicted).toBe(true)
@@ -84,9 +83,9 @@ describe.runIf(isObsidianRunning() && hasTestApi())('End from earlier chat histo
         }
       }, 180_000)
       it('keeps a full-window reply readable across completion', async () => {
-        const report = await withNativeInput(
-          async () => JSON.parse(await evalLong(handoffScript(phone), 60_000)) as Report
-        )
+        const report = JSON.parse(
+          await evalLong(nativeInputProbe(handoffScript(phone)), 60_000)
+        ) as Report
         console.info('scroll-handoff-matrix', JSON.stringify({ phone, ...report }))
         expect.soft(report.error).toBeUndefined()
         expect.soft(report.fullWindow).toBe(true)
