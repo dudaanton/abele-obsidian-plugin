@@ -446,6 +446,43 @@ it('uses the native borrowed cohort for departure notification while keeping sha
   }
 })
 
+it.each([false, true])(
+  'keeps discovery continuation backoff with prior failure=%s',
+  async (priorFailure) => {
+    const wire = await server('Notes/sample.md', 'remote')
+    const one = runtime(wire, new MemoryFileSystem())
+    const content = Reflect.get(one.runtime, 'localContentScan')
+    const status = { ...one.runtime.engine.status }
+    const failedFile = {
+      path: 'Notes/unread.md',
+      reason: 'sample read failure',
+      local: true,
+      phase: 'scan' as const,
+      attempts: 1,
+      nextAt: Date.now() + 10000,
+      quarantined: false,
+    }
+    if (priorFailure) status.waitingFiles = [failedFile]
+    vi.spyOn(one.runtime.engine, 'status', 'get').mockImplementation(() => status)
+    let passes = 0
+    const pass = async () => {
+      if (++passes === 1) {
+        Reflect.get(content, 'deferred').add('Notes/pending.md')
+        status.waitingFiles = [failedFile]
+      } else Reflect.get(content, 'deferred').clear()
+    }
+    const exchange = vi.spyOn(one.runtime.engine, 'sync').mockImplementation(pass)
+    const retry = vi.spyOn(one.runtime.engine, 'retryNow').mockImplementation(pass)
+    try {
+      await one.runtime.sync()
+      expect(exchange).toHaveBeenCalledTimes(priorFailure ? 1 : 2)
+      expect(retry).toHaveBeenCalledTimes(priorFailure ? 1 : 0)
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
+
 it('continues deferred content after idle and cancels its background timer on invalidation', async () => {
   vi.useFakeTimers()
   const wire = await server('Notes/sample.md', 'remote')
@@ -469,6 +506,7 @@ it('continues deferred content after idle and cancels its background timer on in
     expect(sync).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
     expect(sync).toHaveBeenCalledTimes(1)
+    expect(sync).toHaveBeenCalledWith(false)
     Reflect.get(one.runtime, 'scheduleLocalContent').call(one.runtime)
     one.runtime.invalidate()
     await vi.advanceTimersByTimeAsync(1000)

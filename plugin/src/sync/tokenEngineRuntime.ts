@@ -539,7 +539,7 @@ export class TokenEngineRuntime
         this.scheduleLocalContent()
         return
       }
-      void this.sync().catch((error) =>
+      void this.sync(false).catch((error) =>
         console.debug('[abele-sync] background content scan stopped', error)
       )
     }, 1000)
@@ -3028,8 +3028,11 @@ export class TokenEngineRuntime
         this.fatalFailure = undefined
         this.engine.resume()
       }
+      // Continuation must retain file backoff after the user's first retry.
+      let explicitRetry = retryHeld
       do {
-        await this.syncThroughReviews(retryHeld)
+        await this.syncThroughReviews(explicitRetry)
+        explicitRetry = false
         if (this.runFailure !== undefined) break
         // A bounded discovery pass is not a completed first upload. Join its
         // continuation while this connection can read, retaining the per-pass
