@@ -193,7 +193,10 @@ function menu(event: MouseEvent) {
     i
       .setTitle(t('chatTree.rename'))
       .setIcon('pencil')
-      .onClick(() => source.value.rename(id))
+      .onClick(() => {
+        // Inline editing owns focus after native menu dismissal finishes.
+        m.onHide(() => source.value.rename(id))
+      })
   )
   m.addSeparator()
   m.addItem((i) =>

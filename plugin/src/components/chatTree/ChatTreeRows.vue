@@ -295,7 +295,11 @@ function folderMenu(event: MouseEvent, folder: ChatTreeFolder) {
     i
       .setTitle(t('chatTree.rename'))
       .setIcon('pencil')
-      .onClick(() => source.value.renameFolder(folder.path))
+      .onClick(() => {
+        // Native phone menus finish dismissing after their action runs. Start
+        // editing only once the host has released the menu and its focus.
+        menu.onHide(() => source.value.renameFolder(folder.path))
+      })
   )
   menu.addSeparator()
   if (!folder.hidden) {

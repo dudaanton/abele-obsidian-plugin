@@ -213,12 +213,22 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         await until(() => !editor())
         await menu()
         action('Rename…')
-        await until(() => document.querySelector('[data-path="' + folder + '"] [contenteditable]'))
+        try {
+          await until(() => document.querySelector('[data-path="' + folder + '"] > .tree-item-self [contenteditable]'), 'Folder-menu rename')
+        } catch (error) {
+          throw Error(error.message + ' ' + JSON.stringify({
+            renaming: service.tree.renaming.value,
+            folder: document.querySelector('[data-path="' + folder + '"]')?.outerHTML,
+            scope: scopeState(),
+            menus: [...document.querySelectorAll('.menu')].map(el => ({ style: el.getAttribute('style'), display: getComputedStyle(el).display, visibility: getComputedStyle(el).visibility })),
+            sheets: [...document.querySelectorAll('.modal')].map(el => ({ style: el.getAttribute('style'), rect: el.getBoundingClientRect().toJSON() })),
+          }))
+        }
         const folderEditor = document.querySelector('[data-path="' + folder + '"] [contenteditable]')
         await shot('folder-rename')
         folderEditor.textContent = '   '
         folderEditor.dispatchEvent(new FocusEvent('blur'))
-        await until(() => !document.querySelector('[data-path="' + folder + '"] [contenteditable]'))
+        await until(() => !document.querySelector('[data-path="' + folder + '"] [contenteditable]'), 'Empty folder rename cancellation')
         if (!service.folders.paths.includes(folder)) throw Error('Empty rename removed the folder name')
         return JSON.stringify({ passed: true, scopeBeforeFocus, scopeBeforeF2 })
       } finally {

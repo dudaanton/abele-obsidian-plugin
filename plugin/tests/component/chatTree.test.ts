@@ -236,6 +236,69 @@ it('renames chats and folders in the same row editor, including F2 and empty can
   expect(source.renameFolder).toHaveBeenCalledTimes(1)
   expect(view.find('[contenteditable]').exists()).toBe(false)
 })
+it.each(['folder', 'chat'] as const)(
+  'starts %s menu rename after native dismissal and cancels a blank name',
+  async (kind) => {
+    Platform.isPhone = true
+    source.renaming = shallowRef(null)
+    source.cancelRename = vi.fn(() => {
+      source.renaming!.value = null
+    })
+    source.rename = vi.fn((id: string) => {
+      source.renaming!.value = { kind: 'chat', id }
+    })
+    source.renameFolder = vi.fn((id: string) => {
+      source.renaming!.value = { kind: 'folder', id }
+    })
+    source.root.value = [
+      {
+        kind: 'folder',
+        path: 'Collection',
+        name: 'Collection',
+        children: [{ kind: 'chat', id: 'nested', title: 'Nested chat', open: true, at: 1 }],
+      },
+    ]
+    const shown = vi.spyOn(Menu.prototype, 'showAtMouseEvent')
+    const view = show()
+    const overlay = document.createElement('div')
+    overlay.className = 'menu'
+    document.body.append(overlay)
+    try {
+      const child = view.get('[data-chat="nested"] > .tree-item-self').element as HTMLElement
+      child.focus()
+      if (kind === 'folder') await view.get('[aria-label="Collection: more"]').trigger('click')
+      else await view.get('[data-chat="nested"] > .tree-item-self').trigger('contextmenu')
+      const menu = shown.mock.contexts.at(-1) as Menu
+      menu.items.find((item) => item.title === 'Rename…')!.handler!()
+      expect(source.renaming.value).toBe(null)
+      expect(view.find('[contenteditable]').exists()).toBe(false)
+      // Dismissal restores the previous row before delivering the native onHide callback.
+      overlay.remove()
+      child.focus()
+      menu.hide()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      const selector =
+        kind === 'folder'
+          ? '[data-path="Collection"] > .tree-item-self [contenteditable]'
+          : '[data-chat="nested"] [contenteditable]'
+      const editor = view.get(selector).element
+      expect(document.activeElement).toBe(editor)
+      expect(document.getSelection()?.toString()).toBe(
+        kind === 'folder' ? 'Collection' : 'Nested chat'
+      )
+      editor.textContent = '   '
+      editor.dispatchEvent(new FocusEvent('blur'))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(view.find('[contenteditable]').exists()).toBe(false)
+      expect(source.cancelRename).toHaveBeenCalledTimes(1)
+      expect(kind === 'folder' ? source.renameFolder : source.rename).toHaveBeenCalledTimes(1)
+      expect(view.get('[data-path="Collection"] > .tree-item-self').text()).toContain('Collection')
+    } finally {
+      overlay.remove()
+      shown.mockRestore()
+    }
+  }
+)
 it.each([
   [false, false, 'Hide folder'],
   [false, true, 'Hide folder and close its chats'],
