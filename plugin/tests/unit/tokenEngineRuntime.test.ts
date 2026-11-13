@@ -2,6 +2,7 @@ import { DirectoryScopeError } from '@/sync/vaultDirectories'
 import { expect, it, vi } from 'vitest'
 import {
   EngineError,
+  TransferBudget,
   SyncCancelled,
   GENERATION_KEY,
   MemoryFileSystem,
@@ -14,7 +15,7 @@ import {
 import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { TokenEngineRuntime, type TokenEngineOptions } from '@/sync/tokenEngineRuntime'
 import type { TransferSnapshot } from '@/sync/transferProgress'
-import { PathCoordinator, coordinatedFileSystem } from '@/sync/pathCoordinator'
+import { PathCoordinator, coordinatedFileSystem, PLACEMENT } from '@/sync/pathCoordinator'
 import { ExecutableReview } from '@/sync/executableReview'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { ignoreFor } from '@/sync/scope'
@@ -37,6 +38,159 @@ import { PreparedUploads } from '@/sync/preparedUploads'
 import { AbeleError, ERROR_CODES } from '@abele/sync-sdk/protocol'
 import { RetainedShareCopies } from '@/sync/retainedShareCopies'
 import { DirectEntryDurability } from '@/sync/directEntryDurability'
+import { discoveryPriorityOf } from '@/sync/transferBudget'
+import { SCAN_HASH_READY } from '@/sync/progressiveLocalScan'
+
+it('converges an offline create and delete while another connection continuously receives', async () => {
+  vi.useFakeTimers()
+  const budget = new TransferBudget()
+  const wire = await server('Notes/deleted.md', 'old content')
+  const fs = new MemoryFileSystem()
+  Object.assign(fs, { watch: () => () => {} })
+  Object.defineProperty(fs, 'trustedIndexIdentities', { value: true })
+  const ready = new Set<string>()
+  Object.defineProperty(fs, SCAN_HASH_READY, {
+    configurable: true,
+    value: async (info: { path: string }) => ready.has(info.path),
+  })
+  Object.assign(fs, {
+    fingerprint: async (path: string) => {
+      const bytes = await fs.read(path),
+        stat = (await fs.stat(path))!
+      ready.add(path)
+      return { sha: await sha256(bytes), size: stat.size, mtime: stat.mtime }
+    },
+  })
+  const one = runtime(wire, fs, undefined, undefined, null, { transferBudget: budget })
+  const incoming = await server('Incoming/sample.md', 'incoming content', 'https://second.example')
+  const entered = deferred<void>(),
+    release = deferred<void>()
+  const receive = incoming.fetch.getMockImplementation()!
+  incoming.fetch.mockImplementation(async (url, init) => {
+    if (new URL(String(url)).pathname.includes('/content')) {
+      entered.resolve()
+      await release.promise
+    }
+    return receive(url, init)
+  })
+  const other = runtime(incoming, new MemoryFileSystem(), undefined, undefined, null, {
+    transferBudget: budget,
+  })
+  let receiving = Promise.resolve()
+  const committed: { op: string; path?: string; file_id?: string }[] = []
+  try {
+    await one.runtime.sync()
+    await fs.remove(wire.item.path)
+    await fs.writeAtomic('Notes/offline.md', new TextEncoder().encode('offline new content'), 2000)
+    const send = wire.fetch.getMockImplementation()!
+    wire.fetch.mockImplementation(async (url, init) => {
+      if (new URL(String(url)).pathname !== '/v2/commit') return send(url, init)
+      const { ops } = JSON.parse(String(init?.body))
+      committed.push(...ops)
+      return Response.json({
+        cursor: 2,
+        results: ops.map((op: { path?: string; sha?: string; size?: number; mtime?: number }) => ({
+          status: 'applied',
+          path: op.path ?? wire.item.path,
+          file_id: op.path ? 'sample-created' : wire.item.file_id,
+          version_id: 'sample-next',
+          seq: 2,
+          sha: op.sha ?? null,
+          size: op.size ?? 0,
+          mtime: op.mtime ?? 2000,
+        })),
+      })
+    })
+    receiving = other.runtime.sync()
+    await entered.promise
+    await one.runtime.start()
+    await one.runtime.engine.sync()
+    expect(committed).toEqual([])
+    expect(one.runtime.engine.status.state).toBe('idle')
+    expect(discoveryPriorityOf(budget).available).toBe(false)
+    for (let elapsed = 0; elapsed < 15000 && !committed.length; elapsed += 1000) {
+      await vi.advanceTimersByTimeAsync(1000)
+      await flushPromises()
+    }
+    await (Reflect.get(one.runtime.engine, 'running') as Promise<void> | null)
+    expect(committed).toContainEqual(
+      expect.objectContaining({ op: 'create', path: 'Notes/offline.md' })
+    )
+    expect(committed).toContainEqual(
+      expect.objectContaining({ op: 'delete', file_id: wire.item.file_id })
+    )
+    expect(await one.state.get('Notes/offline.md')).toMatchObject({ fileId: 'sample-created' })
+    expect(await one.state.get(wire.item.path)).toBeNull()
+    expect(other.runtime.engine.status.state).toBe('syncing')
+    expect(discoveryPriorityOf(budget).available).toBe(false)
+  } finally {
+    release.resolve()
+    await receiving
+    await one.runtime.close()
+    await other.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
+it('keeps discovery paused until an issued placement drains after invalidation', async () => {
+  const budget = new TransferBudget()
+  const wire = await server('Notes/sample.md', 'sample')
+  const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+    transferBudget: budget,
+  })
+  const gate = deferred<void>()
+  const fs = Reflect.get(one.runtime.engine, 'opts').fs as FileSystem
+  const place = Reflect.get(fs, PLACEMENT) as (
+    paths: string[],
+    work: () => Promise<void>,
+    preserve: boolean
+  ) => Promise<void>
+  const work = place(['Notes/sample.md'], () => gate.promise, false)
+  try {
+    expect(discoveryPriorityOf(budget).available).toBe(false)
+    one.runtime.invalidate()
+    expect(discoveryPriorityOf(budget).available).toBe(false)
+    gate.resolve()
+    await work
+    expect(discoveryPriorityOf(budget).available).toBe(true)
+  } finally {
+    gate.resolve()
+    await work
+    await one.runtime.close()
+  }
+})
+
+it('does not queue fallback exchanges during an incoming transfer and still polls when idle', async () => {
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+  const wire = await server('Notes/sample.md', 'sample')
+  const entered = deferred<void>(),
+    release = deferred<void>()
+  const send = wire.fetch.getMockImplementation()!
+  wire.fetch.mockImplementation(async (url, init) => {
+    if (new URL(String(url)).pathname.includes('/content')) {
+      entered.resolve()
+      await release.promise
+    }
+    return send(url, init)
+  })
+  const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, { fallbackMs: 100 })
+  const lines = () => Reflect.get(one.runtime, 'trace').snapshot().log as string[]
+  try {
+    await one.runtime.start()
+    await entered.promise
+    await vi.advanceTimersByTimeAsync(350)
+    expect(lines().filter((line) => line.startsWith('sync: request fallback'))).toEqual([])
+    release.resolve()
+    await one.runtime.engine.sync()
+    await vi.advanceTimersByTimeAsync(100)
+    await flushPromises()
+    expect(lines().some((line) => line.startsWith('sync: request fallback'))).toBe(true)
+  } finally {
+    release.resolve()
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
 
 it.each(['item', 'connection'] as const)(
   'acknowledges %s pause after cancelled work and all sibling barriers drain',
@@ -291,6 +445,117 @@ it('uses the native borrowed cohort for departure notification while keeping sha
     await one.runtime.close()
   }
 })
+
+it('continues deferred content after idle and cancels its background timer on invalidation', async () => {
+  vi.useFakeTimers()
+  const wire = await server('Notes/sample.md', 'remote')
+  const one = runtime(wire, new MemoryFileSystem())
+  try {
+    await one.runtime.start()
+    await one.runtime.sync()
+    const content = Reflect.get(one.runtime, 'localContentScan')
+    Reflect.get(content, 'deferred').add('Notes/pending.md')
+    expect(one.runtime.statusWithQuiet().pending).toBeGreaterThan(0)
+    const sync = vi.spyOn(one.runtime, 'sync').mockResolvedValue(undefined)
+    Reflect.get(one.runtime, 'scheduleLocalContent').call(one.runtime)
+    await vi.advanceTimersByTimeAsync(999)
+    expect(sync).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(sync).toHaveBeenCalledTimes(1)
+    Reflect.get(one.runtime, 'scheduleLocalContent').call(one.runtime)
+    one.runtime.invalidate()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(sync).toHaveBeenCalledTimes(1)
+  } finally {
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
+it.each(['confirm', 'restore'] as const)(
+  'finishes background discovery with startup marks and a retained deletion hold before %s',
+  async (decision) => {
+    vi.useFakeTimers()
+    const wire = await server('Notes/sample.md', 'remote')
+    const fs = new MemoryFileSystem()
+    const ready = new Set<string>()
+    Object.defineProperty(fs, 'trustedIndexIdentities', { value: true })
+    Object.defineProperty(fs, Symbol.for('abele.sync.scan-hash-ready-v1'), {
+      configurable: true,
+      value: async (info: { path: string }) => ready.has(info.path),
+    })
+    const read = fs.read.bind(fs)
+    vi.spyOn(fs, 'read').mockImplementation(async (path) => {
+      const bytes = await read(path)
+      ready.add(path)
+      return bytes
+    })
+    let one = runtime(wire, fs)
+    const marks: string[] = []
+    const deletes: unknown[] = []
+    try {
+      await one.runtime.sync()
+      await one.runtime.close()
+      await fs.remove(wire.item.path)
+      const held = [{ path: wire.item.path, fileId: wire.item.file_id }]
+      await one.state.setMeta('held-deletes', JSON.stringify(held))
+      for (let i = 0; i < 100; i++)
+        await fs.writeAtomic(`cold-${i}.md`, new TextEncoder().encode(`new ${i}`), 2000)
+      const send = wire.fetch.getMockImplementation()!
+      wire.fetch.mockImplementation(async (input, init) => {
+        if (new URL(String(input)).pathname !== '/v2/commit') return send(input, init)
+        const ops = JSON.parse(String(init?.body)).ops
+        deletes.push(...ops.filter((op: { op: string }) => op.op === 'delete'))
+        return Response.json({
+          cursor: 1,
+          results: ops.map((op: Record<string, unknown>) => ({
+            status: 'applied',
+            file_id: op.file_id ?? `sample-${op.path}`,
+            version_id: 'sample-updated',
+            seq: 1,
+            path: op.path ?? wire.item.path,
+            sha: op.sha ?? null,
+            size: op.size ?? 0,
+            mtime: op.mtime ?? 1000,
+          })),
+        })
+      })
+      one = runtime(wire, fs, one.state, undefined, null, {
+        startupMark: (phase) => marks.push(phase),
+      })
+      await one.runtime.start()
+      await one.runtime.sync()
+      const content = Reflect.get(one.runtime, 'localContentScan')
+      expect(content.pending).toBe(true)
+      expect(await one.runtime.heldDeletes()).toEqual(held)
+      const background = vi.spyOn(one.runtime, 'sync')
+      for (let pass = 0; pass < 5 && content.pending; pass++) {
+        await vi.advanceTimersByTimeAsync(1000)
+        // begin() clears the previous budget before this asynchronous pass finishes.
+        // Join the timer's actual work before checking whether discovery is complete.
+        await Promise.all(background.mock.results.map((result) => result.value))
+      }
+      expect(background).toHaveBeenCalled()
+      expect(content.pending).toBe(false)
+      expect([...ready].filter((path) => path.startsWith('cold-'))).toHaveLength(100)
+      expect(await one.runtime.heldDeletes()).toEqual(held)
+      expect(deletes).toEqual([])
+      expect(marks).not.toContain('idle')
+      expect(await one.runtime.decideDeletes(decision, [wire.item.file_id])).toMatchObject({
+        decided: 1,
+        applied: true,
+      })
+      expect(await one.runtime.heldDeletes()).toEqual([])
+      expect(deletes).toHaveLength(decision === 'confirm' ? 1 : 0)
+      if (decision === 'restore') expect(await fs.read(wire.item.path)).toEqual(wire.bytes)
+      await vi.advanceTimersByTimeAsync(500)
+      expect(marks).toContain('idle')
+    } finally {
+      await one.runtime.close()
+      vi.useRealTimers()
+    }
+  }
+)
 
 it('marks construction, reconciliation and first idle from the running engine', async () => {
   vi.useFakeTimers()

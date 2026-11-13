@@ -125,6 +125,14 @@ export function syncPlacementPlugin() {
       if (file.endsWith('/engine.js')) {
         code = replaceOnce(
           code,
+          '    trigger(why) {',
+          `    trigger(why) {
+        // An active exchange already polls the remote head. The periodic timer
+        // must not enqueue redundant reconciliation behind a long transfer.
+        if (why === 'fallback' && this.running !== null) return;`
+        )
+        code = replaceOnce(
+          code,
           '    /* ── Status ──────────────────────────────────────────────────────────── */',
           `    async [Symbol.for('abele.sync.fresh-inspection-v1')]() {
           // Idle is published before the run's final bookkeeping promise settles.

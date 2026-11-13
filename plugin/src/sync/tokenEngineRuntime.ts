@@ -1,6 +1,8 @@
 import { SizeRefusals } from './sizeRefusals'
 import { PreparedUploads, PREPARED_UPLOAD_LIFETIME } from './preparedUploads'
 import { localOnlyJournalState } from './localOnlyJournal'
+import { ProgressiveLocalScan } from './progressiveLocalScan'
+import { discoveryPriorityOf } from './transferBudget'
 import { SyncTaskBudget, waitForSyncRead, yieldSyncTask } from './syncTaskBudget'
 import { gateMobileSource } from './mobileLargeFileGate'
 import { FINGERPRINT_UPLOAD, PHONE_FALLBACK_BYTES } from './mobileWholeRead'
@@ -268,7 +270,7 @@ export class TokenEngineRuntime
                   : connectionError(this.pauseFailure),
             }
           : {}),
-      pending: Math.max(status.pending, this.quiet.pending),
+      pending: Math.max(status.pending, this.quiet.pending, this.localContentScan.deferredCount),
       ...(waitingFiles ? { waitingFiles, waiting: waitingFiles.length } : {}),
     }
   }
@@ -289,6 +291,18 @@ export class TokenEngineRuntime
   readonly actions: TokenActions
   private readonly outbox: TokenAssetOutbox
   private readonly transferBudget: TransferBudget
+  private readonly discoveryPriority: ReturnType<typeof discoveryPriorityOf>
+  private activePlacements = 0
+  private updateDiscoveryPriority(): void {
+    this.discoveryPriority?.set(
+      this,
+      this.activePlacements > 0 ||
+        (this.active &&
+          this.engine?.status.state === 'syncing' &&
+          this.progress.stage === 'Downloading' &&
+          !this.progress.settled)
+    )
+  }
   private active = true
   private startupReconciliationStarted = false
   private startupReportComplete = false
@@ -475,6 +489,57 @@ export class TokenEngineRuntime
   private readonly placement?: LocalFolderPlacement
   private readonly serverPaths?: ServerFolderPaths
   private readonly localFs: FileSystem
+  private readonly localContentScan = new ProgressiveLocalScan({
+    milliseconds: 1000,
+    concurrency: 8,
+    foregroundMilliseconds: 25,
+    canRead: () => this.discoveryPriority.available,
+    claimRead: () => this.discoveryPriority.claimRead(),
+  })
+  private localContentTimer?: number
+  private scanCountsBefore = { hashed: 0, reused: 0 }
+  private scanSummaryPublished = true
+  private scanCounts() {
+    const read = Reflect.get(this.localFs, Symbol.for('abele.sync.scan-hash-counts-v1'))
+    return typeof read === 'function'
+      ? (read.call(this.localFs) as typeof this.scanCountsBefore)
+      : { hashed: 0, reused: 0 }
+  }
+  private publishScanSummary(): void {
+    if (this.scanSummaryPublished) return
+    this.scanSummaryPublished = true
+    const counts = this.scanCounts()
+    const summary = {
+      hashed: counts.hashed - this.scanCountsBefore.hashed,
+      reused: counts.reused - this.scanCountsBefore.reused,
+      deferred: this.localContentScan.deferredCount,
+      elapsedMs: this.localContentScan.elapsedMs,
+    }
+    this.trace.log('sync: local scan ' + JSON.stringify(summary))
+    console.debug('[abele-sync] local scan', summary)
+  }
+  private scheduleLocalContent(): void {
+    window.clearTimeout(this.localContentTimer)
+    this.localContentTimer = undefined
+    if (!this.active || !this.localContentScan.pending || this.engine.status.state !== 'idle')
+      return
+    this.localContentTimer = window.setTimeout(() => {
+      this.localContentTimer = undefined
+      if (!this.active || this.engine.status.state !== 'idle') return
+      // Holds prevent publishing startup idle, but their decisions need a complete
+      // scan. Continue discovery once the preceding exchange report is settled.
+      if (
+        !this.discoveryPriority.mayScan ||
+        (this.options.startupMark && !this.startupReportComplete)
+      ) {
+        this.scheduleLocalContent()
+        return
+      }
+      void this.sync().catch((error) =>
+        console.debug('[abele-sync] background content scan stopped', error)
+      )
+    }, 1000)
+  }
   constructor(private readonly options: TokenEngineOptions) {
     const changed = options.changed.bind(options)
     options = this.options = {
@@ -527,6 +592,7 @@ export class TokenEngineRuntime
     }
     this.progress = new TransferProgress(
       (one) => {
+        this.updateDiscoveryPriority()
         if (!this.pendingFolders.size) {
           activityLog.update(one)
           options.progress?.(one)
@@ -589,6 +655,7 @@ export class TokenEngineRuntime
     }
     this.localFs = options.fs
     this.transferBudget = options.transferBudget ?? new TransferBudget()
+    this.discoveryPriority = discoveryPriorityOf(this.transferBudget)
     this.selective = structuredClone(options.selective ?? selectiveDefaults())
     const decoded = decodeAccessToken(options.encoded)
     this.token = { ...decoded, scope: options.scope ?? tokenScope(decoded, options.item) }
@@ -985,6 +1052,7 @@ export class TokenEngineRuntime
       () => this.uploadContext(),
       () => this.authority?.limits.max_file_bytes
     )
+    options.fs = this.localContentScan.fileSystem(options.fs)
     const hasBlob = this.client.hasBlob.bind(this.client)
     this.client.hasBlob = async (sha, signal) => {
       if (!this.activeUploads && this.uploadProgress.stage)
@@ -1029,6 +1097,9 @@ export class TokenEngineRuntime
       }
     }
     this.client.prepare = async (fs, state, excluded, signal, deferLocalScan) => {
+      this.localContentScan.begin(signal, this.engine.status.lastSyncAt ? 4000 : 1000)
+      this.scanCountsBefore = this.scanCounts()
+      this.scanSummaryPublished = false
       options.indexWaitRunSignal?.(signal)
       this.comparisonCancellation.abort()
       this.comparisonCancellation = new AbortController()
@@ -1576,6 +1647,7 @@ export class TokenEngineRuntime
               return this.prepareScanUpload
             if (name === Symbol.for('abele.sync.finish-scan-uploads-v1'))
               return async () => {
+                await this.localContentScan.finish()
                 await Promise.all(this.scanUploads)
                 const error = this.scanUploadFailure
                 this.scanUploadFailure = undefined
@@ -1768,12 +1840,20 @@ export class TokenEngineRuntime
                 paths: string[],
                 work: () => Promise<unknown>,
                 preserve: boolean | readonly string[] = true
-              ) =>
-                this.trace.run(
-                  'placement ' + paths.join(', '),
-                  () => value.call(target, paths, work, preserve),
-                  true
-                )
+              ) => {
+                this.activePlacements++
+                this.updateDiscoveryPriority()
+                return this.trace
+                  .run(
+                    'placement ' + paths.join(', '),
+                    () => value.call(target, paths, work, preserve),
+                    true
+                  )
+                  .finally(() => {
+                    this.activePlacements--
+                    this.updateDiscoveryPriority()
+                  })
+              }
             if (
               (name === 'read' ||
                 name === 'stat' ||
@@ -1869,6 +1949,7 @@ export class TokenEngineRuntime
         )
       },
       onSync: (report) => {
+        this.publishScanSummary()
         options.startupMark?.('reconcile:report:begin')
         this.notSyncedState.invalidate()
         this.pathCollisions = this.placement?.localMetadata(report.collisions) ?? report.collisions
@@ -1919,6 +2000,7 @@ export class TokenEngineRuntime
         if (this.engine.status.state === 'idle') this.scheduleStartupIdle()
       },
       onFail: (error) => {
+        this.publishScanSummary()
         this.notSyncedState.invalidate()
         this.incomingQuietConflicts.clear()
         this.wholeReadUploads.clear()
@@ -1974,6 +2056,12 @@ export class TokenEngineRuntime
     })
     let running = false
     this.unstatus = this.engine.onStatus((status) => {
+      this.updateDiscoveryPriority()
+      if (status.state === 'idle') this.scheduleLocalContent()
+      else {
+        window.clearTimeout(this.localContentTimer)
+        this.localContentTimer = undefined
+      }
       if (this.startupReconciliationStarted && status.state === 'syncing') {
         this.startupReportComplete = false
         this.cancelStartupIdle(!running)
@@ -3118,10 +3206,13 @@ export class TokenEngineRuntime
     await this.engine.reconcile()
   }
   invalidate(): void {
+    window.clearTimeout(this.localContentTimer)
+    this.localContentTimer = undefined
     this.cancelStartupIdle()
     this.indexWaitCancellation.abort()
     this.quiet.stop()
     this.active = false
+    this.updateDiscoveryPriority()
     const retention = Reflect.get(this.options.fs, Symbol.for('abele.sync.retention-idle-v1'))
     if (typeof retention === 'function') void retention.call(this.options.fs, false)
     // Revoke transport before optional host cleanup: unload cannot await a drain.
