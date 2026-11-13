@@ -413,6 +413,12 @@ export function useChatScrollAnchors(options: ChatScrollAnchorsOptions) {
           containerTop ??= container.getBoundingClientRect().top
           measuredOffset = el.getBoundingClientRect().top - containerTop
           measuredElement = el
+          // A rectangle read can flush pending compositor input after the range
+          // sample above. Pair its viewport coordinate with that same scroll
+          // position, or reader movement becomes fictitious document-space growth.
+          const currentTop = container.scrollTop
+          top += currentTop - before.scrollTop
+          before.scrollTop = currentTop
         }
         return measuredOffset
       },

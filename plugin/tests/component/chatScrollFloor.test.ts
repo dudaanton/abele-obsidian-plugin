@@ -56,6 +56,39 @@ function conversation(messages: number) {
 }
 
 describe('the floor under a changing conversation', () => {
+  it.each([-15, 15])('preserves native input flushed by the anchor rectangle read: %s', (delta) => {
+    const { container, anchors } = conversation(1)
+    const message = container.children[0] as HTMLElement
+    let top = 300
+    let pending = true
+    Object.defineProperties(container, {
+      scrollTop: {
+        get: () => top,
+        set: (value: number) => {
+          top = value
+        },
+      },
+      scrollHeight: { get: () => 1400 },
+      clientHeight: { get: () => 400 },
+    })
+    container.getBoundingClientRect = () => ({ top: 0 }) as DOMRect
+    message.getBoundingClientRect = () => {
+      // Rectangles flush compositor movement which was not visible to the earlier
+      // scrollTop sample. The inserted page adds 200px in document coordinates.
+      if (pending) {
+        top += delta
+        pending = false
+      }
+      return { top: 600 - top } as DOMRect
+    }
+    anchors.anchor = { el: message, offset: 100, at: 400 }
+    anchors.holdLayout()
+    expect(top).toBe(500 + delta)
+    expect(message.getBoundingClientRect().top).toBe(100 - delta)
+    anchors.holdLayout()
+    expect(top).toBe(500 + delta)
+  })
+
   it('finishes a patch without an anchor so later input can release a new hold', async () => {
     const { container, anchors } = conversation(0)
     anchors.beginPageChange()
