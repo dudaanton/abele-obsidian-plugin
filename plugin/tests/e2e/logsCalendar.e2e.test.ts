@@ -187,7 +187,10 @@ const probe = (label: string) => String.raw`(async () => {
 
     const longCell = [...calendar.querySelectorAll('.abele-calendar__day:not(.abele-calendar__day_other-month)')].find(el => el.querySelector('.abele-calendar__day-number').textContent === String(longDay))
     longCell.click()
-    await until(() => calendar.querySelector('.abele-log__toggle'), 'long entry disclosure')
+    // Entry bodies load only when visible; changing the day can leave this below the viewport.
+    const longEntry = await until(() => entryOf(folder + '/' + date(longDay) + '.md'), 'long entry')
+    longEntry.scrollIntoView({ block: 'center' })
+    await until(() => longEntry.querySelector('.abele-log__toggle'), 'long entry disclosure')
     report.collapsed = !!calendar.querySelector('.abele-log__file-content--collapsed')
     section.scrollIntoView({ block: 'start' })
     await shoot('long-entry')

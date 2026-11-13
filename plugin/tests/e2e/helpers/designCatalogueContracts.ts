@@ -134,8 +134,11 @@ export const PHONE_CATALOGUE_CONTRACTS: Contract[] = [
       const result = JSON.parse(
         await evalLong(`(async()=>{
       try {
-        window.__abeleTest.openDesignCatalogue('swatches');await new Promise(r=>setTimeout(r,300));
-        const choices=[...document.querySelectorAll('.abele-swatch-picker__choice')].map(el=>({hit:el.getBoundingClientRect().height,padding:getComputedStyle(el).padding}));
+        window.__abeleTest.openDesignCatalogue('swatches');
+        const choices=await (${settledGeometry.toString()})(
+          ()=>[...document.querySelectorAll('.abele-swatch-picker__choice')].map(el=>({hit:el.getBoundingClientRect().height,padding:getComputedStyle(el).padding})),
+          ()=>new Promise(r=>setTimeout(r,50)),Date.now,10000,400,rows=>rows.length===${KIT_COLORS.length + 6}
+        );
         const underlinePadding=getComputedStyle(document.querySelector('.abele-swatch-picker__underline')).padding;
         window.__abeleTest.openDesignCatalogue('controls');await new Promise(r=>setTimeout(r,300));
         const slider=document.querySelector('input[type="range"]'),dropdown=document.querySelector('.abele-obsidian-dropdown');
@@ -156,9 +159,10 @@ export const PHONE_CATALOGUE_CONTRACTS: Contract[] = [
         snapshot: DesignSnapshot
       }
       expect(result.choices).toHaveLength(KIT_COLORS.length + 6)
-      expect(result.choices.every((choice) => choice.hit >= 44 && choice.padding === '4px')).toBe(
-        true
-      )
+      expect(
+        result.choices.every((choice) => choice.hit >= 44 && choice.padding === '4px'),
+        JSON.stringify(result.choices)
+      ).toBe(true)
       expect(result.underlinePadding).toBe('4px')
       expect(result.geometry.slider).toBeGreaterThanOrEqual(44)
       expect(result.geometry.track).toBe('6px')

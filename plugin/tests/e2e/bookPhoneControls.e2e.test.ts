@@ -307,10 +307,13 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
           slider.addEventListener('input', change)
           slider.addEventListener('change', change)
           view.engine.addEventListener('relocate', relocate)
-          const x0 = b.left + b.width * (direction === 1 ? 0.3 : 0.9)
+          // Cross half the drawer even without a fling; a short track-relative swipe
+          // otherwise tests the host's release-velocity estimator instead of swipe ownership.
+          const x0 = b.left + b.width * (direction === 1 ? 0.1 : 0.9)
+          const x1 = direction === 1 ? innerWidth - 8 : 8
           await touch('touchStart', [[x0, y]])
           for (let i = 1; i <= 10; i++) {
-            await touch('touchMove', [[x0 + direction * i * (b.width * 0.6 / 10), y]])
+            await touch('touchMove', [[x0 + (x1 - x0) * i / 10, y]])
             await wait(20)
           }
           await touch('touchEnd'); await wait(1200)
