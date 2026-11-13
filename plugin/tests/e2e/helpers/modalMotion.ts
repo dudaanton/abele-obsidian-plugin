@@ -38,9 +38,20 @@ export async function modalDetached(container: HTMLElement | null): Promise<void
   }
 }
 
+export async function menuAction(menu: HTMLElement | null, label: string): Promise<void> {
+  if (!menu) throw Error('Menu did not open')
+  await modalReady(menu)
+  const item = [...menu.querySelectorAll<HTMLElement>('.menu-item')].find(
+    (element) => element.textContent?.trim() === label
+  )
+  if (!item) throw Error('Missing menu action: ' + label)
+  item.click()
+}
+
 /** Injected into the app's document; descendants' looping status animations do not block it. */
 export const modalMotion = `
   const modalIsMoving = ${modalIsMoving.toString()}
   const modalReady = ${modalReady.toString()}
   const modalDetached = ${modalDetached.toString()}
+  const menuAction = ${menuAction.toString()}
 `

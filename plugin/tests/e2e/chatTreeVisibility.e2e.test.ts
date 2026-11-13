@@ -49,11 +49,7 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
           : ['New chat', 'New folder', 'Access…', 'Rename…', visibility, 'Delete']
         if (JSON.stringify(labels) !== JSON.stringify(expected)) throw Error('Folder menu order: ' + JSON.stringify(labels))
       }
-      const action = text => {
-        const item = [...document.querySelectorAll('.menu-item')].find(el => el.textContent.trim() === text)
-        if (!item) throw Error('Missing folder action: ' + text)
-        item.click()
-      }
+      const action = text => menuAction(document.querySelector('.menu'), text)
       const make = async title => {
         const id = await service.newTab(); ids.push(id)
         const session = service.getSession(id)
@@ -84,7 +80,7 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         await shot('new-chat-on-top')
         await menu()
         await shot('menu-open-chats')
-        action('Hide folder and close its chats')
+        await action('Hide folder and close its chats')
         await until(() => !document.querySelector('[data-path="' + folder + '"]'))
         if (service.getSession(filed)) throw Error('Hidden chat still open')
         await shot('hidden')
@@ -92,11 +88,11 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         await until(() => document.querySelector('.abele-chat-tree__folder_hidden'))
         await shot('archive-hidden-folder')
         await menu()
-        action('Show folder')
+        await action('Show folder')
         await until(() => !service.folders.isHidden(folder))
         await menu()
         await shot('menu-closed-chats')
-        action('Hide folder')
+        await action('Hide folder')
         await until(() => service.folders.isHidden(folder))
         await service.openChatFile(files[0])
         await openTree()
@@ -130,7 +126,7 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         }
         eventAt(chatRow(), 'contextmenu')
         await until(() => document.querySelector('.menu'))
-        action('Rename…')
+        await action('Rename…')
         await until(() => document.querySelector('[data-chat="' + reopened.id + '"] [contenteditable]'), 'Row-menu rename')
         const editor = () => document.querySelector('[data-chat="' + reopened.id + '"] [contenteditable]')
         if (document.getSelection().toString() !== reopened.chatTitle.value) throw Error('Rename did not select the whole name')
@@ -196,7 +192,7 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         const more = leaf.view.containerEl.querySelector('.abele-ai-chat__overflow [aria-haspopup="menu"]')
         eventAt(more, 'click')
         await until(() => document.querySelector('.menu'))
-        action('Rename…')
+        await action('Rename…')
         try { await until(editor) } catch (error) {
           throw Error('Header rename: ' + error.message + ' ' + JSON.stringify({
             active: service.activeTabId.value, expected: reopened.id,
@@ -212,7 +208,7 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         editor().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
         await until(() => !editor())
         await menu()
-        action('Rename…')
+        await action('Rename…')
         try {
           await until(() => document.querySelector('[data-path="' + folder + '"] > .tree-item-self [contenteditable]'), 'Folder-menu rename')
         } catch (error) {
