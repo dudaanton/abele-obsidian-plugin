@@ -9,6 +9,7 @@ import {
 } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { onPhone, targets } from './helpers/target'
+import { modalMotion } from './helpers/modalMotion'
 
 targets('desktop', 'phone')
 
@@ -16,6 +17,7 @@ const available = isObsidianRunning() && hasTestApi()
 const shots = shotDir('reply-annotations')
 const path = 'AI/Chats/sample-reply-annotations.abchat'
 const script = `(async () => {
+  ${modalMotion}
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const until = async fn => { for (let i=0;i<100;i++) { const value=fn(); if(value) return value; await wait(100) } throw new Error('Expected UI did not appear') }
   const chats=window.__abeleTest.ChatService.getInstance(), comments=window.__abeleTest.CommentService.getInstance()
@@ -118,9 +120,7 @@ const script = `(async () => {
       const diff=dialog.querySelector('.abele-diff__body')
       return diff && diff.textContent.includes('**small** lantern') && diff.textContent.includes('bright lamp')
     })
-    const container=dialog.closest('.modal-container')
-    await until(()=>!(container.getAnimations({subtree:true})).some(animation=>animation.pending || animation.playState==='running'))
-    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))
+    await modalReady(dialog.closest('.modal'))
     const modal=dialog.closest('.modal'), r=modal.getBoundingClientRect()
     report.dialog={left:r.left,right:r.right,bottom:r.bottom,width:innerWidth,height:innerHeight,buttons:[...modal.querySelectorAll('.abele-modal__footer button')].filter(b=>b.getBoundingClientRect().bottom<=innerHeight).map(b=>b.textContent.trim())}
     await shot('passage-diff')

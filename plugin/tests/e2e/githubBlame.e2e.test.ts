@@ -19,6 +19,7 @@ import {
 import { onPhone, targets } from './helpers/target'
 import { longPress } from './helpers/phone'
 import { shotDir } from './helpers/shots'
+import { modalMotion } from './helpers/modalMotion'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -138,10 +139,11 @@ describe.skipIf(!available)('file blame on a phone', () => {
     }>(`(async () => {
       ${PRELUDE}
       const modal = await until(() => document.querySelector('.modal:has(.abele-github-blame-details)'))
+      ${modalMotion}
       if (!modal) throw Error('Long press did not show details')
       const details = modal.textContent
       if (!(await until(() => modal.getBoundingClientRect().height > 0))) throw Error('Details not laid out')
-      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      await modalReady(modal)
       const shot = ${JSON.stringify(`${SHOTS}/github-blame-details.png`)}
       if (window.__e2eHost) await window.__e2eHost.shot(shot)
       else {
@@ -152,8 +154,10 @@ describe.skipIf(!available)('file blame on a phone', () => {
       const sideways = content.scrollWidth - content.clientWidth
       const leaf = githubLeaves()[0]
       const open = [...modal.querySelectorAll('button')].find(b => b.textContent === 'Open commit')
+      const container = modal.closest('.modal-container')
       open.click()
       if (!(await until(() => leaf.view.model.url.includes('/commit/') && !document.querySelector('.abele-github-blame-details')))) throw Error('Commit did not open')
+      await modalDetached(container)
       return { details, sideways, sameLeaf: githubLeaves()[0] === leaf, url: leaf.view.model.url }
     })()`)
     expect(result.sideways).toBe(0)

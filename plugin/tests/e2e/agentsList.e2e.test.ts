@@ -6,6 +6,7 @@ import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { designCaptureExpression } from '../helpers/designCapture'
 import { lintDesign, type DesignSnapshot } from '../helpers/designLint'
+import { modalMotion } from './helpers/modalMotion'
 
 targets('desktop', 'phone')
 const directory = shotDir('agents-list')
@@ -59,18 +60,14 @@ describe('real agents list on synthetic states', () => {
     it(`${state} keeps native rows, labelled states, one close and no overflow`, async () => {
       const path = join(directory, `${state}-${onPhone() ? 'phone' : 'desktop'}.png`)
       const raw = await evalLong(`(async () => {
+        ${modalMotion}
         ${close}
         window.__abeleTest.openDialog('agents', { agentsState: ${JSON.stringify(state)} })
         await new Promise(r => setTimeout(r, 400))
         await document.fonts.ready
         const root = document.querySelector('.abele-agents')
         if (!root) throw new Error('Agents list did not mount')
-        const container = root.closest('.modal-container')
-        const deadline = Date.now() + 5000
-        while (container.getAnimations({ subtree: true }).some(animation => animation.pending || animation.playState === 'running')) {
-          if (Date.now() > deadline) throw Error('Agents modal motion did not finish')
-          await new Promise(resolve => requestAnimationFrame(resolve))
-        }
+        await modalReady(root.closest('.modal'))
         const snapshot = ${designCaptureExpression('.modal.abele-modal', { nativeSelector: '.backlink-pane > .tree-item-self, .backlink-pane .search-result-file-title' })}
         const overflowing = [...root.querySelectorAll('*')].filter(el => {
           const r = el.getBoundingClientRect()

@@ -3,6 +3,7 @@ import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { onPhone, targets } from './helpers/target'
 import { withEmulatedPhone } from './helpers/emulatedPhone'
+import { modalMotion } from './helpers/modalMotion'
 
 targets('desktop', 'phone')
 const shots = shotDir('chat-tree-visibility')
@@ -12,6 +13,7 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
     const run = async (label: string) => {
       const result = await evalLong(
         `(async () => {
+      ${modalMotion}
       const service = window.__abeleTest.ChatService.getInstance()
       const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
       const until = async fn => { for (let i = 0; i < 150; i++) { if (fn()) return; await wait(50) } throw Error('Visibility state did not appear: ' + fn) }
@@ -30,6 +32,8 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
       const openTree = async () => {
         if (!document.querySelector('.abele-chat-tree')) leaf.view.containerEl.querySelector('.abele-chat-switch__current').click()
         await until(() => document.querySelector('.abele-chat-tree'))
+        const modal = document.querySelector('.abele-chat-tree').closest('.modal')
+        if (modal) await modalReady(modal)
       }
       const menu = async () => {
         await until(() => !document.querySelector('.menu'))
@@ -152,13 +156,23 @@ describe.runIf(isObsidianRunning() && hasTestApi())('chat tree visibility', () =
         editor().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
         await until(() => !editor())
         if (reopened.chatTitle.value !== 'Manually chosen sample') throw Error('Escape renamed the chat')
+        const oldContainer = document.querySelector('.abele-chat-tree').closest('.modal-container')
         document.querySelector('.abele-chat-tree').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
         await until(() => !document.querySelector('.abele-chat-tree'))
+        await modalDetached(oldContainer)
         const more = leaf.view.containerEl.querySelector('.abele-ai-chat__overflow [aria-haspopup="menu"]')
         eventAt(more, 'click')
         await until(() => document.querySelector('.menu'))
         action('Rename…')
-        await until(editor)
+        try { await until(editor) } catch (error) {
+          throw Error('Header rename: ' + error.message + ' ' + JSON.stringify({
+            active: service.activeTabId.value, expected: reopened.id,
+            renaming: service.tree.renaming.value,
+            tree: !!document.querySelector('.abele-chat-tree'),
+            menus: [...document.querySelectorAll('.menu')].map(el => ({ style: el.getAttribute('style'), text: el.textContent.slice(0, 200) })),
+            sheets: [...document.querySelectorAll('.modal')].map(el => ({ style: el.getAttribute('style'), rect: el.getBoundingClientRect().toJSON() })),
+          }))
+        }
         if (document.querySelector('.abele-prompt__field')) throw Error('Header opened a second rename editor')
         if (document.getSelection().toString() !== 'Manually chosen sample') throw Error('Header rename did not select the name')
         await shot('header-rename-in-tree')

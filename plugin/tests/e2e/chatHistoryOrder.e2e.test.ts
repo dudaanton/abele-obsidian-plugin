@@ -16,6 +16,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { modalMotion } from './helpers/modalMotion'
 
 targets('desktop', 'phone')
 
@@ -48,6 +49,7 @@ interface Report {
 }
 
 const script = `(async () => {
+  ${modalMotion}
   const T = window.__abeleTest
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
   const until = async (fn, ms = 5000) => {
@@ -120,10 +122,12 @@ const script = `(async () => {
   const openHistory = async () => {
     app.commands.executeCommandById('abele:search-all-chats')
     if (!(await until(() => modal() && modal().querySelectorAll('.abele-card').length))) throw new Error('the history did not open')
-    await wait(300)
+    await modalReady(modal().closest('.modal'))
   }
   const closeHistory = async () => {
+    const container = modal()?.closest('.modal-container')
     modal()?.closest('.modal-container')?.querySelector('.modal-close-button, .modal-header-button')?.click()
+    await modalDetached(container)
     return !!(await until(() => !modal(), 3000))
   }
   // The order is a glyph beside the search field opening Obsidian's menu of orders; nativeMenus
