@@ -27,6 +27,22 @@ it.each(
   expect(typeof Reflect.get(fs, operation)).toBe('function')
 })
 
+it('maps content-scan readiness metadata into the physical folder', async () => {
+  const ready = Symbol.for('abele.sync.scan-hash-ready-v1')
+  const info = { path: 'Shared/sample.md', size: 8, mtime: 1000 }
+  const pass = {}
+  const disk = Object.assign(new MemoryFileSystem(), {
+    [ready]: function (file: typeof info, token: object) {
+      expect(this).toBe(disk)
+      expect(file).toEqual({ ...info, path: 'Moved/sample.md' })
+      expect(token).toBe(pass)
+      return true
+    },
+  })
+  const fs = new LocalFolderPlacement('Shared', 'Moved').fileSystem(disk)
+  expect(Reflect.get(fs, ready)(info, pass)).toBe(true)
+})
+
 it('reads prefix-wait diagnostics through real placement and coordination with the host receiver', () => {
   const operation = Symbol.for('abele.sync.prefix-read-wait-v1')
   const pending = { path: 'Moved/sample.md', step: 'native open', at: 1000 }

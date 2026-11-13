@@ -2,7 +2,13 @@ import { PRIVATE_REMOVAL_FILES, privateRemovalFileSystem } from './privateRemova
 import { pathAdmission } from '@abele/sync-sdk/core'
 import { caseKey, AbeleError } from '@abele/sync-sdk/protocol'
 import { FINGERPRINT_UPLOAD, UPLOAD_READ } from './mobileWholeRead'
-import type { FileSystem, StateStore, StateEntry, AtomicStage } from '@abele/sync-sdk/core'
+import type {
+  FileSystem,
+  FileInfo,
+  StateStore,
+  StateEntry,
+  AtomicStage,
+} from '@abele/sync-sdk/core'
 import { assertPhysicalPath } from './external/projection'
 import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlacementStages'
 import { IGNORE_FILE } from './scope'
@@ -38,6 +44,7 @@ export const placementMethods = {
   removeDirectory: 'path',
   openRead: 'path',
   fingerprint: 'path',
+  deferNewLocalFile: 'info',
   beginAtomicWrite: 'path',
   move: 'pair',
   moveDirectory: 'pair',
@@ -53,7 +60,7 @@ export const placementMethods = {
   recoverConditionalFiles: 'opaque',
 } satisfies Record<
   keyof PlacementFileSystem,
-  'list' | 'watch' | 'path' | 'pair' | 'identity' | 'children' | 'opaque' | 'key'
+  'list' | 'watch' | 'path' | 'pair' | 'identity' | 'children' | 'opaque' | 'key' | 'info'
 >
 /** The host's received-directory identity lookup takes one vault path. */
 const DIRECTORY_IDENTITY = Symbol.for('abele.sync.directory-identity-v1')
@@ -332,6 +339,7 @@ export class LocalFolderPlacement {
             Symbol.for('abele.sync.retention-idle-v1'),
             Symbol.for('abele.sync.diagnostic-v1'),
             Symbol.for('abele.sync.prefix-read-wait-v1'),
+            Symbol.for('abele.sync.scan-hash-counts-v1'),
             Symbol.for('abele.sync.replay-stage-v1'),
             Symbol.for('abele.sync.trace-pull-v1'),
             Symbol.for('abele.sync.install-batch-proof-v1'),
@@ -433,11 +441,16 @@ export class LocalFolderPlacement {
             return result
           }
         const policy =
-          key === DIRECTORY_IDENTITY ||
-          key === Symbol.for('abele.sync.written-stat-v1') ||
-          key === Symbol.for('abele.sync.index-absent-v1')
-            ? 'path'
-            : placementMethods[key as keyof PlacementFileSystem]
+          key === Symbol.for('abele.sync.scan-hash-ready-v1')
+            ? 'info'
+            : key === DIRECTORY_IDENTITY ||
+                key === Symbol.for('abele.sync.written-stat-v1') ||
+                key === Symbol.for('abele.sync.index-absent-v1')
+              ? 'path'
+              : placementMethods[key as keyof PlacementFileSystem]
+        if (policy === 'info')
+          return (info: FileInfo, ...args: unknown[]) =>
+            value.call(target, { ...info, path: placement.toLocal(info.path) }, ...args)
         if (policy === 'key') return (path: string) => value.call(target, placement.toLocal(path))
         if (policy === 'list')
           return async function* () {

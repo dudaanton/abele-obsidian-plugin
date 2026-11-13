@@ -15,6 +15,10 @@ export interface ScanFingerprint {
   /** Verified transfer publication, never an ordinary scan hint. */
   installation?: true
 }
+export interface ScanFingerprintSnapshot {
+  revision: number
+  rows: ReadonlyMap<string, ScanFingerprint>
+}
 
 /** Per-path scan fingerprints and the projection classification cache, kept in the host
  * database beside the sync records. Mutations fence both until their invalidation commits. */
@@ -25,6 +29,9 @@ export class HostScanCache {
   private readonly scanInvalidations = new Map<string, number>()
   private scanGeneration = 0
   private scanRevisionFloor = 0
+  invalidateSnapshots(): void {
+    this.scanRevisionFloor = ++this.scanGeneration
+  }
   /** Unexamined installation proofs span the pull's watcher backlog. Every writer retires
    * affected proofs directly, so eviction of the bounded revision clock cannot invalidate
    * unrelated installations or revive a changed one. Shared across filesystem instances. */
@@ -161,6 +168,46 @@ export class HostScanCache {
     )
     await done
     return this.scanMutationActive(path) ? undefined : row?.value
+  }
+  /** One bounded metadata snapshot per content-discovery pass, rather than one IDB
+   * transaction for every untracked file. Live mutation revisions fence each lookup. */
+  async readScanFingerprints(): Promise<ScanFingerprintSnapshot> {
+    const revision = this.scanGeneration
+    const tx = this.db.transaction(STORE, 'readonly')
+    const done = completion(tx, 'read scan fingerprints')
+    const prefix = '!scan-fingerprint-v1:'
+    const range =
+      typeof IDBKeyRange === 'undefined'
+        ? undefined
+        : IDBKeyRange.bound(
+            [this.namespace, prefix],
+            [this.namespace, '!scan-fingerprint-v1;'],
+            false,
+            true
+          )
+    const rows = await readIdbSnapshot<{ namespace: string; key: string; value: ScanFingerprint }>(
+      tx.objectStore(STORE),
+      (row) => [row.namespace, row.key],
+      range
+    )
+    await done
+    const found = new Map<string, ScanFingerprint>()
+    const budget = new SyncTaskBudget()
+    for (const row of rows) {
+      if (row.namespace === this.namespace && row.key.startsWith(prefix))
+        found.set(row.key.slice(prefix.length), row.value)
+      const pause = budget.metadataRow()
+      if (pause !== undefined) await pause
+    }
+    return { revision, rows: found }
+  }
+  scanFingerprintFromSnapshot(
+    path: string,
+    snapshot: ScanFingerprintSnapshot
+  ): ScanFingerprint | undefined {
+    return this.scanMutationActive(path) || this.scanFingerprintRevision(path) > snapshot.revision
+      ? undefined
+      : snapshot.rows.get(path)
   }
   async writeScanFingerprint(
     path: string,

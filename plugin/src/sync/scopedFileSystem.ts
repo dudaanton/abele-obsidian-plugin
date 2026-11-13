@@ -112,6 +112,11 @@ export function scopedFileSystem(
         } satisfies NonNullable<FileSystem['trustedPathCandidates']>
       }
       if (typeof value !== 'function') return value
+      if (key === Symbol.for('abele.sync.scan-hash-ready-v1'))
+        return async (info: { path: string }, pass: object) => {
+          assertPath(info.path)
+          return value.call(target, info, pass)
+        }
       if (key === Symbol.for('abele.sync.local-scan-revision-v1'))
         return () => {
           const revision = value.call(target)

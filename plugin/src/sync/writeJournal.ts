@@ -124,7 +124,11 @@ export class WriteJournal {
   async currentEntries(): Promise<JournalEntry[]> {
     const host = this.storage && durableHostOf(this.storage)
     return host
-      ? this.entries(((await host.readValue(JOURNAL_KEY)) as unknown[]) ?? [])
+      ? this.entries(
+          this.owner === undefined
+            ? (((await host.readValue(JOURNAL_KEY)) as unknown[]) ?? [])
+            : await host.readJournalOwner(JOURNAL_KEY, this.owner)
+        )
       : this.entries()
   }
   async currentEntry(temp: string): Promise<JournalEntry | undefined> {
@@ -158,7 +162,11 @@ export class WriteJournal {
   async currentRecovered(): Promise<RecoveredWrite[]> {
     const host = this.storage && durableHostOf(this.storage)
     return host
-      ? this.recovered(((await host.readValue(RECOVERED_WRITES_KEY)) as unknown[]) ?? [])
+      ? this.recovered(
+          this.owner === undefined
+            ? (((await host.readValue(RECOVERED_WRITES_KEY)) as unknown[]) ?? [])
+            : await host.readJournalOwner(RECOVERED_WRITES_KEY, this.owner)
+        )
       : this.recovered()
   }
   async currentUnfinishedRecovered(): Promise<RecoveredWrite[]> {

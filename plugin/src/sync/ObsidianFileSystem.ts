@@ -18,6 +18,7 @@ import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlace
 import { isDeviceLocalPluginState } from './deviceLocalState'
 import { isHidden, isWireConfigDir } from './scope'
 import { durableHostOf } from './hostSyncStorage'
+import { SCAN_HASH_READY } from './progressiveLocalScan'
 import { finishRetainedWrites } from './privateRecovery'
 import { MemoryRetention, type RetentionIndex } from './retentionIndex'
 import { retainedFileStat } from './vaultPathLinks'
@@ -3631,13 +3632,52 @@ export class ObsidianFileSystem implements FileSystem {
     const native = nativeChunkPort(this.disk)
     return !!(native.open && native.fullPath)
   }
+  private readonly scanHashBudget = new SyncTaskBudget()
+  private readonly scanHashes = { hashed: 0, reused: 0 };
+  [Symbol.for('abele.sync.scan-hash-counts-v1')]() {
+    return { ...this.scanHashes }
+  }
+  private readonly scanReadySnapshots = new WeakMap<
+    object,
+    Promise<import('./hostScanCache').ScanFingerprintSnapshot>
+  >()
+  async [SCAN_HASH_READY](info: FileInfo, pass: object): Promise<boolean | undefined> {
+    const local = storageOf(this.app)
+    const host = local ? durableHostOf(local) : undefined
+    if (!host || !this.indexReady() || !this.cacheableScanPath(info.path)) return undefined
+    const indexed = this.app.vault.getFileByPath(info.path)
+    if (!indexed || indexed.path !== info.path) return undefined
+    if (this.awaitingIndex.has(info.path)) return false
+    const key = this.pathKey(info.path)
+    const revision = host.scanFingerprintRevision(key)
+    let snapshot = this.scanReadySnapshots.get(pass)
+    if (snapshot === undefined) {
+      snapshot = host.readScanFingerprints()
+      this.scanReadySnapshots.set(pass, snapshot)
+    }
+    const saved = host.scanFingerprintFromSnapshot(key, await snapshot)
+    return !!(
+      indexed &&
+      indexed.path === info.path &&
+      saved &&
+      saved.size === info.size &&
+      saved.mtime === indexed.stat.mtime &&
+      saved.ctime === indexed.stat.ctime &&
+      saved.size === indexed.stat.size &&
+      stamp(saved.mtime) === info.mtime &&
+      /^[a-f0-9]{64}$/.test(saved.sha) &&
+      this.indexReady() &&
+      host.scanFingerprintRevision(key) === revision
+    )
+  }
   async fingerprint(path: string, signal?: AbortSignal, fresh = false, waitForInstallation = true) {
     signal?.throwIfAborted()
+    const pause = this.scanHashBudget.metadataRow(signal)
+    if (pause !== undefined) await pause
     this.runtimeFence?.assertReady()
     const local = storageOf(this.app)
     const host = local ? durableHostOf(local) : undefined
-    if (!host || !this.fileIdentity || !this.cacheableScanPath(path))
-      return this.fingerprintFresh(path, signal)
+    if (!host || !this.cacheableScanPath(path)) return this.fingerprintFresh(path, signal)
     const key = this.pathKey(path)
     // A file can be indexed before its cohort commits and records its verified hash.
     // The watcher's own-write examination waits for that barrier instead of reading
@@ -3704,6 +3744,7 @@ export class ObsidianFileSystem implements FileSystem {
         host.scanFingerprintRevision(key) === revision
       ) {
         this.observedBases.set(key, { sha: saved.sha })
+        this.scanHashes.reused++
         return {
           sha: saved.sha,
           size: saved.size,
@@ -3711,6 +3752,43 @@ export class ObsidianFileSystem implements FileSystem {
           generation: `${saved.size}:${saved.mtime}:${saved.ctime}`,
         }
       }
+    }
+    if (!this.fileIdentity) {
+      // Portable hosts have no object identity. The settled index is sufficient for
+      // scan hints, just as on native hosts; destructive checks still read fresh bytes.
+      const before = indexedStat && { ...indexedStat }
+      const trusted = this.indexReady() && !this.awaitingIndex.has(path)
+      const result = await this.fingerprintFresh(path, signal)
+      const after = this.app.vault.getFileByPath(path)
+      signal?.throwIfAborted()
+      if (
+        trusted &&
+        before &&
+        indexed?.path === path &&
+        after === indexed &&
+        after.stat.size === before.size &&
+        after.stat.mtime === before.mtime &&
+        after.stat.ctime === before.ctime &&
+        result.size === before.size &&
+        result.mtime === stamp(before.mtime) &&
+        this.indexReady() &&
+        !this.awaitingIndex.has(path) &&
+        host.scanFingerprintRevision(key) === revision
+      )
+        await host.writeScanFingerprint(
+          key,
+          {
+            identity: 'host-index',
+            size: before.size,
+            mtime: before.mtime,
+            ctime: before.ctime,
+            sha: result.sha,
+          },
+          revision
+        )
+      signal?.throwIfAborted()
+      this.runtimeFence?.assertReady()
+      return result
     }
     const beforeIdentity = await this.fileIdentity(path)
     const before = await this.rawStat(path)
@@ -3750,6 +3828,7 @@ export class ObsidianFileSystem implements FileSystem {
           this.runtimeFence?.assertReady()
         }
         this.observedBases.set(this.pathKey(path), { sha: saved.sha })
+        this.scanHashes.reused++
         return {
           sha: saved.sha,
           size: before.size,
@@ -3804,6 +3883,7 @@ export class ObsidianFileSystem implements FileSystem {
   }
   private async fingerprintFresh(path: string, signal?: AbortSignal) {
     const identity = await this.io.fingerprint(path, signal, false, true)
+    this.scanHashes.hashed++
     this.observedBases.set(this.pathKey(path), { sha: identity.sha })
     return { ...identity, mtime: stamp(identity.mtime) }
   }

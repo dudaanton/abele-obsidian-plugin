@@ -56,6 +56,18 @@ export async function pluginRepresentation(options: {
     const inspectionReason = trustedProjectionInspectionReason(app, physical, prior)
     return inspectionReason === 'hit' ? true : inspectionReason
   }
+  const saveRows = async (current: readonly InspectionEntry[], retired: readonly string[] = []) => {
+    fence.assertOwned()
+    // Write only rows that changed. Rows are per path, so another connection's completed
+    // inspections stay as they are.
+    const changed = current.filter((entry) => {
+      const known = persisted.get(entry.path)
+      return !known || !sameInspectionEntry(known, entry)
+    })
+    await cache.save(changed, retired)
+    for (const entry of changed) persisted.set(entry.path, entry)
+    for (const path of retired) persisted.delete(path)
+  }
   return ExternalRepresentation.open({
     inspection: {
       entries: [],
@@ -87,18 +99,10 @@ export async function pluginRepresentation(options: {
         projectionInspectionIdentity(app, options.placement?.toLocal(path) ?? path, prior),
       trusted: trustedIndex,
       trustedUninspected: (entry) => trustedIndex(entry.path, entry),
-      save: async (current, retired = []) => {
-        fence.assertOwned()
-        // Write only rows that changed. Rows are per path, so another connection's completed
-        // inspections stay as they are.
-        const changed = current.filter((entry) => {
-          const known = persisted.get(entry.path)
-          return !known || !sameInspectionEntry(known, entry)
-        })
-        await cache.save(changed, retired)
-        for (const entry of changed) persisted.set(entry.path, entry)
-        for (const path of retired) persisted.delete(path)
-      },
+      indexedListing: (info) =>
+        options.fs.trustedIndexIdentities === true && trustedIndex(info.path, info) === true,
+      save: saveRows,
+      saveRows: cache.storage === 'host' ? saveRows : undefined,
     },
     ...options,
     retiredPaths: await retiredArtifactPaths(app, options.factory, () => fence.assertOwned()),

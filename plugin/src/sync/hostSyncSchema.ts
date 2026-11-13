@@ -21,11 +21,13 @@ export function readGroup(
   store: IDBObjectStore,
   namespace: string,
   key: string,
-  first?: (row: HostRecord) => boolean
+  first?: (row: HostRecord) => boolean,
+  idPrefix?: string
 ): Promise<HostRecord[]> {
   return new Promise((resolve, reject) => {
     const rows: HostRecord[] = []
-    const prefix = JSON.stringify([namespace, key]).slice(0, -1) + ','
+    const group = JSON.stringify([namespace, key]).slice(0, -1) + ','
+    const prefix = idPrefix === undefined ? group : group + JSON.stringify(idPrefix).slice(0, -1)
     const request = store.openCursor()
     request.onerror = () => reject(request.error)
     request.onsuccess = () => {
@@ -123,9 +125,10 @@ export async function migrateHostStorage(
       const addingActivation = marker && !row && key === 'abele-sync-external-activation-v1'
       if (marker && !row && !addingActivation)
         throw new Error('Sync host storage is incomplete; recovery is required')
-      const value = marker && !addingActivation
-        ? (row?.value ?? null)
-        : structuredClone(local.loadLocalStorage(key) ?? null)
+      const value =
+        marker && !addingActivation
+          ? (row?.value ?? null)
+          : structuredClone(local.loadLocalStorage(key) ?? null)
       if (recordMarker && !addingActivation) {
         const loaded = pathMarker
           ? await readGroup(records, namespace, key)

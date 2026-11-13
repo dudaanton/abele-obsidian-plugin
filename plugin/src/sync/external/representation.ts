@@ -66,8 +66,15 @@ export interface RepresentationOptions {
     trusted?(path: string, prior: InspectionIdentity): boolean | string
     /** A large or excluded ordinary ledger row has no byte inspection to save. */
     trustedUninspected?(entry: StateEntry): boolean | string
+    /** Complete metadata-only inventory; content boundaries still classify before use. */
+    indexedListing?(info: FileInfo): boolean
     /** Where the cache is kept, for diagnostics. */
     storage?: string
+    /** Optional delta checkpoint, durable before a completed inspection returns. */
+    saveRows?(
+      entries: readonly InspectionEntry[],
+      retired?: readonly string[]
+    ): void | Promise<void>
     save(entries: readonly InspectionEntry[], retired?: readonly string[]): void | Promise<void>
   }
   verify(fileId: string, input: ExternalVerifyRequest): Promise<unknown>
@@ -125,6 +132,8 @@ export class ExternalRepresentation {
   private document!: ExternalDocument
   private readonly entries = new Map<string, StateEntry>()
   private inspectionDirty = false
+  private readonly pendingInspections = new Map<string, InspectionEntry>()
+  private inspectionSaving: Promise<void> = Promise.resolve()
   private stopped = false
   private stopCause?: unknown
   private unexpectedSave: Promise<void> = Promise.resolve()
@@ -226,14 +235,26 @@ export class ExternalRepresentation {
     this.owned()
     await this.flushInspection()
   }
-  private async flushInspection(retired: readonly string[] = []): Promise<void> {
+  private flushInspection(retired: readonly string[] = []): Promise<void> {
+    const work = this.inspectionSaving.then(() => this.saveInspection(retired))
+    this.inspectionSaving = work.catch(() => {})
+    return work
+  }
+  private async saveInspection(retired: readonly string[]): Promise<void> {
     if (!this.inspectionDirty) return
     this.owned()
     this.inspectionDirty = false
+    const pending = [...this.pendingInspections.values()]
+    this.pendingInspections.clear()
     try {
-      await this.options.inspection?.save([...this.inspected.values()], retired)
+      const inspection = this.options.inspection
+      if (inspection?.saveRows) await inspection.saveRows(pending, retired)
+      else await inspection?.save([...this.inspected.values()], retired)
     } catch (error) {
       this.inspectionDirty = true
+      for (const entry of pending)
+        if (!this.pendingInspections.has(entry.path) && this.inspected.get(entry.path) === entry)
+          this.pendingInspections.set(entry.path, entry)
       // Lost ownership still stops the caller. Otherwise the cache only saves reads, and a
       // failed save is retried with the next change.
       this.owned()
@@ -616,9 +637,14 @@ export class ExternalRepresentation {
           after !== null &&
           sameInspectionIdentity(identity, after))
       ) {
-        this.inspected.set(cachePath, { path: cachePath, ...(identity ?? info), marker })
+        const entry = { path: cachePath, ...(identity ?? info), marker }
+        this.inspected.set(cachePath, entry)
+        this.pendingInspections.set(cachePath, entry)
         this.inspectionDirty = true
         if (identity?.size === info.size) this.rememberVerified(cachePath, proof, info.size, marker)
+        // A completed decision must survive revocation before the next path. Persist
+        // only this delta, never repeatedly serialize the accumulated vault inventory.
+        if (this.options.inspection?.saveRows) await this.flushInspection()
       }
     }
     if (marker) {
@@ -736,16 +762,35 @@ export class ExternalRepresentation {
         if (method === 'list')
           return async function* () {
             const observed = new Set<string>()
+            const beforeReads = self.stats.contentReads
+            const beforeReuse =
+              (self.stats.callers.list?.hit ?? 0) + (self.stats.callers.list?.pass ?? 0)
+            const beforeIndexed = self.stats.callers.list?.indexed ?? 0
             let complete = false
             const pending: NonNullable<ClassificationStats['listingWait']> = {
               step: 'classification',
               at: Date.now(),
             }
             try {
+              await self.loadInspection()
               for await (const info of fs.list()) {
                 pending.path = info.path
                 self.stats.listingWait = pending
                 observed.add(self.options.inspection?.cacheKey?.(info.path) ?? info.path)
+                const cachePath = self.options.inspection?.cacheKey?.(info.path) ?? info.path
+                if (
+                  self.options.inspection?.indexedListing?.(info) &&
+                  !self.inspected.get(cachePath)?.marker &&
+                  !self.artifact(info.path) &&
+                  !self.document.files.some(
+                    (file) => self.managed(file) && self.original(file, info.path)
+                  )
+                ) {
+                  self.count('list', 'indexed')
+                  if (self.stats.listingWait === pending) delete self.stats.listingWait
+                  yield info
+                  continue
+                }
                 const decision = await self.classify(info.path, info, undefined, 'list')
                 if (self.stats.listingWait === pending) delete self.stats.listingWait
                 if (decision.kind === 'ordinary') yield info
@@ -770,6 +815,7 @@ export class ExternalRepresentation {
                     !observed.has(path)
                   ) {
                     self.inspected.delete(path)
+                    self.pendingInspections.delete(path)
                     self.verified.delete(path)
                     retired.push(path)
                     self.inspectionDirty = true
@@ -785,6 +831,15 @@ export class ExternalRepresentation {
                 await self.flushInspection(retired)
               } finally {
                 if (self.stats.listingWait === pending) delete self.stats.listingWait
+                console.debug('[abele-sync] inspection scan', {
+                  inspected: self.stats.contentReads - beforeReads,
+                  reused:
+                    (self.stats.callers.list?.hit ?? 0) +
+                    (self.stats.callers.list?.pass ?? 0) -
+                    beforeReuse,
+                  indexed: (self.stats.callers.list?.indexed ?? 0) - beforeIndexed,
+                  complete,
+                })
               }
             }
           }

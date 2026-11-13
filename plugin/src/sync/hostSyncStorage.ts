@@ -71,6 +71,15 @@ export class HostSyncStorage implements LocalStorage {
   readScanFingerprint(path: string): Promise<ScanFingerprint | undefined> {
     return this.scan.readScanFingerprint(path)
   }
+  readScanFingerprints() {
+    return this.scan.readScanFingerprints()
+  }
+  scanFingerprintFromSnapshot(
+    path: string,
+    snapshot: import('./hostScanCache').ScanFingerprintSnapshot
+  ) {
+    return this.scan.scanFingerprintFromSnapshot(path, snapshot)
+  }
   writeScanFingerprint(
     path: string,
     value: ScanFingerprint,
@@ -153,7 +162,10 @@ export class HostSyncStorage implements LocalStorage {
       prepared.set(local, result)
       if (typeof BroadcastChannel !== 'undefined') {
         result.channel = new BroadcastChannel(DATABASE + ':' + namespace)
-        result.channel.onmessage = () => result.invalidate()
+        result.channel.onmessage = () => {
+          result.scan.invalidateSnapshots()
+          result.invalidate()
+        }
       }
       return result
     } catch (error) {
@@ -247,6 +259,24 @@ export class HostSyncStorage implements LocalStorage {
       tx.objectStore(RECORDS).get(recordKey(this.namespace, key, id))
     )
     return row?.value
+  }
+
+  /** Journal ids begin with their owner. Seek that prefix without cloning other
+   * connections' retained work on every placement or recovery check. */
+  async readJournalOwner(key: string, owner: string): Promise<unknown[]> {
+    if (!journalKey(key)) throw new Error('Expected a journal key')
+    await this.flush()
+    const tx = this.db.transaction(RECORDS, 'readonly')
+    const store = tx.objectStore(RECORDS)
+    const prefix = 'entry:[' + JSON.stringify(owner) + ','
+    const [first, rows] = await Promise.all([
+      wait<HostRecord | undefined>(store.get(recordKey(this.namespace, key, '!header'))),
+      readGroup(store, this.namespace, key, undefined, prefix),
+    ])
+    const value = joinHostValue([...(first ? [first] : []), ...rows])
+    if (value == null) return []
+    if (!Array.isArray(value)) throw new Error('Sync journal is not an array')
+    return value
   }
 
   async readPath(key: string, path: string): Promise<unknown[]> {

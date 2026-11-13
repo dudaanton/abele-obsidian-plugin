@@ -216,3 +216,20 @@ it('checks a scope ancestor without enumerating unrelated directories', async ()
     ])
   expect(read).not.toHaveBeenCalled()
 })
+
+it('scopes indexed scan readiness by the file info path', async () => {
+  const ready = Symbol.for('abele.sync.scan-hash-ready-v1')
+  const pass = {}
+  const inspect = vi.fn(async function (this: unknown, info: { path: string }, token: object) {
+    expect(this).toBe(disk)
+    expect(token).toBe(pass)
+    return info.path === 'Shared/sample.md'
+  })
+  const disk = Object.assign(new MemoryFileSystem(), { [ready]: inspect })
+  const fs = scopedFileSystem(disk, assertPath, includes)
+  expect(await Reflect.get(fs, ready)({ path: 'Shared/sample.md' }, pass)).toBe(true)
+  await expect(async () =>
+    Reflect.get(fs, ready)({ path: 'Private/sample.md' }, pass)
+  ).rejects.toThrow('outside scope')
+  expect(inspect).toHaveBeenCalledTimes(1)
+})
