@@ -31,33 +31,68 @@ async function acquireNativeInput(
 ): Promise<() => void> {
   const deadline = Date.now() + timeoutMs
   const ownerFile = lock + '/' + owner.pid
-  for (;;) {
-    try {
-      fileSystem.mkdirSync(lock)
-      fileSystem.writeFileSync(ownerFile, '')
-      break
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-      try {
-        const owners = fileSystem.readdirSync(lock)
-        if (owners.length === 1 && /^\d+$/.test(owners[0])) {
-          try {
-            owner.kill(Number(owners[0]), 0)
-          } catch (error) {
-            if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
-              // Only the worker that removed this owner's file reaps the directory. A second
-              // waiter must not unlink a new owner's lock after the first has taken it away.
-              fileSystem.unlinkSync(lock + '/' + owners[0])
-              fileSystem.rmdirSync(lock)
+  // A fresh wheel event must not repeatedly jump ahead of a waiting window between
+  // its 50 ms polls. Queue whole gestures while retaining the live-owner lock rule.
+  const queue = lock + '.queue'
+  fileSystem.mkdirSync(queue, { recursive: true })
+  const ticket =
+    Date.now().toString().padStart(16, '0') +
+    '-' +
+    owner.pid +
+    '-' +
+    Math.random().toString(36).slice(2)
+  const ticketFile = queue + '/' + ticket
+  fileSystem.writeFileSync(ticketFile, '')
+  try {
+    for (;;) {
+      const waiting = fileSystem.readdirSync(queue).sort()
+      for (const candidate of waiting) {
+        try {
+          owner.kill(Number(candidate.split('-')[1]), 0)
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
+            try {
+              fileSystem.unlinkSync(queue + '/' + candidate)
+            } catch {
+              /* Another waiter reaped it. */
             }
           }
         }
-      } catch {
-        /* Released between attempts. */
       }
-      if (Date.now() >= deadline) throw new Error('native input lock was not released in time')
-      await new Promise((resolve) => setTimeout(resolve, 50))
+      if (fileSystem.readdirSync(queue).sort()[0] !== ticket) {
+        if (Date.now() >= deadline) throw new Error('native input lock was not released in time')
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        continue
+      }
+      try {
+        fileSystem.mkdirSync(lock)
+        fileSystem.writeFileSync(ownerFile, '')
+        break
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+        try {
+          const owners = fileSystem.readdirSync(lock)
+          if (owners.length === 1 && /^\d+$/.test(owners[0])) {
+            try {
+              owner.kill(Number(owners[0]), 0)
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
+                // Only the worker that removed this owner's file reaps the directory. A second
+                // waiter must not unlink a new owner's lock after the first has taken it away.
+                fileSystem.unlinkSync(lock + '/' + owners[0])
+                fileSystem.rmdirSync(lock)
+              }
+            }
+          }
+        } catch {
+          /* Released between attempts. */
+        }
+        if (Date.now() >= deadline) throw new Error('native input lock was not released in time')
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      }
     }
+  } finally {
+    fileSystem.unlinkSync(ticketFile)
   }
   return () => {
     fileSystem.unlinkSync(ownerFile)

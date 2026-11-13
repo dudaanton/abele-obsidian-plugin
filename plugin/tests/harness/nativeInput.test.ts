@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
   utimesSync,
@@ -19,6 +20,27 @@ beforeEach(() => {
   dir = mkdtempSync(join(process.cwd(), 'node_modules/native-input-test-'))
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+it('serves an already waiting gesture before a newly arriving gesture', async () => {
+  const lock = join(dir, 'fair.lock')
+  const events: string[] = []
+  let finish!: () => void
+  const held = new Promise<void>((resolve) => {
+    finish = resolve
+  })
+  const first = withNativeInput(() => held, lock)
+  const waiting = withNativeInput(() => {
+    events.push('waiting')
+  }, lock)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  finish()
+  await first
+  const newcomer = withNativeInput(() => {
+    events.push('newcomer')
+  }, lock)
+  await Promise.all([waiting, newcomer])
+  expect(events).toEqual(['waiting', 'newcomer'])
+})
 
 it('keeps complete input sequences together, not individual events', async () => {
   const events: string[] = []
@@ -107,6 +129,15 @@ it('never steals an old lock held by a live worker', async () => {
   writeFileSync(join(lock, String(process.pid)), '')
   utimesSync(lock, new Date(0), new Date(0))
   await expect(withNativeInput(() => {}, lock, 0)).rejects.toThrow('native input lock')
+  expect(readdirSync(lock + '.queue')).toEqual([])
+})
+
+it('reaps a dead waiting worker before serving the next gesture', async () => {
+  const lock = join(dir, 'dead-waiter.lock')
+  mkdirSync(lock + '.queue')
+  writeFileSync(join(lock + '.queue', '0000000000000000-2147483647-stale'), '')
+  await withNativeInput(() => {}, lock, 0)
+  expect(readdirSync(lock + '.queue')).toEqual([])
 })
 
 it('leaves the lane free between probe gestures and releases a failed down', async () => {
