@@ -101,11 +101,8 @@ const emit = defineEmits<{
 <style lang="scss">
 /**
  * Obsidian sizes a dropdown by cloning the select into `.dropdown.is-measuring`, which it
- * leaves in the DOM absolutely positioned with an explicit `left`. Without a positioned
- * ancestor here that offset resolves against a container far up the tree, so the clone lands
- * a few hundred pixels past the pane's right edge and gives the whole settings tab a
- * horizontal scrollbar. Positioning the wrapper makes it the clone's containing block; the
- * clip keeps the clone from widening anything.
+ * leaves in the DOM. The measuring helper anchors it at the wrapper's origin; this
+ * positioned, clipped wrapper keeps its intrinsic width from widening a narrow form.
  */
 .abele-obsidian-dropdown {
   position: relative;
@@ -116,12 +113,6 @@ const emit = defineEmits<{
   box-sizing: content-box;
   padding: var(--size-4-1);
   margin: calc(-1 * var(--size-4-1));
-
-  // The host clone's left coordinate is viewport-relative, not wrapper-relative.
-  // Keep it in that coordinate space so its hidden intrinsic width cannot widen the scroller.
-  .dropdown.is-measuring {
-    position: fixed;
-  }
 
   .dropdown {
     width: 100%;

@@ -40,6 +40,10 @@ function flush(): void {
 export function fitInBatches(dropdown: object): void {
   const d = dropdown as Measured
   if (!d.measureEl || !d.measureOptionEl || typeof d.resizeToFit !== 'function') return
+  // A fixed clone with an automatic inset starts after the visible select. Inside a
+  // transformed sheet it widens the sheet's scroll area despite being invisible.
+  // Keep the intrinsic measurement in the wrapper's clipped coordinate space.
+  Object.assign(d.measureEl.style, { position: 'absolute', left: '0px', top: '0px' })
   // An own property, so Obsidian's calls — on a new value, a change, the insertion — reach it.
   d.resizeToFit = () => {
     pending.add(d)

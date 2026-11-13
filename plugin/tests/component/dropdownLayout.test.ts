@@ -111,6 +111,18 @@ beforeEach(() => {
 })
 
 describe('a screen of dropdowns', () => {
+  it('anchors hidden measuring selects inside their clipped wrapper', async () => {
+    const { view } = screen(1)
+    await settle()
+    const measure = view.findAll('select')[1].element as HTMLSelectElement
+    expect(measure.style.position).toBe('absolute')
+    expect(measure.style.left).toBe('0px')
+    expect(measure.style.top).toBe('0px')
+    expect(view.find('select').element.style.getPropertyValue('--dropdown-fitted-width')).toBe(
+      '21px'
+    )
+    view.unmount()
+  })
   it('lays the window out once for all of them, not once each', async () => {
     const { view } = screen(60)
     await settle()
