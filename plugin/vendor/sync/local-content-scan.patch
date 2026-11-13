@@ -1,0 +1,224 @@
+--- a/dist/internal/core/cycle.js
++++ b/dist/internal/core/cycle.js
+@@ -346,21 +346,16 @@
+         // Read through the guarded state, and every step it leads to is a guarded write: a daemon
+         // whose lock lapsed takes nothing of it (see `stillHeld`).
+         const filed = await this.holds.decision();
+-        // What went out before a decision counts no more toward the guard.
+-        if (filed !== null)
+-            await this.holds.resetTally();
++        // Keep decisions filed until a complete content pass can apply them.
+         const confirmed = new Set(filed?.decision.kind === 'confirm' ? filed.decision.fileIds : []);
+         // Counted as each commit lands, so a push cut off half way still counts what it sent — and
+         // so does a replay, whose batch may have landed before its answer was lost.
+         const tally = (ops, tx) => this.gate.tallySent(ops, confirmed, tx);
+-        if (filed?.decision.kind === 'restore')
+-            await this.gate.putBack(filed.decision);
++
+         if (this.rewind) {
+             await this.rewindPull();
+         }
+-        // Carried out once the feed is rewound: killed before that, the next run does it again.
+-        if (filed?.decision.kind === 'restore')
+-            await this.holds.settle(filed.raw);
++
+         // A batch the last run never finished recording goes first: a scan taken over it would
+         // describe a disk the state does not know about yet.
+         const replayed = await resumeJournal(client, fs, state, { ...common, onCommitted: tally });
+@@ -441,6 +436,17 @@
+             verifyPaths,
+             pairMoves: !reconciliation || reconciliation.phase === 'complete',
+         }));
++        if (filed?.decision.kind === 'restore' && found.complete !== false) {
++            await this.holds.resetTally();
++            await this.gate.putBack(filed.decision);
++            await this.rewindPull();
++            await this.holds.settle(filed.raw);
++            // Rebuild comparison after the restored entries are retired. The next
++            // manifest can restore them without publishing this scan's stale deletes.
++            invalidateInventory();
++            // Preserve watcher reports for edits not yet published by this scan.
++            return this.cycle();
++        }
+         for (const path of seen) {
+             const checkpoint = work.step();
+             if (checkpoint)
+@@ -449,7 +455,9 @@
+         }
+         this.unscanned = false;
+         this.unsettled = await work.set(found.dirty);
+-        const judged = await this.gate.judge(await this.staging.settleDeletes(found.ops), confirmed);
++        if (filed?.decision.kind === 'confirm' && found.complete !== false)
++            await this.holds.resetTally();
++        const judged = await this.gate.judge(await this.staging.settleDeletes(found.ops), confirmed, found.complete !== false);
+         this.ctx.set({ pending: judged.length });
+         await this.noteCollisions(found.collisions, work);
+         let before = first;
+@@ -476,7 +484,7 @@
+         // Drain acknowledged bookkeeping even if pause arrived during the issued commit.
+         work = new ScanWork({ yieldTask: this.ctx.opts.yieldTask });
+         // The confirmed deletes have gone out with the rest; the decision is done with.
+-        if (filed?.decision.kind === 'confirm')
++        if (filed?.decision.kind === 'confirm' && found.complete !== false)
+             await this.holds.settle(filed.raw);
+         const pushed = await foldPush(replayed, sent, work);
+         await this.staging.afterPush(judged);
+--- a/dist/internal/core/deleteGate.js
++++ b/dist/internal/core/deleteGate.js
+@@ -9,7 +9,14 @@
+      * The scan's ops as the delete guard lets them go: everything, or everything but the deletes
+      * it holds, which are filed for a host to list and said once in the log each time they change.
+      */
+-    async judge(ops, confirmed) {
++    async judge(ops, confirmed, complete = true) {
++        if (!complete) {
++            // Preserve the exact durable hold and its notification/decision state.
++            // A partial operation list proves neither restoration nor approval.
++            const held = await this.ctx.holds.list();
++            this.ctx.onHeld(held.length);
++            return new ScanWork(scanScheduling(this.ctx.state)).collect(ops, (op) => op.op !== 'delete');
++        }
+         const entries = [];
+         const work = new ScanWork(scanScheduling(this.ctx.state));
+         for await (const entry of this.ctx.state.all()) {
+--- a/dist/internal/core/scanner.js
++++ b/dist/internal/core/scanner.js
+@@ -7,7 +7,7 @@
+ import { isEngineOwn } from './selective.js';
+ import { LocalPaths, rememberedCollisions, wirePath as localToWire } from './localPaths.js';
+ import { checkCancellation } from './cancellation.js';
+-import { scanHintEpoch, readScanHint, writeScanHint } from './scanHints.js';
++import { scanHintEpoch, readScanHint, writeScanHint, scanHintKey } from './scanHints.js';
+ import { isFileFailure } from './fileRetry.js';
+ import { sourceRecreation } from './sourceRecreation.js';
+ import { heldDirectoryPaths } from './v2Directories.js';
+@@ -418,6 +418,32 @@
+     const modifies = [];
+     let fresh = [];
+     let unreadCandidate = false;
++    const deferredPaths = new Set();
++    // Looking up hints before admission must not introduce a per-file storage
++    // transaction across a cold inventory. Read bounded pages where the host can batch.
++    let hintState = state;
++    if (opts.persistHints && opts.revalidate !== 'all' && state.getMetaMany) {
++        const hints = new Map();
++        let page = [];
++        const read = async () => {
++            const rows = await state.getMetaMany(page);
++            for (const [key, value] of rows)
++                hints.set(key, value);
++            page = [];
++            await work.step();
++        };
++        for (const [path, info] of files) {
++            await work.step();
++            if (entries.has(path) && !recreated.has(path))
++                continue;
++            page.push(scanHintKey(info.path));
++            if (page.length === 128)
++                await read();
++        }
++        if (page.length)
++            await read();
++        hintState = { getMeta: (key) => hints.has(key) ? hints.get(key) : state.getMeta(key) };
++    }
+     for (const [wirePath, info] of files) {
+         const checkpoint = work.step();
+         if (checkpoint)
+@@ -470,7 +496,7 @@
+                 opts.revalidate !== 'all' &&
+                 !opts.verifyPaths?.has(wirePath) &&
+                 !(typeof opts.revalidate === 'number' && revalidate.has(wirePath))
+-                ? await readScanHint(state, info, hintEpoch)
++                ? await readScanHint(hintState, info, hintEpoch)
+                 : null;
+             if (known !== undefined) {
+                 sha = known;
+@@ -481,6 +507,14 @@
+                 contentVerified = true;
+             }
+             else {
++                // Known observations and valid durable hints have already completed
++                // this file's work. Only a genuinely cold read consumes discovery budget.
++                if (!entry && !recreatedPaths.has(wirePath) && !opts.verifyPaths?.has(wirePath) &&
++                    await fs.deferNewLocalFile?.(info)) {
++                    deferredPaths.add(wirePath);
++                    unreadCandidate = true;
++                    continue;
++                }
+                 const fingerprint = await fingerprintFile(fs, info.path, hash, opts.signal);
+                 if (fingerprint.size !== info.size)
+                     throw new Error('file changed during scan');
+@@ -570,7 +604,8 @@
+     await work.sort(fresh, byPath);
+     await work.sort(missing, (a, b) => byPath(a.wirePath, b.wirePath));
+     const classifiedTargets = await work.set(classified.values());
+-    const moves = opts.pairMoves === false
++    const postponeMoves = deferredPaths.size > 0 && missing.length > 0;
++    const moves = opts.pairMoves === false || postponeMoves
+         ? new Map()
+         : await pairRenames(await work.collect(missing, (entry) => !classified.has(entry.wirePath)), await work.collect(fresh, (path) => !classified.has(path) && !classifiedTargets.has(path)), hashes, async (lost, found) => {
+             const path = diskPaths.get(found);
+@@ -601,7 +636,7 @@
+         moves.set(from, to);
+     }
+     const ops = [];
+-    const dirty = new Set();
++    const dirty = new Set(deferredPaths);
+     for (const [path, record] of recreated) {
+         const checkpoint = work.step();
+         if (checkpoint)
+@@ -663,7 +698,7 @@
+         dirty.add(path);
+     }
+     const movedTo = await work.set(moves.values());
+-    for (const wirePath of fresh) {
++    for (const wirePath of postponeMoves ? [] : fresh) {
+         const checkpoint = work.step();
+         if (checkpoint)
+             await checkpoint;
+@@ -677,5 +712,6 @@
+         dirty.add(wirePath);
+     }
+     await work.sort(collisions, (a, b) => byPath(a.wirePath, b.wirePath));
+-    return { ops, hashes, diskPaths, infos, verified, dirty, skipped, collisions };
++    return { ops, hashes, diskPaths, infos, verified, dirty, skipped, collisions,
++        complete: !unreadCandidate && skipped.length === 0 };
+ }
+--- a/dist/internal/core/deleteGate.d.ts
++++ b/dist/internal/core/deleteGate.d.ts
+@@ -29,7 +29,7 @@
+      * The scan's ops as the delete guard lets them go: everything, or everything but the deletes
+      * it holds, which are filed for a host to list and said once in the log each time they change.
+      */
+-    judge(ops: CommitOp[], confirmed: ReadonlySet<string>): Promise<CommitOp[]>;
++    judge(ops: CommitOp[], confirmed: ReadonlySet<string>, complete?: boolean): Promise<CommitOp[]>;
+     /**
+      * Held deletes the server's own delete settled (`PullReport.settled`): out of the hold with no
+      * decision, since there is nothing left to decide about them.
+--- a/dist/internal/core/fs.d.ts
++++ b/dist/internal/core/fs.d.ts
+@@ -46,6 +46,11 @@
+      * made while the host was stopped. Matching saved verified identities may skip the
+      * rolling content sweep; host events still invalidate ordinary scan observations. */
+     readonly trustedIndexIdentities?: true;
++    /** Called only when observations and durable hints cannot supply the hash.
++     * Defer only new, untracked content discovery. Names remain present, tracked and
++     * explicit watcher paths bypass this hook, and missing-file deletions/move pairing
++     * wait while new candidates are unexamined. The host schedules a later scan. */
++    deferNewLocalFile?(info: FileInfo): Promise<boolean>;
+     [pathAdmission]?(path: string): PathAdmission;
+     /** conditionalFile enforces operation.authorize at its mutation boundary. */
+     readonly conditionalOwnership?: true;
+--- a/dist/internal/core/scanner.d.ts
++++ b/dist/internal/core/scanner.d.ts
+@@ -38,6 +38,9 @@
+     with: string;
+ }
+ export interface ScanResult {
++    /** False when candidates were deferred or unread. Such a pass cannot settle
++     * deletion holds; absence of delete operations is not evidence of restoration. */
++    complete?: boolean;
+     /** Deletes and moves, then modifies, then creates. See `scan` for why that order. */
+     ops: CommitOp[];
+     /**
