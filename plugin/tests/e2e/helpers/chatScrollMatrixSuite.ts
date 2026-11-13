@@ -10,6 +10,7 @@ import {
   reloadApp,
 } from './obsidianCli'
 import { nativeInputProbe, withNativeInput } from './nativeInput'
+import { fitSidebarInputWidths } from './sidebarInputViewport'
 
 const available = isObsidianRunning() && hasTestApi()
 import { inputProbe, script, states, type Report } from './chatScrollMatrix'
@@ -28,12 +29,19 @@ export function chatScrollMatrixSuite(filter?: string, frameBudgetMs?: number, i
         continue
       describe(phone ? 'emulated phone' : 'desktop', () => {
         let originalSize: [number, number]
+        let sidebarSizes: number[] | undefined
         beforeAll(async () => {
           if (phone) {
             originalSize = evalJson<[number, number]>(
               `require('@electron/remote').getCurrentWindow().getContentSize()`
             )
             await enterPhone(390, 844)
+          } else {
+            // Native scrollbar input needs the whole pane inside the viewport,
+            // including when a saved wide sidebar outlives a larger test window.
+            sidebarSizes = evalJson<number[]>(
+              `JSON.stringify((${fitSidebarInputWidths.toString()})([app.workspace.leftSplit, app.workspace.rightSplit], innerWidth))`
+            )
           }
           const input = await withNativeInput(
             async () =>
@@ -51,7 +59,13 @@ export function chatScrollMatrixSuite(filter?: string, frameBudgetMs?: number, i
             ).toBeLessThanOrEqual(24)
         }, 180_000)
         afterAll(async () => {
-          if (!phone) return
+          if (!phone) {
+            if (sidebarSizes)
+              evalRaw(
+                `([app.workspace.leftSplit, app.workspace.rightSplit]).forEach((split, i) => split.setSize(${JSON.stringify(sidebarSizes)}[i]))`
+              )
+            return
+          }
           try {
             await reloadApp('app.emulateMobile(false)')
           } finally {
