@@ -6,7 +6,7 @@ import ChatSwitcher from '@/components/chatTree/ChatSwitcher.vue'
 import { CHAT_TREE_SOURCE, chatTreeSource, type ChatTreeSource } from '@/chats/chatTree'
 import { useVault } from '../helpers/testEnv'
 import ChatToolModes from '@/components/ChatToolModes.vue'
-import { Menu, Platform } from 'obsidian'
+import { Menu, Platform, Scope } from 'obsidian'
 import { chatTreeSearchFixture } from '../e2e/helpers/chatTreeSearchFixture'
 
 let source: ChatTreeSource
@@ -67,6 +67,31 @@ it('starts F2 rename before the host document keymap consumes it', async () => {
     expect(source.rename).toHaveBeenCalledWith('sample')
   } finally {
     document.removeEventListener('keydown', hostKey, true)
+  }
+})
+it('handles sheet F2 through its scope before the host window keymap opens note rename', async () => {
+  const scope = new Scope()
+  const unregister = vi.spyOn(scope, 'unregister')
+  const noteRename = vi.fn()
+  const hostKey = (event: KeyboardEvent) => {
+    const result = (
+      scope as unknown as {
+        handleKey(event: KeyboardEvent, context: { modifiers: string; key: string }): unknown
+      }
+    ).handleKey(event, { modifiers: '', key: event.key })
+    if (result !== false) noteRename()
+    event.stopImmediatePropagation()
+  }
+  window.addEventListener('keydown', hostKey, true)
+  const view = show({ keyScope: scope })
+  try {
+    await view.get('[data-chat="sample"] > .tree-item-self').trigger('keydown', { key: 'F2' })
+    expect(source.rename).toHaveBeenCalledWith('sample')
+    expect(noteRename).not.toHaveBeenCalled()
+    view.unmount()
+    expect(unregister).toHaveBeenCalledTimes(1)
+  } finally {
+    window.removeEventListener('keydown', hostKey, true)
   }
 })
 it('renames chats and folders in the same row editor, including F2 and empty cancellation', async () => {
@@ -253,8 +278,8 @@ it('keeps the nested folder in the tooltip while giving the header to the chat n
   await view.setProps({ title: 'Parent' })
   expect(view.get('.abele-chat-switch__where').text()).toBe('Sample folder')
 })
-const show = () => {
-  const view = mount(ChatTreePanel, { attachTo: document.body })
+const show = (props: { keyScope?: Scope } = {}) => {
+  const view = mount(ChatTreePanel, { attachTo: document.body, props })
   views.push(view)
   return view
 }

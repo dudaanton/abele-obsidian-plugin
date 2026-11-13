@@ -1,6 +1,6 @@
 <template>
   <Teleport v-if="wrapper" :to="wrapper">
-    <slot :id="id" class="abele-modal" />
+    <slot :id="id" :scope="modal?.scope" class="abele-modal" />
   </Teleport>
   <Teleport v-if="footer" :to="footer">
     <slot name="footer" />

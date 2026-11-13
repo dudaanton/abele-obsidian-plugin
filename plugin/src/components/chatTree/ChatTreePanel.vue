@@ -55,7 +55,7 @@
 <script setup lang="ts">
 import { t } from '@/i18n'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Platform } from 'obsidian'
+import { Platform, type Scope } from 'obsidian'
 import Icon from '../obsidian/Icon.vue'
 import Search from '../obsidian/Search.vue'
 import Button from '../obsidian/Button.vue'
@@ -74,6 +74,7 @@ import {
 } from './chatTreeView'
 
 const emit = defineEmits<{ close: [] }>()
+const props = defineProps<{ keyScope?: Scope }>()
 // On a phone the keyboard would cover half the chats before anyone asked to search.
 const phone = Platform.isPhone
 
@@ -136,7 +137,19 @@ const renameKey = (event: KeyboardEvent) => {
   else return
   event.preventDefault()
   event.stopImmediatePropagation()
+  return true
 }
+// The host handles hotkeys on window capture before our DOM listeners. A sheet
+// must claim F2 in its native scope so it cannot rename the underlying note.
+watch(
+  () => props.keyScope,
+  (scope, _, onCleanup) => {
+    if (!scope) return
+    const handler = scope.register([], 'F2', (event) => (renameKey(event) ? false : undefined))
+    onCleanup(() => scope.unregister(handler))
+  },
+  { immediate: true }
+)
 let keyWindow: Window | null = null
 const detachRenameKey = () => keyWindow?.removeEventListener('keydown', renameKey, true)
 watch(

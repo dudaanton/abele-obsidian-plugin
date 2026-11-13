@@ -22,12 +22,13 @@
     </div>
     <ObsidianModal
       v-if="open && phone && source"
+      v-slot="{ scope }"
       :title="t('chatTree.chats')"
       size="tall"
       modal-class="abele-chat-tree-modal"
       @close="open = false"
     >
-      <ChatTreePanel @close="open = false" />
+      <ChatTreePanel :key-scope="scope" @close="open = false" />
     </ObsidianModal>
     <div v-else-if="open && source" class="abele-chat-switch__drop">
       <ChatTreePanel @close="close" />
