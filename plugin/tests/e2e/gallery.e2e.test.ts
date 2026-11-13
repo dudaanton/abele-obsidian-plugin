@@ -98,6 +98,7 @@ const PRELUDE = `
 
 type Report = {
   error?: string
+  lifecycle?: { rootConnected: boolean; sameRoot: boolean; mounts: number }
   galleries: number
   box: { w: number; h: number } | null
   pictures: Array<{ w: number; h: number; loaded: boolean }>
@@ -119,7 +120,7 @@ const show = (note: string, mode: 'preview' | 'source', n: number, shot: string)
 
 const expectShown = (r: Report, n: number) => {
   expect(r.error).toBeUndefined()
-  expect(r.galleries).toBe(1)
+  expect(r.galleries, JSON.stringify(r.lifecycle)).toBe(1)
   expect(r.marker).toBe(false)
   expect(r.errors).toBe(0)
   expect(r.pictures).toHaveLength(n)
@@ -223,7 +224,11 @@ describe.skipIf(!available)('the gallery', () => {
       other.detach()
       root.scrollTop = 0
       await wait(500)
-      return await report(root, 1, 'scrolled-back')
+      const result = await report(root, 1, 'scrolled-back')
+      result.lifecycle = { rootConnected: root.isConnected, sameRoot: rootOf(leaf, 'preview') === root,
+        mounts: root.querySelectorAll('[data-gallery-id]').length }
+      console.log('Gallery return lifecycle', JSON.stringify(result.lifecycle))
+      return result
     })()`,
       90_000
     )

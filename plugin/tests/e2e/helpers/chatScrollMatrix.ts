@@ -283,10 +283,21 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
   const trace = []
   let dragTrace, dragCompletion
   let receivedInputs = 0
+  let ignoredInputs = 0
   let deliveredDelta = 0, touchY = null
   let measureInputStart, measureFollowingOrigin, measureWheelReceipt, gestureActive = false, boundaryGeometry = null
   const nativeInput = event => {
-    if (!box()?.contains(event.target)) return
+    if (!box()?.contains(event.target)) {
+      if (gestureActive && ignoredInputs++ < 40) {
+        const point = event.touches?.[0] || event.changedTouches?.[0]
+        const hit = point && document.elementFromPoint(point.clientX, point.clientY)
+        trace.push({ at: performance.now(), input: event.type, ignored: true,
+          target: event.target?.nodeName, targetClass: event.target?.getAttribute?.('class'),
+          hit: hit?.nodeName, hitClass: hit?.getAttribute('class'), hitInside: !!hit && box()?.contains(hit),
+          pathInside: event.composedPath().some(node => node === box()) })
+      }
+      return
+    }
     measureWheelReceipt?.(event); measureWheelReceipt = null
     measureFollowingOrigin = null
     if (measureInputStart) { measureInputStart(); measureInputStart = null }

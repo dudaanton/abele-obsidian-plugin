@@ -103,17 +103,26 @@ describe.skipIf(!available)('picture crop from the viewer', () => {
         const wc = require('@electron/remote').getCurrentWebContents()
         const handle = view.contentEl.querySelector('.abele-crop-frame__handle_se').getBoundingClientRect()
         const start = { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 }
-        if (${phone}) {
-          await wc.debugger.sendCommand('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...start, id: 0 }] })
-          await wc.debugger.sendCommand('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: start.x - 24, y: start.y - 24, id: 0 }] })
-          await wc.debugger.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
-        } else {
-          await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed', ...start, button: 'left', buttons: 1, clickCount: 1 })
-          await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: start.x - 24, y: start.y - 24, button: 'left', buttons: 1 })
-          await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased', x: start.x - 24, y: start.y - 24, button: 'left', buttons: 0, clickCount: 1 })
+        const dragEvents = []
+        const dragTypes = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'gotpointercapture', 'lostpointercapture']
+        const recordDrag = event => dragEvents.push({ type: event.type, pointerId: event.pointerId,
+          target: event.target?.getAttribute?.('class'), x: event.clientX, y: event.clientY })
+        for (const type of dragTypes) document.addEventListener(type, recordDrag, true)
+        try {
+          if (${phone}) {
+            await wc.debugger.sendCommand('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ ...start, id: 0 }] })
+            await wc.debugger.sendCommand('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: start.x - 24, y: start.y - 24, id: 0 }] })
+            await wc.debugger.sendCommand('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+          } else {
+            await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed', ...start, button: 'left', buttons: 1, clickCount: 1 })
+            await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: start.x - 24, y: start.y - 24, button: 'left', buttons: 1 })
+            await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased', x: start.x - 24, y: start.y - 24, button: 'left', buttons: 0, clickCount: 1 })
+          }
+        } finally {
+          for (const type of dragTypes) document.removeEventListener(type, recordDrag, true)
         }
         await wait(100)
-        if (view.editor.crop.rect.w >= 1) throw Error('Crop handle did not resize the frame')
+        if (view.editor.crop.rect.w >= 1) throw Error('Crop handle did not resize the frame: ' + JSON.stringify({ start, dragEvents }))
         const click = (label) => { const el = view.contentEl.querySelector('[aria-label="' + label + '"]'); if (!el) throw Error('Missing ' + label); el.click() }
         click('Undo'); await wait(100)
         if (view.editor.crop.rect.w !== 1) throw Error('Undo did not restore the frame')

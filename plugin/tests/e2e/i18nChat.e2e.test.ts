@@ -31,8 +31,15 @@ describe.skipIf(!isObsidianRunning() || !hasTestApi())(
           const capture = async (name, root) => {
             await new Promise(resolve => setTimeout(resolve, 300));
             const box = root.getBoundingClientRect();
-            if (box.left < -1 || box.right > innerWidth + 1 || root.scrollWidth > root.clientWidth + 2)
-              failures.push(name + ': horizontal overflow');
+            if (box.left < -1 || box.right > innerWidth + 1 || root.scrollWidth > root.clientWidth + 2) {
+              const descendants = [...root.querySelectorAll('*')].map(el => {
+                const bounds = el.getBoundingClientRect();
+                return { tag: el.tagName, class: el.getAttribute('class'), left: bounds.left,
+                  right: bounds.right, width: el.clientWidth, scroll: el.scrollWidth };
+              }).filter(el => el.left < box.left - 1 || el.right > box.right + 1 || el.scroll > el.width + 2);
+              failures.push({ name, reason: 'horizontal overflow', left: box.left, right: box.right,
+                width: root.clientWidth, scroll: root.scrollWidth, descendants });
+            }
             fs.writeFileSync(${JSON.stringify(shots + '/' + locale + (phone ? '-phone-' : '-desktop-'))} + name + '.png', (await win.webContents.capturePage()).toPNG());
           };
           const escape = async () => {
