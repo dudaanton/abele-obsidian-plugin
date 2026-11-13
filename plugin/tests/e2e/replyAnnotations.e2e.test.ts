@@ -117,7 +117,10 @@ const script = `(async () => {
     await until(()=>{
       const diff=dialog.querySelector('.abele-diff__body')
       return diff && diff.textContent.includes('**small** lantern') && diff.textContent.includes('bright lamp')
-    });await wait(300)
+    })
+    const container=dialog.closest('.modal-container')
+    await until(()=>!(container.getAnimations({subtree:true})).some(animation=>animation.pending || animation.playState==='running'))
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))
     const modal=dialog.closest('.modal'), r=modal.getBoundingClientRect()
     report.dialog={left:r.left,right:r.right,bottom:r.bottom,width:innerWidth,height:innerHeight,buttons:[...modal.querySelectorAll('.abele-modal__footer button')].filter(b=>b.getBoundingClientRect().bottom<=innerHeight).map(b=>b.textContent.trim())}
     await shot('passage-diff')

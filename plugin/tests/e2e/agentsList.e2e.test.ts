@@ -10,7 +10,16 @@ import { lintDesign, type DesignSnapshot } from '../helpers/designLint'
 targets('desktop', 'phone')
 const directory = shotDir('agents-list')
 const states = ['empty', 'waiting', 'many', 'working', 'error', 'mixed'] as const
-const close = `for (const button of [...document.querySelectorAll('.modal .modal-header-button, .modal-close-button')].reverse()) button.click()`
+const close = `await (async () => {
+  const containers = [...document.querySelectorAll('.modal-container')]
+  for (const container of containers.reverse())
+    container.querySelector('.modal-header-button, .modal-close-button')?.click()
+  const deadline = Date.now() + 5000
+  while (containers.some(container => container.isConnected)) {
+    if (Date.now() > deadline) throw Error('Previous modal did not dismiss')
+    await new Promise(resolve => requestAnimationFrame(resolve))
+  }
+})()`
 
 beforeAll(async () => {
   expect(
@@ -56,12 +65,19 @@ describe('real agents list on synthetic states', () => {
         await document.fonts.ready
         const root = document.querySelector('.abele-agents')
         if (!root) throw new Error('Agents list did not mount')
+        const container = root.closest('.modal-container')
+        const deadline = Date.now() + 5000
+        while (container.getAnimations({ subtree: true }).some(animation => animation.pending || animation.playState === 'running')) {
+          if (Date.now() > deadline) throw Error('Agents modal motion did not finish')
+          await new Promise(resolve => requestAnimationFrame(resolve))
+        }
         const snapshot = ${designCaptureExpression('.modal.abele-modal', { nativeSelector: '.backlink-pane > .tree-item-self, .backlink-pane .search-result-file-title' })}
         const overflowing = [...root.querySelectorAll('*')].filter(el => {
           const r = el.getBoundingClientRect()
           return r.width && (r.left < 0 || r.right > innerWidth + 1)
         }).map(el => el.className)
-        const closes = document.querySelectorAll('.modal .modal-header-button, .modal .modal-close-button').length
+        const closes = [...root.closest('.modal').querySelectorAll('.modal-header-button, .modal-close-button')]
+          .filter(button => button.getClientRects().length && getComputedStyle(button).visibility !== 'hidden').length
         const searchFocused = root.querySelector('input') === document.activeElement
         const rowEls = [...root.querySelectorAll('.abele-agents__row')]
         const rows = rowEls.length
