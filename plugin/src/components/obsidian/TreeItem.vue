@@ -218,10 +218,15 @@ watch(
     if (!props.renaming) return
     const doc = renameWindow?.document ?? glyph.value?.ownerDocument
     if (!doc) return
+    const menuOpen = () =>
+      Array.from(doc.querySelectorAll('.menu')).some((menu) => {
+        const style = doc.defaultView.getComputedStyle(menu)
+        return style.display !== 'none' && style.visibility !== 'hidden'
+      })
     const focusEditor = async () => {
       // Host menu actions run before the phone dismissal animation has finished.
       // Taking focus now can blur the editor again and commit an untouched name.
-      if (doc.querySelector('.menu')) return
+      if (menuOpen()) return
       stopWaitingForMenu()
       if (!props.renaming || renameFinished) return
       // Do not expose a textbox until menu dismissal allows it to take focus.
@@ -237,11 +242,16 @@ watch(
       selection?.removeAllRanges()
       selection?.addRange(range)
     }
-    if (doc.querySelector('.menu')) {
+    if (menuOpen()) {
       menuObserver = new MutationObserver(() => {
         void focusEditor()
       })
-      menuObserver.observe(doc.body, { childList: true, subtree: true })
+      menuObserver.observe(doc.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'style', 'hidden'],
+      })
     } else void focusEditor()
   },
   { immediate: true }
