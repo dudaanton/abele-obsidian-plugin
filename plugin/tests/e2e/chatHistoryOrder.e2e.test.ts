@@ -97,7 +97,10 @@ const script = `(async () => {
   const drawAll = async () => {
     for (let s; (s = modal().querySelector('.abele-chat-history__sentinel')); ) {
       const drawn = cards()
-      s.scrollIntoView({ block: 'end' })
+      // Scroll the cards' native overflow owner; scrollIntoView can move the modal's
+      // outer sheet instead while its inner flex scroller is still being laid out.
+      const list = s.closest('.abele-chat-history__list')
+      list.scrollTop = list.scrollHeight
       if (!(await until(() => cards() > drawn, 3000))) throw new Error('the history did not draw its next page after ' + drawn + ' cards')
     }
   }

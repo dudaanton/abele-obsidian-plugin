@@ -29,6 +29,29 @@ describe('usePagedList', () => {
     installFakeIntersectionObserver()
   })
 
+  it('pages on a native scroller event without an observer delivery', async () => {
+    const paged = inScope(() => usePagedList(() => items(100), 20))
+    const scroller = document.createElement('div')
+    const sentinel = document.createElement('div')
+    scroller.append(sentinel)
+    document.body.append(scroller)
+    paged.sentinel.value = sentinel
+    scroller.getBoundingClientRect = () => ({ top: 0, bottom: 400, left: 0, right: 300 }) as DOMRect
+    sentinel.getBoundingClientRect = () =>
+      ({ top: 399, bottom: 400, left: 0, right: 300 }) as DOMRect
+    try {
+      await nextTick()
+      scroller.dispatchEvent(new Event('scroll'))
+      expect(paged.visible.value).toHaveLength(40)
+      sentinel.getBoundingClientRect = () =>
+        ({ top: 499, bottom: 500, left: 0, right: 300 }) as DOMRect
+      scroller.dispatchEvent(new Event('scroll'))
+      expect(paged.visible.value).toHaveLength(40)
+    } finally {
+      scroller.remove()
+    }
+  })
+
   it('starts at a single page', () => {
     const paged = inScope(() => usePagedList(() => items(500), 20))
 

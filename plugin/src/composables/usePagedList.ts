@@ -1,6 +1,6 @@
 import { computed, hasInjectionContext, inject, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { PRINT_MODE } from '@/markdown/printMode'
-import { useIntersectionObserver } from '@vueuse/core'
+import { useEventListener, useIntersectionObserver } from '@vueuse/core'
 import { inViewNow } from '@/helpers/intersection'
 
 /**
@@ -102,6 +102,30 @@ export function usePagedList<T>(
       showMore()
     }
   })
+
+  // Native overflow scrolling can reach the end before an observer delivery. Check only
+  // scrolls containing this sentinel, against both the scroller and the window viewport.
+  useEventListener(
+    computed(() => sentinel.value?.ownerDocument),
+    'scroll',
+    (event: Event) => {
+      const element = sentinel.value
+      const target = event.target
+      if (!element || !hasMore.value || !(target instanceof Element) || !target.contains(element))
+        return
+      const box = element.getBoundingClientRect()
+      const clip = target.getBoundingClientRect()
+      const view = element.ownerDocument.defaultView
+      if (
+        box.bottom > Math.max(0, clip.top) &&
+        box.top < Math.min(view.innerHeight, clip.bottom) &&
+        box.right > Math.max(0, clip.left) &&
+        box.left < Math.min(view.innerWidth, clip.right)
+      )
+        showMore()
+    },
+    { capture: true, passive: true }
+  )
 
   return { visible, hasMore, total, sentinel, showMore, reset, followSearch }
 }
