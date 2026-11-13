@@ -14,6 +14,7 @@ import { V2Client } from '../../src/sync/v2/client'
 import { issueDeletionDevice, deletionFolder } from '../helpers/serverDeleteSetup'
 import { assertNoNativeSheet, dismissNativeSheet } from './helpers/nativeSheetCleanup'
 import { clickSyncMenu } from './helpers/syncMenuClick'
+import { preserveCleanupError } from './helpers/preserveCleanupError'
 import { reloadAs, setWindowSize, windowSize } from './helpers/phoneWindow'
 
 targets('desktop', 'phone')
@@ -54,13 +55,24 @@ async function openConfirmation(
   if (issuedLabel) {
     // Folder deletion belongs to the issuer's share UI, not the recipient connection menu.
     await a.long(
-      'open issuer item deletion menu',
+      'open issuer sharing dialog',
       `
       const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(id)}),'share-2');
-      await poll(()=>modal('Share access'));const box=modal('Share access');let row;
+      await poll(()=>modal('Share access'));return true
+    `
+    )
+    await a.long(
+      'open issued share detail',
+      `const box=modal('Share access');let row;
       await poll(()=>row=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))===${JSON.stringify(issuedLabel)}));
-      row.click();await poll(()=>modal(${JSON.stringify(issuedLabel)}));const detail=modal(${JSON.stringify(issuedLabel)});
-      let item;await poll(()=>item=detail.querySelector('.abele-share-detail__item'));const native=app.vault.getConfig('nativeMenus');try{app.vault.setConfig('nativeMenus',false);icon(item,'more-horizontal')}finally{app.vault.setConfig('nativeMenus',native)}
+      row.click();await poll(()=>modal(${JSON.stringify(issuedLabel)}));return true`
+    )
+    await a.long(
+      'open issuer item deletion menu',
+      `const detail=modal(${JSON.stringify(issuedLabel)});
+      await poll(()=>detail.getAnimations({subtree:true}).every(animation=>animation.playState!=='running'),5000,'share detail animation to finish');
+      let item;await poll(()=>item=detail.querySelector('.abele-share-detail__item'));
+      (${clickSyncMenu.toString()})(item);
       await poll(()=>[...(${menu})?.querySelectorAll('.menu-item')||[]].some(one=>textOf(one)==='Delete from the server…'&&!one.classList.contains('is-disabled')));return true
     `
     )
@@ -152,24 +164,27 @@ it('shows whole-vault facts and explicitly deletes only after confirmation, keep
     fixtureFetch
   )
   const id = await s.connect()
-  try {
-    await openConfirmation(a, id, 'vault')
-    expectConfirmation(
-      a,
-      'the whole vault',
-      new URL(s.server.url).host,
-      1,
-      Buffer.byteLength(content)
-    )
-    await shot(a, 'vault-confirmation', factsSelector)
-    expect((await s.items()).some((one) => one.path === path)).toBe(true)
-    await confirmDone(a, id, 'vault', path, content)
-    await expect(
-      AccessClient.fromToken(reader, { fetch: fixtureFetch }).connection()
-    ).rejects.toMatchObject({ code: 'scope_deleted' })
-  } finally {
-    closeSyncScreens(a)
-  }
+  await preserveCleanupError(
+    async () => {
+      await openConfirmation(a, id, 'vault')
+      expectConfirmation(
+        a,
+        'the whole vault',
+        new URL(s.server.url).host,
+        1,
+        Buffer.byteLength(content)
+      )
+      await shot(a, 'vault-confirmation', factsSelector)
+      expect((await s.items()).some((one) => one.path === path)).toBe(true)
+      await confirmDone(a, id, 'vault', path, content)
+      await expect(
+        AccessClient.fromToken(reader, { fetch: fixtureFetch }).connection()
+      ).rejects.toMatchObject({ code: 'scope_deleted' })
+    },
+    async () => {
+      closeSyncScreens(a)
+    }
+  )
 }, 180000)
 
 it.each([
@@ -196,23 +211,26 @@ it.each([
     const issuedLabel = 'Sample deletion share'
     const { token } = await a.shareSet(id, ['Folder: ' + folder], issuedLabel)
     await issueDeletionDevice(token, 'Sample reading device', true, fixtureFetch)
-    try {
-      await openConfirmation(a, id, state, issuedLabel)
-      expectConfirmation(
-        a,
-        '“' + name + '”',
-        new URL(s.server.url).host,
-        1,
-        Buffer.byteLength(content)
-      )
-      await shot(a, state + '-confirmation', factsSelector)
-      await confirmDone(a, id, state, path, content, true)
-      const items = await s.items()
-      expect(items.some((one) => one.path === path)).toBe(false)
-      expect(items.some((one) => one.path === sibling)).toBe(true)
-    } finally {
-      closeSyncScreens(a)
-    }
+    await preserveCleanupError(
+      async () => {
+        await openConfirmation(a, id, state, issuedLabel)
+        expectConfirmation(
+          a,
+          '“' + name + '”',
+          new URL(s.server.url).host,
+          1,
+          Buffer.byteLength(content)
+        )
+        await shot(a, state + '-confirmation', factsSelector)
+        await confirmDone(a, id, state, path, content, true)
+        const items = await s.items()
+        expect(items.some((one) => one.path === path)).toBe(false)
+        expect(items.some((one) => one.path === sibling)).toBe(true)
+      },
+      async () => {
+        closeSyncScreens(a)
+      }
+    )
   },
   180000
 )
@@ -251,29 +269,32 @@ it.skipIf(onPhone())(
       })
     }
     for (let i = 0; i < ops.length; i += 100) await s.commit(ops.slice(i, i + 100))
-    try {
-      a.run(
-        `void svc.sync(${JSON.stringify(id)}).catch(()=>{});await poll(()=>app.plugins.plugins.abele.tokenEngines.live.get(${JSON.stringify(id)})?.engine.status.state==='syncing',30000,'download pass to start');return true`
-      )
-      await openConfirmation(a, id, 'in-flight', issuedLabel)
-      const elapsed = await a.long<{ ms: number; syncing: boolean }>(
-        'delete while syncing',
-        `const syncing=app.plugins.plugins.abele.tokenEngines.live.get(${JSON.stringify(id)})?.engine.status.state==='syncing';const started=Date.now();await press(${dialog},'Delete from the server');await poll(()=>!(${dialog})||(${dialog})?.querySelector('[role="alert"]'),90000,'deletion to finish');const alert=(${dialog})?.querySelector('[role="alert"]');if(alert) throw new Error('Deletion failed: '+textOf(alert));return {ms:Date.now()-started,syncing}`
-      )
-      console.log('[server delete in flight]', JSON.stringify(elapsed))
-      expect(elapsed.syncing).toBe(true)
-      expect(a.rows().some((row) => row.id === id)).toBe(true)
-      expect(a.read(first)).toBe('First sample field note')
-      const items = await s.items()
-      expect(items.some((one) => one.path.startsWith(folder + '/'))).toBe(false)
-      expect(items.some((one) => one.path === sibling)).toBe(true)
-      // Deleting one issued folder leaves the issuer connection available for its other files.
-      // An item-set's public ID is not a member runtime's key. Exercise the
-      // retained issuer instead of asserting that implementation-map key.
-      await a.syncNow(id)
-    } finally {
-      closeSyncScreens(a)
-    }
+    await preserveCleanupError(
+      async () => {
+        a.run(
+          `void svc.sync(${JSON.stringify(id)}).catch(()=>{});await poll(()=>app.plugins.plugins.abele.tokenEngines.live.get(${JSON.stringify(id)})?.engine.status.state==='syncing',30000,'download pass to start');return true`
+        )
+        await openConfirmation(a, id, 'in-flight', issuedLabel)
+        const elapsed = await a.long<{ ms: number; syncing: boolean }>(
+          'delete while syncing',
+          `const syncing=app.plugins.plugins.abele.tokenEngines.live.get(${JSON.stringify(id)})?.engine.status.state==='syncing';const started=Date.now();await press(${dialog},'Delete from the server');await poll(()=>!(${dialog})||(${dialog})?.querySelector('[role="alert"]'),90000,'deletion to finish');const alert=(${dialog})?.querySelector('[role="alert"]');if(alert) throw new Error('Deletion failed: '+textOf(alert));return {ms:Date.now()-started,syncing}`
+        )
+        console.log('[server delete in flight]', JSON.stringify(elapsed))
+        expect(elapsed.syncing).toBe(true)
+        expect(a.rows().some((row) => row.id === id)).toBe(true)
+        expect(a.read(first)).toBe('First sample field note')
+        const items = await s.items()
+        expect(items.some((one) => one.path.startsWith(folder + '/'))).toBe(false)
+        expect(items.some((one) => one.path === sibling)).toBe(true)
+        // Deleting one issued folder leaves the issuer connection available for its other files.
+        // An item-set's public ID is not a member runtime's key. Exercise the
+        // retained issuer instead of asserting that implementation-map key.
+        await a.syncNow(id)
+      },
+      async () => {
+        closeSyncScreens(a)
+      }
+    )
   },
   300000
 )
@@ -285,33 +306,36 @@ it('keeps an in-progress confirmation open and shows a real server error without
     content = 'Retained during a network failure'
   await s.put(path, content)
   const id = await s.connect()
-  try {
-    await openConfirmation(a, id, 'error')
-    s.server.suspend()
-    a.run(
-      `await press(${dialog},'Delete from the server');await poll(()=>buttonIn(${dialog},'Deleting…')?.disabled);return true`
-    )
-    expect(a.run(`const box=${dialog};buttonIn(box,'Cancel').click();return !!(${dialog})`)).toBe(
-      true
-    )
-    await shot(a, 'in-progress', factsSelector)
-    await s.server.crash()
-    await a.long(
-      'server deletion failure appears',
-      `await poll(()=>(${dialog})?.querySelector('[role="alert"]'));return true`
-    )
-    expect(a.run(`return textOf((${dialog}).querySelector('[role="alert"]'))`)).toBe(
-      `No answer from ${new URL(s.server.url).host}. It may already be deleted: Try again to find out.`
-    )
-    expect(a.run(`return !buttonIn(${dialog},'Try again').disabled`)).toBe(true)
-    expect(a.rows().some((row) => row.id === id)).toBe(true)
-    expect(a.read(path)).toBe(content)
-    await shot(a, 'server-error', factsSelector)
-  } finally {
-    // Also thaw on an earlier assertion failure; crash/kill itself is idempotent.
-    s.server.resume()
-    closeSyncScreens(a)
-  }
+  await preserveCleanupError(
+    async () => {
+      await openConfirmation(a, id, 'error')
+      s.server.suspend()
+      a.run(
+        `await press(${dialog},'Delete from the server');await poll(()=>buttonIn(${dialog},'Deleting…')?.disabled);return true`
+      )
+      expect(a.run(`const box=${dialog};buttonIn(box,'Cancel').click();return !!(${dialog})`)).toBe(
+        true
+      )
+      await shot(a, 'in-progress', factsSelector)
+      await s.server.crash()
+      await a.long(
+        'server deletion failure appears',
+        `await poll(()=>(${dialog})?.querySelector('[role="alert"]'));return true`
+      )
+      expect(a.run(`return textOf((${dialog}).querySelector('[role="alert"]'))`)).toBe(
+        `No answer from ${new URL(s.server.url).host}. It may already be deleted: Try again to find out.`
+      )
+      expect(a.run(`return !buttonIn(${dialog},'Try again').disabled`)).toBe(true)
+      expect(a.rows().some((row) => row.id === id)).toBe(true)
+      expect(a.read(path)).toBe(content)
+      await shot(a, 'server-error', factsSelector)
+    },
+    async () => {
+      // Also thaw on an earlier assertion failure; crash/kill itself is idempotent.
+      s.server.resume()
+      closeSyncScreens(a)
+    }
+  )
 }, 180000)
 
 for (const layout of onPhone() ? ['phone'] : ['desktop', 'emulated-phone'])
@@ -322,18 +346,19 @@ for (const layout of onPhone() ? ['phone'] : ['desktop', 'emulated-phone'])
         a = s.primary,
         path = s.root + '/sample.md',
         size = onPhone() ? undefined : windowSize(a.vault())
-      try {
-        if (layout === 'emulated-phone') {
-          await setWindowSize(a.vault(), 390, 844)
-          await reloadAs(a.vault(), true)
-          // Layout emulation has no native phone HTTP bridge. Reuse the explicit desktop
-          // host the shared helper installed for this synthetic server, including UI probes.
-          a.run(`svc.transport=app.plugins.plugins.abele.tokenEngines.deps.fetch;return true`)
-        }
-        await s.put(path, 'Retained while stopping')
-        const id = await s.connect()
-        await openConfirmation(a, id, 'stop-' + layout)
-        a.run(`
+      await preserveCleanupError(
+        async () => {
+          if (layout === 'emulated-phone') {
+            await setWindowSize(a.vault(), 390, 844)
+            await reloadAs(a.vault(), true)
+            // Layout emulation has no native phone HTTP bridge. Reuse the explicit desktop
+            // host the shared helper installed for this synthetic server, including UI probes.
+            a.run(`svc.transport=app.plugins.plugins.abele.tokenEngines.deps.fetch;return true`)
+          }
+          await s.put(path, 'Retained while stopping')
+          const id = await s.connect()
+          await openConfirmation(a, id, 'stop-' + layout)
+          a.run(`
         const original=svc.stopRuntime,limit=svc.runtimeStopLimitMs;
         window.__deletionStop={original,limit,id:${JSON.stringify(id)},temp:${JSON.stringify(s.root + '/.sample-refusal.tmp')}};
         svc.runtimeStopLimitMs=100;
@@ -342,11 +367,11 @@ for (const layout of onPhone() ? ['phone'] : ['desktop', 'emulated-phone'])
         await poll(()=>textOf((${dialog})?.querySelector('[role="alert"]')).includes('Sync is still stopping'));
         return true
       `)
-        expect(a.run(`return !buttonIn(${dialog},'Try again').disabled`)).toBe(true)
-        expect((await s.items()).some((one) => one.path === path)).toBe(true)
-        expect(a.read(path)).toBe('Retained while stopping')
-        await shot(a, 'still-stopping-' + layout, factsSelector)
-        a.run(`
+          expect(a.run(`return !buttonIn(${dialog},'Try again').disabled`)).toBe(true)
+          expect((await s.items()).some((one) => one.path === path)).toBe(true)
+          expect(a.read(path)).toBe('Retained while stopping')
+          await shot(a, 'still-stopping-' + layout, factsSelector)
+          a.run(`
         svc.runtimeStopLimitMs=window.__deletionStop.limit;
         window.__deletionStop.release();
         const held=window.__deletionStop;
@@ -358,29 +383,31 @@ for (const layout of onPhone() ? ['phone'] : ['desktop', 'emulated-phone'])
         await poll(()=>textOf((${dialog})?.querySelector('[role="alert"]')).includes('installation or retained-byte recovery is unfinished'));
         return true
       `)
-        expect((await s.items()).some((one) => one.path === path)).toBe(true)
-        expect(a.read(path)).toBe('Retained while stopping')
-        await shot(a, 'local-refusal-' + layout, factsSelector)
-        a.run(`
+          expect((await s.items()).some((one) => one.path === path)).toBe(true)
+          expect(a.read(path)).toBe('Retained while stopping')
+          await shot(a, 'local-refusal-' + layout, factsSelector)
+          a.run(`
         const held=window.__deletionStop;
         await held.journal.persist(()=>held.journal.drop(held.entry));
         await press(${dialog},'Try again');
         await poll(()=>!svc.registry.records().some(one=>one.id===${JSON.stringify(id)})&&!(${dialog}));
         return true
       `)
-        await expect(s.items()).rejects.toMatchObject({ code: 'scope_deleted' })
-        expect(a.read(path)).toBe('Retained while stopping')
-        await shot(a, 'retry-done-' + layout, '.token-sync-settings')
-      } finally {
-        a.run(
-          `const held=window.__deletionStop;if(held){held.release?.();if(held.journal&&held.entry)await held.journal.persist(()=>held.journal.drop(held.entry));svc.stopRuntime=held.original;svc.runtimeStopLimitMs=held.limit;delete window.__deletionStop}return true`
-        )
-        closeSyncScreens(a)
-        if (layout === 'emulated-phone') {
-          await reloadAs(a.vault(), false)
-          await setWindowSize(a.vault(), ...size!)
+          await expect(s.items()).rejects.toMatchObject({ code: 'scope_deleted' })
+          expect(a.read(path)).toBe('Retained while stopping')
+          await shot(a, 'retry-done-' + layout, '.token-sync-settings')
+        },
+        async () => {
+          a.run(
+            `const held=window.__deletionStop;if(held){held.release?.();if(held.journal&&held.entry)await held.journal.persist(()=>held.journal.drop(held.entry));svc.stopRuntime=held.original;svc.runtimeStopLimitMs=held.limit;delete window.__deletionStop}return true`
+          )
+          closeSyncScreens(a)
+          if (layout === 'emulated-phone') {
+            await reloadAs(a.vault(), false)
+            await setWindowSize(a.vault(), ...size!)
+          }
         }
-      }
+      )
     },
     180000
   )
@@ -399,30 +426,35 @@ it('shows another device stopped by scope_deleted after the owner deletes the sa
     fixtureFetch
   )
   const id = await s.connect(a, token)
-  try {
-    await new V2Client(owner.token, fixtureFetch).deleteScope(randomUUID())
-    // The owner request is the explicit confirmation on the simulated second device.
-    await a.syncNow(id).catch(() => {})
-    await a.long(
-      'other device permanently stops',
-      `await openSyncTab();await poll(()=>svc.registry.records().some(one=>(svc.itemSets.store.get(${JSON.stringify(id)})?.items.map(item=>item.recordId)||[${JSON.stringify(id)}]).includes(one.id)&&one.state['abele-sync-token-state:scope-deleted']));await poll(()=>textOf(connectionRow(app.setting.activeTab.containerEl,${JSON.stringify(id)})).includes('Deleted on the server'));return true`
-    )
-    expect(a.read(path)).toBe(content)
-    expect(
-      a.run(`return textOf(connectionRow(app.setting.activeTab.containerEl,${JSON.stringify(id)}))`)
-    ).toContain('Deleted on the server')
-    expect(
-      a.run(
-        `const row=connectionRow(app.setting.activeTab.containerEl,${JSON.stringify(id)});return {sync:!!row.querySelector('svg.lucide-refresh-cw'),red:!!row.querySelector('.abele-status-dot_red'),menu:!!row.querySelector('svg.lucide-more-horizontal')}`
+  await preserveCleanupError(
+    async () => {
+      await new V2Client(owner.token, fixtureFetch).deleteScope(randomUUID())
+      // The owner request is the explicit confirmation on the simulated second device.
+      await a.syncNow(id).catch(() => {})
+      await a.long(
+        'other device permanently stops',
+        `await openSyncTab();await poll(()=>svc.registry.records().some(one=>(svc.itemSets.store.get(${JSON.stringify(id)})?.items.map(item=>item.recordId)||[${JSON.stringify(id)}]).includes(one.id)&&one.state['abele-sync-token-state:scope-deleted']));await poll(()=>textOf(connectionRow(app.setting.activeTab.containerEl,${JSON.stringify(id)})).includes('Deleted on the server'));return true`
       )
-    ).toEqual({ sync: false, red: true, menu: true })
-    expect(
-      a.run(`try{await svc.pause(${JSON.stringify(id)},false);return false}catch{return true}`)
-    ).toBe(true)
-    await shot(a, 'other-device-stopped', '.token-sync-settings')
-  } finally {
-    closeSyncScreens(a)
-  }
+      expect(a.read(path)).toBe(content)
+      expect(
+        a.run(
+          `return textOf(connectionRow(app.setting.activeTab.containerEl,${JSON.stringify(id)}))`
+        )
+      ).toContain('Deleted on the server')
+      expect(
+        a.run(
+          `const row=connectionRow(app.setting.activeTab.containerEl,${JSON.stringify(id)});return {sync:!!row.querySelector('svg.lucide-refresh-cw'),red:!!row.querySelector('.abele-status-dot_red'),menu:!!row.querySelector('svg.lucide-more-horizontal')}`
+        )
+      ).toEqual({ sync: false, red: true, menu: true })
+      expect(
+        a.run(`try{await svc.pause(${JSON.stringify(id)},false);return false}catch{return true}`)
+      ).toBe(true)
+      await shot(a, 'other-device-stopped', '.token-sync-settings')
+    },
+    async () => {
+      closeSyncScreens(a)
+    }
+  )
 }, 180000)
 
 it('shows a disabled read-only deletion action with its reason and never offers confirmation', async () => {
@@ -437,30 +469,36 @@ it('shows a disabled read-only deletion action with its reason and never offers 
     fixtureFetch
   )
   const id = await s.connect(a, token)
-  try {
-    const observed = await a.long<{ disabled: boolean; reason: string; labels: string[] }>(
-      'open read-only deletion menu',
-      `
+  await preserveCleanupError(
+    async () => {
+      const observed = await a.long<{ disabled: boolean; reason: string; labels: string[] }>(
+        'open read-only deletion menu',
+        `
       await poll(()=>![...new Set([document,settingsDoc()])].some(doc=>[...doc.querySelectorAll('.notice')].some(one=>textOf(one).includes('Connection saved'))),15000,'connection setup notice to disappear');
       const root=await openSyncTab(),native=app.vault.getConfig('nativeMenus');
       try{app.vault.setConfig('nativeMenus',false);(${clickSyncMenu.toString()})(connectionRow(root,${JSON.stringify(id)}))}finally{app.vault.setConfig('nativeMenus',native)}
       let item;await poll(()=>item=[...(${menu})?.querySelectorAll('.menu-item')||[]].find(one=>textOf(one)==='Delete from the server: read only'));
       return {disabled:item.classList.contains('is-disabled')||item.getAttribute('aria-disabled')==='true',reason:item.getAttribute('aria-label'),labels:[...(${menu}).querySelectorAll('.menu-item-title')].map(textOf)}
     `
-    )
-    expect(observed.disabled).toBe(true)
-    expect(observed.reason).toBe(
-      'This key can only read. Only someone who can change these files can delete them.'
-    )
-    expect(observed.labels.slice(-2)).toEqual(['Disconnect…', 'Delete from the server: read only'])
-    await shot(a, 'read-only-menu', '.menu')
-    a.run(
-      `const item=[...(${menu}).querySelectorAll('.menu-item')].find(one=>textOf(one)==='Delete from the server: read only');item.click();return true`
-    )
-    expect(a.run(`return !!(${dialog})`)).toBe(false)
-    expect((await s.items()).some((one) => one.path === path)).toBe(true)
-    expect(a.read(path)).toBe('Sample read-only note')
-  } finally {
-    closeSyncScreens(a)
-  }
+      )
+      expect(observed.disabled).toBe(true)
+      expect(observed.reason).toBe(
+        'This key can only read. Only someone who can change these files can delete them.'
+      )
+      expect(observed.labels.slice(-2)).toEqual([
+        'Disconnect…',
+        'Delete from the server: read only',
+      ])
+      await shot(a, 'read-only-menu', '.menu')
+      a.run(
+        `const item=[...(${menu}).querySelectorAll('.menu-item')].find(one=>textOf(one)==='Delete from the server: read only');item.click();return true`
+      )
+      expect(a.run(`return !!(${dialog})`)).toBe(false)
+      expect((await s.items()).some((one) => one.path === path)).toBe(true)
+      expect(a.read(path)).toBe('Sample read-only note')
+    },
+    async () => {
+      closeSyncScreens(a)
+    }
+  )
 }, 180000)
