@@ -230,6 +230,16 @@ const probeLib = `(() => {
       c.set('sample ')
       c.focus()
       await wait(300)
+      // Drawer motion belongs to opening the panel. Capture the typing baseline only
+      // after its finite host animations finish; cursor blinking stays active.
+      if (!await until(() => {
+        for (let el = c.field; el; el = el.parentElement) {
+          if (el.getAnimations().some(animation =>
+            (animation.pending || animation.playState === 'running') &&
+            animation.effect?.getComputedTiming().endTime !== Infinity)) return false
+        }
+        return true
+      }, 5000)) throw Error('Typing panel opening motion did not finish')
       const liveView = () => target ? target.liveView() : window.__abeleTest.noteFieldView(composer().field)
       const view = liveView()
       const content = view.contentDOM

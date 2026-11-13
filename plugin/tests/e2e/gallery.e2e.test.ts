@@ -98,7 +98,7 @@ const PRELUDE = `
 
 type Report = {
   error?: string
-  lifecycle?: { rootConnected: boolean; sameRoot: boolean; mounts: number }
+  lifecycle?: { rootConnected: boolean; sameRoot: boolean; mounts: number; scrollTop: number }
   galleries: number
   box: { w: number; h: number } | null
   pictures: Array<{ w: number; h: number; loaded: boolean }>
@@ -222,11 +222,24 @@ describe.skipIf(!available)('the gallery', () => {
       app.workspace.setActiveLeaf(leaf, { focus: true })
       await wait(1200)
       other.detach()
-      root.scrollTop = 0
+      // Use reader input to return, so the host updates its virtual section window as
+      // well as the DOM scroll offset. A direct offset write can be restored by a
+      // pending section-layout pass after tab activation.
+      const debuggerApi = require('@electron/remote').getCurrentWebContents().debugger
+      const owned = !debuggerApi.isAttached()
+      if (owned) debuggerApi.attach('1.3')
+      try {
+        const bounds = root.getBoundingClientRect()
+        await debuggerApi.sendCommand('Input.dispatchMouseEvent', { type: 'mouseWheel',
+          x: bounds.left + bounds.width / 2, y: bounds.top + 60, deltaX: 0, deltaY: -root.scrollHeight })
+        if (!await until(() => root.scrollTop < 1)) throw Error('Reading view did not return to the top: ' + root.scrollTop)
+      } finally {
+        if (owned) debuggerApi.detach()
+      }
       await wait(500)
       const result = await report(root, 1, 'scrolled-back')
       result.lifecycle = { rootConnected: root.isConnected, sameRoot: rootOf(leaf, 'preview') === root,
-        mounts: root.querySelectorAll('[data-gallery-id]').length }
+        mounts: root.querySelectorAll('[data-gallery-id]').length, scrollTop: root.scrollTop }
       console.log('Gallery return lifecycle', JSON.stringify(result.lifecycle))
       return result
     })()`,
