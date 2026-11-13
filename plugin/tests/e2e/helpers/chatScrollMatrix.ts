@@ -3,6 +3,7 @@ import { visibleChatAnchor } from './visibleChatAnchor'
 import { traceScrollInput } from './scrollInputTrace'
 import { scrollCompletion } from './scrollCompletion'
 import { prepareScrollbarDrag, scrollbarDragPoint } from './scrollbarDragPoint'
+import { nativeInputReceipt } from './nativeInputReceipt'
 
 export const states = ['idle', 'text', 'running-tool', 'finished-tool', 'finished-reply'] as const
 const shots = shotDir('abele-phone')
@@ -286,8 +287,9 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
   let ignoredInputs = 0
   let deliveredDelta = 0, touchY = null
   let measureInputStart, measureFollowingOrigin, measureWheelReceipt, gestureActive = false, boundaryGeometry = null
+  const receiveInput = (${nativeInputReceipt.toString()})(box)
   const nativeInput = event => {
-    if (!box()?.contains(event.target)) {
+    if (!receiveInput(event)) {
       if (gestureActive && ignoredInputs++ < 40) {
         const point = event.touches?.[0] || event.changedTouches?.[0]
         const hit = point && document.elementFromPoint(point.clientX, point.clientY)
@@ -302,6 +304,11 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
     measureFollowingOrigin = null
     if (measureInputStart) { measureInputStart(); measureInputStart = null }
     const nextY = (event.touches?.[0] || event.changedTouches?.[0])?.clientY
+    if (event.type === 'touchcancel') {
+      touchY = null
+      trace.push({ at: performance.now(), move: row?.move, input: event.type, scrollTop: box().scrollTop })
+      return
+    }
     if (event.type === 'touchstart') {
       touchY = nextY
       trace.push({ at: performance.now(), move: row?.move, input: event.type, y: nextY, scrollTop: box().scrollTop })
@@ -527,6 +534,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
     window.addEventListener('touchmove', nativeInput, { capture: true, passive: true })
     window.addEventListener('touchstart', nativeInput, { capture: true, passive: true })
     window.addEventListener('touchend', nativeInput, { capture: true, passive: true })
+    window.addEventListener('touchcancel', nativeInput, { capture: true, passive: true })
     if (!attached) debuggerApi.attach('1.3')
     if (phone) await cdp('Emulation.setTouchEmulationEnabled', { enabled: true })
     if (app.vault.getAbstractFileByPath(path)) throw Error('Sample path occupied')
@@ -794,6 +802,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
     window.removeEventListener('touchmove', nativeInput, true)
     window.removeEventListener('touchstart', nativeInput, true)
     window.removeEventListener('touchend', nativeInput, true)
+    window.removeEventListener('touchcancel', nativeInput, true)
     dragTrace?.stop()
     dragCompletion?.stop()
     stop = true; finishInitial = true; finishTool?.(); cancelAnimationFrame(frame)
