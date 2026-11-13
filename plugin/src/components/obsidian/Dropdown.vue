@@ -114,6 +114,13 @@ const emit = defineEmits<{
   padding: var(--size-4-1);
   margin: calc(-1 * var(--size-4-1));
 
+  // Fallback for host clones whose measuring fields are unavailable to fitInBatches.
+  // Recognized clones get an inline absolute position and explicit origin from that
+  // helper, so transformed sheets keep their intrinsic width inside this wrapper.
+  .dropdown.is-measuring {
+    position: fixed;
+  }
+
   .dropdown {
     width: 100%;
     min-width: 0;
