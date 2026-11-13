@@ -51,7 +51,8 @@ const PHONE = { width: 390, height: 844 }
 const KEYBOARD = 336
 const ROOM = PHONE.height - KEYBOARD
 const SHOTS = shotDir('abele-phone')
-const TASK = 'Sample date probe ' + randomUUID() + '.md'
+const TASK_PREFIX = 'Sample date probe '
+const TASK = TASK_PREFIX + randomUUID() + '.md'
 const TASK_TEXT = '---\ntype: task\n---\nSample date probe\n'
 // Recover the exact synthetic note left by older, interrupted versions of this probe too.
 const DATE_FIXTURES = [
@@ -62,7 +63,13 @@ const DATE_FIXTURES = [
 const cleanupFixtures = async (): Promise<void> => {
   await evalLong(
     `(async()=>{
-      for(const [path,text] of ${JSON.stringify(DATE_FIXTURES)}){
+      const fixtures=new Map(${JSON.stringify(DATE_FIXTURES)});
+      // The file index survives a lost probe. Recover only root notes this probe could create.
+      for(const file of app.vault.getFiles()){
+        if(file.path.includes('/')||!file.path.startsWith(${JSON.stringify(TASK_PREFIX)})||!file.path.endsWith('.md')||fixtures.has(file.path))continue;
+        if(await app.vault.read(file)===${JSON.stringify(TASK_TEXT)})fixtures.set(file.path,${JSON.stringify(TASK_TEXT)});
+      }
+      for(const [path,text] of fixtures){
         const file=app.vault.getAbstractFileByPath(path);
         if(!file)continue;
         if(await app.vault.read(file)!==text)throw Error('date fixture changed: '+path);
