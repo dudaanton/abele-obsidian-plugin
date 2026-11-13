@@ -211,7 +211,10 @@ describe.skipIf(!available)('column source and menu safety', () => {
           `return [...document.querySelectorAll('.menu-item-title')].map(e=>e.textContent)`
         )
       ).toContain('Add column')
-      evaluate(`document.body.click();await wait(100);return true`)
+      evaluate(
+        `document.body.click();const deadline=Date.now()+5000;while(document.querySelector('.menu')){if(Date.now()>deadline)throw Error('column menu did not dismiss');await wait(25)}return true`,
+        'dismiss established menu'
+      )
       const result = evaluate<{ menu: boolean; text: string; before: string[]; after: string[] }>(
         `const frames=root().querySelectorAll('.abele-columns .abele-columns'),first=frames[0],second=frames[1];const before=[first.dataset.abeleFrameFrom,first.dataset.abeleFrameTo,second.dataset.abeleFrameFrom,second.dataset.abeleFrameTo];first.before(second);second.querySelector('.abele-columns-controls button').click();await wait(200);return {menu:!!document.querySelector('.menu'),text:view.getMode()==='source'?view.editor.getValue():await app.vault.read(view.file),before,after:[first.dataset.abeleFrameFrom,first.dataset.abeleFrameTo,second.dataset.abeleFrameFrom,second.dataset.abeleFrameTo]}`
       )
