@@ -10,7 +10,7 @@ import { mkdtempSync, mkdirSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import * as routeProbe from '../e2e/helpers/phoneRouteProbe'
 import { startupScanProgress } from '../e2e/helpers/startupWait'
-vi.mock('../e2e/helpers/syncVault', () => ({ waitFor: vi.fn() }))
+vi.mock('../e2e/helpers/syncVault', () => ({ waitFor: vi.fn(async () => {}) }))
 vi.mock('../e2e/helpers/syncServer', () => ({
   siblingMissing: vi.fn(),
   fixtureFetch: vi.fn(),
@@ -31,6 +31,55 @@ afterEach(() => {
   vi.unstubAllEnvs()
   vi.mocked(onPhone).mockReturnValue(false)
 })
+
+it.each(['activation', 'ownership', 'first sync'])(
+  'retires a saved connection before a failed %s returns to window restoration',
+  async (phase) => {
+    vi.stubEnv('OBSIDIAN_TEST_VAULT', 'primary-pool')
+    const live = new TokenSyncLive(false)
+    const token = Buffer.from(
+      JSON.stringify({
+        v: 1,
+        address: 'https://sync.example',
+        key: 'a'.repeat(43),
+        scope: { kind: 'folder', id: 'sample-root', path: '/' },
+      })
+    ).toString('base64')
+    const kill = vi.fn(async () => {})
+    live.servers.push({ rootToken: token, kill } as never)
+    live.ids.set(live.primary, [])
+    Reflect.get(live, 'saved').set(live.primary, { ignore: null, file: null })
+    let saved = false
+    vi.spyOn(live.primary, 'rows').mockImplementation(() =>
+      saved ? ([{ id: 'sample' }] as never) : []
+    )
+    vi.spyOn(live.primary, 'connect').mockImplementation(async () => {
+      saved = true
+      if (phase === 'activation') throw new Error('sample activation failed')
+      return 'sample'
+    })
+    vi.spyOn(live.primary, 'captureTokenOwnership').mockImplementation(() => {
+      if (phase === 'ownership') throw new Error('sample ownership failed')
+    })
+    vi.spyOn(live.primary, 'syncNow').mockRejectedValue(new Error('sample first sync failed'))
+    const reset = vi.spyOn(live.primary, 'resetTokenState').mockImplementation(async () => {
+      saved = false
+    })
+    vi.spyOn(live.primary, 'assertTokenStateReset').mockImplementation(() => {
+      expect(saved).toBe(false)
+    })
+    vi.spyOn(live.primary, 'run').mockReturnValue(true)
+    vi.spyOn(live.primary, 'removeTree').mockResolvedValue()
+    await expect(live.connect()).rejects.toThrow('sample ' + phase + ' failed')
+    expect(reset).toHaveBeenCalledOnce()
+    expect(kill).not.toHaveBeenCalled()
+    expect(live.primary.ended).toBe(false)
+    expect(saved).toBe(false)
+    expect(live.ids.get(live.primary)).toEqual(['sample'])
+    await live.close()
+    expect(kill).toHaveBeenCalledOnce()
+  }
+)
 
 it('waits for both peers to consume a directory commit queued after the child deletion', async () => {
   const live = Object.create(TokenSyncLive.prototype) as TokenSyncLive

@@ -198,18 +198,26 @@ export class TokenSyncLive {
       throw device.failure('fixture token readiness', error)
     })
     const before = new Set(device.rows().map((one) => one.id))
-    let id: string
+    let settled = false
     try {
-      id = await device.connect(token, qrImage, timeoutMs)
+      let id: string
+      try {
+        id = await device.connect(token, qrImage, timeoutMs)
+      } finally {
+        // Even a failed activation can have saved a native connection. Own it for teardown.
+        const owned = this.ids.get(device)!
+        for (const row of device.rows())
+          if (!before.has(row.id) && !owned.includes(row.id)) owned.push(row.id)
+        device.captureTokenOwnership()
+      }
+      await device.syncNow(id)
+      settled = true
+      return id
     } finally {
-      // Even a failed activation can have saved a native connection. Own it for teardown.
-      const owned = this.ids.get(device)!
-      for (const row of device.rows())
-        if (!before.has(row.id) && !owned.includes(row.id)) owned.push(row.id)
-      device.captureTokenOwnership()
+      // Remove saved connections before the caller restores/reloads its window.
+      // Keep the driver live so that caller's finally can still restore geometry.
+      if (!settled) await this.resetDevice(device)
     }
-    await device.syncNow(id)
-    return id
   }
   async cycle(): Promise<void> {
     await settleSyncPeers(
@@ -259,6 +267,26 @@ export class TokenSyncLive {
       if (onPhone()) this.primary.phaseMemory('phone case', 'after', true)
     }))
   }
+  private async resetDevice(device: SyncDriver): Promise<void> {
+    try {
+      await device.resetTokenState()
+      device.assertTokenStateReset()
+    } catch (error) {
+      try {
+        await device.forceResetTokenState()
+        device.assertTokenStateReset()
+        console.warn(
+          'Live sync polite cleanup failed; guarded pool reset succeeded:',
+          cleanupReason(error)
+        )
+      } catch (fallback) {
+        throw new AggregateError(
+          [error, fallback],
+          'Polite cleanup and guarded pool reset both failed'
+        )
+      }
+    }
+  }
   private async closeOwned(): Promise<void> {
     // Cleanup may inspect a replacement page after reporting the failed case.
     if (onPhone()) endPhoneCase()
@@ -267,26 +295,10 @@ export class TokenSyncLive {
     for (const [device, saved] of [...this.saved].reverse()) {
       let reset = false
       try {
-        await device.resetTokenState()
-        device.assertTokenStateReset()
+        await this.resetDevice(device)
         reset = true
       } catch (error) {
-        try {
-          await device.forceResetTokenState()
-          device.assertTokenStateReset()
-          reset = true
-          console.warn(
-            'Live sync polite cleanup failed; guarded pool reset succeeded:',
-            cleanupReason(error)
-          )
-        } catch (fallback) {
-          failures.push(
-            new AggregateError(
-              [error, fallback],
-              'Polite cleanup and guarded pool reset both failed'
-            )
-          )
-        }
+        failures.push(error)
       }
       try {
         // Fixture files are the only notes this case owns. Reset itself never touches files.
