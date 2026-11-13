@@ -31,6 +31,7 @@
  * — see docs/Testing.md.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { randomUUID } from 'node:crypto'
 import {
   activeVaultName,
   evalJson,
@@ -50,6 +51,29 @@ const PHONE = { width: 390, height: 844 }
 const KEYBOARD = 336
 const ROOM = PHONE.height - KEYBOARD
 const SHOTS = shotDir('abele-phone')
+const TASK = 'Sample date probe ' + randomUUID() + '.md'
+const TASK_TEXT = '---\ntype: task\n---\nSample date probe\n'
+// Recover the exact synthetic note left by older, interrupted versions of this probe too.
+const DATE_FIXTURES = [
+  [TASK, TASK_TEXT],
+  ['Phone probe task.md', '---\ntype: task\n---\nPhone probe task\n'],
+]
+
+const cleanupFixtures = async (): Promise<void> => {
+  await evalLong(
+    `(async()=>{
+      for(const [path,text] of ${JSON.stringify(DATE_FIXTURES)}){
+        const file=app.vault.getAbstractFileByPath(path);
+        if(!file)continue;
+        if(await app.vault.read(file)!==text)throw Error('date fixture changed: '+path);
+        for(const leaf of app.workspace.getLeavesOfType('markdown'))if(leaf.view.file===file)leaf.detach();
+        await app.vault.delete(file);
+      }
+      return 'removed'
+    })()`,
+    30_000
+  )
+}
 
 interface Screen {
   /** The dialog's top and bottom edges. */
@@ -175,12 +199,12 @@ const probeScript = `(async () => {
   }
 
   const report = {}
-  const TASK = 'Phone probe task.md'
+  const TASK = ${JSON.stringify(TASK)}
   const realViewport = Object.getOwnPropertyDescriptor(window, 'visualViewport')
 
   try {
     await closeDialog()
-    const file = await app.vault.create(TASK, '---\\ntype: task\\n---\\nPhone probe task\\n')
+    const file = await app.vault.create(TASK, ${JSON.stringify(TASK_TEXT)})
     await app.workspace.getLeaf(false).openFile(file)
     await until(() => [...document.querySelectorAll('.abele-task-header-view')].some(
       (el) => el.getBoundingClientRect().height > 0), 8000)
@@ -278,6 +302,8 @@ const probeScript = `(async () => {
 
 /** Closes anything standing over the note and switches emulation, letting the reload settle. */
 const setMobile = async (on: boolean): Promise<void> => {
+  // A real phone already has this layout. Reloading it discards the batch's setup.
+  if (onPhone()) return
   await reloadApp(`app.emulateMobile(${on})`)
 }
 
@@ -310,6 +336,7 @@ describe.skipIf(!available)("the task's date dialog on a phone, keyboard up", ()
 
   beforeAll(async () => {
     size = windowSize()
+    await cleanupFixtures()
     await setMobile(true)
     await setWindowSize(PHONE.width, PHONE.height)
     report = JSON.parse(await evalLong(probeScript, 170_000)) as Report
@@ -323,9 +350,14 @@ describe.skipIf(!available)("the task's date dialog on a phone, keyboard up", ()
 
   afterAll(async () => {
     if (!available) return
-    // The window first: leaving emulation reloads the app at whatever size the window is.
-    if (size[0]) await setWindowSize(size[0], size[1])
-    await setMobile(false)
+    // A lost WebView cannot run the probe's finally. The runner still owns this exact note.
+    try {
+      await cleanupFixtures()
+    } finally {
+      // The window first: leaving emulation reloads the app at whatever size the window is.
+      if (size[0]) await setWindowSize(size[0], size[1])
+      await setMobile(false)
+    }
   }, 120_000)
 
   // On a real phone the three mimics give way to the real keyboard.

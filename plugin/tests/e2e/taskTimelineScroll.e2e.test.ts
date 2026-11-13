@@ -840,23 +840,20 @@ const REMOVE_TIMELINE_FIXTURE = `
     let verified = 0
     for (const file of files) {
       if (file.children) throw Error('unowned nested fixture folder: ' + file.path)
-      const text = await app.vault.read(file)
+      const text = file.path === path + '/Sample group.md' ? await app.vault.read(file) : ''
       const fm = app.metadataCache.getFileCache(file)?.frontmatter
       const group = file.path === path + '/Sample group.md' && text === 'Sample group\\n'
       const task = /^Sample (?:item -?\\d+ [0-2]|archive -\\d+)\\.md$/.test(file.name) &&
         fm?.type === 'task' && Array.isArray(fm.labels) && fm.labels.includes(label) &&
         Array.isArray(fm.groups) && fm.groups.includes('[[' + path + '/Sample group]]')
       if (!group && !task) throw Error('unowned fixture file: ' + file.path)
-      if (++verified % 16 === 0) yield 'verified ' + verified
+      if (++verified % 64 === 0) yield 'verified ' + verified
     }
-    // Individual native deletes publish file events before the empty folder is removed.
-    let removed = 0
-    for (const file of files) {
-      await app.vault.delete(file, true)
-      if (++removed % 16 === 0) yield 'removed ' + removed
-    }
+    // One native recursive operation publishes child deletion events too. Avoid a bridge
+    // round trip and a separate filesystem operation for every synthetic task.
     if (folder) await app.vault.delete(folder, true)
-    const deadline = Date.now() + 60000
+    yield 'removed folder; draining task events'
+    const deadline = Date.now() + 30000
     while ([...window.__abeleTest.GlobalStore.getInstance().tasksList.value.tasks.keys()].some(key => key.startsWith(path + '/'))) {
       if (Date.now() > deadline) throw Error('deleted fixture tasks remained in the store: ' + path)
       await new Promise(done => setTimeout(done, 100))
@@ -867,6 +864,7 @@ const REMOVE_TIMELINE_FIXTURE = `
 
 // Synthetic fixtures may survive an interrupted run. Remove only proven owned notes.
 async function removeFixtures(): Promise<void> {
+  const deadline = Date.now() + 120_000
   for (const dir of [FOLDER, FOLDER + ' short']) {
     evalRaw(
       `(() => {
@@ -877,7 +875,13 @@ async function removeFixtures(): Promise<void> {
     )
     try {
       for (;;) {
-        const step = JSON.parse(await evalLong('window.__timelineCleanup.next()', 120_000))
+        if (Date.now() >= deadline) throw Error('timeline fixture cleanup exceeded its budget')
+        const raw = await evalLong(
+          'window.__timelineCleanup.next()',
+          Math.min(45_000, deadline - Date.now())
+        )
+        if (raw.startsWith('Error:')) throw Error(raw)
+        const step = JSON.parse(raw)
         if (step.done) break
       }
     } finally {
