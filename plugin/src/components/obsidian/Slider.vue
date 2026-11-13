@@ -10,8 +10,10 @@
     :value="modelValue"
     :disabled="disabled"
     :aria-label="label"
-    @input="onInput"
-    @change="emit('update:model-value', Number(($event.target as HTMLInputElement).value))"
+    @input.capture="onInput"
+    @change.capture="onChange"
+    @pointerdown="pointerDown"
+    @keydown="allowNativeRange"
     @touchstart="touchStart"
     @touchmove="touchMove"
     @touchend="touchEnd"
@@ -55,6 +57,9 @@ const emit = testComponentEmit(vueEmit)
 const el = ref<HTMLInputElement>()
 
 let trackTouch: { x: number; y: number; moved: boolean } | null = null
+let pointerClassified = false
+let suppressNativeRange = false
+let suppressedValue = 0
 
 const track = () => {
   const input = el.value
@@ -63,21 +68,49 @@ const track = () => {
   return { left: box.left + thumb / 2, width: Math.max(1, box.width - thumb), thumb }
 }
 
-const touchStart = (event: TouchEvent) => {
-  if (!props.thumbDragOnly || props.disabled) return
+const beginTouch = (point: { clientX: number; clientY: number }) => {
   trackTouch = null
-  const point = event.touches[0]
-  if (!point || event.touches.length !== 1) return
+  suppressNativeRange = false
   const { left, width, thumb } = track()
   const ratio = (Number(el.value.value) - props.min) / (props.max - props.min || 1)
   if (Math.abs(point.clientX - (left + ratio * width)) <= thumb / 2) {
     // Set synchronously: Obsidian reads this as touchstart bubbles to its gesture handler.
     el.value.setAttribute('data-ignore-swipe', 'true')
   } else {
-    // Cancel the native range drag, while letting the host receive the entire gesture.
-    event.preventDefault()
+    suppressNativeRange = true
+    suppressedValue = Number(el.value.value)
     trackTouch = { x: point.clientX, y: point.clientY, moved: false }
   }
+}
+
+const allowNativeRange = () => {
+  suppressNativeRange = false
+}
+
+const pointerDown = (event: PointerEvent) => {
+  if (event.pointerType === 'touch' && event.isPrimary === false) return
+  allowNativeRange()
+  pointerClassified = false
+  if (!props.thumbDragOnly || props.disabled || event.pointerType !== 'touch') return
+  // Native ranges can update on pointerdown, before touchstart sees their value.
+  // Decide ownership before that default action moves the thumb under the finger.
+  beginTouch(event)
+  pointerClassified = true
+  if (trackTouch) event.preventDefault()
+}
+
+const touchStart = (event: TouchEvent) => {
+  if (!props.thumbDragOnly || props.disabled) return
+  const point = event.touches[0]
+  if (!point || event.touches.length !== 1) {
+    trackTouch = null
+    pointerClassified = false
+    return
+  }
+  if (!pointerClassified) beginTouch(point)
+  pointerClassified = false
+  // Keep bubbling to the host's sidebar gesture handler.
+  if (trackTouch) event.preventDefault()
 }
 
 const touchMove = (event: TouchEvent) => {
@@ -93,6 +126,7 @@ const touchMove = (event: TouchEvent) => {
 
 const touchCancel = () => {
   trackTouch = null
+  pointerClassified = false
   if (props.thumbDragOnly) el.value?.removeAttribute('data-ignore-swipe')
 }
 
@@ -106,6 +140,7 @@ const touchEnd = () => {
     props.min + Math.min(1, Math.max(0, (tap.x - left) / width)) * (props.max - props.min)
   )
   const value = Number(el.value.value)
+  suppressedValue = value
   fill(value)
   emit('input', value)
   emit('update:model-value', value)
@@ -118,10 +153,25 @@ const fill = (value: number) => {
   el.value?.style.setProperty('--slider-fill-ratio', String(Math.min(1, Math.max(0, ratio))))
 }
 
+const ignoreTrackInput = (e: Event) => {
+  if (!props.thumbDragOnly || !suppressNativeRange) return false
+  // Keep the guard after touchend/cancel: the native range's final change can be
+  // delivered later. The next pointer or keyboard action starts a fresh edit.
+  e.stopImmediatePropagation()
+  el.value.value = String(suppressedValue)
+  fill(suppressedValue)
+  return true
+}
+
 const onInput = (e: Event) => {
+  if (ignoreTrackInput(e)) return
   const value = Number((e.target as HTMLInputElement).value)
   fill(value)
   emit('input', value)
+}
+
+const onChange = (e: Event) => {
+  if (!ignoreTrackInput(e)) emit('update:model-value', Number((e.target as HTMLInputElement).value))
 }
 
 onMounted(() => {

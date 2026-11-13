@@ -311,6 +311,10 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
           // otherwise tests the host's release-velocity estimator instead of swipe ownership.
           const x0 = b.left + b.width * (direction === 1 ? 0.1 : 0.9)
           const x1 = direction === 1 ? innerWidth - 8 : 8
+          const thumbWidth = parseFloat(getComputedStyle(slider).getPropertyValue('--slider-thumb-width')) || 18
+          const thumbCenter = b.left + thumbWidth / 2 + (b.width - thumbWidth) * Number(slider.value) / 1000
+          const origin = { x0, x1, sliderLeft: b.left, sliderWidth: b.width,
+            value: Number(slider.value), thumbWidth, thumbCenter, startsOnThumb: Math.abs(x0 - thumbCenter) <= thumbWidth / 2 }
           await touch('touchStart', [[x0, y]])
           for (let i = 1; i <= 10; i++) {
             await touch('touchMove', [[x0 + (x1 - x0) * i / 10, y]])
@@ -324,7 +328,7 @@ describe.skipIf(!available)('the reader’s controls on a phone', () => {
           slider.removeEventListener('input', change)
           slider.removeEventListener('change', change)
           view.engine.removeEventListener('relocate', relocate)
-          diagnostics.push({ direction, before, after, seeks, changes, emissions, relocations })
+          diagnostics.push({ direction, origin, before, after, seeks, changes, emissions, relocations })
           // Reflow can change the visible range end without changing the reading position.
           unchanged.push(after.start === before.start)
           await shoot('footer-sidebar-swipe-' + direction)
