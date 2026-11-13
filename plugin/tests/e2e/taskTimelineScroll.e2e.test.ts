@@ -847,12 +847,17 @@ const REMOVE_TIMELINE_FIXTURE = `
         fm?.type === 'task' && Array.isArray(fm.labels) && fm.labels.includes(label) &&
         Array.isArray(fm.groups) && fm.groups.includes('[[' + path + '/Sample group]]')
       if (!group && !task) throw Error('unowned fixture file: ' + file.path)
-      if (++verified % 64 === 0) yield 'verified ' + verified
+      if (++verified % 16 === 0) yield 'verified ' + verified
     }
-    // One native recursive operation publishes child deletion events too. Avoid a bridge
-    // round trip and a separate filesystem operation for every synthetic task.
+    // Keep individual native deletion events, but overlap independent filesystem operations.
+    // A batch is fully drained before yielding or removing the empty folder.
+    for (let offset = 0; offset < files.length; offset += 16) {
+      const results = await Promise.allSettled(files.slice(offset, offset + 16).map(file => app.vault.delete(file, true)))
+      const failed = results.find(result => result.status === 'rejected')
+      if (failed) throw failed.reason
+      if (offset + 16 <= files.length) yield 'removed ' + (offset + 16)
+    }
     if (folder) await app.vault.delete(folder, true)
-    yield 'removed folder; draining task events'
     const deadline = Date.now() + 30000
     while ([...window.__abeleTest.GlobalStore.getInstance().tasksList.value.tasks.keys()].some(key => key.startsWith(path + '/'))) {
       if (Date.now() > deadline) throw Error('deleted fixture tasks remained in the store: ' + path)
