@@ -61,6 +61,7 @@ describe('independent tree disclosure', () => {
       const current = row.get('[contenteditable]').element
       expect(current).not.toBe(previous)
       previous.dispatchEvent(new FocusEvent('blur'))
+      await new Promise<void>((resolve) => queueMicrotask(resolve))
       expect(row.emitted('rename')).toEqual([['First name']])
       expect(row.emitted('rename-cancel')).toBeUndefined()
       current.textContent = 'Second name'
