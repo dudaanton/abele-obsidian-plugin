@@ -3,6 +3,27 @@ import { mount } from '@vue/test-utils'
 import TreeItem from '@/components/obsidian/TreeItem.vue'
 
 describe('independent tree disclosure', () => {
+  it('waits for its containing sheet spring before exposing the rename editor', async () => {
+    const modal = document.createElement('div')
+    modal.className = 'modal'
+    modal.style.transform = 'translateY(500px)'
+    document.body.append(modal)
+    const row = mount(TreeItem, {
+      attachTo: modal,
+      props: { text: 'Sample name', renaming: true },
+    })
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(row.find('[contenteditable]').exists()).toBe(false)
+      modal.style.transform = ''
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(document.activeElement).toBe(row.get('[contenteditable]').element)
+      expect(row.emitted('rename')).toBeUndefined()
+    } finally {
+      row.unmount()
+      modal.remove()
+    }
+  })
   it('starts renaming when a retained host menu becomes hidden', async () => {
     const menu = document.createElement('div')
     menu.className = 'menu'

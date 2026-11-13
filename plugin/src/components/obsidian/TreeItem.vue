@@ -223,10 +223,14 @@ watch(
         const style = doc.defaultView.getComputedStyle(menu)
         return style.display !== 'none' && style.visibility !== 'hidden'
       })
+    const sheetMoving = () => {
+      const sheet = glyph.value?.closest<HTMLElement>('.modal')
+      return !!sheet?.style.transform && sheet.style.transform !== 'none'
+    }
     const focusEditor = async () => {
       // Host menu actions run before the phone dismissal animation has finished.
       // Taking focus now can blur the editor again and commit an untouched name.
-      if (menuOpen()) return
+      if (menuOpen() || sheetMoving()) return
       stopWaitingForMenu()
       if (!props.renaming || renameFinished) return
       // Do not expose a textbox until menu dismissal allows it to take focus.
@@ -242,7 +246,7 @@ watch(
       selection?.removeAllRanges()
       selection?.addRange(range)
     }
-    if (menuOpen()) {
+    if (menuOpen() || sheetMoving()) {
       menuObserver = new MutationObserver(() => {
         void focusEditor()
       })
