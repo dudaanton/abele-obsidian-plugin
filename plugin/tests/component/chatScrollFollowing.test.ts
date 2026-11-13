@@ -11,6 +11,7 @@ import { useVault } from '../helpers/testEnv'
 import { useFakeClock } from '../helpers/fakeClock'
 import { fakeChatSession } from '../helpers/fakeChatSession'
 import { script } from '../e2e/helpers/chatScrollMatrix'
+import { nativeInputReceipt } from '../e2e/helpers/nativeInputReceipt'
 
 vi.mock('../e2e/helpers/shots', () => ({ shotDir: () => 'sample-shots' }))
 
@@ -31,10 +32,14 @@ it.each([false, true])(
       probe.indexOf('    let before, first, olderHeight'),
       probe.indexOf('    boundaryGeometry = null; gestureActive')
     )
-    const receiptCode = probe.slice(
-      probe.indexOf('    if (!box()?.contains(event.target))'),
-      probe.indexOf('    const nextY = (event.touches?')
+    const receiptStartMarker = '  const nativeInput = event => {\n'
+    const receiptStart = probe.indexOf(receiptStartMarker)
+    const receiptEnd = probe.indexOf('    const nextY = (event.touches?')
+    expect(receiptStart, 'matrix native-input callback must exist').toBeGreaterThanOrEqual(0)
+    expect(receiptEnd, 'matrix receipt prelude must not be empty').toBeGreaterThan(
+      receiptStart + receiptStartMarker.length
     )
+    const receiptCode = probe.slice(receiptStart + receiptStartMarker.length, receiptEnd)
     const origin = new Function(
       'el',
       'dy',
@@ -42,6 +47,7 @@ it.each([false, true])(
       'offset',
       'item',
       'session',
+      'receiveInput',
       `
       let measureInputStart, measureWheelReceipt, measureFollowingOrigin;
       const box = () => el;
@@ -55,7 +61,8 @@ it.each([false, true])(
       () => anchor,
       (el: HTMLElement) => el.getBoundingClientRect().top,
       () => anchor,
-      { messages: { value: [{ id: 'sample-tail' }] } }
+      { messages: { value: [{ id: 'sample-tail' }] } },
+      nativeInputReceipt(() => box)
     )
     await grow()
     // A slow frame gives the queued follow enough time to run before DOM input.
