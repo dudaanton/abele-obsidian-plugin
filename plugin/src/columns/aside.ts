@@ -24,13 +24,19 @@ export function initializeAsides(
       cls: 'callout-fold abele-column-aside-fold',
       parent: title,
     })
-    return [{ aside, title, fold, collapsed: true }]
+    return [{ aside, title, fold, collapsed: true, applied: '' }]
   })
   let gone = false
-  const update = () => {
+  let lastNarrow: boolean | undefined
+  const update = (narrow = parent.clientWidth <= 500) => {
     if (gone) return
-    const narrow = parent.clientWidth <= 500
+    lastNarrow = narrow
     for (const state of states) {
+      const presentation = narrow ? (state.collapsed ? 'collapsed' : 'expanded') : 'wide'
+      // Height-only deliveries must not replace icons or write attributes again: those
+      // mutations can make the host measure the widget and deliver another resize.
+      if (state.applied === presentation) continue
+      state.applied = presentation
       state.aside.dataset.abeleAsideCollapsed = String(narrow && state.collapsed)
       state.fold.hidden = !narrow
       if (narrow) {
@@ -75,9 +81,28 @@ export function initializeAsides(
   const Observer =
     (parent.ownerDocument.win as Window & { ResizeObserver?: typeof ResizeObserver })
       .ResizeObserver ?? ResizeObserver
-  const resize = new Observer(update)
-  resize.observe(parent)
+  let stopped = false
+  let transitions = 0
+  let lastResize = 0
+  const resize = new Observer(() => {
+    if (gone || stopped) return
+    const narrow = parent.clientWidth <= 500
+    if (narrow === lastNarrow) return
+    const now = Date.now()
+    if (now - lastResize > 1000) transitions = 0
+    lastResize = now
+    // Bound alternating layouts as well as same-width feedback. Do not automatically
+    // rearm a runaway observer; a fresh render gets a fresh budget. Clicks still work.
+    if (++transitions > 16) {
+      stopped = true
+      resize.disconnect()
+      console.warn('Abele: stopped repeated column aside layout changes')
+      return
+    }
+    update(narrow)
+  })
   update()
+  resize.observe(parent)
   class AsideRenderChild extends MarkdownRenderChild {
     onunload(): void {
       gone = true
