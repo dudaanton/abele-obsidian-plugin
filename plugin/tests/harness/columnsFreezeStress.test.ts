@@ -13,6 +13,7 @@ const suites: Suite[] = []
 let current: Suite
 const evaluate = vi.fn<(code: string, timeout: number) => string>()
 const tap = vi.fn()
+let canSaveEvidence = true
 
 afterEach(() => {
   vi.doUnmock('vitest')
@@ -34,6 +35,7 @@ async function collect(arm?: string) {
     .mockReset()
     .mockImplementation((code) => (code.includes('return localStorage.getItem') ? 'null' : 'true'))
   tap.mockReset()
+  canSaveEvidence = true
   const test = Object.assign((_: string, callback: Callback) => current.cases.push(callback), {
     each: (values: number[]) => (_: string, callback: (start: number) => unknown) => {
       for (const value of values) current.cases.push(() => callback(value))
@@ -57,7 +59,7 @@ async function collect(arm?: string) {
   vi.doMock('../e2e/helpers/obsidianCli', () => ({ evalRaw: evaluate }))
   vi.doMock('../e2e/helpers/phone', () => ({ tap }))
   vi.doMock('../e2e/helpers/columnFlightEvidence', () => ({
-    saveColumnFlightAfterRecovery: () => true,
+    saveColumnFlightAfterRecovery: () => canSaveEvidence,
   }))
   await import('../e2e/columnsFreezeStress.e2e.test')
   return { suites, evaluate, tap }
@@ -68,6 +70,20 @@ it('does no device work when the opt-in variable is absent', async () => {
   expect(f.suites).toHaveLength(0)
   expect(f.evaluate).not.toHaveBeenCalled()
   expect(f.tap).not.toHaveBeenCalled()
+})
+
+it('does not restore an active recorder over unsaved evidence during cleanup', async () => {
+  const f = await collect('on')
+  f.evaluate.mockImplementation((code) =>
+    code.includes('return localStorage.getItem') ? '"123"' : 'true'
+  )
+  for (const setup of f.suites[0].setup) await setup()
+  canSaveEvidence = false
+  const before = f.evaluate.mock.calls.length
+  for (const cleanup of f.suites[0].cleanup) await cleanup()
+  expect(
+    f.evaluate.mock.calls.slice(before).some(([code]) => code.includes('localStorage.setItem'))
+  ).toBe(false)
 })
 
 it.each(['off', 'on'])(

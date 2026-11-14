@@ -169,7 +169,7 @@ function fixture(label: string, initial: string) {
           `document.querySelectorAll('.menu').forEach(menu=>menu.remove());${columnsFixtureCleanup(folder)}`
         )
     } finally {
-      if (flagOwned && !unresponsive)
+      if (flagOwned && !unresponsive && (priorFlag === null || saveColumnFlightAfterRecovery()))
         step(
           0,
           'restore recorder flag',
