@@ -27,6 +27,8 @@ import { bindColumnRender, columnPath, columnMenuTarget, renderedColumns } from 
 import { columnRenderContext } from './renderOrigin'
 import { registerColumnWidgets } from './widget'
 import type { ColumnSource } from './source'
+import { columnFlight } from './flight'
+import { registerColumnFlight } from './flightEditor'
 
 interface Target {
   text: string
@@ -197,6 +199,7 @@ function columnMenu(
 }
 
 export function registerColumns(plugin: Plugin): void {
+  registerColumnFlight(plugin)
   registerColumnEntry(plugin)
   registerColumnWidgets(plugin)
   const contexts = new WeakMap<HTMLElement, MarkdownPostProcessorContext>()
@@ -251,6 +254,7 @@ export function registerColumns(plugin: Plugin): void {
       .catch((error) => new Notice(String(error)))
   }
   plugin.registerMarkdownPostProcessor((el, original) => {
+    columnFlight?.record('postprocess.in')
     const ctx = columnRenderContext(el, original)
     columnsPostProcessor(el, ctx)
     const parents = [
@@ -284,6 +288,7 @@ export function registerColumns(plugin: Plugin): void {
           open(parent, 0, { x: event.clientX, y: event.clientY })
         })
     }
+    columnFlight?.record('postprocess.out')
   }, -1000)
   const attach = (doc: Document) =>
     plugin.registerDomEvent(

@@ -13,6 +13,18 @@ PDF exports omit Abele's note header and footer by default. The `pdfIncludeHeade
 boolean in plugin settings includes them when enabled and travels in the Other settings
 section. Note-body blocks are exported regardless of this setting.
 
+## Column flight diagnostics
+
+Opt-in column flight diagnostics use device-local `localStorage`: `abele-columns-flight`
+contains the current page's `performance.timeOrigin` as a string, and
+`abele-columns-flight-buffer` retains a JSON envelope with up to 500 records of time,
+code site, document length, viewport bounds and sequence counter. Unknown viewport bounds
+are `-1`. Recording flushes synchronously every 20 pending records or 100 ms, with a
+100 ms heartbeat for pending records. Note text, paths and DOM content are not stored.
+A flag from an earlier page load cannot enable recording, so relaunch preserves the last
+saved trace for inspection. A same-page `storage` event applies a changed flag; removing
+the flag and sending that event stops recording. Neither key is synced or transferred.
+
 ## Device-local worktree creation receipts
 
 The node client's local store retains `nodePathIntents` for accepted `workspace.create`

@@ -1,5 +1,6 @@
 import { MarkdownRenderChild, setIcon, type MarkdownPostProcessorContext } from 'obsidian'
 import type { ColumnsMobile } from './core'
+import { columnFlight } from './flight'
 
 const mounted = new WeakSet<HTMLElement>()
 
@@ -10,6 +11,7 @@ export function initializeAsides(
   mobile: ColumnsMobile,
   ctx?: MarkdownPostProcessorContext
 ): void {
+  columnFlight?.record('aside.initialize')
   const asides = columns.filter((column) => column.dataset.abeleColumnRole === 'aside')
   for (const aside of asides) {
     const label = aside.querySelector<HTMLElement>(':scope > .callout-title > .callout-title-inner')
@@ -29,6 +31,7 @@ export function initializeAsides(
   let gone = false
   let lastNarrow: boolean | undefined
   const update = (narrow = parent.clientWidth <= 500) => {
+    columnFlight?.record(narrow ? 'aside.layout.narrow' : 'aside.layout.wide')
     if (gone) return
     lastNarrow = narrow
     for (const state of states) {
@@ -53,6 +56,7 @@ export function initializeAsides(
   }
   const handlers = states.map((state) => {
     const toggle = (event: Event) => {
+      columnFlight?.record('aside.toggle')
       if (gone || parent.clientWidth > 500 || (event.target as Element).closest('a,input,button'))
         return
       event.preventDefault()
@@ -85,6 +89,7 @@ export function initializeAsides(
   let transitions = 0
   let lastResize = 0
   const resize = new Observer(() => {
+    columnFlight?.record('aside.resize.in')
     if (gone || stopped) return
     const narrow = parent.clientWidth <= 500
     if (narrow === lastNarrow) return
@@ -94,6 +99,7 @@ export function initializeAsides(
     // Bound alternating layouts as well as same-width feedback. Do not automatically
     // rearm a runaway observer; a fresh render gets a fresh budget. Clicks still work.
     if (++transitions > 16) {
+      columnFlight?.record('aside.resize.stop')
       stopped = true
       resize.disconnect()
       // A stopped observer must never strand hidden content behind an inactive wide-pane title.
@@ -102,11 +108,14 @@ export function initializeAsides(
       return
     }
     update(narrow)
+    columnFlight?.record('aside.resize.out')
   })
+  columnFlight?.record('aside.layout.initial')
   update()
   resize.observe(parent)
   class AsideRenderChild extends MarkdownRenderChild {
     onunload(): void {
+      columnFlight?.record('aside.destroy')
       gone = true
       resize.disconnect()
       handlers.forEach((remove) => remove())

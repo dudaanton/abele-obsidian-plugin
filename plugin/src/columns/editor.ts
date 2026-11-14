@@ -2,6 +2,7 @@ import { EditorView } from '@codemirror/view'
 import { editorLivePreviewField, type Plugin } from 'obsidian'
 import { COLUMN_INTERACTIVE, columnPath, renderedColumns } from './target'
 import { proseAnchor, proseBlocks, proseText } from './prose'
+import { columnFlight } from './flight'
 
 interface Entry {
   view: EditorView
@@ -35,6 +36,7 @@ function entryAt(target: Element, x: number, y: number): Entry | null {
   }
   const view = EditorView.findFromDOM(editor)
   if (!view || !view.state.field(editorLivePreviewField, false)) return null
+  columnFlight?.view('entry.resolve.in', view)
   const document = view.state.doc.toString()
   const source = renderedColumns(document, view.posAtDOM(columnPath(parent).root), parent)
   if (!source) return null
@@ -87,15 +89,20 @@ function entryAt(target: Element, x: number, y: number): Entry | null {
 }
 
 function reveal(entry: Entry): void {
+  columnFlight?.view('entry.reveal.in', entry.view)
   // A stale DOM callback must not put a caret into a different version of the note.
   if (entry.view.state.doc.toString() !== entry.document) return
   entry.widget.dataset.abeleTapUntil = String(Date.now() + 1000)
+  columnFlight?.view('dispatch.reveal.in', entry.view)
   entry.view.dispatch({
     selection: { anchor: entry.anchor },
     scrollIntoView: true,
     userEvent: 'select.pointer',
   })
+  columnFlight?.view('dispatch.reveal.out', entry.view)
+  columnFlight?.view('entry.focus.in', entry.view)
   entry.view.focus()
+  columnFlight?.view('entry.focus.out', entry.view)
 }
 
 export function registerColumnEntry(plugin: Plugin): void {

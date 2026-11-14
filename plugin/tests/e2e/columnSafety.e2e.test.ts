@@ -5,6 +5,7 @@ import { onPhone, targets } from './helpers/target'
 import { tap, longPress, screenshot } from './helpers/phone'
 import { shotDir } from './helpers/shots'
 import { createColumns } from '../../src/columns/operations'
+import { COLUMN_FLIGHT_FLAG } from '../../src/columns/flight'
 
 targets('desktop', 'phone')
 const NOTE = 'Sample column safety ' + randomUUID() + '.md'
@@ -81,6 +82,10 @@ describe.skipIf(!available)('column source and menu safety', () => {
     fixtureOwned = false
   }
   beforeAll(() => {
+    if (onPhone())
+      evalRaw(
+        `localStorage.setItem(${JSON.stringify(COLUMN_FLIGHT_FLAG)},String(performance.timeOrigin));window.dispatchEvent(new StorageEvent('storage',{key:${JSON.stringify(COLUMN_FLIGHT_FLAG)}}));true`
+      )
     evaluate(
       `if(app.vault.getAbstractFileByPath(${JSON.stringify(NOTE)}))throw Error('fixture exists');await app.vault.create(${JSON.stringify(NOTE)},'Start.');return true`,
       'create fixture'

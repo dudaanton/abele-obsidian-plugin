@@ -2,6 +2,7 @@ import { parser, GFM, type MarkdownConfig } from '@lezer/markdown'
 import { decodeHTML } from 'entities'
 import type { SyntaxNode } from '@lezer/common'
 import { columnWeights, parseColumnsHeader, type ColumnsOptions } from './core'
+import { columnFlight } from './flight'
 
 export interface SourceParagraph {
   tag: string
@@ -90,7 +91,9 @@ export interface QuoteSourceRange {
 
 /** Native quote-tree provenance, independent of whether a column frame admits mutation. */
 export function quoteSourceTree(text: string): QuoteSourceRange[] {
+  columnFlight?.record('source.quote-tree.in', text.length)
   const tree = markdown.parse(text)
+  columnFlight?.record('source.quote-tree.parsed', text.length)
   const build = (node: SyntaxNode): QuoteSourceRange => {
     const start = text.lastIndexOf('\n', node.from - 1) + 1
     let first = node.firstChild
@@ -131,6 +134,7 @@ export function quoteSourceTree(text: string): QuoteSourceRange[] {
     for (let child = node.firstChild; child; child = child.nextSibling) visit(child)
   }
   visit(tree.topNode)
+  columnFlight?.record('source.quote-tree.out', text.length)
   return roots
 }
 
@@ -162,6 +166,7 @@ export function taskMarkerPositions(text: string, from: number, to: number): num
 
 /** Parse the quote frame at a known host source position, never search for rendered text. */
 export function columnSource(text: string, from: number): ColumnSource | null {
+  columnFlight?.record('source.column.in', text.length)
   const lines = text.split('\n')
   const offsets: number[] = []
   let at = 0

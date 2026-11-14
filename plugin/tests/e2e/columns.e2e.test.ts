@@ -14,6 +14,7 @@ import {
 import { onPhone, targets } from './helpers/target'
 import { screenshot, swipe, tap } from './helpers/phone'
 import { shotDir } from './helpers/shots'
+import { COLUMN_FLIGHT_FLAG } from '../../src/columns/flight'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -129,6 +130,10 @@ describe.skipIf(!available)('note columns foundation', () => {
   let size: number[] | undefined
   const cleanup = (stale = false) => asyncEval(columnsFixtureCleanup(FOLDER, stale))
   beforeAll(() => {
+    if (onPhone())
+      evalRaw(
+        `localStorage.setItem(${JSON.stringify(COLUMN_FLIGHT_FLAG)},String(performance.timeOrigin));window.dispatchEvent(new StorageEvent('storage',{key:${JSON.stringify(COLUMN_FLIGHT_FLAG)}}));true`
+      )
     if (!onPhone())
       size = evalJson<number[]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
     cleanup(true)

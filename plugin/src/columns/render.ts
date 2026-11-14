@@ -1,9 +1,11 @@
 import type { MarkdownPostProcessorContext } from 'obsidian'
 import { columnWeights, parseColumnsHeader } from './core'
 import { initializeAsides } from './aside'
+import { columnFlight } from './flight'
 
 /** Style the native callouts in place: their embeds and task source bindings stay native. */
 export function columnsPostProcessor(el: HTMLElement, ctx?: MarkdownPostProcessorContext): void {
+  columnFlight?.record('postprocess.layout.in')
   const selector = '.callout[data-callout="abele-columns"]'
   const parents = [
     ...(el.matches(selector) ? [el] : []),
@@ -28,6 +30,7 @@ export function columnsPostProcessor(el: HTMLElement, ctx?: MarkdownPostProcesso
       continue
     const weights = columnWeights(options.ratio, children.length)
     if (!weights) continue
+    columnFlight?.record('layout.policy.' + options.mobile)
     parent.classList.add('abele-columns')
     parent.dataset.abeleColumnsMobile = options.mobile
     children.forEach((child, index) => {
@@ -52,4 +55,5 @@ export function columnsPostProcessor(el: HTMLElement, ctx?: MarkdownPostProcesso
     })
     initializeAsides(parent, children, options.mobile, ctx)
   }
+  columnFlight?.record('postprocess.layout.out')
 }
