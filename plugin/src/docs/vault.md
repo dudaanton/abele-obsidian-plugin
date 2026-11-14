@@ -3895,6 +3895,9 @@ all have settled. An interrupted snapshot resumes its checkpoint or re-establish
 This prevents a restore in progress from being mistaken for deletion or movement of an empty
 remote directory. Directory review during reconciliation can corroborate a tree returned to
 its original location without publishing directory operations or replaying a pending request.
+Pending file-write recovery checks current local exclusions before adopting or installing
+the target. An excluded write retains its exact intent and private stage without publishing
+the file or discarding its bytes. Including the path again allows ordinary verified recovery.
 Projection classifications are checkpointed per completed inspection in the vault's host
 database, so disconnecting or replacing a connection retains that work. Settled indexed
 inventories enumerate names without reading every file; new untracked content is examined

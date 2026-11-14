@@ -59,6 +59,7 @@ async function scenario(
     | 'recreated-source'
     | 'recreated-source-same'
     | 'missing-stage'
+    | 'excluded'
 ) {
   const app = buildFakeVault([]),
     state = new MemoryStateStore()
@@ -274,7 +275,11 @@ async function scenario(
   const log = vi.fn()
   try {
     if (entryPoint === 'recover') {
-      await recoverPendingPullWrites(fs(), state, [change.file_id], engineClient)
+      const recoveryOptions = {
+        log,
+        filter: { excluded: (path: string) => failure === 'excluded' && path === change.path },
+      }
+      await recoverPendingPullWrites(fs(), state, [change.file_id], engineClient, recoveryOptions)
       if (window === 'before-stage' || window === 'ledger')
         await applyStaged(engineClient, fs(), state, [change], opts())
     } else report = await applyStaged(engineClient, fs(), state, [change], { ...opts(), log })
@@ -300,8 +305,34 @@ async function scenario(
     moves,
     retry: () => applyStaged(engineClient, fs(), state, [change], { ...opts(), log }),
     recover: () => recoverPendingPullWrites(fs(), state, [change.file_id], engineClient),
+    recoverExcluded: () => {
+      const options = { log, filter: { excluded: (path: string) => path === change.path } }
+      return recoverPendingPullWrites(fs(), state, [change.file_id], engineClient, options)
+    },
   }
 }
+
+it('retains an excluded sealed restore stage without installing it and resumes after inclusion', async () => {
+  const result = await scenario('new', 'complete', false, 'recover', false, false, 'excluded')
+  expect(result.error).toBeNull()
+  expect(await result.app.vault.adapter.exists(result.change.path)).toBe(false)
+  expect(await result.state.byFileId(result.change.file_id)).toBeNull()
+  await expectSamePendingAuthority(result.state, result.intentBeforeRecovery)
+  const journal = result.app.loadLocalStorage(JOURNAL_KEY) as { temp: string }[]
+  expect(journal).toHaveLength(1)
+  expect(
+    Buffer.from(await result.rawRead(journal[0].temp)).equals(Buffer.from(result.incoming))
+  ).toBe(true)
+  expect(result.client.openVersion).not.toHaveBeenCalled()
+  await result.recoverExcluded()
+  expect(await result.app.vault.adapter.exists(result.change.path)).toBe(false)
+  await expectSamePendingAuthority(result.state, result.intentBeforeRecovery)
+  await result.recover()
+  expect(
+    Buffer.from(await result.rawRead(result.change.path)).equals(Buffer.from(result.incoming))
+  ).toBe(true)
+  expect(await result.state.getMeta('pull-write:sample-file')).toBeNull()
+})
 
 async function expectRetainedLocal(result: Awaited<ReturnType<typeof scenario>>) {
   const adapter = result.app.vault.adapter

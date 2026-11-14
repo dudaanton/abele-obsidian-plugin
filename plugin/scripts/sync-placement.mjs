@@ -253,6 +253,11 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/cycle.js')) {
         code = replaceOnce(
           code,
+          'await recoverPendingPullWrites(fs, state, await work.collect(pendingFiles), client, {\n            log,',
+          'await recoverPendingPullWrites(fs, state, await work.collect(pendingFiles), client, {\n            filter: this.filter,\n            log,'
+        )
+        code = replaceOnce(
+          code,
           '    async pull(dirty, recheck, noted) {',
           `    async pull(dirty, recheck, noted) {
         const restoreState = this.ctx.opts.state;
@@ -1517,6 +1522,20 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
 `
         )
       } else if (file.endsWith('/pullRecovery.js')) {
+        code = replaceOnce(
+          code,
+          'filter: { excluded: () => false },',
+          'filter: opts.filter ?? { excluded: () => false },'
+        )
+        code = replaceOnce(
+          code,
+          '            const intent = decodePullIntent(raw, fileId);',
+          `            const intent = decodePullIntent(raw, fileId);
+            // Exclusion removes publication authority, not ownership of private
+            // bytes. Keep the exact stage and intent for a later included run.
+            if (opts.filter?.excluded(intent.wirePath, intent.size) ||
+                opts.filter?.excluded(intent.target, intent.size)) continue;`
+        )
         code = `import { EngineError } from './errors.js';\n` + code
         code = replaceOnce(
           code,
@@ -1552,7 +1571,7 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
                 return true;
             }, false);
             if (separated) {
-                await recoverPendingPullWrites(fs, state, [fileId], client);
+                await recoverPendingPullWrites(fs, state, [fileId], client, opts);
                 continue;
             }
         }
