@@ -10,6 +10,44 @@ import { analyze } from 'eslint-scope'
 const root = resolve('node_modules/@abele/sync-sdk')
 const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version
 const paths: string[] = []
+it('keeps actual inspection failures fatal while directory review remains pending', async () => {
+  const source = sample(version, 'reconciliation.js')
+  const code = syncPlacementPlugin().transform(source.input, source.id)!.code
+  const guard = code.slice(
+    code.indexOf('// A deliberate directory barrier'),
+    code.indexOf('    return { found, reconciliation, basis };')
+  )
+  const inspect = new Function(
+    'found',
+    'active',
+    'heldDirectoryPaths',
+    'state',
+    `return (async () => { ${guard} return found; })()`
+  )
+  const heldDirectoryPaths = async () => new Set(['Sample/blocked'])
+  const pending = {
+    complete: false,
+    skipped: [{ path: 'Sample/blocked', reason: 'directory move evidence is ambiguous' }],
+  }
+  expect(await inspect(pending, true, heldDirectoryPaths, {})).toBe(pending)
+  expect(pending.complete).toBe(false)
+  await expect(
+    inspect(
+      { skipped: [{ path: 'Sample/blocked', reason: 'permission denied' }] },
+      true,
+      heldDirectoryPaths,
+      {}
+    )
+  ).rejects.toThrow('content reconciliation incomplete')
+  await expect(
+    inspect(
+      { skipped: [{ path: 'Sample/other', reason: 'directory move evidence is ambiguous' }] },
+      true,
+      heldDirectoryPaths,
+      {}
+    )
+  ).rejects.toThrow('content reconciliation incomplete')
+})
 it('shares scope ledger walks only while the host proves the same filtered state', async () => {
   const source = sample(version, 'scope.js')
   const code = syncPlacementPlugin().transform(source.input, source.id)?.code ?? source.input

@@ -251,6 +251,11 @@ export function syncPlacementPlugin() {
     /** Read afresh each time:`
         )
       } else if (file.endsWith('/cycle.js')) {
+        code = replaceOnce(
+          code,
+          'const unresolved = this.retries.list().length > 0 ||',
+          'const unresolved = found.complete === false || inspection.found.complete === false || this.retries.list().length > 0 ||'
+        )
         // Put-back is additive and checks each selected path itself. A directory
         // evidence barrier can make the scan incomplete until that very restore.
         code = replaceOnce(
@@ -813,6 +818,16 @@ export function syncPlacementPlugin() {
             fs = fs[Symbol.for('abele.sync.private-removal-files-v1')]?.() ?? fs;`
           )
       } else if (file.endsWith('/reconciliation.js')) {
+        code = `import { heldDirectoryPaths } from './v2Directories.js';\n` + code
+        code = replaceOnce(
+          code,
+          'if (active && found.skipped.length > 0)',
+          `// A deliberate directory barrier is review-pending work, not failed I/O.
+    // Its subtree remains excluded from scans and refused by every pull placement.
+    const directoryHolds = active && found.skipped.length ? await heldDirectoryPaths(state) : new Set();
+    if (active && found.skipped.some(row => row.reason !== 'directory move evidence is ambiguous' ||
+        !directoryHolds.has(row.path)))`
+        )
         code = replaceOnce(
           code,
           'for await (const info of fs.list()) {\n        const checkpoint = work.step();\n        if (checkpoint)\n            await checkpoint;\n        disk.set(info.path, info);\n    }',
