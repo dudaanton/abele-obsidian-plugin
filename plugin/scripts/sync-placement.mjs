@@ -125,20 +125,6 @@ export function syncPlacementPlugin() {
       if (file.endsWith('/engine.js')) {
         code = replaceOnce(
           code,
-          '            const report = await this.cycle.cycle();',
-          `            let report;
-            for (;;) {
-              try { report = await this.cycle.cycle(); break; }
-              catch (error) {
-                if (!error?.[Symbol.for('abele.sync.inventory-changed-v1')] || this.cancellation.signal.aborted)
-                  throw error;
-                this.log('sync: inventory changed during scan; retrying with a fresh inventory');
-                await new Promise(resolve => setTimeout(resolve, 0));
-              }
-            }`
-        )
-        code = replaceOnce(
-          code,
           '    trigger(why) {',
           `    trigger(why) {
         // An active exchange already polls the remote head. The periodic timer
@@ -265,6 +251,11 @@ export function syncPlacementPlugin() {
     /** Read afresh each time:`
         )
       } else if (file.endsWith('/cycle.js')) {
+        code = replaceOnce(
+          code,
+          'scanSnapshot(fs, () => this.ctx.signal?.(), scheduling)',
+          'scanSnapshot(fs, () => this.ctx.signal?.(), { ...scheduling, allowConcurrentChanges: true })'
+        )
         code = replaceOnce(
           code,
           'await recoverPendingPullWrites(fs, state, await work.collect(pendingFiles), client, {\n            log,',
@@ -405,7 +396,11 @@ export function syncPlacementPlugin() {
           '        return {\n            pull: before,',
           `        // A directory commit can advance the consumed feed beyond the file batch head.
         this.ctx.set({ headSeq: Math.max(this.ctx.status().headSeq ?? 0, (secondPull ?? before).cursor) });
-        if (localRevision !== undefined && localRevision === fs[Symbol.for('abele.sync.local-scan-revision-v1')]?.() &&
+        if (inventory.changed()) {
+          this.unscanned = true;
+          this.ctx.log('sync: inventory changed during scan; retaining unfinished inspection for the next pass');
+        }
+        if (!inventory.changed() && localRevision !== undefined && localRevision === fs[Symbol.for('abele.sync.local-scan-revision-v1')]?.() &&
             this.ctx.watch.noticed.size === 0 && this.ctx.watch.reported.size === 0 &&
             !client[Symbol.for('abele.sync.deferred-directory-deletes-v1')]?.()) {
           this.settledDirectoryRevision = await state.getMeta?.('v2-directories');
@@ -474,7 +469,7 @@ export function syncPlacementPlugin() {
         code = replaceOnce(
           code,
           'const snapshots = new Map();',
-          'const snapshots = new Map();\n    let revision;'
+          'const snapshots = new Map();\n    let revision, changed = false;'
         )
         code = replaceOnce(
           code,
@@ -490,9 +485,18 @@ export function syncPlacementPlugin() {
           `const rows = await snapshot;
                     if (current !== (typeof clock === 'function' ? clock.call(fs) : undefined)) {
                       snapshots.clear();
-                      throw Object.assign(new SyncCancelled(), { [Symbol.for('abele.sync.inventory-changed-v1')]: true });
+                      changed = true;
+                      // Enumeration is a candidate inventory, never write authority.
+                      // The cycle revalidates individual effects and keeps watcher
+                      // edits protected; later phases get a new inventory.
+                      if (!opts.allowConcurrentChanges) throw new SyncCancelled();
                     }
                     for (const item of rows) {`
+        )
+        code = replaceOnce(
+          code,
+          'return { fs: proxy, invalidate: () => snapshots.clear() };',
+          'return { fs: proxy, invalidate: () => snapshots.clear(), changed: () => changed };'
         )
       } else if (file.endsWith('/pullWrite.js')) {
         code = replaceOnce(
