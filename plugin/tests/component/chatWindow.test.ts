@@ -142,6 +142,48 @@ describe('a conversation that fits', () => {
 })
 
 describe('scrolling back', () => {
+  it('preserves touch travel when page layout arrives one input step after mounting', async () => {
+    messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
+    const wrapper = mountChat()
+    const container = wrapper.find('.abele-ai-chat__messages')
+    const el = container.element as HTMLElement
+    Object.defineProperties(el, {
+      scrollTop: { value: 1450, writable: true, configurable: true },
+      clientHeight: { value: 600, configurable: true },
+      scrollHeight: { value: 6000, configurable: true },
+    })
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      const top = this === el ? 0 : 2000 - el.scrollTop
+      return { top, bottom: top + 100 } as DOMRect
+    })
+    await container.trigger('touchstart', { touches: [{ clientY: 100 }] })
+    let pagePending = false
+    let pageApplied = false
+    let travelled = 0
+    for (let step = 1; step <= 6; step++) {
+      // Native input continues without scroll events. Model its lower bound and
+      // initial touch slop; a page cannot recover travel already clamped away.
+      const event = new Event('touchmove', { bubbles: true })
+      Object.defineProperty(event, 'touches', { value: [{ clientY: 100 + step * 300 }] })
+      el.dispatchEvent(event)
+      const distance = step === 1 ? 284 : 300
+      const movement = Math.min(el.scrollTop, distance)
+      el.scrollTop -= movement
+      travelled += movement
+      // Simulate asynchronous page layout one native step after Vue mounts it.
+      // This isolates prefetch timing from the separately tested anchor correction.
+      if (pagePending) {
+        el.scrollTop += 3000
+        pagePending = false
+        pageApplied = true
+      }
+      await nextTick()
+      if (!pageApplied && mounted(wrapper) > DEFAULT_TAIL_PAGE_SIZE) pagePending = true
+    }
+    expect(pageApplied).toBe(true)
+    expect(travelled).toBe(1800 - 16)
+  })
+
   it('prefetches a viewport ahead from touch input before its coalesced scroll event arrives', async () => {
     messages.value = conversation(DEFAULT_TAIL_PAGE_SIZE * 3)
     const wrapper = mountChat()
