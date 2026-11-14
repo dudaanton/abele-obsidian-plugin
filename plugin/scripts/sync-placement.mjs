@@ -253,6 +253,48 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/cycle.js')) {
         code = replaceOnce(
           code,
+          '    async pull(dirty, recheck, noted) {',
+          `    async pull(dirty, recheck, noted) {
+        const restoreState = this.ctx.opts.state;
+        const restores = JSON.parse(await restoreState.getMeta?.('held-restore-paths') ?? '[]');
+        if (restores.length) {
+          recheck = new Set([...(recheck ?? []), ...restores.map(row => row.fileId)]);
+          // A restart between frontier publication and restore cleanup still owns
+          // an unfinished snapshot. Resume its checkpoint or re-establish coverage.
+          if (await restoreState.getCursor() > 0 && !await restoreState.getMeta?.('pull-manifest-progress')) {
+            const outstanding = [];
+            const restoreWork = new ScanWork({ signal: this.ctx.signal?.(), yieldTask: this.ctx.opts.yieldTask });
+            for (const row of restores) {
+              const checkpoint = restoreWork.step();
+              if (checkpoint) await checkpoint;
+              const entry = await restoreState.byFileId(row.fileId);
+              if (!entry || await this.ctx.opts.fs.stat(entry.path) === null) outstanding.push(row);
+            }
+            if (outstanding.length) await restoreState.setCursor(0);
+          }
+        }`
+        )
+        code = replaceOnce(
+          code,
+          '        const inspection = await this.scanWork',
+          `        if (reconciling || (priorReconciliation && priorReconciliation.phase !== 'complete')) {
+          const beforeReview = await state.getMeta?.('v2-directories');
+          await client[Symbol.for('abele.sync.review-directory-evidence-v1')]?.();
+          const afterReview = await state.getMeta?.('v2-directories');
+          if (beforeReview !== afterReview) {
+            invalidateInventory();
+            const retained = new Set((JSON.parse(afterReview ?? '{}').refused ?? []).map(row => row.path));
+            for (const row of JSON.parse(beforeReview ?? '{}').refused ?? []) {
+              if (!row.evidence || retained.has(row.path)) continue;
+              await this.retries.succeeded(row.path, 'push');
+              this.kept.delete(row.path);
+            }
+          }
+        }
+        const inspection = await this.scanWork`
+        )
+        code = replaceOnce(
+          code,
           'const unresolved = this.retries.list().length > 0 ||',
           'const unresolved = found.complete === false || inspection.found.complete === false || this.retries.list().length > 0 ||'
         )
@@ -450,6 +492,25 @@ export function syncPlacementPlugin() {
             key[Symbol.for('abele.sync.portable-candidates-v1')] = true;`
         )
       } else if (file.endsWith('/deleteGate.js')) {
+        code = replaceOnce(
+          code,
+          '        let dropped = 0;',
+          `        // Keep file identities as durable directory-absence proof until
+        // the manifest records their replacement receipts. Retiring ledger entries
+        // must not turn their still-populated remote parent into an empty folder.
+        const restoringFiles = new Map(JSON.parse(await this.ctx.state.getMeta?.('held-restore-paths') ?? '[]')
+          .map(row => [row.fileId, row]));
+        for (const fileId of decision.fileIds) {
+          const checkpoint = work.step();
+          if (checkpoint) await checkpoint;
+          const entry = await this.ctx.state.byFileId(fileId);
+          if (entry && await this.ctx.fs.stat(entry.path) === null)
+            restoringFiles.set(fileId, { fileId, path: entry.path, wirePath: entry.wirePath });
+        }
+        if (restoringFiles.size)
+          await this.ctx.state.setMeta?.('held-restore-paths', JSON.stringify([...restoringFiles.values()]));
+        let dropped = 0;`
+        )
         // Restoring held files explicitly chooses their original source paths.
         // An older directory-move nomination must not keep that replay blocked.
         code = replaceOnce(
@@ -495,6 +556,39 @@ export function syncPlacementPlugin() {
           'if (ops.length) for await (const entry of this.ctx.state.all())'
         )
       } else if (file.endsWith('/pullRun.js')) {
+        code = replaceOnce(
+          code,
+          '        if (wanted.length === 0)\n            return;',
+          `        this.restoreTombstones ??= new Set();
+        for (const change of wanted) {
+          if (change.sha === null || change.op === 'delete') this.restoreTombstones.add(change.file_id);
+          else this.restoreTombstones.delete(change.file_id);
+        }
+        if (wanted.length === 0)
+            return;`
+        )
+        code = replaceOnce(
+          code,
+          '        if (this.report.bootstrapped)\n            await this.recheck();\n        this.syncHeld();',
+          `        if (this.report.bootstrapped)
+            await this.recheck();
+        const restores = JSON.parse(await this.state.getMeta?.('held-restore-paths') ?? '[]');
+        if (restores.length) {
+          const pending = [], restoreWork = new ScanWork({ ...scanScheduling(this.state), signal: this.opts.signal });
+          for (const row of restores) {
+            const checkpoint = restoreWork.step();
+            if (checkpoint) await checkpoint;
+            const entry = await this.state.byFileId(row.fileId);
+            const restored = entry && await this.fs.stat(entry.path) !== null;
+            const gone = this.inventoryComplete &&
+              ((this.report.bootstrapped && !this.seen.has(row.fileId)) || this.restoreTombstones?.has(row.fileId));
+            if (!restored && !gone) pending.push(row);
+          }
+          if (pending.length !== restores.length)
+            await this.state.setMeta?.('held-restore-paths', pending.length ? JSON.stringify(pending) : null);
+        }
+        this.syncHeld();`
+        )
         code = replaceOnce(
           code,
           '            if (base)\n                bases.push(base);',
@@ -1624,7 +1718,52 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         code = replaceOnce(
           code,
           '    async scan() {',
-          '    async scan() {\n        this.deferredDeletion = false;'
+          '    async scan(reviewOnly = false) {\n        this.deferredDeletion = false;'
+        )
+        // Recovery can corroborate a tree restored at its original path without
+        // replaying or publishing directory operations while reconciliation waits.
+        code = replaceOnce(
+          code,
+          '        let doc = await this.read();\n        if (await this.retireRecreatedDelete(doc))',
+          `        let doc = await this.read();
+        const restoringFiles = JSON.parse(await this.state.getMeta('held-restore-paths') ?? '[]');
+        if (restoringFiles.length) {
+          const restoreWork = new ScanWork({ ...scanScheduling(this.state), signal: this.signal });
+          const pendingRestores = [];
+          for (const row of restoringFiles) {
+            const checkpoint = restoreWork.step();
+            if (checkpoint) await checkpoint;
+            const entry = await this.state.byFileId(row.fileId);
+            if (!entry || await this.fs.stat(entry.path) === null) pendingRestores.push(row);
+          }
+          if (pendingRestores.length !== restoringFiles.length)
+            await this.state.setMeta('held-restore-paths', pendingRestores.length ? JSON.stringify(pendingRestores) : null);
+          if (pendingRestores.length) { this.deferredDeletion = true; return; }
+        }
+        if (reviewOnly && (doc.pending || !doc.refused?.some(row => row.evidence))) return;
+        if (await this.retireRecreatedDelete(doc))`
+        )
+        code = replaceOnce(
+          code,
+          'if (doc.incoming?.length) {',
+          'if (!reviewOnly && doc.incoming?.length) {'
+        )
+        code = replaceOnce(
+          code,
+          '...evidenceRows.values()];',
+          '...(reviewOnly ? previousEvidence : evidenceRows.values())];'
+        )
+        code = replaceOnce(
+          code,
+          '            const retained = doc.refused;',
+          `            if (reviewOnly && (!moved || wirePath(moved.path) !== old.path)) continue;
+            const retained = doc.refused;`
+        )
+        code = replaceOnce(
+          code,
+          '        const published = new Set(doc.directories.map((dir) => dir.path));',
+          `        if (reviewOnly) return;
+        const published = new Set(doc.directories.map((dir) => dir.path));`
         )
 
         code = replaceOnce(
@@ -1701,7 +1840,10 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         code = replaceOnce(
           code,
           '    syncDirectories() {',
-          `    [Symbol.for('abele.sync.deferred-directory-deletes-v1')]() {
+          `    [Symbol.for('abele.sync.review-directory-evidence-v1')]() {
+          return this.directories?.scan(true);
+        }
+    [Symbol.for('abele.sync.deferred-directory-deletes-v1')]() {
           return this.directories?.deferredDeletion === true;
         }
     syncDirectories() {`

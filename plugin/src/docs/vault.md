@@ -3881,14 +3881,27 @@ answers awaiting local settlement (`push-receipt:*`), including their original o
 result and ledger base. Settlement retires the owning answer and retry schedule in one
 transaction. Unreadable scheduling records are retained for review rather than discarded.
 These records are device-local metadata; they are not synced or transferred with a connection.
+An explicit put-back records missing file identities and their original local and wire paths
+in connection metadata `held-restore-paths` before retiring their file ledger entries.
+Directory classification waits while those identities lack a local file receipt, including
+after interruption or restart. Entries leave this document only when the ledger again names
+the file identity and its local file exists, or a complete manifest/feed proves that identity
+is no longer remote. Restore identities join the manifest's durable recheck set, so partial
+inventory or a restart cannot be mistaken for remote absence. The document is removed when
+all have settled. An interrupted snapshot resumes its checkpoint or re-establishes coverage.
+This prevents a restore in progress from being mistaken for deletion or movement of an empty
+remote directory. Directory review during reconciliation can corroborate a tree returned to
+its original location without publishing directory operations or replaying a pending request.
 Projection classifications are checkpointed per completed inspection in the vault's host
 database, so disconnecting or replacing a connection retains that work. Settled indexed
 inventories enumerate names without reading every file; new untracked content is examined
 in bounded background passes. Tracked edits and explicit file events are not deferred.
 While candidates remain unexamined, the scanner preserves missing tracked identities and
 postpones rename publication rather than inferring deletion from partial content evidence.
-An incomplete content pass preserves existing deletion holds and queued decisions;
-only a complete pass can settle them. Matching durable scan hints count as completed work
+An incomplete content pass preserves existing deletion holds and queued confirmations;
+only a complete pass can settle confirmed deletions. An explicit put-back checks its chosen
+missing targets independently and retains their restore identities until settlement.
+Matching durable scan hints count as completed work
 before the cold-file budget is charged, so restart discovery can advance without rereading.
 Cold indexed files use bounded concurrent reads with time-based cooperative yields. A saved
 verified hash matching the current index needs no content read. Index metadata alone cannot

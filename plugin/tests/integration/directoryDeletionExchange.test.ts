@@ -52,14 +52,50 @@ it.each([false, true])(
   (restart) => runExchange({ delivery: false, held: true, indexed: true, restart }),
   60000
 )
-it(
-  'puts back held files during reconciliation with unrelated directory evidence',
-  () => runExchange({ delivery: false, held: true, indexed: true, unrelatedHold: true }),
+it.each([false, true])(
+  'puts back held files and finishes locally resolved directory review (restart=%s)',
+  (recoveryRestart) =>
+    runExchange({
+      delivery: false,
+      held: true,
+      indexed: true,
+      unrelatedHold: true,
+      recoveryRestart,
+    }),
   60000
 )
-it.each(['before-decision', 'after-restore'] as const)(
+it.each([
+  'before-decision',
+  'after-retirement',
+  'after-retirement-delete',
+  'after-restore',
+] as const)(
   'restores the original folder when directory classification runs %s',
   (folderScan) => runExchange({ delivery: false, held: true, indexed: true, folderScan }),
+  60000
+)
+it(
+  'resumes a restore interrupted after retirement and directory classification',
+  () =>
+    runExchange({
+      delivery: false,
+      held: true,
+      indexed: true,
+      folderScan: 'after-retirement',
+      retirementRestart: true,
+    }),
+  60000
+)
+it(
+  'settles a restored identity deleted remotely during the rewound snapshot',
+  () =>
+    runExchange({
+      delivery: false,
+      held: true,
+      indexed: true,
+      folderScan: 'after-retirement',
+      remoteRetirement: true,
+    }),
   60000
 )
 
@@ -72,6 +108,9 @@ async function runExchange({
   restart,
   unrelatedHold,
   folderScan,
+  recoveryRestart,
+  retirementRestart,
+  remoteRetirement,
 }: {
   delivery: boolean
   bulk?: boolean
@@ -80,7 +119,10 @@ async function runExchange({
   held?: boolean
   restart?: boolean
   unrelatedHold?: boolean
-  folderScan?: 'before-decision' | 'after-restore'
+  folderScan?: 'before-decision' | 'after-retirement' | 'after-retirement-delete' | 'after-restore'
+  recoveryRestart?: boolean
+  retirementRestart?: boolean
+  remoteRetirement?: boolean
 }) {
   let downloads = 0
   const transport: typeof fetch = (input, init) => {
@@ -340,6 +382,34 @@ async function runExchange({
         primary: { syncNow: () => sync(0) },
         peer: { syncNow: () => sync(1) },
       } as unknown as TokenSyncLive)
+    const restartPrimary = async () => {
+      const fixture = hosts[0]
+      await fixture.host.close()
+      fixture.host = new TokenEngines(
+        apps[0] as never,
+        fixture.ui,
+        (key) => fixture.keys.get(key) ?? null,
+        {
+          indexedDB: fixture.factory,
+          fetch: transport,
+          fallbackMs: 60000,
+          pollMs: 60000,
+          WebSocket: class {
+            constructor() {
+              throw new Error('Fixture uses polling')
+            }
+          } as never,
+        }
+      )
+      fixture.host.start()
+      await fixture.ui.connectionsChanged()
+      await vi.waitFor(
+        () => expect(fixture.host.live.get(fixture.id)?.engine.status.state).toBe('idle'),
+        { timeout: 10000 }
+      )
+      engines[0] = fixture.host.live.get(fixture.id)!.engine
+      Reflect.set(engines[0], 'trigger', () => {})
+    }
     if (indexed) await cycle()
     if (merge) {
       const path = 'Sample/merge.md'
@@ -443,21 +513,25 @@ async function runExchange({
         await refreshers[0]('Sample/unrelated/note.md')
       }
       let classifiedAfterRestore = false
+      let classifiedAfterRetirement = false
+      let remotelyDeletedPath: string | undefined
       let classifyAfterRestore: (() => Promise<void>) | undefined
       if (folderScan) {
         const runtime = hosts[0].host.live.get(hosts[0].id)!
-        await disk.mkdir(join(root, 'primary/Sample/candidate'))
-        await apps[0].vault.createFolder('Sample/candidate')
-        const fs = Reflect.get(engines[0], 'opts').fs
-        let candidateIdentity: string | undefined
-        for await (const directory of fs.listDirectories())
-          if (directory.path === 'Sample/candidate') candidateIdentity = directory.identity
-        expect(candidateIdentity).toBeTruthy()
-        // Birth/identity reuse nominates a folder, but its empty contents cannot
-        // corroborate a move of a source that still owns sixty remote children.
-        directories.directories.find(
-          (one: { path: string }) => one.path === 'Sample/held'
-        ).identity = candidateIdentity
+        if (folderScan !== 'after-retirement-delete') {
+          await disk.mkdir(join(root, 'primary/Sample/candidate'))
+          await apps[0].vault.createFolder('Sample/candidate')
+          const fs = Reflect.get(engines[0], 'opts').fs
+          let candidateIdentity: string | undefined
+          for await (const directory of fs.listDirectories())
+            if (directory.path === 'Sample/candidate') candidateIdentity = directory.identity
+          expect(candidateIdentity).toBeTruthy()
+          // Birth/identity reuse nominates a folder, but its empty contents cannot
+          // corroborate a move of a source that still owns sixty remote children.
+          directories.directories.find(
+            (one: { path: string }) => one.path === 'Sample/held'
+          ).identity = candidateIdentity
+        }
         directories.refused = []
         await state.setMeta('v2-directories', JSON.stringify(directories))
         if (folderScan === 'before-decision') {
@@ -467,6 +541,37 @@ async function runExchange({
               expect.objectContaining({ source: 'Sample/held', evidence: true }),
             ])
           )
+        } else if (folderScan === 'after-retirement' || folderScan === 'after-retirement-delete') {
+          const durable = Reflect.get(runtime, 'options').state as MemoryStateStore
+          const setMeta = durable.setMeta.bind(durable)
+          vi.spyOn(durable, 'setMeta').mockImplementation(async (key, value) => {
+            await setMeta(key, value)
+            if (key === 'held-deletes' && value === null && !classifiedAfterRetirement) {
+              classifiedAfterRetirement = true
+              expect(await state.byFileId(shown[0].fileId)).toBeNull()
+              expect(JSON.parse((await state.getMeta('held-restore-paths'))!)).toHaveLength(60)
+              expect(
+                await disk.stat(join(root, 'primary/Sample/held')).catch(() => null)
+              ).toBeNull()
+              await runtime.client.syncDirectories()
+              console.debug(
+                '[sample retirement classification]',
+                JSON.parse((await state.getMeta('v2-directories'))!).refused
+              )
+              if (remoteRetirement) {
+                const remote = new V2EngineClient(user.token, { fetch: transport })
+                const item = (await remote.manifest(null)).items.find(
+                  (one) => one.file_id === shown[0].fileId
+                )!
+                await remote.commit(
+                  [{ op: 'delete', file_id: item.file_id, base_version_id: item.version_id }],
+                  crypto.randomUUID()
+                )
+                remotelyDeletedPath = item.path
+              }
+              if (retirementRestart) throw new Error('sample retired restore interruption')
+            }
+          })
         } else {
           const delayed = vi.spyOn(runtime.client, 'syncDirectories').mockResolvedValue()
           classifyAfterRestore = async () => {
@@ -487,7 +592,12 @@ async function runExchange({
         )
       downloads = 0
       const ids = shown.map((one) => one.fileId)
-      if (restart) {
+      if (retirementRestart) {
+        await expect(engines[0].decideDeletes('restore', ids)).rejects.toThrow(
+          'sample retired restore interruption'
+        )
+        await restartPrimary()
+      } else if (restart) {
         const durable = Reflect.get(hosts[0].host.live.get(hosts[0].id)!, 'options')
           .state as MemoryStateStore
         const setMeta = durable.setMeta.bind(durable)
@@ -506,46 +616,26 @@ async function runExchange({
           'sample interrupted restore'
         )
         interruption.mockRestore()
-        const fixture = hosts[0]
-        await fixture.host.close()
-        fixture.host = new TokenEngines(
-          apps[0] as never,
-          fixture.ui,
-          (key) => fixture.keys.get(key) ?? null,
-          {
-            indexedDB: fixture.factory,
-            fetch: transport,
-            fallbackMs: 60000,
-            pollMs: 60000,
-            WebSocket: class {
-              constructor() {
-                throw new Error('Fixture uses polling')
-              }
-            } as never,
-          }
-        )
-        fixture.host.start()
-        await fixture.ui.connectionsChanged()
-        await vi.waitFor(
-          () => expect(fixture.host.live.get(fixture.id)?.engine.status.state).toBe('idle'),
-          { timeout: 10000 }
-        )
-        engines[0] = fixture.host.live.get(fixture.id)!.engine
-        Reflect.set(engines[0], 'trigger', () => {})
+        await restartPrimary()
       } else await engines[0].decideDeletes('restore', ids)
       await cycle()
       await classifyAfterRestore?.()
       if (folderScan === 'after-restore') expect(classifiedAfterRestore).toBe(true)
+      if (folderScan === 'after-retirement' || folderScan === 'after-retirement-delete')
+        expect(classifiedAfterRetirement).toBe(true)
       console.debug('[sample held restore]', {
         folderScan,
         localChildren: (await disk.readdir(join(root, 'primary/Sample/held')).catch(() => []))
           .length,
         downloads,
       })
-      expect(await disk.readdir(join(root, 'primary/Sample/held'))).toHaveLength(60)
+      expect(await disk.readdir(join(root, 'primary/Sample/held'))).toHaveLength(
+        remoteRetirement ? 59 : 60
+      )
       expect(downloads).toBe(0)
       expect(await engines[0].heldDeletes()).toHaveLength(0)
       const restoredState = Reflect.get(engines[0], 'opts').state as MemoryStateStore
+      expect(await restoredState.getMeta('held-restore-paths')).toBeNull()
       if (unrelatedHold)
         expect(JSON.parse((await restoredState.getMeta('v2-directories'))!).refused).toContainEqual(
           unrelated
@@ -570,13 +660,43 @@ async function runExchange({
         ).toBe(protectedVersion)
       expect(
         (await remote.manifest(null)).items.filter((one) => one.path.startsWith('Sample/held/'))
-      ).toHaveLength(60)
-      expect(await remote.trash()).toHaveLength(0)
+      ).toHaveLength(remoteRetirement ? 59 : 60)
+      expect(await remote.trash()).toHaveLength(remoteRetirement ? 1 : 0)
       for (const name of ['primary', 'peer'])
-        for (let i = 0; i < 60; i++)
+        for (let i = 0; i < 60; i++) {
+          if (`Sample/held/${i}.md` === remotelyDeletedPath) {
+            expect(
+              await disk.stat(join(root, name, remotelyDeletedPath)).catch(() => null)
+            ).toBeNull()
+            continue
+          }
           expect(await disk.readFile(join(root, `${name}/Sample/held/${i}.md`), 'utf8')).toBe(
             'sample shared bytes'
           )
+        }
+      if (unrelatedHold) {
+        const remoteHead = (await remote.manifest(null)).head_seq
+        await disk.writeFile(
+          join(root, 'primary/Sample/unrelated/note.md'),
+          'sample remote baseline'
+        )
+        await refreshers[0]('Sample/unrelated/note.md')
+        if (recoveryRestart) await restartPrimary()
+        await cycle()
+        const currentState = Reflect.get(engines[0], 'opts').state as MemoryStateStore
+        expect(
+          JSON.parse((await currentState.getMeta('v2-directories'))!).refused ?? []
+        ).not.toContainEqual(unrelated)
+        expect(JSON.parse((await currentState.getMeta('content-reconciliation'))!).phase).toBe(
+          'complete'
+        )
+        expect(
+          (await remote.manifest(null)).items.find(
+            (one) => one.path === 'Sample/unrelated/note.md'
+          )!.version_id
+        ).toBe(protectedVersion)
+        expect((await remote.manifest(null)).head_seq).toBe(remoteHead)
+      }
       return
     }
     if (bulk) {
