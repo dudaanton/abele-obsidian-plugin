@@ -96,6 +96,8 @@ export function initializeAsides(
     if (++transitions > 16) {
       stopped = true
       resize.disconnect()
+      // A stopped observer must never strand hidden content behind an inactive wide-pane title.
+      update(false)
       console.warn('Abele: stopped repeated column aside layout changes')
       return
     }

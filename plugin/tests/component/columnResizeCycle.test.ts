@@ -83,6 +83,7 @@ it('cuts off resize feedback that alternates across the layout breakpoint', () =
     }
     expect(f.disconnect).toHaveBeenCalledOnce()
     expect(warning).toHaveBeenCalledOnce()
+    expect(f.aside.dataset.abeleAsideCollapsed).toBe('false')
     f.mutations.takeRecords()
     f.width(393)
     f.deliver()
@@ -92,6 +93,11 @@ it('cuts off resize feedback that alternates across the layout breakpoint', () =
     f.deliver()
     expect(f.mutations.takeRecords()).toHaveLength(0)
     expect(warning).toHaveBeenCalledOnce()
+    const title = f.aside.querySelector<HTMLElement>('.callout-title')!
+    title.click()
+    expect(title.getAttribute('aria-expanded')).toBe('true')
+    title.click()
+    expect(f.aside.dataset.abeleAsideCollapsed).toBe('true')
   } finally {
     f.destroy()
   }
