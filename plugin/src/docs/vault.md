@@ -25,6 +25,11 @@ boundaries additionally flush on entry and exit, including measure requests duri
 Those measure-request entries have an optional `detail` containing up to six caller stack
 frames (at most 1200 characters) to locate the requesting code. Note text, note paths and
 DOM content are not stored.
+Redraw entries also retain bounded metadata: selection offsets, up to 64 changed ranges,
+200 collected decoration ranges and 256 old editor tiles, including widget identities,
+block/sides, lengths and parent consistency. Widget lifecycle entry/exit hooks are scoped
+to that redraw and flushed synchronously, including host widgets. No document content or
+DOM contents are included in this metadata.
 A flag from an earlier page load cannot enable recording, so relaunch preserves the last
 saved trace for inspection. A same-page `storage` event applies a changed flag; removing
 the flag and sending that event stops recording. Neither key is synced or transferred.

@@ -34,12 +34,52 @@ it('persists the exact nested redraw boundary before it can block the page', () 
   )!
   const tail = () => JSON.parse(values.get(COLUMN_FLIGHT_BUFFER)!).entries.at(-1)
   const failure = new Error('sample blocked redraw')
+  const widget = {
+    toDOM() {
+      expect(this).toBe(widget)
+      expect(tail().site).toBe('redraw.widget.1.toDOM.in')
+      return document.createElement('div')
+    },
+  }
+  const originalWidgetDOM = widget.toDOM
   const inner = vi.fn(function (this: unknown) {
     expect(this).toBe(docView)
     expect(tail().site).toBe('doc.redraw.in')
+    const detail = JSON.parse(tail().detail)
+    expect(detail.ranges).toEqual([
+      {
+        set: 0,
+        from: 0,
+        to: 100,
+        block: true,
+        startSide: -1,
+        endSide: 1,
+        widget: 1,
+        type: 'Object',
+        decorationType: 'Object',
+      },
+    ])
+    expect(detail.selection).toEqual({ anchor: 123, head: 123 })
+    expect(detail.repeated).toBe(true)
+    expect(detail.brokenParent).toBe(true)
+    expect(detail.tiles).toHaveLength(2)
+    widget.toDOM()
     throw failure
   })
   const docView = {
+    tile: (() => {
+      const root: { length: number; children: unknown[] } = { length: 123, children: [] }
+      const leaf = { length: 100, widget }
+      root.children = [leaf, leaf, root]
+      return root
+    })(),
+    decorations: [
+      {
+        between(_from: number, _to: number, visit: (...args: unknown[]) => void) {
+          visit(0, 100, { block: true, startSide: -1, endSide: 1, widget })
+        },
+      },
+    ],
     updateInner: inner,
     update() {
       return this.updateInner()
@@ -47,7 +87,7 @@ it('persists the exact nested redraw boundary before it can block the page', () 
   }
   const view = {
     dom: document.createElement('div'),
-    state: { doc: { length: 123 } },
+    state: { doc: { length: 123 }, selection: { main: { anchor: 123, head: 123 } } },
     viewport: { from: 0, to: 123 },
     docView,
     update() {
@@ -58,6 +98,7 @@ it('persists the exact nested redraw boundary before it can block the page', () 
   try {
     expect(() => view.update()).toThrow(failure)
     expect(tail().site).toBe('view.update.out')
+    expect(widget.toDOM).toBe(originalWidgetDOM)
   } finally {
     stop()
     recorder.destroy()

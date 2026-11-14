@@ -18,6 +18,58 @@ vi.mock('obsidian', async (original) => {
   }
 })
 
+it('redraws an identical nested document when a full replacement resets the caret into source', () => {
+  const text =
+    createColumns(
+      createColumns('First', 'two').replace('\n', '\n> <!-- annotation -->\n') +
+        '\n\n' +
+        createColumns('Second', 'two'),
+      'two'
+    ) + '\n\nAfter.\n'
+  let extension: Extension = []
+  registerColumnWidgets({
+    app: {},
+    registerEditorExtension: (value: Extension) => {
+      extension = value
+    },
+  } as Plugin)
+  const render = vi.spyOn(MarkdownRenderer, 'render').mockResolvedValue()
+  const parent = document.createElement('div')
+  parent.style.width = '393px'
+  document.body.append(parent)
+  const view = new EditorView({
+    parent,
+    state: EditorState.create({
+      doc: text,
+      selection: { anchor: text.length },
+      extensions: [editorLivePreviewField.init(() => true), editorInfoField, extension],
+    }),
+  })
+  try {
+    const sets = view.state.facet(EditorView.decorations)
+    const ranges: [number, number][] = []
+    for (const set of sets)
+      if (typeof set !== 'function')
+        set.between(0, text.length, (from, to) => {
+          ranges.push([from, to])
+        })
+    expect(ranges).toEqual([[0, text.indexOf('\n\nAfter.')]])
+    for (const anchor of [0, 1, 50, 200, text.length]) {
+      view.dispatch({ selection: { anchor: text.length } })
+      view.dispatch({ changes: { from: 0, to: text.length, insert: text }, selection: { anchor } })
+      expect(view.state.doc.toString()).toBe(text)
+      expect(view.state.selection.main.head).toBe(anchor)
+      expect(view.contentDOM.querySelectorAll('.abele-columns-editor-widget')).toHaveLength(
+        anchor < text.indexOf('\n\nAfter.') ? 0 : 1
+      )
+    }
+  } finally {
+    view.destroy()
+    parent.remove()
+    render.mockRestore()
+  }
+})
+
 it('keeps one outer widget when replacing nested columns with a rejected first inner frame', () => {
   const old = createColumns(createColumns('Inner passage', 'two'), 'two') + '\n\nAfter.\n'
   const text =

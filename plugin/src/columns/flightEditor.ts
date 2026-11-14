@@ -1,5 +1,6 @@
 import { ViewPlugin, type EditorView } from '@codemirror/view'
 import type { Plugin } from 'obsidian'
+import { columnRedrawDetail } from './flightRedraw'
 import {
   COLUMN_FLIGHT_FLAG,
   columnFlight,
@@ -76,6 +77,8 @@ export function watchColumnFlightView(
   const target = view as unknown as Record<string, unknown>
   const requests = new WeakMap<object, object>()
   const nestedTargets = new WeakSet<object>()
+  const widgetIds = new WeakMap<object, number>()
+  let nextWidgetId = 0
   let updateDepth = 0
   let stopped = false
   const requestProxy = (request: object) => {
@@ -104,17 +107,50 @@ export function watchColumnFlightView(
     }
     return wrapped
   }
-  const patch = (object: Record<string, unknown>, key: string, site: string, boundary = false) => {
+  const patch = (
+    object: Record<string, unknown>,
+    key: string,
+    site: string,
+    boundary = false,
+    restores = cleanups
+  ) => {
     const original = object[key]
     if (typeof original !== 'function') return
     const descriptor = Object.getOwnPropertyDescriptor(object, key)
     const wrapped = function (this: unknown, ...args: unknown[]) {
       if (object === target) attachInternals()
       const insideUpdate = updateDepth > 0 || Number(target.updateState ?? 0) > 0
-      const detail =
+      const widgetCleanups: (() => void)[] = []
+      let detail =
         key === 'requestMeasure' && insideUpdate
           ? new Error().stack?.split('\n').slice(1, 7).join('\n').slice(0, 1200)
           : undefined
+      if (site === 'doc.redraw') {
+        const installed = new Set<object>()
+        try {
+          detail = columnRedrawDetail(view, object, args, (widget) => {
+            let id = widgetIds.get(widget)
+            if (!id) {
+              id = ++nextWidgetId
+              widgetIds.set(widget, id)
+            }
+            if (!installed.has(widget)) {
+              installed.add(widget)
+              for (const method of ['toDOM', 'updateDOM', 'eq', 'destroy'])
+                patch(
+                  widget as Record<string, unknown>,
+                  method,
+                  `redraw.widget.${id}.${method}`,
+                  true,
+                  widgetCleanups
+                )
+            }
+            return id
+          })
+        } catch {
+          detail = '{"metadataUnavailable":true}'
+        }
+      }
       recorder.view(
         key === 'dispatch' && insideUpdate ? 'dispatch.in-update' : `${site}.in`,
         view,
@@ -130,6 +166,7 @@ export function watchColumnFlightView(
           args = [requestProxy(request), ...args.slice(1)]
         return Reflect.apply(original, this, args)
       } finally {
+        for (const restore of widgetCleanups.reverse()) restore()
         if (object === target && key === 'setState') attachInternals()
         if (key === 'update') updateDepth--
         recorder.view(`${site}.out`, view)
@@ -144,7 +181,7 @@ export function watchColumnFlightView(
           ? { ...descriptor, value: wrapped }
           : { configurable: true, writable: true, value: wrapped }
       )
-      cleanups.push(() => {
+      restores.push(() => {
         if (object[key] !== wrapped) return
         if (descriptor) Object.defineProperty(object, key, descriptor)
         else Reflect.deleteProperty(object, key)
