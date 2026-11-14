@@ -20,6 +20,51 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+it('persists the exact nested redraw boundary before it can block the page', () => {
+  const values = new Map([[COLUMN_FLIGHT_FLAG, 'sample-load']])
+  const recorder = createColumnFlight(
+    {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => {
+        values.set(key, value)
+      },
+    },
+    'sample-load',
+    { now: () => 1000, schedule: () => () => {} }
+  )!
+  const tail = () => JSON.parse(values.get(COLUMN_FLIGHT_BUFFER)!).entries.at(-1)
+  const failure = new Error('sample blocked redraw')
+  const inner = vi.fn(function (this: unknown) {
+    expect(this).toBe(docView)
+    expect(tail().site).toBe('doc.redraw.in')
+    throw failure
+  })
+  const docView = {
+    updateInner: inner,
+    update() {
+      return this.updateInner()
+    },
+  }
+  const view = {
+    dom: document.createElement('div'),
+    state: { doc: { length: 123 } },
+    viewport: { from: 0, to: 123 },
+    docView,
+    update() {
+      return docView.update()
+    },
+  }
+  const stop = watchColumnFlightView(view as unknown as EditorView, recorder)
+  try {
+    expect(() => view.update()).toThrow(failure)
+    expect(tail().site).toBe('view.update.out')
+  } finally {
+    stop()
+    recorder.destroy()
+  }
+  expect(docView.updateInner).toBe(inner)
+})
+
 it('does not install view instrumentation, observers or timers when disabled', () => {
   const extension = vi.fn()
   const timer = vi.spyOn(window, 'setInterval')

@@ -1,4 +1,4 @@
-/** Opt-in, page-scoped diagnostics. No note text, paths, or DOM content is retained. */
+/** Opt-in, page-scoped diagnostics. No note text, note paths, or DOM content is retained. */
 export const COLUMN_FLIGHT_FLAG = 'abele-columns-flight'
 export const COLUMN_FLIGHT_BUFFER = 'abele-columns-flight-buffer'
 
@@ -9,6 +9,7 @@ interface FlightRecord {
   viewportFrom: number
   viewportTo: number
   counter: number
+  detail?: string
 }
 interface FlightSnapshot {
   version: 1
@@ -80,7 +81,8 @@ export class ColumnFlightRecorder {
     site: string,
     docLen = this.docLen,
     viewportFrom = this.viewportFrom,
-    viewportTo = this.viewportTo
+    viewportTo = this.viewportTo,
+    detail?: string
   ): void {
     if (this.closed) return
     const t = this.clock.now()
@@ -88,6 +90,7 @@ export class ColumnFlightRecorder {
     this.viewportFrom = viewportFrom
     this.viewportTo = viewportTo
     this.ring[this.next] = { t, site, docLen, viewportFrom, viewportTo, counter: ++this.counter }
+    if (detail !== undefined) this.ring[this.next].detail = detail
     this.next = (this.next + 1) % capacity
     this.pending++
     // This elapsed-time check also works while a synchronous loop starves timers.
@@ -99,8 +102,8 @@ export class ColumnFlightRecorder {
     this.record(site, state.doc.length, -1, -1)
   }
 
-  view(site: string, view: FlightView): void {
-    this.record(site, view.state.doc.length, view.viewport.from, view.viewport.to)
+  view(site: string, view: FlightView, detail?: string): void {
+    this.record(site, view.state.doc.length, view.viewport.from, view.viewport.to, detail)
   }
 
   checkpoint(site: string): void {

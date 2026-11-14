@@ -103,13 +103,24 @@ export function watchColumnFlightView(
     }
     return wrapped
   }
-  const patch = (key: string, site: string) => {
-    const original = target[key]
+  const patch = (object: Record<string, unknown>, key: string, site: string, boundary = false) => {
+    const original = object[key]
     if (typeof original !== 'function') return
-    const descriptor = Object.getOwnPropertyDescriptor(target, key)
+    const descriptor = Object.getOwnPropertyDescriptor(object, key)
     const wrapped = function (this: unknown, ...args: unknown[]) {
       const insideUpdate = updateDepth > 0 || Number(target.updateState ?? 0) > 0
-      recorder.view(key === 'dispatch' && insideUpdate ? 'dispatch.in-update' : `${site}.in`, view)
+      const detail =
+        key === 'requestMeasure' && insideUpdate
+          ? new Error().stack?.split('\n').slice(1, 7).join('\n').slice(0, 1200)
+          : undefined
+      recorder.view(
+        key === 'dispatch' && insideUpdate ? 'dispatch.in-update' : `${site}.in`,
+        view,
+        detail
+      )
+      // A synchronous stall cannot deliver the heartbeat or the remaining batch of records.
+      // Persist both sides of update stages so the surviving tail identifies the exact boundary.
+      if (boundary || insideUpdate) recorder.flush()
       if (key === 'update') updateDepth++
       try {
         const request = args[0]
@@ -119,29 +130,45 @@ export function watchColumnFlightView(
       } finally {
         if (key === 'update') updateDepth--
         recorder.view(`${site}.out`, view)
+        if (boundary || insideUpdate) recorder.flush()
       }
     }
     try {
       Object.defineProperty(
-        target,
+        object,
         key,
         descriptor
           ? { ...descriptor, value: wrapped }
           : { configurable: true, writable: true, value: wrapped }
       )
       cleanups.push(() => {
-        if (target[key] !== wrapped) return
-        if (descriptor) Object.defineProperty(target, key, descriptor)
-        else Reflect.deleteProperty(target, key)
+        if (object[key] !== wrapped) return
+        if (descriptor) Object.defineProperty(object, key, descriptor)
+        else Reflect.deleteProperty(object, key)
       })
     } catch {
       recorder.view(`${site}.hook-unavailable`, view)
     }
   }
-  patch('update', 'view.update')
-  patch('dispatch', 'dispatch')
-  patch('requestMeasure', 'measure.request')
-  patch('measure', 'measure')
+  patch(target, 'update', 'view.update', true)
+  patch(target, 'dispatch', 'dispatch', true)
+  patch(target, 'requestMeasure', 'measure.request')
+  patch(target, 'measure', 'measure', true)
+  patch(target, 'updatePlugins', 'view.plugins', true)
+  patch(target, 'updateAttrs', 'view.attrs', true)
+  const nested = (key: string, methods: [string, string][]) => {
+    const object = target[key]
+    if (!object || typeof object !== 'object') return
+    for (const [method, site] of methods)
+      patch(object as Record<string, unknown>, method, site, true)
+  }
+  nested('inputState', [['update', 'input.update']])
+  nested('docView', [
+    ['update', 'doc.update'],
+    ['updateDeco', 'doc.decorations'],
+    ['updateInner', 'doc.redraw'],
+    ['updateSelection', 'doc.selection'],
+  ])
   const win = view.dom.ownerDocument.defaultView
   if (win?.ResizeObserver) {
     const resize = new win.ResizeObserver(() => {

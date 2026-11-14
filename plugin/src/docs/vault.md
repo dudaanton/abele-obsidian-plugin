@@ -20,7 +20,11 @@ contains the current page's `performance.timeOrigin` as a string, and
 `abele-columns-flight-buffer` retains a JSON envelope with up to 500 records of time,
 code site, document length, viewport bounds and sequence counter. Unknown viewport bounds
 are `-1`. Recording flushes synchronously every 20 pending records or 100 ms, with a
-100 ms heartbeat for pending records. Note text, paths and DOM content are not stored.
+100 ms heartbeat for pending records. Editor update, redraw, decoration, input and selection
+boundaries additionally flush on entry and exit, including measure requests during an update.
+Those measure-request entries have an optional `detail` containing up to six caller stack
+frames (at most 1200 characters) to locate the requesting code. Note text, note paths and
+DOM content are not stored.
 A flag from an earlier page load cannot enable recording, so relaunch preserves the last
 saved trace for inspection. A same-page `storage` event applies a changed flag; removing
 the flag and sending that event stops recording. Neither key is synced or transferred.
