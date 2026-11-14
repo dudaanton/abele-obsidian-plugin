@@ -8,6 +8,7 @@ import { withEmulatedPhone } from './helpers/emulatedPhone'
 import { columnShot } from './helpers/columnShots'
 import { shotDir } from './helpers/shots'
 import { giantJournal } from '../fixtures/giantJournal.mjs'
+import { ENDLESS_COMPACT, ENDLESS_DIAGNOSTICS } from './helpers/nodeEndlessProbe'
 
 targets('desktop', 'phone')
 let node: Awaited<ReturnType<typeof startPairedNode>> | undefined
@@ -75,7 +76,8 @@ it('keeps hundreds of streamed work turns bounded through disconnect, restart, r
     const connection=nodes.connection(${JSON.stringify(node.registration)}),client=connection.client;
     const key=${JSON.stringify(key)},sid=${JSON.stringify(session)};
     const presenter=()=>chats.getNodeSession(key);
-    const frame=()=>new Promise(r=>requestAnimationFrame(r));`
+    const frame=()=>new Promise(r=>requestAnimationFrame(r));
+    ${ENDLESS_DIAGNOSTICS}`
   const shots = shotDir('node-endless')
   const reports: (Segment & { segment: number; down: number; up: number })[] = []
   const run = async (segment: number) => {
@@ -83,17 +85,16 @@ it('keeps hundreds of streamed work turns bounded through disconnect, restart, r
     const result = JSON.parse(
       await evalLong(
         `(async()=>{${prelude}
-      await until(()=>connection.state.value==='connected','Connection');
+      await waitFor(()=>connection.state.value==='connected','Connection');
       const opened=performance.now();
       await chats.openNodeSession({kind:'node-session',nodeId:${JSON.stringify(node!.node)},registrationId:${JSON.stringify(node!.registration)},sessionId:sid,title:'Sample endurance session'});
       await chats.revealSidebar({focus:false});
       const latest=${JSON.stringify(segment === 0 ? 'Answer 1800.' : `segment${segment - 1}turn74 word11:`)};
-      await until(()=>chat()&&[...chat().querySelectorAll('.abele-chat-msg')].some(m=>m.textContent.includes(latest)),'Latest messages');
+      await waitFor(()=>chat()&&[...chat().querySelectorAll('.abele-chat-msg')].some(m=>m.textContent.includes(latest)),'Latest messages');
       const openMs=performance.now()-opened;
       const probe={tx:0,txMs:0,longTasks:0,longMs:0,idbTx:0,idbTxMs:0,fetchedEvents:0};
       const store=client.store,original=store.transaction;
-      const recentEvents=[];
-      const stopEvents=client.onEvent(e=>{if(e.stream_id===sid){probe.fetchedEvents++;recentEvents.push({type:e.type,seq:e.seq});if(recentEvents.length>16)recentEvents.shift()}});
+      const stopEvents=client.onEvent(e=>{if(e.stream_id===sid){probe.fetchedEvents++;recordEvent(e)}});
       const idbTransaction=IDBDatabase.prototype.transaction;
       IDBDatabase.prototype.transaction=function(...args){const t=performance.now(),tx=idbTransaction.apply(this,args);tx.addEventListener('complete',()=>{probe.idbTx++;probe.idbTxMs+=performance.now()-t},{once:true});return tx};
       store.transaction=async function(work){const t=performance.now();try{return await original.call(this,work)}finally{probe.tx++;probe.txMs+=performance.now()-t}};
@@ -105,11 +106,7 @@ it('keeps hundreds of streamed work turns bounded through disconnect, restart, r
           const list=chat().querySelector('.abele-ai-chat__messages');list.scrollTop=list.scrollHeight;
           const started=performance.now();
           const sending=presenter().send('work '+tag+' 12 60');
-          try {
-            await until(()=>[...chat().querySelectorAll('.abele-chat-msg')].some(m=>m.textContent.includes(tag+' word0:')),'First streamed words');
-          } catch (error) {
-            throw Error(String(error)+'; '+JSON.stringify({tag,connected:client.connected,state:connection.state.value,error:presenter().error.value,draftNotice:presenter().draftNotice.value,received:recentEvents,projected:presenter().messages.value.slice(-3).map(m=>({role:m.role,content:m.content?.slice(-250)})),visible:[...chat().querySelectorAll('.abele-chat-msg')].slice(-3).map(m=>m.textContent.slice(-250))}));
-          }
+          await waitFor(()=>[...chat().querySelectorAll('.abele-chat-msg')].some(m=>m.textContent.includes(tag+' word0:')),'First streamed words '+tag);
           firstMs.push(performance.now()-started);
           if(turn===37&&!${onPhone()}) {
             const image=await require('@electron/remote').getCurrentWindow().webContents.capturePage();
@@ -119,7 +116,7 @@ it('keeps hundreds of streamed work turns bounded through disconnect, restart, r
           for(const c of 'sample draft') {const t=performance.now();field.value+=c;field.dispatchEvent(new Event('input',{bubbles:true}));await frame();typing.push(performance.now()-t)}
           field.value='';field.dispatchEvent(new Event('input',{bubbles:true}));
           await sending;
-          await until(()=>presenter().messages.value.some(m=>m.content?.includes(tag+' word11:'))&&!presenter().isStreaming.value,'Completed streamed turn');
+          await waitFor(()=>presenter().messages.value.some(m=>m.content?.includes(tag+' word11:'))&&!presenter().isStreaming.value,'Completed streamed turn '+tag);
           turnMs.push(performance.now()-started);
         }
         await presenter().refresh();await frame();
@@ -193,7 +190,7 @@ it('keeps hundreds of streamed work turns bounded through disconnect, restart, r
       await node!.restoreTransport()
       await node!.open(session, 'Sample endurance session')
       await evalLong(
-        `(async()=>{${prelude}await presenter().control.compact('sample summary');await until(()=>[...chat().querySelectorAll('.abele-session-mark__label')].some(m=>m.textContent.includes('Compacted')),'Compaction');return 'compacted'})()`,
+        `(async()=>{${prelude}const stop=client.onEvent(recordEvent);try{${ENDLESS_COMPACT}}finally{stop()}})()`,
         120000
       )
       await run(3)
