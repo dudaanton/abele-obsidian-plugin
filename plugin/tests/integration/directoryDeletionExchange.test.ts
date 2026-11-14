@@ -47,17 +47,39 @@ it(
   240000
 )
 
+it.each([false, true])(
+  'puts back every held child after a running folder deletion (restart=%s)',
+  (restart) => runExchange({ delivery: false, held: true, indexed: true, restart }),
+  60000
+)
+it.fails(
+  'BUG: puts back held files during reconciliation with unrelated directory evidence',
+  () => runExchange({ delivery: false, held: true, indexed: true, unrelatedHold: true }),
+  60000
+)
+
 async function runExchange({
   delivery,
   bulk,
   indexed,
   merge,
+  held,
+  restart,
+  unrelatedHold,
 }: {
   delivery: boolean
   bulk?: boolean
   indexed?: boolean
   merge?: boolean
+  held?: boolean
+  restart?: boolean
+  unrelatedHold?: boolean
 }) {
+  let downloads = 0
+  const transport: typeof fetch = (input, init) => {
+    if ((init?.method ?? 'GET') === 'GET' && String(input).includes('/content')) downloads++
+    return globalThis.fetch(input, init)
+  }
   const useIndex = bulk || indexed
   const apps: ReturnType<typeof nativeVault>[] = []
   const hosts: ReturnType<typeof tokenHostFixture>[] = []
@@ -189,12 +211,12 @@ async function runExchange({
         refreshers.push(refresh)
       }
       if (indexed) {
-        const fixture = tokenHostFixture(globalThis.fetch, [], { app, factory: new IDBFactory() })
+        const fixture = tokenHostFixture(transport, [], { app, factory: new IDBFactory() })
         fixture.registry.forget(fixture.id)
         fixture.id = fixture.registry.add()
         const token = decodeAccessToken(user.token)
         const authority = await new V2EngineClient(user.token, {
-          fetch: globalThis.fetch,
+          fetch: transport,
         }).connection()
         fixture.registry.attach(fixture.id, token, authority, {
           get: (key) => fixture.keys.get(key) ?? null,
@@ -212,7 +234,7 @@ async function runExchange({
           (key) => fixture.keys.get(key) ?? null,
           {
             indexedDB: fixture.factory,
-            fetch: globalThis.fetch,
+            fetch: transport,
             fallbackMs: 60000,
             pollMs: 60000,
             WebSocket: class {
@@ -291,7 +313,7 @@ async function runExchange({
         new SyncEngine({
           fs: coordinatedFileSystem(files, new PathCoordinator()),
           state: new MemoryStateStore(),
-          client: new V2EngineClient(user.token, { fetch: globalThis.fetch }),
+          client: new V2EngineClient(user.token, { fetch: transport }),
           selective: selectiveFrom(undefined),
           log: (message) => console.debug('[sample directory exchange]', name, message),
         })
@@ -307,7 +329,7 @@ async function runExchange({
     }
     const cycle = () =>
       TokenSyncLive.prototype.cycle.call({
-        client: () => new V2EngineClient(user.token, { fetch: globalThis.fetch }),
+        client: () => new V2EngineClient(user.token, { fetch: transport }),
         primary: { syncNow: () => sync(0) },
         peer: { syncNow: () => sync(1) },
       } as unknown as TokenSyncLive)
@@ -355,6 +377,120 @@ async function runExchange({
     await disk.writeFile(join(root, 'primary/Sample/from/sample.md'), 'sample')
     if (useIndex) await refreshers[0]('Sample/from/sample.md')
     await cycle()
+    if (held) {
+      await disk.writeFile(join(root, 'primary/Sample/from/retained.md'), 'sample shared bytes')
+      await refreshers[0]('Sample/from/retained.md')
+      await disk.mkdir(join(root, 'primary/Sample/held'))
+      for (let i = 0; i < 60; i++)
+        await disk.writeFile(join(root, `primary/Sample/held/${i}.md`), 'sample shared bytes')
+      if (useIndex) for (let i = 0; i < 60; i++) await refreshers[0](`Sample/held/${i}.md`)
+      await cycle()
+      const retained = await disk.stat(join(root, 'primary/Sample/from/retained.md'))
+      if (indexed) await apps[0].vault.delete(apps[0].vault.getAbstractFileByPath('Sample/held')!)
+      else await disk.rm(join(root, 'primary/Sample/held'), { recursive: true })
+      await sync(0)
+      const shown = await engines[0].heldDeletes()
+      expect(shown).toHaveLength(60)
+      // A previous scan could not prove whether the missing directory moved.
+      // Its durable evidence must not prevent an explicit put-back at the source.
+      const state = Reflect.get(engines[0], 'opts').state as MemoryStateStore
+      const directories = JSON.parse((await state.getMeta('v2-directories'))!)
+      const unrelated = {
+        path: 'Sample/unrelated',
+        source: 'Sample/unrelated',
+        code: 'conflict',
+        message: 'unresolved directory move',
+        direction: 'push',
+        evidence: true,
+      }
+      directories.refused = [
+        {
+          path: 'Sample/held',
+          source: 'Sample/held',
+          code: 'conflict',
+          message: 'directory move evidence is ambiguous; old and candidate subtrees are held',
+          direction: 'push',
+          evidence: true,
+        },
+        ...(unrelatedHold ? [unrelated] : []),
+      ]
+      await state.setMeta('v2-directories', JSON.stringify(directories))
+      if (unrelatedHold)
+        await state.setMeta(
+          'content-reconciliation',
+          JSON.stringify({ phase: 'requested', reason: 'sample reconciliation' })
+        )
+      downloads = 0
+      const ids = shown.map((one) => one.fileId)
+      if (restart) {
+        const durable = Reflect.get(hosts[0].host.live.get(hosts[0].id)!, 'options')
+          .state as MemoryStateStore
+        const setMeta = durable.setMeta.bind(durable)
+        const interruption = vi.spyOn(durable, 'setMeta').mockImplementation(async (key, value) => {
+          if (
+            key === 'v2-directories' &&
+            value &&
+            !JSON.parse(value).refused?.some(
+              (row: { source?: string }) => row.source === 'Sample/held'
+            )
+          )
+            throw new Error('sample interrupted restore')
+          return setMeta(key, value)
+        })
+        await expect(engines[0].decideDeletes('restore', ids)).rejects.toThrow(
+          'sample interrupted restore'
+        )
+        interruption.mockRestore()
+        const fixture = hosts[0]
+        await fixture.host.close()
+        fixture.host = new TokenEngines(
+          apps[0] as never,
+          fixture.ui,
+          (key) => fixture.keys.get(key) ?? null,
+          {
+            indexedDB: fixture.factory,
+            fetch: transport,
+            fallbackMs: 60000,
+            pollMs: 60000,
+            WebSocket: class {
+              constructor() {
+                throw new Error('Fixture uses polling')
+              }
+            } as never,
+          }
+        )
+        fixture.host.start()
+        await fixture.ui.connectionsChanged()
+        await vi.waitFor(
+          () => expect(fixture.host.live.get(fixture.id)?.engine.status.state).toBe('idle'),
+          { timeout: 10000 }
+        )
+        engines[0] = fixture.host.live.get(fixture.id)!.engine
+        Reflect.set(engines[0], 'trigger', () => {})
+      } else await engines[0].decideDeletes('restore', ids)
+      await cycle()
+      expect(downloads).toBe(0)
+      expect(await engines[0].heldDeletes()).toHaveLength(0)
+      const restoredState = Reflect.get(engines[0], 'opts').state as MemoryStateStore
+      if (unrelatedHold)
+        expect(JSON.parse((await restoredState.getMeta('v2-directories'))!).refused).toContainEqual(
+          unrelated
+        )
+      expect((await disk.stat(join(root, 'primary/Sample/from/retained.md'))).mtimeMs).toBe(
+        retained.mtimeMs
+      )
+      const remote = new V2EngineClient(user.token, { fetch: transport })
+      expect(
+        (await remote.manifest(null)).items.filter((one) => one.path.startsWith('Sample/held/'))
+      ).toHaveLength(60)
+      expect(await remote.trash()).toHaveLength(0)
+      for (const name of ['primary', 'peer'])
+        for (let i = 0; i < 60; i++)
+          expect(await disk.readFile(join(root, `${name}/Sample/held/${i}.md`), 'utf8')).toBe(
+            'sample shared bytes'
+          )
+      return
+    }
     if (bulk) {
       phase = 'upload sixty'
       await disk.mkdir(join(root, 'primary/Sample/bulk'))
@@ -363,7 +499,7 @@ async function runExchange({
       for (let i = 0; i < 60; i++) await refreshers[0](`Sample/bulk/note-${i}.md`)
       await cycle()
       phase = 'delete sixty'
-      const client = new V2EngineClient(user.token, { fetch: globalThis.fetch })
+      const client = new V2EngineClient(user.token, { fetch: transport })
       const items = (await client.manifest(null)).items.filter((item) =>
         item.path.startsWith('Sample/bulk/')
       )
@@ -431,10 +567,7 @@ async function runExchange({
         expect(Reflect.get(engines[1], 'watch').noticed.has('Sample/to')).toBe(true)
       )
       await hosts[1].ui.sync(hosts[1].id)
-      const manifest = await new V2Client(
-        decodeAccessToken(user.token),
-        globalThis.fetch
-      ).manifest()
+      const manifest = await new V2Client(decodeAccessToken(user.token), transport).manifest()
       expect(manifest.items.some((item) => item.path === 'Sample/to')).toBe(false)
       expect(engines[1].status.headSeq).toBe(manifest.cursor)
       expect(engines[1].status.cursor).toBe(manifest.cursor)

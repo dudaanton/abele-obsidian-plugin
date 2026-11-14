@@ -251,6 +251,13 @@ export function syncPlacementPlugin() {
     /** Read afresh each time:`
         )
       } else if (file.endsWith('/cycle.js')) {
+        // Put-back is additive and checks each selected path itself. A directory
+        // evidence barrier can make the scan incomplete until that very restore.
+        code = replaceOnce(
+          code,
+          "if (filed?.decision.kind === 'restore' && found.complete !== false)",
+          "if (filed?.decision.kind === 'restore')"
+        )
         code = replaceOnce(
           code,
           'await client.prepare?.(fs, state,',
@@ -438,6 +445,44 @@ export function syncPlacementPlugin() {
             key[Symbol.for('abele.sync.portable-candidates-v1')] = true;`
         )
       } else if (file.endsWith('/deleteGate.js')) {
+        // Restoring held files explicitly chooses their original source paths.
+        // An older directory-move nomination must not keep that replay blocked.
+        code = replaceOnce(
+          code,
+          '        // Only the files decided about leave the hold;',
+          `        const selected = new Set(decision.fileIds);
+        const restoring = new Set();
+        for (const held of await this.ctx.holds.list()) {
+          const checkpoint = work.step();
+          if (checkpoint) await checkpoint;
+          if (selected.has(held.fileId) && await this.ctx.fs.stat(held.path) === null) {
+            let parent = held.path;
+            while (parent.includes('/')) {
+              parent = parent.slice(0, parent.lastIndexOf('/'));
+              restoring.add(parent);
+            }
+          }
+        }
+        const rawDirectories = await this.ctx.state.getMeta?.('v2-directories');
+        if (rawDirectories && restoring.size) {
+          const directories = JSON.parse(rawDirectories);
+          const sources = new Set();
+          for (const row of directories.refused ?? []) {
+            const checkpoint = work.step();
+            if (checkpoint) await checkpoint;
+            const source = row.source ?? row.path;
+            if (row.evidence && restoring.has(source))
+              sources.add(source);
+          }
+          if (sources.size) {
+            directories.refused = await work.collect(directories.refused ?? [], row =>
+              !row.evidence || !sources.has(row.source ?? row.path));
+            await this.ctx.state.setMeta('v2-directories', JSON.stringify(directories));
+            this.ctx.log('sync: resolving directory move evidence for held-file restoration');
+          }
+        }
+        // Only the files decided about leave the hold;`
+        )
         // The SDK drives delete judging cooperatively; only skip an empty ledger pass.
         code = replaceOnce(
           code,
@@ -527,6 +572,10 @@ export function syncPlacementPlugin() {
           let previousCleanup;
           const process = async (group) => {
             checkCancellation(this.opts.signal);
+            // Cohort staging cannot replay a public local source. Keep local
+            // content on the ordinary verified reuse path instead of fetching it.
+            if (group.some(change => local.has(change.sha)))
+              return this.placeTaking(group, local, finish);
             const plans = [];
             const split = async () => {
               if (group.length === 1) return this.placeTaking(group, local, finish);
