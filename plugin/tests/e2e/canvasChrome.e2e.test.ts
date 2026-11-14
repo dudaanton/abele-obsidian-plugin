@@ -404,6 +404,11 @@ describe.skipIf(!available)('the canvas by hand', () => {
   it('reads on in a picked note under a finger or the wheel, the note staying where it is', async () => {
     await reopen()
     await chrome.click('Select canvas objects')
+    // The lower card can be below a short desktop window. Frame it before native input;
+    // graph coordinates alone do not establish that the press is on screen.
+    run(`const v=view().viewer,n=v.graph.nodes.find(n=>n.id==='reading'),s=v.stage,c=v.camera
+      v.setCamera({...c,x:n.x+n.width/2-s.clientWidth/(2*c.zoom),y:n.y+n.height/2-s.clientHeight/(2*c.zoom)});return true`)
+    await until('(await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))),true)')
     const body = `view().contentEl.querySelector('[data-node-id="reading"]')`
     await until(`${body}&&${body}.scrollHeight>${body}.clientHeight+8`)
     const at = middle('reading')

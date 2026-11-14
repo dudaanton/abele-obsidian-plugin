@@ -9,6 +9,7 @@ import { evalLong, evalRaw } from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
 import { withEmulatedPhone } from './helpers/emulatedPhone'
+import { settledGeometry } from '../helpers/settledGeometry'
 import type { AgentToolResult } from '@/ai/client'
 targets('desktop')
 
@@ -889,6 +890,12 @@ it('on a phone: breakpoint navigation uncovers the source and highlights its lin
         const debug=app.workspace.getLeavesOfType('abele-debug-view')[0];
         await app.workspace.revealLeaf(debug);
         app.workspace.rightSplit.expand();
+        // Establish the drawer's final open state before navigating away. A transient
+        // collapsed flag during setup is not proof that the source closed the drawer.
+        await (${settledGeometry.toString()})(
+          ()=>({open:!app.workspace.rightSplit.collapsed,transform:app.workspace.rightSplit.containerEl.style.transform}),
+          ()=>wait(50),Date.now,10000,400,s=>s.open&&(!s.transform||s.transform==='none')
+        );
         await shot('journey-phone-breakpoint-list');
         press(row().querySelector('.abele-breakpoint-mark'));
         const highlighted=await until(()=>[...document.querySelectorAll('.abele-debug-source__line_here')].some(e=>e.offsetParent&&e.textContent.trim()==='const item = inspectItem(n)'),'source line visible');
