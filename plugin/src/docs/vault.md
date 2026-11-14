@@ -3881,13 +3881,16 @@ answers awaiting local settlement (`push-receipt:*`), including their original o
 result and ledger base. Settlement retires the owning answer and retry schedule in one
 transaction. Unreadable scheduling records are retained for review rather than discarded.
 These records are device-local metadata; they are not synced or transferred with a connection.
-An explicit put-back records missing file identities and their original local and wire paths
+An explicit put-back records missing file identities, sizes and original local and wire paths
 in connection metadata `held-restore-paths` before retiring their file ledger entries.
 Directory classification waits while those identities lack a local file receipt, including
-after interruption or restart. Entries leave this document only when the ledger again names
-the file identity and its local file exists, or a complete manifest/feed proves that identity
-is no longer remote. Restore identities join the manifest's durable recheck set, so partial
-inventory or a restart cannot be mistaken for remote absence. The document is removed when
+after interruption or restart. Each file's restore ownership is retired atomically with its
+own verified file ledger receipt, so a later offline deletion cannot inherit old restore
+authority. A path excluded locally releases its ownership before snapshot selection; it no
+longer blocks unrelated directory operations. A complete manifest/feed can also retire an
+identity no longer in the remote inventory. Restore identities join the manifest's durable
+recheck set, so partial inventory or a restart cannot be mistaken for remote absence.
+The document is removed when
 all have settled. An interrupted snapshot resumes its checkpoint or re-establishes coverage.
 This prevents a restore in progress from being mistaken for deletion or movement of an empty
 remote directory. Directory review during reconciliation can corroborate a tree returned to

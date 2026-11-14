@@ -256,7 +256,10 @@ export function syncPlacementPlugin() {
           '    async pull(dirty, recheck, noted) {',
           `    async pull(dirty, recheck, noted) {
         const restoreState = this.ctx.opts.state;
-        const restores = JSON.parse(await restoreState.getMeta?.('held-restore-paths') ?? '[]');
+        const ownedRestores = JSON.parse(await restoreState.getMeta?.('held-restore-paths') ?? '[]');
+        const restores = ownedRestores.filter(row => !this.filter.excluded(row.wirePath ?? row.path, row.size ?? 0));
+        if (restores.length !== ownedRestores.length)
+          await restoreState.setMeta?.('held-restore-paths', restores.length ? JSON.stringify(restores) : null);
         if (restores.length) {
           recheck = new Set([...(recheck ?? []), ...restores.map(row => row.fileId)]);
           // A restart between frontier publication and restore cleanup still owns
@@ -505,7 +508,7 @@ export function syncPlacementPlugin() {
           if (checkpoint) await checkpoint;
           const entry = await this.ctx.state.byFileId(fileId);
           if (entry && await this.ctx.fs.stat(entry.path) === null)
-            restoringFiles.set(fileId, { fileId, path: entry.path, wirePath: entry.wirePath });
+            restoringFiles.set(fileId, { fileId, path: entry.path, wirePath: entry.wirePath, size: entry.size });
         }
         if (restoringFiles.size)
           await this.ctx.state.setMeta?.('held-restore-paths', JSON.stringify([...restoringFiles.values()]));
@@ -1084,6 +1087,18 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
           'const children = candidates ?? (await (indexed ? fs.listChildren(parent) : inventoryChildren(fs, parent, path)));'
         )
       } else if (file.endsWith('/pullPlace.js')) {
+        code = replaceOnce(
+          code,
+          '            if (this.sequenceKnown)\n                await recordPull(tx, change);',
+          `            // The receipt ends this file's restore authority in the same
+            // durable transaction. Later offline deletion is a new local intent.
+            const restores = JSON.parse(await tx.getMeta?.('held-restore-paths') ?? '[]');
+            const pendingRestores = restores.filter(row => row.fileId !== change.file_id);
+            if (pendingRestores.length !== restores.length)
+              await tx.setMeta?.('held-restore-paths', pendingRestores.length ? JSON.stringify(pendingRestores) : null);
+            if (this.sequenceKnown)
+                await recordPull(tx, change);`
+        )
         code = replaceOnce(
           code,
           'this.lying = shared?.lying ?? new Set();',

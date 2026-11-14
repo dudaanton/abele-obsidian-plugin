@@ -23,6 +23,7 @@ import {
   requireExternalEnrollmentSafety,
 } from '@/sync/external/pluginSafety'
 import { WriteJournal } from '@/sync/writeJournal'
+import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 
 it(
   'resumes native whole-vault peers with disjoint edits and one stable conflict copy',
@@ -86,6 +87,20 @@ it(
     }),
   60000
 )
+it.each(['receipt', 'excluded', 'excluded-folder'] as const)(
+  'retires restore ownership at the %s boundary across restart',
+  (ownershipBoundary) =>
+    runExchange({
+      delivery: false,
+      held: true,
+      indexed: true,
+      ownershipBoundary,
+      ...(ownershipBoundary !== 'receipt'
+        ? { folderScan: 'after-retirement' as const, retirementRestart: true }
+        : {}),
+    }),
+  60000
+)
 it(
   'settles a restored identity deleted remotely during the rewound snapshot',
   () =>
@@ -111,6 +126,7 @@ async function runExchange({
   recoveryRestart,
   retirementRestart,
   remoteRetirement,
+  ownershipBoundary,
 }: {
   delivery: boolean
   bulk?: boolean
@@ -123,7 +139,10 @@ async function runExchange({
   recoveryRestart?: boolean
   retirementRestart?: boolean
   remoteRetirement?: boolean
+  ownershipBoundary?: 'receipt' | 'excluded' | 'excluded-folder'
 }) {
+  const excludingRestore =
+    ownershipBoundary === 'excluded' || ownershipBoundary === 'excluded-folder'
   let downloads = 0
   const transport: typeof fetch = (input, init) => {
     if ((init?.method ?? 'GET') === 'GET' && String(input).includes('/content')) downloads++
@@ -592,10 +611,61 @@ async function runExchange({
         )
       downloads = 0
       const ids = shown.map((one) => one.fileId)
+      if (ownershipBoundary === 'receipt') {
+        const durable = Reflect.get(hosts[0].host.live.get(hosts[0].id)!, 'options')
+          .state as MemoryStateStore
+        const transaction = IndexedDbStateStore.prototype.transaction
+        let receiptPath: string | undefined
+        let ownershipAtReceipt: unknown
+        const boundary = vi
+          .spyOn(IndexedDbStateStore.prototype, 'transaction')
+          .mockImplementation(async function (work) {
+            const result = await transaction.call(this, work)
+            if (!receiptPath) {
+              for (const id of ids) {
+                const entry = await durable.byFileId(id)
+                if (
+                  !entry ||
+                  !(await disk.stat(join(root, 'primary', entry.path)).catch(() => null))
+                )
+                  continue
+                receiptPath = entry.path
+                ownershipAtReceipt = JSON.parse(
+                  (await durable.getMeta('held-restore-paths')) ?? '[]'
+                )
+                engines[0].pause()
+                break
+              }
+            }
+            return result
+          })
+        const stopped = (error: unknown) => {
+          if (!(error instanceof Error) || error.message !== 'sync stopped') throw error
+        }
+        await engines[0].decideDeletes('restore', ids).catch(stopped)
+        if (!receiptPath) await sync(0).catch(stopped)
+        boundary.mockRestore()
+        expect(receiptPath).toBeTruthy()
+        await hosts[0].host.close()
+        await disk.unlink(join(root, 'primary', receiptPath!))
+        await refreshers[0](receiptPath!)
+        await restartPrimary()
+        await sync(0)
+        expect(await disk.stat(join(root, 'primary', receiptPath!)).catch(() => null)).toBeNull()
+        expect(ownershipAtReceipt).not.toEqual(
+          expect.arrayContaining([expect.objectContaining({ path: receiptPath })])
+        )
+        return
+      }
       if (retirementRestart) {
         await expect(engines[0].decideDeletes('restore', ids)).rejects.toThrow(
           'sample retired restore interruption'
         )
+        if (excludingRestore)
+          await disk.appendFile(
+            join(root, 'primary/.abele-sync-ignore'),
+            ownershipBoundary === 'excluded' ? 'Sample/held/0.md\n' : 'Sample/held\n'
+          )
         await restartPrimary()
       } else if (restart) {
         const durable = Reflect.get(hosts[0].host.live.get(hosts[0].id)!, 'options')
@@ -619,6 +689,29 @@ async function runExchange({
         await restartPrimary()
       } else await engines[0].decideDeletes('restore', ids)
       await cycle()
+      if (excludingRestore) {
+        const currentState = Reflect.get(engines[0], 'opts').state as MemoryStateStore
+        expect(await currentState.getMeta('held-restore-paths')).toBeNull()
+        expect(await disk.stat(join(root, 'primary/Sample/held/0.md')).catch(() => null)).toBeNull()
+        if (ownershipBoundary === 'excluded')
+          expect(await disk.readdir(join(root, 'primary/Sample/held'))).toHaveLength(59)
+        else expect(await disk.stat(join(root, 'primary/Sample/held')).catch(() => null)).toBeNull()
+        await disk.mkdir(join(root, 'primary/Sample/independent'))
+        const independent = await apps[0].vault.createFolder('Sample/independent')
+        apps[0].emit('vault', 'create', independent)
+        await cycle()
+        console.debug('[sample exclusion recovery]', {
+          reconciliation: await currentState.getMeta('content-reconciliation'),
+          directories: await currentState.getMeta('v2-directories'),
+          state: engines[0].status,
+        })
+        expect(JSON.parse((await currentState.getMeta('v2-directories'))!).directories).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ path: 'Sample/independent', kind: 'directory' }),
+          ])
+        )
+        return
+      }
       await classifyAfterRestore?.()
       if (folderScan === 'after-restore') expect(classifiedAfterRestore).toBe(true)
       if (folderScan === 'after-retirement' || folderScan === 'after-retirement-delete')
