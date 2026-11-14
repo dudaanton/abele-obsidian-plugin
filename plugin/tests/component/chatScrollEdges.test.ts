@@ -42,6 +42,54 @@ function open(height = 4000) {
 }
 
 describe('bounded chat window edges', () => {
+  it.each([
+    ['touch', -1],
+    ['touch', 1],
+    ['wheel', -1],
+    ['wheel', 1],
+  ] as const)(
+    'retries a deferred %s prefetch before the next native step reaches edge %s',
+    async (input, direction) => {
+      const { scroll, box } = open()
+      const touch = (type: string, clientY: number) => {
+        const event = new Event(type)
+        Object.defineProperty(event, 'touches', { value: [{ clientY }] })
+        return event
+      }
+      // A previous reveal still owns the page transaction when input asks for
+      // its successor. There is time to mount it, but not to wait for 200px.
+      box.scrollTop = direction < 0 ? 100 : 3100
+      scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: direction }))
+      const edge = () =>
+        direction < 0
+          ? scroll.visibleMessages.value[0]?.id
+          : scroll.visibleMessages.value.at(-1)?.id
+      const before = edge()
+      box.scrollTop = direction < 0 ? 950 : 2250
+      if (input === 'touch') {
+        scroll.fingerOn(touch('touchstart', 100))
+        scroll.fingerOn(touch('touchmove', 100 - direction * 300))
+      } else scroll.readerTakesOver(new WheelEvent('wheel', { deltaY: direction * 300 }))
+      // The native default action runs while Vue settles the previous page.
+      box.scrollTop += direction * 300
+      await advance(80)
+      if (direction < 0) {
+        // Model the added range only when the next page actually mounted. Three
+        // coalesced native steps must retain all their travel, without another
+        // event to rescue a prefetch that was dropped at the transaction boundary.
+        if (edge() !== before) box.scrollTop += 3000
+        let travelled = 0
+        for (let step = 0; step < 3; step++) {
+          const movement = Math.min(box.scrollTop, 300)
+          box.scrollTop -= movement
+          travelled += movement
+        }
+        expect(travelled).toBe(900)
+      }
+      expect(edge()).not.toBe(before)
+    }
+  )
+
   it('captures the anchor once for a logical wheel page', async () => {
     const { scroll, box } = open()
     const query = vi.spyOn(box, 'querySelectorAll')

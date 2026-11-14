@@ -312,7 +312,7 @@ export function useChatScroll(options: ChatScrollOptions) {
       fingerDown || wheelScrolling
         ? Math.max(LOAD_OLDER_THRESHOLD_PX, el?.clientHeight ?? 0)
         : LOAD_OLDER_THRESHOLD_PX
-    if (up && el && el.scrollTop < lead + ahead) loadOlder()
+    if (up && el && el.scrollTop < lead + ahead) loadOlder(undefined, false, lead + ahead)
     else if (down && el) {
       if (
         !hasNewer.value &&
@@ -320,7 +320,7 @@ export function useChatScroll(options: ChatScrollOptions) {
           el.scrollHeight - el.scrollTop - el.clientHeight < BOTTOM_EPSILON_PX)
       )
         shouldAutoScroll = true
-      if (el.scrollHeight - el.scrollTop - el.clientHeight < lead + ahead) loadNewer()
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < lead + ahead) loadNewer(lead + ahead)
     } else if (event?.type === 'touchstart') checkEdges()
   }
 
@@ -366,14 +366,19 @@ export function useChatScroll(options: ChatScrollOptions) {
    * is when layout has settled, and there is nothing to correct between them.
    */
   let revealing = false
-  let deferredEdge: 'older' | 'newer' | undefined
-  const refusedEdge = (direction: 'older' | 'newer') => {
-    deferredEdge = direction
-    console.debug('[chat-scroll] edge load deferred', { direction, revealing })
+  let deferredEdge: { direction: 'older' | 'newer'; lead: number } | undefined
+  const refusedEdge = (direction: 'older' | 'newer', lead: number) => {
+    // A prefetch is still needed when the current page finishes. Retrying it
+    // with the ordinary 200px threshold discards the earlier input's headroom.
+    deferredEdge = {
+      direction,
+      lead: Math.max(lead, deferredEdge?.direction === direction ? deferredEdge.lead : 0),
+    }
+    console.debug('[chat-scroll] edge load deferred', { ...deferredEdge, revealing })
   }
   // A reveal can consume the only scroll event at an edge. Measure again once its
   // layout settles, even if the browser has no further movement to report.
-  const checkEdges = (direction?: 'older' | 'newer') => {
+  const checkEdges = (direction?: 'older' | 'newer', lead = LOAD_OLDER_THRESHOLD_PX) => {
     const el = messagesContainer.value
     if (readingFromMarker) return
     const intent = readerDirection < 0 ? 'older' : readerDirection > 0 ? 'newer' : undefined
@@ -389,11 +394,11 @@ export function useChatScroll(options: ChatScrollOptions) {
     // Folded pages can touch both edges. Continue in the requested direction so
     // a bounded window does not alternate between the same two short pages.
     if (direction === 'newer') {
-      if (el.scrollHeight - el.scrollTop - el.clientHeight < LOAD_OLDER_THRESHOLD_PX) loadNewer()
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < lead) loadNewer(lead)
       return
     }
     if (direction === 'older') {
-      if (el.scrollTop < LOAD_OLDER_THRESHOLD_PX) loadOlder()
+      if (el.scrollTop < lead) loadOlder(undefined, false, lead)
       return
     }
     if (el.scrollTop < LOAD_OLDER_THRESHOLD_PX) loadOlder()
@@ -422,10 +427,10 @@ export function useChatScroll(options: ChatScrollOptions) {
     }
     if (readingFromMarker) return
     if (retry || direction === 'newer' || (!automatic && !anchors.anchor))
-      checkEdges(retry ?? direction)
+      checkEdges(retry?.direction ?? direction, retry?.lead)
     if (direction === 'older') revealUntilScrollable()
   }
-  const loadOlder = (event?: Event, automatic = false) => {
+  const loadOlder = (event?: Event, automatic = false, lead = LOAD_OLDER_THRESHOLD_PX) => {
     const el = messagesContainer.value
     if (event?.type === 'click') {
       shouldAutoScroll = false
@@ -443,8 +448,14 @@ export function useChatScroll(options: ChatScrollOptions) {
     }
     // One page at a time: the next is asked for once this one is on the page and measured.
     if (!el || !hasOlder.value) return
-    if (revealing) return refusedEdge('older')
+    if (revealing) return refusedEdge('older', lead)
 
+    console.debug('[chat-scroll] edge load started', {
+      direction: 'older',
+      lead,
+      scrollTop: el.scrollTop,
+      automatic,
+    })
     const wasFollowing = shouldAutoScroll
     if (automatic && !expandOlder()) return
     revealing = true
@@ -460,10 +471,15 @@ export function useChatScroll(options: ChatScrollOptions) {
     })
   }
 
-  const loadNewer = () => {
+  const loadNewer = (lead = LOAD_OLDER_THRESHOLD_PX) => {
     const el = messagesContainer.value
     if (!el || !hasNewer.value) return
-    if (revealing) return refusedEdge('newer')
+    if (revealing) return refusedEdge('newer', lead)
+    console.debug('[chat-scroll] edge load started', {
+      direction: 'newer',
+      lead,
+      scrollTop: el.scrollTop,
+    })
     revealing = true
     anchors.releaseReader()
     beginPageChange()
@@ -693,8 +709,9 @@ export function useChatScroll(options: ChatScrollOptions) {
       fingerDown || wheelScrolling
         ? Math.max(LOAD_OLDER_THRESHOLD_PX, el.clientHeight)
         : LOAD_OLDER_THRESHOLD_PX
-    if (moved < 0 && readerDirection <= 0 && el.scrollTop < ahead) loadOlder()
-    else if (moved > 0 && readerDirection >= 0 && bottomGap < ahead) loadNewer()
+    if (moved < 0 && readerDirection <= 0 && el.scrollTop < ahead)
+      loadOlder(undefined, false, ahead)
+    else if (moved > 0 && readerDirection >= 0 && bottomGap < ahead) loadNewer(ahead)
     // Host/accessibility scrolls can arrive without an input event or prior position.
     else if (!moved && !readerDirection && !fingerDown) checkEdges()
     scheduleReveal(el)
