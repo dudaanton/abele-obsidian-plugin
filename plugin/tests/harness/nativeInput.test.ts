@@ -229,6 +229,84 @@ it('rejects a probe without an explicit input port instead of silently running u
   expect(() => nativeInputProbe('(async () => {})()')).toThrow('no explicit CDP port')
 })
 
+it.each([false, true])(
+  'holds one wheel sweep through receipt waits and releases it on exit (failure: %s)',
+  async (fail) => {
+    const lock = join(dir, 'wheel-sweep.lock')
+    const events: string[] = []
+    const source = `(async () => {
+      const cdp = (method, params) => debuggerApi.sendCommand(method, params)
+      const inputGesture = async run => run()
+      await between()
+      try {
+        await inputGesture(async () => {
+          for (let step = 0; step < 3; step++) {
+            await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel' })
+            held()
+            await Promise.resolve()
+            if (fail) throw new Error('sweep interrupted')
+          }
+        })
+      } finally { await between() }
+    })()`
+    const debuggerApi = {
+      sendCommand: async () => {
+        expect(existsSync(lock)).toBe(true)
+        events.push('wheel')
+      },
+    }
+    const nodeRequire = Module.createRequire(import.meta.url)
+    const requireProbe = (name: string) =>
+      name === '@electron/remote'
+        ? { getCurrentWebContents: () => ({ debugger: debuggerApi }) }
+        : nodeRequire(name)
+    const between = () => withNativeInput(() => events.push('between'), lock, 0)
+    const held = () => expect(existsSync(lock)).toBe(true)
+    const execute = new Function(
+      'require',
+      'debuggerApi',
+      'between',
+      'held',
+      'fail',
+      `return ${nativeInputProbe(source, lock)}`
+    )
+    const execution = execute(requireProbe, debuggerApi, between, held, fail)
+    if (fail) await expect(execution).rejects.toThrow('sweep interrupted')
+    else await execution
+    expect(events).toEqual(['between', ...Array(fail ? 1 : 3).fill('wheel'), 'between'])
+    expect(existsSync(lock)).toBe(false)
+    expect(readdirSync(lock + '.queue')).toEqual([])
+  }
+)
+
+it('locks nested control probes and direct synthesized input through the same port', async () => {
+  const lock = join(dir, 'nested-probe.lock')
+  const events: string[] = []
+  const source = `(async () => {
+    const cdp = (method, params) => debuggerApi.sendCommand(method, params)
+    await (async () => {
+      const cdp = (method, params) => debuggerApi.sendCommand(method, params)
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel' })
+      await debuggerApi.sendCommand('Input.synthesizeScrollGesture', {})
+    })()
+  })()`
+  const debuggerApi = {
+    sendCommand: async (method: string) => {
+      expect(existsSync(lock)).toBe(true)
+      events.push(method)
+    },
+  }
+  const nodeRequire = Module.createRequire(import.meta.url)
+  const requireProbe = (name: string) =>
+    name === '@electron/remote'
+      ? { getCurrentWebContents: () => ({ debugger: debuggerApi }) }
+      : nodeRequire(name)
+  const execute = new Function('require', 'debuggerApi', `return ${nativeInputProbe(source, lock)}`)
+  await execute(requireProbe, debuggerApi)
+  expect(events).toEqual(['Input.dispatchMouseEvent', 'Input.synthesizeScrollGesture'])
+  expect(existsSync(lock)).toBe(false)
+})
+
 it('ends an interrupted gesture before the probe detaches its debugger', async () => {
   const lock = join(dir, 'probe.lock')
   const events: string[] = []

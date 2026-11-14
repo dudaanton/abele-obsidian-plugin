@@ -65,6 +65,10 @@ export function wideScript() {
     begin('wide compact upward wheel')
     for (let pass = 0; pass < 3; pass++) {
     for (const delta of [-40, 40]) {
+    // One continuous wheel sweep owns the native lane through renderer receipt
+    // and scrolling. Requeueing each 40px step interleaves other windows' gestures
+    // hundreds of times; setup and captures still leave the lane free.
+    await inputGesture(async () => {
     for (let n = 0; n < 250; n++) {
       const visible = [...el.querySelectorAll('.abele-chat-msg, .abele-chat-run.is-collapsed')]
         .filter(e => { const r = e.getBoundingClientRect(); return r.top >= bounds.top + 80 && r.bottom <= bounds.bottom - 80 })
@@ -85,6 +89,7 @@ export function wideScript() {
       }
       report.wideSteps.push({ pass, delta, step: n })
     }
+    })
     }
     }
     await capture('wide-compact-multiple-passes')

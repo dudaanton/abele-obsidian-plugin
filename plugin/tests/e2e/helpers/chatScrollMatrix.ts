@@ -272,6 +272,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
   const debuggerApi = wc.debugger
   const attached = debuggerApi.isAttached()
   const cdp = (method, params) => debuggerApi.sendCommand(method, params)
+  const inputGesture = async run => run()
   const capture = async phase => {
     if (size !== 'long') return
     const image = await wc.capturePage()
@@ -286,7 +287,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
   // Do not read layout in the logging hook: that would change the race being observed.
   const realDebug = console.debug
   console.debug = (...args) => {
-    if (phone && size === 'long' && state === 'running-tool' && row?.move === 'to top' &&
+    if (phone && size === 'long' && row?.move === 'to top' &&
       typeof args[0] === 'string' && args[0].startsWith('[chat-scroll]'))
       trace.push({ at: performance.now(), gestureIndex, product: args })
     realDebug.apply(console, args)
@@ -374,7 +375,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
       const viewport = el.getBoundingClientRect()
       trace.push({ at: performance.now(), frameAt: now, gestureActive, move: row.move, scrollTop: el.scrollTop,
         scrollHeight: el.scrollHeight, direction, anchorOffset: previousAnchor?.isConnected ? offset(previousAnchor) : null,
-        ...(phone && size === 'long' && state === 'running-tool' && row.move === 'to top' ? {
+        ...(phone && size === 'long' && row.move === 'to top' ? {
           gestureIndex, fixedAnchorId: gestureAnchor?.dataset.messageId,
           fixedAnchorOffset: gestureAnchor?.isConnected ? offset(gestureAnchor) : null,
           firstId: el.querySelector('[data-message-id]')?.dataset.messageId,
@@ -505,9 +506,9 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
     const globalBoundary = dy < 0 ? !!item('m0') && el.scrollTop < 1 :
       coveredInitialEnd || !!boundaryGeometry || (!!item(session.messages.value.at(-1)?.id) && el.scrollHeight - el.scrollTop - el.clientHeight < 2)
     // Inspect candidate row/header heights outside the active gesture, only for
-    // the failing focused state. This distinguishes actual layout increments
+    // long touch histories. This distinguishes actual layout increments
     // from the native touch threshold without adding per-frame subtree walks.
-    if (phone && size === 'long' && state === 'running-tool' && row.move === 'to top') {
+    if (phone && size === 'long' && row.move === 'to top') {
       trace.push({ at: performance.now(), gestureIndex, phase: 'settled',
         moved, requested: Math.abs(dy), lost: Math.abs(dy) - moved,
         elements: [...el.querySelectorAll('.abele-ai-chat__older, [data-message-id], [data-message-id] *')]
@@ -592,7 +593,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
     report.initialPages = box().scrollHeight / box().clientHeight
     // Use the same travel and speed on an ordinary box at the actual chat geometry.
     // This records browser touch slop separately from any application correction.
-    report.nativeControl = JSON.parse(await (${inputProbe(phone)}))
+    report.nativeControl = JSON.parse(await inputGesture(async () => (${inputProbe(phone)})))
     if (phone) await cdp('Emulation.setTouchEmulationEnabled', { enabled: true })
     const fake = 'https://sample-scroll-provider.invalid/v1'
     session.resolveModel = () => ({ id: 'sample', name: 'Sample', baseUrl: fake, apiKey: 'none', contextWindow: 100000, maxTokens: 1000 })

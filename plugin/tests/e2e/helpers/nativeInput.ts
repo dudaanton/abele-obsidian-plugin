@@ -106,6 +106,7 @@ type SendInput = (method: string, params: Record<string, unknown>) => Promise<un
 function createInputDispatch(send: SendInput, acquire: () => Promise<() => void>) {
   let release: (() => void) | undefined
   let ending: [string, Record<string, unknown>] | undefined
+  let gestures = 0
   const close = async () => {
     try {
       if (ending) await send(...ending)
@@ -132,13 +133,22 @@ function createInputDispatch(send: SendInput, acquire: () => Promise<() => void>
       await close()
       throw error
     } finally {
-      if (!ending) {
+      if (!ending && !gestures) {
         release?.()
         release = undefined
       }
     }
   }
-  return { dispatch, close }
+  const gesture = async <T>(run: () => Promise<T>): Promise<T> => {
+    if (!release) release = await acquire()
+    gestures++
+    try {
+      return await run()
+    } finally {
+      if (!--gestures) await close()
+    }
+  }
+  return { dispatch, close, gesture }
 }
 
 /** Add gesture-scoped locking to a renderer probe's explicit CDP port. */
@@ -146,7 +156,12 @@ export function nativeInputProbe(source: string, lock = INPUT_LOCK): string {
   const port = 'const cdp = (method, params) => debuggerApi.sendCommand(method, params)'
   if (!source.includes(port)) throw new Error('Native input probe has no explicit CDP port')
   const wrapped = source
-    .replace(port, 'const cdp = nativeDispatch.dispatch')
+    .replaceAll(port, 'const cdp = nativeDispatch.dispatch')
+    .replaceAll('debuggerApi.sendCommand(', 'nativeDispatch.dispatch(')
+    .replace(
+      'const inputGesture = async run => run()',
+      'const inputGesture = nativeDispatch.gesture'
+    )
     .replaceAll('debuggerApi.detach()', '(await nativeDispatch.close(), debuggerApi.detach())')
   return `(async () => {
     const debuggerApiPort = require('@electron/remote').getCurrentWebContents().debugger
