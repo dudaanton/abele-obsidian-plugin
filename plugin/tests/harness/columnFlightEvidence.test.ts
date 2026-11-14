@@ -73,7 +73,7 @@ it('keeps the first transport failure and saves its buffer after recovery before
   const saved = JSON.parse(readFileSync(join(dir, artifact), 'utf8'))
   expect(saved.failure.test).toBe('first case')
   expect(saved.buffer).toEqual(buffer)
-  expect(saved.failure.liveness.status).toContain('running')
+  expect(saved.failure.liveness).toEqual({ status: 'answered', appRunning: true })
   expect(existsSync(join(dir, 'pending.json'))).toBe(false)
 })
 
@@ -121,19 +121,44 @@ it('records unavailable native status without obscuring the original failed case
   ).not.toThrow()
   const saved = JSON.parse(readFileSync(join(dir, 'pending.json'), 'utf8'))
   expect(saved.test).toBe('failed case')
-  expect(saved.liveness.status).toContain('native status unavailable')
+  expect(saved.liveness).toEqual({ status: 'unavailable' })
   expect(phone.driver).toHaveBeenCalledWith(['status'], 5000)
 })
 
-it('retains a maximum-size escaped native status in the pending marker', () => {
+it('discards malformed status and allowlists native liveness without copying free text', () => {
+  phone.driver.mockReturnValue(
+    JSON.stringify({
+      app: 'running',
+      webContentRunning: true,
+      device: 'sample-device',
+      path: '/sample/private',
+      message: 'sample secret',
+    })
+  )
+  noteColumnPhoneFailure('columns.e2e.test.ts', 'case', ['phone driver failed: reply lost'])
+  const pending = JSON.parse(readFileSync(join(dir, 'pending.json'), 'utf8'))
+  expect(pending.liveness).toEqual({
+    status: 'answered',
+    appRunning: true,
+    webContentRunning: true,
+  })
+  // Old workers may have left a raw native response in the pending marker.
+  pending.liveness = { status: JSON.stringify({ app: 'running', message: 'sample secret' }) }
+  writeFileSync(join(dir, 'pending.json'), JSON.stringify(pending))
+  expect(saveColumnFlightAfterRecovery()).toBe(true)
+  const saved = readFileSync(
+    join(dir, readdirSync(dir).find((file) => file.startsWith('flight-'))!),
+    'utf8'
+  )
+  expect(saved).not.toContain('sample secret')
+  expect(JSON.parse(saved).failure.liveness).toEqual({ status: 'answered', appRunning: true })
+})
+
+it('does not retain malformed or oversized native responses', () => {
   phone.driver.mockReturnValue('\\'.repeat(8192))
   noteColumnPhoneFailure('columns.e2e.test.ts', 'case', ['phone driver failed: reply lost'])
-  expect(readFileSync(join(dir, 'pending.json'), 'utf8').length).toBeGreaterThan(16 * 1024)
-  expect(saveColumnFlightAfterRecovery()).toBe(true)
-  const saved = JSON.parse(
-    readFileSync(join(dir, readdirSync(dir).find((file) => file.startsWith('flight-'))!), 'utf8')
-  )
-  expect(saved.failure.liveness.status).toHaveLength(8192)
+  const pending = JSON.parse(readFileSync(join(dir, 'pending.json'), 'utf8'))
+  expect(pending.liveness).toEqual({ status: 'answered' })
 })
 
 it('bounds oversized recovered storage and saves an explicit raw tail without parsing it', () => {

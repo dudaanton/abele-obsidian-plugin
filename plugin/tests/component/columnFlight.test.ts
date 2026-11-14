@@ -108,13 +108,19 @@ it('persists the exact nested redraw boundary before it can block the page', () 
 
 it('does not install view instrumentation, observers or timers when disabled', () => {
   const extension = vi.fn()
+  const registration = vi.fn()
   const timer = vi.spyOn(window, 'setInterval')
   const resize = vi.fn()
   vi.stubGlobal('ResizeObserver', resize)
   registerColumnFlight({
-    registerDomEvent: vi.fn(),
+    registerDomEvent: registration,
     registerEditorExtension: extension,
   } as unknown as Plugin)
+  // One passive activation listener is retained so the harness need not reload the page.
+  expect(registration).toHaveBeenCalledExactlyOnceWith(window, 'storage', expect.any(Function))
+  const storage = vi.spyOn(Storage.prototype, 'getItem')
+  registration.mock.calls[0][2](new StorageEvent('storage', { key: 'sample-unrelated' }))
+  expect(storage).not.toHaveBeenCalled()
   expect(columnFlight).toBeUndefined()
   expect(extension).not.toHaveBeenCalled()
   expect(resize).not.toHaveBeenCalled()

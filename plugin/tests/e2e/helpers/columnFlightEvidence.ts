@@ -20,6 +20,45 @@ const pendingPath = () => join(directory(), 'pending.json')
 const transportFailure =
   /phone (?:gave no answer|driver failed|driver transport)|phone host transport|phone.*(?:eval|transport).*tim(?:e|ed)[ -]?out/i
 
+type Liveness = {
+  status: 'answered' | 'unavailable'
+  appRunning?: boolean
+  webContentRunning?: boolean
+}
+
+/** Native status is advisory, never evidence of JavaScript responsiveness or CPU use. */
+function liveness(value: unknown): Liveness {
+  const result: Liveness = { status: 'unavailable' }
+  if (!value || typeof value !== 'object') return result
+  const source = value as Record<string, unknown>
+  if (source.status === 'answered') result.status = 'answered'
+  for (const key of ['appRunning', 'webContentRunning'] as const) {
+    if (typeof source[key] === 'boolean') result[key] = source[key]
+  }
+  // Migrate pending markers written before native status was allowlisted.
+  if (typeof source.status === 'string' && source.status.startsWith('{')) {
+    return nativeLiveness(source.status)
+  }
+  return result
+}
+
+function nativeLiveness(raw: string): Liveness {
+  const result: Liveness = { status: 'answered' }
+  try {
+    if (raw.length > 32 * 1024) return result
+    const source = JSON.parse(raw) as Record<string, unknown> | null
+    if (!source || typeof source !== 'object') return result
+    for (const key of ['appRunning', 'webContentRunning'] as const) {
+      if (typeof source[key] === 'boolean') result[key] = source[key]
+    }
+    if (source.app === 'running') result.appRunning = true
+    if (source.app === 'stopped' || source.app === 'crashed') result.appRunning = false
+  } catch {
+    // An answered probe can still contain no usable liveness fields.
+  }
+  return result
+}
+
 /** Diagnostics only: never turn an assertion into a pass or fail a test on an artifact error. */
 export function noteColumnPhoneFailure(file: string, test: string, errors: string[]): void {
   if (
@@ -38,16 +77,13 @@ export function noteColumnPhoneFailure(file: string, test: string, errors: strin
       file: file.split('/').pop(),
       test: test.slice(0, 500),
       errors: errors.slice(0, 3).map((error) => error.slice(0, 1500)),
-      liveness: {
-        status: 'unavailable',
-        limitation: 'Driver status is not a JavaScript responsiveness or CPU sample.',
-      },
+      liveness: { status: 'unavailable' } as Liveness,
     }
     writeFileSync(path, JSON.stringify(failure), { flag: 'wx' })
     try {
-      failure.liveness.status = driver(['status'], 5000).slice(0, 8192)
-    } catch (error) {
-      failure.liveness.status = String(error).slice(0, 8192)
+      failure.liveness = nativeLiveness(driver(['status'], 5000))
+    } catch {
+      failure.liveness = { status: 'unavailable' }
     }
     const temporary = path + '.' + randomUUID() + '.tmp'
     try {
@@ -69,6 +105,10 @@ export function saveColumnFlightAfterRecovery(pendingOnly = false): boolean {
     const pending = existsSync(pendingPath())
       ? (JSON.parse(readFileSync(pendingPath(), 'utf8').slice(0, 128 * 1024)) as unknown)
       : undefined
+    if (pending && typeof pending === 'object') {
+      const failure = pending as Record<string, unknown>
+      failure.liveness = liveness(failure.liveness)
+    }
     const raw = phoneEval(
       `(() => {
       if (${pending !== undefined}) {

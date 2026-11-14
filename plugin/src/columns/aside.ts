@@ -90,18 +90,25 @@ export function initializeAsides(
   let lastResize = 0
   const resize = new Observer(() => {
     columnFlight?.record('aside.resize.in')
-    if (gone || stopped) return
+    if (gone) return
     const narrow = parent.clientWidth <= 500
+    if (stopped) {
+      // Safety mode never folds automatically. Expansion is idempotent and cannot
+      // alternate with narrow deliveries, even after an explicit title click.
+      if (!narrow) update(false)
+      return
+    }
     if (narrow === lastNarrow) return
     const now = Date.now()
     if (now - lastResize > 1000) transitions = 0
     lastResize = now
     // Bound alternating layouts as well as same-width feedback. Do not automatically
-    // rearm a runaway observer; a fresh render gets a fresh budget. Clicks still work.
+    // rearm automatic folding; safety mode only reveals content. Clicks still work.
     if (++transitions > 16) {
       columnFlight?.record('aside.resize.stop')
       stopped = true
       resize.disconnect()
+      resize.observe(parent)
       // A stopped observer must never strand hidden content behind an inactive wide-pane title.
       update(false)
       console.warn('Abele: stopped repeated column aside layout changes')

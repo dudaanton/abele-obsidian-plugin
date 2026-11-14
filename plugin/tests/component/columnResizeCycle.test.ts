@@ -10,13 +10,14 @@ afterEach(() => {
 function fixture() {
   let deliver!: () => void
   const disconnect = vi.fn()
+  const observe = vi.fn()
   vi.stubGlobal(
     'ResizeObserver',
     class {
       constructor(callback: () => void) {
         deliver = callback
       }
-      observe() {}
+      observe = observe
       disconnect = disconnect
     }
   )
@@ -40,6 +41,7 @@ function fixture() {
     aside,
     deliver: () => deliver(),
     disconnect,
+    observe,
     mutations,
     width: (value: number) => {
       width = value
@@ -82,6 +84,7 @@ it('cuts off resize feedback that alternates across the layout breakpoint', () =
       f.deliver()
     }
     expect(f.disconnect).toHaveBeenCalledOnce()
+    expect(f.observe).toHaveBeenCalledTimes(2)
     expect(warning).toHaveBeenCalledOnce()
     expect(f.aside.dataset.abeleAsideCollapsed).toBe('false')
     f.mutations.takeRecords()
@@ -98,6 +101,19 @@ it('cuts off resize feedback that alternates across the layout breakpoint', () =
     expect(title.getAttribute('aria-expanded')).toBe('true')
     title.click()
     expect(f.aside.dataset.abeleAsideCollapsed).toBe('true')
+    f.width(800)
+    f.deliver()
+    expect(f.aside.dataset.abeleAsideCollapsed).toBe('false')
+    f.width(393)
+    f.deliver()
+    expect(f.aside.dataset.abeleAsideCollapsed).toBe('false')
+    f.mutations.takeRecords()
+    for (let delivery = 0; delivery < 100; delivery++) {
+      f.width(delivery % 2 ? 393 : 800)
+      f.deliver()
+    }
+    expect(f.mutations.takeRecords()).toHaveLength(0)
+    expect(warning).toHaveBeenCalledOnce()
   } finally {
     f.destroy()
   }
