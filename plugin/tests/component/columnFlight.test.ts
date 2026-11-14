@@ -313,6 +313,9 @@ it('records real column rebuild and widget lifecycles without changing document 
     view.dispatch({ changes: { from: 0, to: text.length, insert: next } })
     expect(view.state.doc.toString()).toBe(next)
     expect(view.contentDOM.querySelectorAll('.abele-columns-editor-widget')).toHaveLength(1)
+    view.setState(view.state)
+    view.dispatch({ selection: { anchor: next.length } })
+    expect(Object.hasOwn((view as unknown as { docView: object }).docView, 'update')).toBe(true)
   } finally {
     view.destroy()
     unload()
@@ -331,6 +334,9 @@ it('records real column rebuild and widget lifecycles without changing document 
       'view.plugin.create',
       'view.plugin.update',
       'dispatch.in',
+      'doc.update.in',
+      'doc.redraw.in',
+      'doc.selection.out',
     ])
   )
 })

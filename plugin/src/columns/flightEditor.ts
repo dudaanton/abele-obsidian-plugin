@@ -75,6 +75,7 @@ export function watchColumnFlightView(
   const cleanups: (() => void)[] = []
   const target = view as unknown as Record<string, unknown>
   const requests = new WeakMap<object, object>()
+  const nestedTargets = new WeakSet<object>()
   let updateDepth = 0
   let stopped = false
   const requestProxy = (request: object) => {
@@ -108,6 +109,7 @@ export function watchColumnFlightView(
     if (typeof original !== 'function') return
     const descriptor = Object.getOwnPropertyDescriptor(object, key)
     const wrapped = function (this: unknown, ...args: unknown[]) {
+      if (object === target) attachInternals()
       const insideUpdate = updateDepth > 0 || Number(target.updateState ?? 0) > 0
       const detail =
         key === 'requestMeasure' && insideUpdate
@@ -128,6 +130,7 @@ export function watchColumnFlightView(
           args = [requestProxy(request), ...args.slice(1)]
         return Reflect.apply(original, this, args)
       } finally {
+        if (object === target && key === 'setState') attachInternals()
         if (key === 'update') updateDepth--
         recorder.view(`${site}.out`, view)
         if (boundary || insideUpdate) recorder.flush()
@@ -154,21 +157,28 @@ export function watchColumnFlightView(
   patch(target, 'dispatch', 'dispatch', true)
   patch(target, 'requestMeasure', 'measure.request')
   patch(target, 'measure', 'measure', true)
+  patch(target, 'setState', 'view.set-state', true)
   patch(target, 'updatePlugins', 'view.plugins', true)
   patch(target, 'updateAttrs', 'view.attrs', true)
   const nested = (key: string, methods: [string, string][]) => {
     const object = target[key]
-    if (!object || typeof object !== 'object') return
+    if (!object || typeof object !== 'object' || nestedTargets.has(object)) return
+    nestedTargets.add(object)
     for (const [method, site] of methods)
       patch(object as Record<string, unknown>, method, site, true)
   }
-  nested('inputState', [['update', 'input.update']])
-  nested('docView', [
-    ['update', 'doc.update'],
-    ['updateDeco', 'doc.decorations'],
-    ['updateInner', 'doc.redraw'],
-    ['updateSelection', 'doc.selection'],
-  ])
+  function attachInternals() {
+    if (stopped) return
+    // ViewPlugin constructors precede the document view; setState replaces it later too.
+    nested('inputState', [['update', 'input.update']])
+    nested('docView', [
+      ['update', 'doc.update'],
+      ['updateDeco', 'doc.decorations'],
+      ['updateInner', 'doc.redraw'],
+      ['updateSelection', 'doc.selection'],
+    ])
+  }
+  attachInternals()
   const win = view.dom.ownerDocument.defaultView
   if (win?.ResizeObserver) {
     const resize = new win.ResizeObserver(() => {
