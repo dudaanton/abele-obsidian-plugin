@@ -13,6 +13,8 @@
     @input.capture="onInput"
     @change.capture="onChange"
     @pointerdown="pointerDown"
+    @pointerup="finishNativeRange"
+    @pointercancel="touchCancel"
     @keydown="allowNativeRange"
     @touchstart="touchStart"
     @touchmove="touchMove"
@@ -29,7 +31,7 @@ import { registerTestComponent, testComponentEmit } from '@/testing/componentAcc
  * drag is its own: `data-ignore-swipe` is what Obsidian's own sliders carry so that its swipe
  * for the side panels leaves them alone — without it, dragging the thumb opened a side panel.
  */
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { setTooltip } from 'obsidian'
 import './designKit.css'
 
@@ -60,6 +62,7 @@ let trackTouch: { x: number; y: number; moved: boolean } | null = null
 let pointerClassified = false
 let suppressNativeRange = false
 let suppressedValue = 0
+let suppressionTimer: { win: Window; id: number } | undefined
 
 const track = () => {
   const input = el.value
@@ -70,7 +73,7 @@ const track = () => {
 
 const beginTouch = (point: { clientX: number; clientY: number }) => {
   trackTouch = null
-  suppressNativeRange = false
+  allowNativeRange()
   const { left, width, thumb } = track()
   const ratio = (Number(el.value.value) - props.min) / (props.max - props.min || 1)
   if (Math.abs(point.clientX - (left + ratio * width)) <= thumb / 2) {
@@ -84,8 +87,22 @@ const beginTouch = (point: { clientX: number; clientY: number }) => {
 }
 
 const allowNativeRange = () => {
+  if (suppressionTimer) suppressionTimer.win.clearTimeout(suppressionTimer.id)
+  suppressionTimer = undefined
   suppressNativeRange = false
 }
+
+const finishNativeRange = () => {
+  if (!suppressNativeRange) return
+  if (suppressionTimer) suppressionTimer.win.clearTimeout(suppressionTimer.id)
+  const win = el.value?.ownerDocument.defaultView
+  if (!win) return allowNativeRange()
+  // Native input/change can trail the ending event in the same task. Retire
+  // this gesture on the next turn so a later accessibility edit needs no down.
+  suppressionTimer = { win, id: win.setTimeout(allowNativeRange, 0) }
+}
+
+onUnmounted(allowNativeRange)
 
 const pointerDown = (event: PointerEvent) => {
   if (event.pointerType === 'touch' && event.isPrimary === false) return
@@ -127,6 +144,7 @@ const touchMove = (event: TouchEvent) => {
 const touchCancel = () => {
   trackTouch = null
   pointerClassified = false
+  finishNativeRange()
   if (props.thumbDragOnly) el.value?.removeAttribute('data-ignore-swipe')
 }
 
@@ -155,8 +173,8 @@ const fill = (value: number) => {
 
 const ignoreTrackInput = (e: Event) => {
   if (!props.thumbDragOnly || !suppressNativeRange) return false
-  // Keep the guard after touchend/cancel: the native range's final change can be
-  // delivered later. The next pointer or keyboard action starts a fresh edit.
+  // Include the terminating task's native events, then let accessibility start
+  // a fresh edit without requiring a pointer or keyboard event first.
   e.stopImmediatePropagation()
   el.value.value = String(suppressedValue)
   fill(suppressedValue)

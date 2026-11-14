@@ -1,6 +1,68 @@
 import { expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import Slider from '@/components/obsidian/Slider.vue'
+import { useFakeClock } from '../helpers/fakeClock'
+
+const advance = useFakeClock()
+
+it.each(['touchend', 'touchcancel', 'pointerup', 'pointercancel'])(
+  'accepts an accessibility adjustment after a track swipe finishes with %s',
+  async (ending) => {
+    const view = mount(Slider, { props: { modelValue: 400, max: 1000, thumbDragOnly: true } })
+    try {
+      const input = view.element as HTMLInputElement
+      vi.spyOn(input, 'getBoundingClientRect').mockReturnValue({ left: 0, width: 200 } as DOMRect)
+      const pointer = (type: string, x: number) =>
+        input.dispatchEvent(
+          new PointerEvent(type, {
+            pointerType: 'touch',
+            isPrimary: true,
+            clientX: x,
+            clientY: 22,
+            bubbles: true,
+            cancelable: true,
+          })
+        )
+      const touch = (type: string, x: number) => {
+        const event = new Event(type, { bubbles: true, cancelable: true })
+        Object.defineProperty(event, 'touches', {
+          value: type === 'touchend' || type === 'touchcancel' ? [] : [{ clientX: x, clientY: 22 }],
+        })
+        input.dispatchEvent(event)
+      }
+      const edit = (value: string) => {
+        input.value = value
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        input.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+      pointer('pointerdown', 150)
+      touch('touchstart', 150)
+      touch('touchmove', 190)
+      if (ending.startsWith('pointer')) pointer(ending, 190)
+      else touch(ending, 190)
+      // The ending task can still deliver the native range's trailing events.
+      edit('900')
+      expect(input.value).toBe('400')
+      expect(view.emitted('input')).toBeUndefined()
+      expect(view.emitted('update:model-value')).toBeUndefined()
+      await advance(1)
+      // Accessibility actions have no preceding pointerdown or keydown.
+      edit('401')
+      expect(input.value).toBe('401')
+      expect(view.emitted('input')).toEqual([[401]])
+      expect(view.emitted('update:model-value')).toEqual([[401]])
+      // A subsequent gesture on the actual thumb keeps ordinary native seeking.
+      pointer('pointerdown', 82)
+      touch('touchstart', 82)
+      edit('800')
+      touch('touchend', 120)
+      expect(view.emitted('input')).toEqual([[401], [800]])
+      expect(view.emitted('update:model-value')).toEqual([[401], [800]])
+    } finally {
+      view.unmount()
+    }
+  }
+)
 
 it('keeps the full mobile thumb available for native dragging on a compact range', () => {
   const view = mount(Slider, {
