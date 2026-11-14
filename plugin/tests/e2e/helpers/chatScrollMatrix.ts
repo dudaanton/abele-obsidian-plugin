@@ -108,6 +108,7 @@ export function endScript(size: string, state: string, phone: boolean): string {
     begin('End from history')
     const latest = session.messages.value.at(-1)?.id
     report.evicted = !!latest && !item(latest)
+    await inputGesture(async () => {
     box().tabIndex = -1; box().focus({ preventScroll: true })
     await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'End', code: 'End', windowsVirtualKeyCode: 35 })
     keyDown = true
@@ -116,6 +117,7 @@ export function endScript(size: string, state: string, phone: boolean): string {
     await wait(1500)
     row.bottomGap = box().scrollHeight - box().scrollTop - box().clientHeight
     row.destination = !!latest && !!item(latest)
+    }).finally(() => { keyDown = false })
     await capture('end-from-history')
 ` +
     full.slice(cleanup)
@@ -423,7 +425,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
       destination: null, reversals: 0, rawReversals: 0, rebases: 0, requested: 0, moved: 0, lost: 0 }
     report.rows.push(row)
   }
-  const gesture = async (dy, steps = 12, fast = false) => {
+  const gesture = async (dy, steps = 12, fast = false) => inputGesture(async () => {
     gestureIndex++
     const el = box(), rect = el.getBoundingClientRect()
     // The chat gutter avoids scrolling a code/output block's own nested viewport instead.
@@ -535,7 +537,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
     }
     direction = 0
     return moved > 1 || first !== el.querySelector('[data-message-id]')?.dataset.messageId
-  }
+  }).finally(() => { touchDown = false })
   const hold = async () => {
     const anchor = visibleAnchor()
     if (!anchor) { row.drift = 9999; await wait(60); return }
@@ -736,14 +738,17 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
       await capture(expanded ? 'expanded-returned' : 'collapsed-returned')
     }
     begin('End key')
+    await inputGesture(async () => {
     box().tabIndex = -1; box().focus({ preventScroll: true })
     await cdp('Input.dispatchKeyEvent', { type: 'keyDown', key: 'End', code: 'End', windowsVirtualKeyCode: 35 })
     keyDown = true
     await cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: 'End', code: 'End', windowsVirtualKeyCode: 35 })
     keyDown = false
     await wait(500); row.destination = !!item(tail)
+    }).finally(() => { keyDown = false })
     begin('scrollbar drag')
     if (!phone) {
+      await inputGesture(async () => {
       const el = box(), rect = el.getBoundingClientRect()
       dragTrace = (${traceScrollInput.toString()})(el)
       report.dragTrace = dragTrace.events
@@ -779,6 +784,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
       if (dragStartTop > 0 && !dragCompletion.movedUp)
         throw Error('Native scrollbar drag did not move upward')
       dragCompletion.stop()
+      }).finally(() => { buttonDown = false })
     } else await gesture(-box().clientHeight * 0.35)
     dragTrace?.mark('hold-origin')
     await hold()
