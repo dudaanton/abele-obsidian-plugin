@@ -17,12 +17,13 @@ import { connect, type Socket } from 'node:net'
 import { evalLong } from './obsidianCli'
 import { onPhone } from './target'
 import { exposeToPhone } from './phone'
+import { PAIRED_POLLING } from './pairedPolling'
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const LABEL = 'Sample remote node'
 
 export const PAIRED_PRELUDE = `const wait=ms=>new Promise(r=>setTimeout(r,ms));
-const until=async(fn,what,ms=60000)=>{const end=Date.now()+ms;while(Date.now()<end){const v=fn();if(v)return v;await wait(25)}throw Error(what+' did not happen')};
+${PAIRED_POLLING}
 const api=window.__abeleTest,nodes=api.NodeService.getInstance(),chats=api.ChatService.getInstance();
 const chat=()=>[...document.querySelectorAll('.abele-node-chat')].find(r=>r.getBoundingClientRect().width>0);`
 
