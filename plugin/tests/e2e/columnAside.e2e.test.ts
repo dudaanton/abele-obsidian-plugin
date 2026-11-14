@@ -1,3 +1,4 @@
+import { enablePhoneColumnFlight } from './helpers/columnFlightEvidence'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   evalJson,
@@ -74,6 +75,7 @@ function click(x: number, y: number) {
 describe.skipIf(!available)('aside column layouts', () => {
   let size: number[]
   beforeAll(() => {
+    if (onPhone()) enablePhoneColumnFlight()
     if (!onPhone())
       size = evalJson(`require('@electron/remote').getCurrentWindow().getContentSize()`)
     probe(`if(app.vault.getAbstractFileByPath(${JSON.stringify(FOLDER)}))throw Error('fixture already exists');await app.vault.createFolder(${JSON.stringify(FOLDER)});

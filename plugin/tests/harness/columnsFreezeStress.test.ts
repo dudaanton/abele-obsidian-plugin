@@ -18,6 +18,7 @@ afterEach(() => {
   vi.doUnmock('vitest')
   vi.doUnmock('../e2e/helpers/obsidianCli')
   vi.doUnmock('../e2e/helpers/phone')
+  vi.doUnmock('../e2e/helpers/columnFlightEvidence')
   vi.unstubAllEnvs()
   vi.restoreAllMocks()
   vi.resetModules()
@@ -55,6 +56,9 @@ async function collect(arm?: string) {
   }))
   vi.doMock('../e2e/helpers/obsidianCli', () => ({ evalRaw: evaluate }))
   vi.doMock('../e2e/helpers/phone', () => ({ tap }))
+  vi.doMock('../e2e/helpers/columnFlightEvidence', () => ({
+    saveColumnFlightAfterRecovery: () => true,
+  }))
   await import('../e2e/columnsFreezeStress.e2e.test')
   return { suites, evaluate, tap }
 }

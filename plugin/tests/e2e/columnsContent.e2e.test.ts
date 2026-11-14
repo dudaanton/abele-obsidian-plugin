@@ -1,3 +1,4 @@
+import { enablePhoneColumnFlight } from './helpers/columnFlightEvidence'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   COLUMN_CONTENT,
@@ -76,6 +77,7 @@ describe.skipIf(!available)('column content compatibility', () => {
   let size: number[]
   let mapStyle: string
   beforeAll(() => {
+    if (onPhone()) enablePhoneColumnFlight()
     if (!onPhone())
       size = evalJson<number[]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
     mapStyle = evalJson<{ style: string }>(

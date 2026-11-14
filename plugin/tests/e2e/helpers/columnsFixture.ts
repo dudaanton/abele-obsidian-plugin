@@ -1,5 +1,16 @@
 export const COLUMNS_FIXTURE_PREFIX = 'Sample columns probe '
 
+/** Serialized into a probe: a broken ancestor chain must fail rather than occupy the page. */
+export function columnTableScroller(table: HTMLElement, column: HTMLElement): HTMLElement {
+  let scroller = table.parentElement
+  for (let step = 0; step < 256; step++) {
+    if (!scroller) throw new Error('column table ancestor search reached no column')
+    if (scroller === column || scroller.scrollWidth > scroller.clientWidth) return scroller
+    scroller = scroller.parentElement
+  }
+  throw new Error('column table ancestor search exceeded 256 steps')
+}
+
 export function columnsFixtureCleanup(folder: string, stale = false): string {
   return `
     const paths = app.vault.getAllLoadedFiles().filter(f => 'children' in f && f.parent === app.vault.getRoot() &&

@@ -1,4 +1,8 @@
-import { COLUMNS_FIXTURE_PREFIX, columnsFixtureCleanup } from './helpers/columnsFixture'
+import {
+  COLUMNS_FIXTURE_PREFIX,
+  columnsFixtureCleanup,
+  columnTableScroller,
+} from './helpers/columnsFixture'
 import { randomUUID } from 'node:crypto'
 /** Native callouts as columns: renderer, source bindings and editor transitions. */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -14,7 +18,7 @@ import {
 import { onPhone, targets } from './helpers/target'
 import { screenshot, swipe, tap } from './helpers/phone'
 import { shotDir } from './helpers/shots'
-import { COLUMN_FLIGHT_FLAG } from '../../src/columns/flight'
+import { enablePhoneColumnFlight } from './helpers/columnFlightEvidence'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -114,8 +118,7 @@ function layout(): Layout {
     const parent=root().querySelector('.abele-columns');
     const columns=[...parent.querySelectorAll(':scope > .callout-content > .abele-column')];
     const table=columns[1].querySelector('table');
-    let scroller=table.parentElement;
-    while(scroller !== columns[1] && scroller.scrollWidth <= scroller.clientWidth) scroller=scroller.parentElement;
+    const scroller=(${columnTableScroller.toString()})(table,columns[1]);
     scroller.scrollLeft=50;
     const tableScroll=scroller.scrollLeft;
     scroller.scrollLeft=0;
@@ -130,10 +133,7 @@ describe.skipIf(!available)('note columns foundation', () => {
   let size: number[] | undefined
   const cleanup = (stale = false) => asyncEval(columnsFixtureCleanup(FOLDER, stale))
   beforeAll(() => {
-    if (onPhone())
-      evalRaw(
-        `localStorage.setItem(${JSON.stringify(COLUMN_FLIGHT_FLAG)},String(performance.timeOrigin));window.dispatchEvent(new StorageEvent('storage',{key:${JSON.stringify(COLUMN_FLIGHT_FLAG)}}));true`
-      )
+    if (onPhone()) enablePhoneColumnFlight()
     if (!onPhone())
       size = evalJson<number[]>(`require('@electron/remote').getCurrentWindow().getContentSize()`)
     cleanup(true)

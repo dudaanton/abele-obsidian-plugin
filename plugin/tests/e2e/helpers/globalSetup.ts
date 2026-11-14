@@ -1,3 +1,4 @@
+import { saveColumnFlightAfterRecovery } from './columnFlightEvidence'
 /**
  * Once for the whole tier: background throttling and focus emulation go back to normal when the
  * run is over, whatever the files in between did. See `setBackgroundThrottling`. The window is
@@ -43,7 +44,9 @@ export async function setup(): Promise<void> {
       // started again since it last was is aimed at the home screen, and text typed there is
       // typed into nothing — which ends the driver (2026-09-27).
       driver(['launch', 'md.obsidian'])
+      saveColumnFlightAfterRecovery(true)
       const version = await installBuild(process.cwd())
+      saveColumnFlightAfterRecovery(true)
       await startHost()
       console.info(`\n  phone ready, abele ${version}\n`)
     } catch (error) {

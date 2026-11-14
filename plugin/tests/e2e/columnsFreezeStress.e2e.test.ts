@@ -1,3 +1,4 @@
+import { saveColumnFlightAfterRecovery } from './helpers/columnFlightEvidence'
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createColumns } from '../../src/columns/operations'
@@ -144,11 +145,12 @@ function fixture(label: string, initial: string) {
       `return localStorage.getItem(${JSON.stringify(COLUMN_FLIGHT_FLAG)})`
     )
     flagOwned = true
-    step(
-      0,
-      'select recorder arm',
-      `${arm === 'on' ? `localStorage.setItem(${JSON.stringify(COLUMN_FLIGHT_FLAG)},String(performance.timeOrigin))` : `localStorage.removeItem(${JSON.stringify(COLUMN_FLIGHT_FLAG)})`};window.dispatchEvent(new StorageEvent('storage',{key:${JSON.stringify(COLUMN_FLIGHT_FLAG)}}));return true`
-    )
+    if (arm === 'off' || saveColumnFlightAfterRecovery())
+      step(
+        0,
+        'select recorder arm',
+        `${arm === 'on' ? `localStorage.setItem(${JSON.stringify(COLUMN_FLIGHT_FLAG)},String(performance.timeOrigin))` : `localStorage.removeItem(${JSON.stringify(COLUMN_FLIGHT_FLAG)})`};window.dispatchEvent(new StorageEvent('storage',{key:${JSON.stringify(COLUMN_FLIGHT_FLAG)}}));return true`
+      )
   })
   beforeEach(() => {
     if (unresponsive)

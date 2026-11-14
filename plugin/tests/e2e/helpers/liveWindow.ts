@@ -1,3 +1,4 @@
+import { noteColumnPhoneFailure } from './columnFlightEvidence'
 /**
  * Runs around every e2e file: the window is made to behave as if it were in front and focused, with its
  * menus drawn in the page — and the file refused if it is not drawn at all, the screen locked — and
@@ -122,6 +123,12 @@ beforeEach((context) => {
   }
   onTestFailed(({ task }) => {
     const errors = task.result?.errors ?? []
+    if (onPhone())
+      noteColumnPhoneFailure(
+        task.file.filepath,
+        task.name,
+        errors.map((error) => error.message ?? String(error))
+      )
     if (!errors.length || !errors.every((e) => SKIPS.includes(e?.name ?? ''))) return
     // The runner reports a result in this state as skipped, `note` as the reason.
     const result = task.result as NonNullable<typeof task.result> & { note?: string }
