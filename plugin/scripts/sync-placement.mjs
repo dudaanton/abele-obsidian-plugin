@@ -125,20 +125,6 @@ export function syncPlacementPlugin() {
       if (file.endsWith('/engine.js')) {
         code = replaceOnce(
           code,
-          '            const report = await this.cycle.cycle();',
-          `            let report;
-            for (;;) {
-              try { report = await this.cycle.cycle(); break; }
-              catch (error) {
-                if (!error?.[Symbol.for('abele.sync.inventory-changed-v1')] || this.cancellation.signal.aborted)
-                  throw error;
-                this.log('sync: inventory changed during scan; retrying with a fresh inventory');
-                await new Promise(resolve => setTimeout(resolve, 0));
-              }
-            }`
-        )
-        code = replaceOnce(
-          code,
           '    trigger(why) {',
           `    trigger(why) {
         // An active exchange already polls the remote head. The periodic timer
@@ -490,7 +476,7 @@ export function syncPlacementPlugin() {
           `const rows = await snapshot;
                     if (current !== (typeof clock === 'function' ? clock.call(fs) : undefined)) {
                       snapshots.clear();
-                      throw Object.assign(new SyncCancelled(), { [Symbol.for('abele.sync.inventory-changed-v1')]: true });
+                      throw new SyncCancelled();
                     }
                     for (const item of rows) {`
         )
