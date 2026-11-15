@@ -385,6 +385,13 @@ async function verifyInstalledLedger(observer, device) {
 }
 
 export async function setupVault(config, root, device) {
+  let hashMap
+  if (config.continuousCpu && config.buildReceipt) {
+    const receipt = JSON.parse(await readFile(config.buildReceipt, 'utf8'))
+    const map = await readFile(buildArtifactPath(config, 'qualification-main.js.map'))
+    validateQualificationArtifact(receipt, await readFile(join(config.buildDir, 'main.js')), map)
+    hashMap = JSON.parse(map)
+  }
   await mkdir(join(root, '.obsidian/plugins/abele'), { recursive: true })
   for (const name of ['main.js', 'manifest.json', 'styles.css']) {
     const from = join(config.buildDir, name === 'styles.css' ? 'main.css' : name)
@@ -438,7 +445,7 @@ export async function setupVault(config, root, device) {
   await writeFile(
     join(root, '.scale-observer.json'),
     JSON.stringify(observerDeploymentConfig(config, observer, device,
-      await readFile(join(config.buildDir, 'main.js'), 'utf8')))
+      await readFile(main, 'utf8'), hashMap))
   )
   if (config.continuousCpu) {
     const proof = await verifyInstalledLedger(observer, device)
@@ -1641,7 +1648,11 @@ export async function run(config) {
         const hashUnknown = hashes.some(
           (row) => row.source === 'unknown' && fileHashes.has(row.sha)
         )
-        const jsHashes = await javascriptHashEvidence(saved.operation, entries, loadEvidence)
+        const jsHashes = await javascriptHashEvidence(saved.operation, entries, loadEvidence,
+          config.buildReceipt ? {
+            source: await readFile(join(config.buildDir, 'main.js'), 'utf8'),
+            map: JSON.parse(await readFile(buildArtifactPath(config, 'qualification-main.js.map'), 'utf8')),
+          } : undefined)
         const digestProof = digestCoverage(
           saved.operation,
           entries,

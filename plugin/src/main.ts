@@ -64,6 +64,7 @@ import dayOfYear from 'dayjs/plugin/dayOfYear'
 import dayjs from 'dayjs'
 import { VaultWatcherWrapper } from './helpers/VaultWatcherWrapper'
 import { exposeTestApi, syncTransportForTests } from '@/testing/exposeTestApi'
+import { exposeScaleDiagnostics } from '@/testing/scaleDiagnostics'
 import './helpers/vaultUtils'
 import './helpers/runAfterSync'
 import './helpers/protocolHandler'
@@ -116,6 +117,7 @@ import { deferredWorkspaceUi } from '@/startup/workspaceUi'
 
 // Every module imported above has run its top-level code by now. See `helpers/loadMarks.ts`.
 markLoad('evalEnd')
+if (testingBuild) exposeScaleDiagnostics()
 // Vue has registered its global setters, so the last ones are this bundle's. Taken back on
 // unload, or every reload keeps the whole previous bundle alive. See `helpers/vueGlobals.ts`.
 const releaseVueSetters = claimVueSetters()

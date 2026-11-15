@@ -641,7 +641,11 @@ exports.caughtExceptionPauseFile = (config) =>
 
 exports.armHashTracepoints = async function (transport, lines, boundary, emit, failureArmed) {
   if (!lines?.length) return () => {}
-  if (!Number.isInteger(boundary)) throw new Error('Hash evaluation boundary unavailable')
+  const location = value => Number.isInteger(value) ? { lineNumber: value } : value
+  const valid = value => Number.isInteger(value?.lineNumber) && value.lineNumber >= 0 &&
+    (value.columnNumber === undefined || Number.isInteger(value.columnNumber) && value.columnNumber >= 0)
+  if (!valid(location(boundary)) || !lines.every(value => valid(location(value))))
+    throw new Error('Hash evaluation boundary unavailable')
   const breakpoints = new Set()
   let gate
   const message = async (_event, method, params) => {
@@ -662,9 +666,9 @@ exports.armHashTracepoints = async function (transport, lines, boundary, emit, f
     try {
       const scriptId = params.callFrames?.[0]?.location?.scriptId
       if (!scriptId) throw new Error('Hash script identity unavailable')
-      for (const lineNumber of lines) {
+      for (const point of lines) {
         const binding = await transport.sendCommand('Debugger.setBreakpoint', {
-          location: { scriptId, lineNumber },
+          location: { scriptId, ...location(point) },
           condition:
             '(()=>{try{globalThis.__scaleObserveIncrementalHash?.(this)}catch{}return false})()',
         })
@@ -695,7 +699,7 @@ exports.armHashTracepoints = async function (transport, lines, boundary, emit, f
   }
   const binding = await transport.sendCommand('Debugger.setBreakpointByUrl', {
     url: 'plugin:abele',
-    lineNumber: boundary,
+    ...location(boundary),
   })
   gate = binding.breakpointId
   return () => transport.removeListener('message', message)

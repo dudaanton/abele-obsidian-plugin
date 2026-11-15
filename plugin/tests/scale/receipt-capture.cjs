@@ -7,6 +7,21 @@ exports.scheduleHashWarmup = (work, emit, schedule = queueMicrotask) => schedule
 })
 
 exports.instrumentReceiptAccess = function (source) {
+  if (source.includes('__abeleScaleDiagnosticPorts'))
+    return source + `
+;globalThis.__scaleHashEvaluationBoundary?.();
+;(() => {
+  const ports = globalThis.__abeleScaleDiagnosticPorts;
+  if (typeof ports?.hostOf !== 'function' || ports.fingerprintClasses?.length !== 2 ||
+      !ports.fingerprintClasses.every(value => typeof value === 'function') ||
+      !ports.hashConstructors?.length || !ports.hashConstructors.every(value => typeof value === 'function'))
+    throw new Error('Receipt diagnostic ports unavailable');
+  globalThis.__scaleReceiptHost = ports.hostOf;
+  for (const Class of ports.fingerprintClasses) globalThis.__scaleWrapFingerprints?.(Class);
+  globalThis.__scaleWarmHashConstructors?.(() => { for (const Class of ports.hashConstructors) new Class(); });
+  delete globalThis.__abeleScaleDiagnosticPorts;
+})();
+`
   for (const name of ['durableHostOf', 'storageOf', 'BoundedVaultIo'])
     if (!new RegExp(`\\b(?:function|const|let|var|class) ${name}\\b`).test(source))
       throw new Error('Receipt diagnostic binding unavailable')

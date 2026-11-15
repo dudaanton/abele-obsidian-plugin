@@ -78,8 +78,7 @@ function maplibreAssetsPlugin(prod: boolean) {
 export default defineConfig(async ({ mode }) => {
   const { resolve } = path
   const prod = mode === 'production'
-  // Qualification preserves names/lines used by the external digest observer.
-  // Inline maps are unnecessary launch bytes in either distributable.
+  // Qualification uses explicit diagnostic ports and an external exact source map.
   const optimized = prod || mode === 'sharing-test'
 
   return {
@@ -87,9 +86,12 @@ export default defineConfig(async ({ mode }) => {
       alias: {
         ...(prod
           ? Object.fromEntries(
-              ['@/testing/exposeTestApi', '@/testing/phoneReplay', '@/testing/componentAccess'].map(
-                (id) => [id, path.resolve(__dirname, 'src/helpers/productionTestFence.ts')]
-              )
+              [
+                '@/testing/exposeTestApi',
+                '@/testing/phoneReplay',
+                '@/testing/componentAccess',
+                '@/testing/scaleDiagnostics',
+              ].map((id) => [id, path.resolve(__dirname, 'src/helpers/productionTestFence.ts')])
             )
           : {}),
         '@': path.resolve(__dirname, 'src'),

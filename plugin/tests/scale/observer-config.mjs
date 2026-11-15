@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { instrumentationOf } from './qualification-config.mjs'
 import { hashTracepointBoundary, hashTracepoints } from './reindex.mjs'
 
-export function observerDeploymentConfig(config, observer, device, bundle) {
+export function observerDeploymentConfig(config, observer, device, bundle, map) {
   return {
     evidence: join(config.output, 'renderer.jsonl'),
     device,
@@ -39,6 +39,6 @@ export function observerDeploymentConfig(config, observer, device, bundle) {
     profileDirectory: join(config.output, 'profiles'),
     ...instrumentationOf(config),
     javascriptHashBoundary: hashTracepointBoundary(bundle),
-    javascriptHashTracepoints: hashTracepoints(bundle),
+    javascriptHashTracepoints: hashTracepoints(bundle, map),
   }
 }

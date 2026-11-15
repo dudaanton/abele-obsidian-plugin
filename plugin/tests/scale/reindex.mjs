@@ -1,4 +1,5 @@
 import { compareInventory } from './oracles.mjs'
+import { hashLocations } from './hash-locations.mjs'
 
 export function completedBlobShas(events, beforeAt) {
   if (!Number.isFinite(beforeAt)) return new Set()
@@ -268,7 +269,8 @@ export function reindexEvidence(operation, renderer, wire, evidence) {
 
 // Precise V8 call counts cover bundled JavaScript hashing, which native crypto
 // wrappers cannot observe. Missing scripts or either reload segment remain unknown.
-export async function javascriptHashEvidence(operation, rows, load) {
+export async function javascriptHashEvidence(operation, rows, load, artifact) {
+  const locations = artifact ? hashLocations(artifact.source, artifact.map) : null
   const records = rows.filter(
     (row) =>
       row.id === operation.id &&
@@ -282,6 +284,7 @@ export async function javascriptHashEvidence(operation, rows, load) {
       const functions = coverage.result
         .filter((script) => /plugin:abele(?::|\/|$)/.test(script.url))
         .flatMap((script) => script.functions)
+        .map(fn => ({ ...fn, functionName: locations?.functionName(fn) ?? fn.functionName }))
       const hashing = functions.filter((fn) => /sha256|sha2|hash|digest/i.test(fn.functionName))
       segments.push({
         file: record.file,
@@ -316,7 +319,10 @@ export async function javascriptHashEvidence(operation, rows, load) {
   }
 }
 
-export function hashTracepoints(source) {
+export function hashTracepoints(source, map) {
+  if (map) return hashLocations(source, map).tracepoints()
+  if (source.includes('__abeleScaleDiagnosticPorts'))
+    throw new Error('Exact hash source map required for diagnostic ports')
   const points = []
   const classes = [...source.matchAll(/class HashMD(?:\$\d+)? extends [\w$]+\s*\{/g)]
   for (const match of classes) {
@@ -369,6 +375,8 @@ export function digestCoverage(operation, entries, endAt) {
 // CDP uses zero-based lines. The next statement runs after the mark and before
 // plugin startup; pausing there avoids an asynchronous observer/IPC receipt gap.
 export function hashTracepointBoundary(source) {
+  const marker = source.indexOf(';globalThis.__scaleHashEvaluationBoundary?.();')
+  if (marker >= 0) return { lineNumber: source.slice(0, marker).split('\n').length - 1, columnNumber: 1 }
   const mark = /\bmarkLoad(?:\$\d+)?\(["']evalEnd["']\);[^\S\n]*\n/.exec(source)
   if (!mark) throw new Error('JavaScript hash evaluation boundary unavailable')
   return source.slice(0, mark.index + mark[0].length).split('\n').length - 1
