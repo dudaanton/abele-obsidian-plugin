@@ -351,6 +351,46 @@ describe('common external representation and durable remote projection work', ()
     expect(readBinary).not.toHaveBeenCalled()
   })
 
+  it.each([true, false])(
+    'uses an unchanged ledger proof without a saved byte inspection (trusted=%s)',
+    async (trusted) => {
+      const fs = new MemoryFileSystem()
+      await fs.writeAtomic(path, bytes, entry.mtime)
+      for (const name of [
+        'abele.sync.inventory-id-v1',
+        'abele.sync.local-scan-revision-v1',
+        'abele.sync.local-change-revision-v1',
+        'abele.sync.watch-epoch-v1',
+      ])
+        Object.defineProperty(fs, Symbol.for(name), { value: () => 1 })
+      const ledger = new MemoryStateStore()
+      await ledger.put(entry)
+      const read = vi.spyOn(fs, 'read')
+      const proof = vi.fn(() => trusted)
+      const runtime = await ExternalRepresentation.open({
+        state: null,
+        emptyView: { ledgerId: 'sample-ledger', binding },
+        ledger,
+        fs,
+        assertOwned: () => {},
+        scriptsFolder: () => 'Scripts',
+        inspection: {
+          entries: [],
+          trusted: () => false,
+          trustedUninspected: proof,
+          save: async () => {},
+        },
+        verify: async () => {
+          throw Error('unexpected verification')
+        },
+        installProjection: async () => 'cleanup-pending',
+      })
+      expect(await Array.fromAsync(runtime.stateStore().all())).toEqual([entry])
+      expect(proof).toHaveBeenCalledWith(entry)
+      expect(read).toHaveBeenCalledTimes(trusted ? 0 : 1)
+    }
+  )
+
   it('reuses the persisted inspection for unchanged small files and excludes before reading', async () => {
     const s = await setup()
     s.fake.vault.adapter.writeBinary('Media/sample-small.bin', new Uint8Array([1, 2]).buffer)

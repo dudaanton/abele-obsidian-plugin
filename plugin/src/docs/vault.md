@@ -3902,6 +3902,9 @@ Projection classifications are checkpointed per completed inspection in the vaul
 database, so disconnecting or replacing a connection retains that work. Settled indexed
 inventories enumerate names without reading every file; new untracked content is examined
 in bounded background passes. Tracked edits and explicit file events are not deferred.
+An ordinary acknowledged file without a saved projection inspection also reuses its verified
+ledger identity when the settled index still matches; managed paths and pending edits do not
+use that shortcut.
 While candidates remain unexamined, the scanner preserves missing tracked identities and
 postpones rename publication rather than inferring deletion from partial content evidence.
 An incomplete bounded content pass preserves existing deletion holds and queued decisions;

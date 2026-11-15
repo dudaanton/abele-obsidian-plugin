@@ -149,7 +149,10 @@ it(`restarts a synced ${FILES}-file native vault from its settled host index`, a
       })
     )
     expect(classification?.contentReads).toBe(0)
-    expect(classification?.callers['state.trust']?.hit).toBeGreaterThanOrEqual(FILES)
+    const trust = classification!.callers['state.trust']
+    // Metadata-only listing need not create a byte inspection. Both proofs reuse
+    // the acknowledged identity through the settled host index without reading it.
+    expect((trust.hit ?? 0) + (trust['uninspected-trusted'] ?? 0)).toBeGreaterThanOrEqual(FILES)
     // An ordinary file above the projection inspection cap has no saved inspection.
     // Its verified index identity must still avoid a repeated restart classification.
     expect(classification?.callers['state.trust']?.['no-saved-inspection'] ?? 0).toBe(0)

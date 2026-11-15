@@ -64,7 +64,7 @@ export interface RepresentationOptions {
     identity?(path: string, prior?: InspectionIdentity): Promise<InspectionIdentity | null>
     /** Read-only settled-index proof for a saved inspection; no disk or await. */
     trusted?(path: string, prior: InspectionIdentity): boolean | string
-    /** A large or excluded ordinary ledger row has no byte inspection to save. */
+    /** An acknowledged ordinary ledger row may have no saved byte inspection. */
     trustedUninspected?(entry: StateEntry): boolean | string
     /** Complete metadata-only inventory; content boundaries still classify before use. */
     indexedListing?(info: FileInfo): boolean
@@ -355,10 +355,7 @@ export class ExternalRepresentation {
     }
     const prior = this.inspected.get(inspection.cacheKey?.(entry.path) ?? entry.path)
     if (!prior) {
-      if (
-        inspection.trustedUninspected &&
-        (entry.size > MAX_PROJECTION_BYTES || this.options.excluded?.(entry.path, entry.size))
-      ) {
+      if (inspection.trustedUninspected) {
         const decision = inspection.trustedUninspected(entry)
         this.count(
           'state.trust',
