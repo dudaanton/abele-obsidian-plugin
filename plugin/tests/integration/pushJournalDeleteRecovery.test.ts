@@ -7,6 +7,9 @@ import {
   resumeJournal,
   scan,
   sha256,
+  SyncEngine,
+  selectiveDefaults,
+  type EngineClient,
 } from '@abele/sync-sdk/core'
 import type { CommitOp, CommitResponse } from '@abele/sync-sdk/protocol'
 
@@ -125,7 +128,7 @@ it('rechecks absence after uploads on the live publication path', async () => {
   expect(await s.state.byFileId('sample-file')).not.toBeNull()
 })
 
-it('keeps a lost-response deletion uncertain when its local path was restored', async () => {
+it('retires a lost-response deletion into reconciliation when its local path was restored', async () => {
   const s = await fixture()
   s.client.hasBlob.mockResolvedValue(true)
   const commit = s.client.commitRaw.getMockImplementation()!
@@ -136,9 +139,85 @@ it('keeps a lost-response deletion uncertain when its local path was restored', 
   await expect(s.freshPush()).rejects.toThrow('response lost')
   const journal = await s.state.getJournal()
   await s.fs.writeAtomic('sample.md', s.bytes, 3)
-  await expect(s.resume()).rejects.toThrow('uncertain deletion requires a commit receipt')
-  expect(await s.state.getJournal()).toEqual(journal)
+  expect((await s.resume())?.reconciliationRequired).toBe(true)
+  expect(await s.state.getJournal()).toBeNull()
+  expect(
+    JSON.parse((await s.state.getMeta(`reconciliation-journal:${journal!.idempotencyKey}`))!)
+  ).toEqual(journal)
+  expect(JSON.parse((await s.state.getMeta('content-reconciliation'))!).phase).toBe('requested')
+  expect(await s.resume()).toBeNull()
   expect(s.client.commitRaw).toHaveBeenCalledTimes(1)
+})
+
+it('unblocks ordinary pushes after a request lost before reaching an unchanged server', async () => {
+  const s = await fixture()
+  s.client.hasBlob.mockResolvedValue(true)
+  s.client.commitRaw.mockRejectedValueOnce(new Error('request lost before arrival'))
+  await expect(s.freshPush()).rejects.toThrow('request lost before arrival')
+  expect(await s.state.getMeta('content-missing')).toBeNull()
+  await s.fs.writeAtomic('sample.md', s.bytes, 3)
+  const pending = await s.state.getJournal()
+  expect((await s.resume())?.reconciliationRequired).toBe(true)
+  expect(await s.state.getJournal()).toBeNull()
+  // A restart cannot get stuck replaying the retired destructive request.
+  expect(await s.resume()).toBeNull()
+  await s.freshPush()
+  expect(s.commits.flatMap((row) => row.ops).filter((op) => op.op === 'delete')).toEqual([])
+  expect(s.commits.flatMap((row) => row.ops)).toContainEqual(
+    expect.objectContaining({ op: 'create', path: 'other.md' })
+  )
+  expect(s.commits.every((row) => row.key !== pending!.idempotencyKey)).toBe(true)
+})
+
+it('restarts the full engine and reconciles a restored path after an unsent uncertain request', async () => {
+  const s = await fixture()
+  await s.state.setCursor(1)
+  s.client.hasBlob.mockResolvedValue(true)
+  s.client.commitRaw.mockRejectedValueOnce(new Error('request lost before arrival'))
+  await expect(s.freshPush()).rejects.toThrow('request lost before arrival')
+  await s.fs.writeAtomic('sample.md', s.bytes, 3)
+  const logs: string[] = []
+  const client = {
+    ...s.client,
+    state: async () => ({
+      head_seq: 1 + s.commits.length,
+      settings: {
+        conflict: 'merge',
+        max_file_bytes: 1000000,
+        quota_bytes: null,
+        retention: { notes_days: 30, attachments_days: 30, settings_days: 30 },
+      },
+    }),
+    changes: vi.fn(async () => ({
+      items: [],
+      head_seq: 1 + s.commits.length,
+      next_since: 1 + s.commits.length,
+    })),
+    versions: async () => [],
+  } as unknown as EngineClient
+  const engine = new SyncEngine({
+    fs: s.fs,
+    state: s.state,
+    client,
+    selective: selectiveDefaults(),
+    log: (message) => logs.push(message),
+  })
+  try {
+    await engine.sync()
+    expect(engine.status.state).toBe('idle')
+    expect(await s.state.getJournal()).toBeNull()
+    expect(JSON.parse((await s.state.getMeta('content-reconciliation'))!).phase).toBe('complete')
+    expect(client.changes).toHaveBeenCalled()
+    expect(logs.some((message) => message.includes('uncertain deletion has a restored path'))).toBe(
+      true
+    )
+    expect(s.commits.flatMap((row) => row.ops)).toContainEqual(
+      expect.objectContaining({ op: 'create', path: 'other.md' })
+    )
+    expect(s.commits.flatMap((row) => row.ops).some((op) => op.op === 'delete')).toBe(false)
+  } finally {
+    await engine.stop()
+  }
 })
 
 it('replays the exact lost-response request once when its deleted path stays absent', async () => {

@@ -1657,17 +1657,33 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         });
         if (publication.phase !== 'prepared' && publication.ops && JSON.stringify(publication.ops) !== JSON.stringify(ops))
           throw new EngineError('protocol', 'push publication does not match its journal');
-        if (!publication.outcome) await this.upload(ops, sources);
-        if (publication.phase !== 'prepared' && !publication.outcome) {
-          // Without a receipt lookup the old key might publish for the first time.
-          // Preserve the uncertain request; never guess that it already committed.
+        const retireRestoredDeletion = async () => {
+          if (publication.phase === 'prepared' || publication.outcome) return false;
           for (const op of ops) if (op.op === 'delete') {
             const entry = await this.state.byFileId(op.file_id);
             const confirm = this.fs[Symbol.for('abele.sync.confirm-missing-v1')];
-            if (!entry || !(confirm ? await confirm.call(this.fs, entry.path) : await this.fs.stat(entry.path) === null))
-              throw new EngineError('conflict', 'uncertain deletion requires a commit receipt before recovery');
+            if (entry && (confirm ? await confirm.call(this.fs, entry.path) : await this.fs.stat(entry.path) === null)) continue;
+            // An old key could publish for the first time. Retire the whole immutable
+            // request, preserving its evidence, and reconcile current server/disk state
+            // rather than replaying it or blocking unrelated work indefinitely.
+            const reason = 'uncertain deletion has a restored path; reconciling current state';
+            await transact(this.state, async tx => {
+              await requestReconciliation(tx, reason);
+              await tx.setMeta('reconciliation-journal:' + key, JSON.stringify(journal));
+              await tx.setMeta('reconciliation-publication:' + key, JSON.stringify(publication));
+              await tx.setJournal(null);
+              await tx.setMeta(publicationKey, null);
+            });
+            this.opts.log?.('push: ' + reason);
+            if (entry) this.report.kept.push(entry.wirePath);
+            this.report.reconciliationRequired = true;
+            return true;
           }
-        }`
+          return false;
+        };
+        if (await retireRestoredDeletion()) return;
+        if (!publication.outcome) await this.upload(ops, sources);
+        if (await retireRestoredDeletion()) return;`
         )
         code = replaceOnce(
           code,

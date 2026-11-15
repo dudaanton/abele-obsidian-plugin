@@ -161,9 +161,14 @@ Push recovery stores `push-publication:<idempotency-key>` in device-local ledger
 Its prepared phase is saved atomically with the push journal before uploads. Before submitting,
 sync freshly confirms each deletion's path is absent and saves the exact submitted operations.
 Returned commit receipts stay there until their ledger verdict and journal cleanup commit.
-A restored file cancels an unsent deletion; an uncertain submitted deletion with a restored
-path keeps its journal and stops until its commit receipt can be established. Legacy journals
-without publication metadata are treated as uncertain. These records do not travel in settings.
+A restored file cancels an unsent deletion. If an uncertain submitted deletion's path is
+restored, sync atomically retires the immutable request into `reconciliation-journal:<key>`
+and its publication evidence into `reconciliation-publication:<key>`, then reconciles current
+server and disk state. It never resubmits that destructive request to discover its outcome.
+The reconciliation status and connection log explain the retirement; ordinary sync can
+continue. Legacy journals without publication metadata are treated as uncertain. Absence
+confirmation on the host reads the physical disk, bypassing its index and inventory caches.
+These records do not travel in settings.
 
 Device-local sync scan fingerprints distinguish verified installations from ordinary scan
 hints. Installation receipts retain the native identity, size, modification/creation times,
