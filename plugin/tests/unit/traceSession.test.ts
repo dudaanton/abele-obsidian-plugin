@@ -2,6 +2,54 @@ import { describe, expect, it, vi } from 'vitest'
 import { TraceSession, type TraceBreakpoints } from '@/debugger/trace/TraceSession'
 import { TraceRpc } from '@/debugger/trace/wire'
 import type { DebuggerSnapshot } from '@abele/node-protocol'
+it('does not read an empty run discarded when its final record point is removed', async () => {
+  const node = fakeNode()
+  const trace = new TraceSession(node.rpc, fakeDebugger(), () => {})
+  vi.spyOn(node.rpc, 'runs').mockResolvedValue({
+    folder: '/sample/runs',
+    chosen: true,
+    runs: [
+      {
+        id: 'sample-empty',
+        name: 'Empty',
+        debug_session_id: 'sample-debug',
+        started_at: '2026-01-02T03:04:05.000Z',
+        state: 'recording',
+        steps: 0,
+        bytes: 0,
+      },
+    ],
+  })
+  const read = vi.spyOn(node.rpc, 'run').mockRejectedValue(new Error('trace_run_not_found'))
+  vi.spyOn(node.rpc, 'status')
+    .mockResolvedValueOnce({
+      folder: '/sample/runs',
+      chosen: true,
+      recording: { run_id: 'sample-empty', steps: 0, started_at: '2026-01-02T03:04:05.000Z' },
+    })
+    .mockResolvedValue({ folder: '/sample/runs', chosen: true, recording: null })
+  const ended = vi.fn()
+  trace.onRunEnded(ended)
+  try {
+    await trace.refresh()
+    await trace.refresh()
+    expect(read).not.toHaveBeenCalled()
+    expect(trace.summaries()).toEqual([])
+    expect(ended).not.toHaveBeenCalled()
+  } finally {
+    trace.dispose()
+  }
+})
+it('still reports a missing run with recorded evidence', async () => {
+  const node = fakeNode()
+  const trace = new TraceSession(node.rpc, fakeDebugger(), () => {})
+  vi.spyOn(node.rpc, 'run').mockRejectedValue(new Error('trace_run_not_found'))
+  try {
+    await expect(trace.refresh()).rejects.toThrow('trace_run_not_found')
+  } finally {
+    trace.dispose()
+  }
+})
 it('keeps record metadata if breakpoint removal returned without executing', async () => {
   const node = fakeNode(),
     debug = fakeDebugger([{ id: 'sample-record', line: 4 }])

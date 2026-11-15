@@ -94,8 +94,11 @@ export class TraceSession {
         this.rpc.runs(project),
       ])
       const ownRuns = runs.runs.filter((run) => run.debug_session_id === session)
+      // Removing the last point discards an empty recording. A concurrent list can
+      // still contain it, but there are no captures to read from that run.
       const newest = ownRuns[0]
-      const latest = newest ? (await this.rpc.run(project, newest.id, 0, 1)).points : undefined
+      const latest =
+        newest && newest.steps > 0 ? (await this.rpc.run(project, newest.id, 0, 1)).points : undefined
       if (this.sessionId !== session) return
       const sameSession = this.observedSession === session
       if (!sameSession) {
@@ -104,7 +107,11 @@ export class TraceSession {
       }
       const was = sameSession ? this.status?.recording?.run_id : undefined
       const ended = new Set<string>()
-      if (was && status.recording?.run_id !== was && runs.runs.some((r) => r.id === was))
+      if (
+        was &&
+        status.recording?.run_id !== was &&
+        ownRuns.some((r) => r.id === was && r.steps > 0)
+      )
         ended.add(was)
       // A short run can finish between status reads, including just after Restart.
       // The first read establishes history; only later completions open themselves.
