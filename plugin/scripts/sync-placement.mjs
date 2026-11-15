@@ -1643,6 +1643,95 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
           return await (upload ? upload.call(fs, path) : fs.openRead(path));`
         )
       } else if (file.endsWith('/pusher.js')) {
+        // A saved batch is not evidence that its commit was sent. Persist the
+        // publication phase separately from upload preparation, under the same key.
+        code = replaceOnce(
+          code,
+          '        await this.state.setJournal(journal);\n        await this.upload(ops, sources);',
+          `        const publicationKey = 'push-publication:' + key;
+        let publication = startedAt === undefined ? { phase: 'prepared' } :
+          JSON.parse(await this.state.getMeta(publicationKey) ?? '{"phase":"uncertain"}');
+        if (startedAt === undefined) await transact(this.state, async tx => {
+          await tx.setMeta(publicationKey, JSON.stringify(publication));
+          await tx.setJournal(journal);
+        });
+        if (publication.phase !== 'prepared' && publication.ops && JSON.stringify(publication.ops) !== JSON.stringify(ops))
+          throw new EngineError('protocol', 'push publication does not match its journal');
+        if (!publication.outcome) await this.upload(ops, sources);
+        if (publication.phase !== 'prepared' && !publication.outcome) {
+          // Without a receipt lookup the old key might publish for the first time.
+          // Preserve the uncertain request; never guess that it already committed.
+          for (const op of ops) if (op.op === 'delete') {
+            const entry = await this.state.byFileId(op.file_id);
+            const confirm = this.fs[Symbol.for('abele.sync.confirm-missing-v1')];
+            if (!entry || !(confirm ? await confirm.call(this.fs, entry.path) : await this.fs.stat(entry.path) === null))
+              throw new EngineError('conflict', 'uncertain deletion requires a commit receipt before recovery');
+          }
+        }`
+        )
+        code = replaceOnce(
+          code,
+          '        const sending = await this.sendable(ops, false);',
+          `        const candidates = publication.phase === 'prepared' ? await this.sendable(ops, false) : ops;
+        const sending = [];
+        for (const op of candidates) {
+          if (publication.phase === 'prepared' && op.op === 'delete') {
+            const entry = await this.state.byFileId(op.file_id);
+            const confirm = this.fs[Symbol.for('abele.sync.confirm-missing-v1')];
+            const absent = entry && entry.versionId === op.base_version_id &&
+              (confirm ? await confirm.call(this.fs, entry.path) : await this.fs.stat(entry.path) === null);
+            if (!absent) {
+              this.opts.log?.('push: holding deletion whose path is no longer confirmed missing');
+              if (entry) this.report.kept.push(entry.wirePath);
+              continue;
+            }
+          }
+          sending.push(op);
+        }`
+        )
+        code = replaceOnce(
+          code,
+          '        if (sending.length !== ops.length)\n            await this.state.setJournal({ ...journal, ops: sending });',
+          `        if (publication.phase === 'prepared') {
+          publication = { phase: 'uncertain', ops: sending };
+          await transact(this.state, async tx => {
+            await tx.setJournal({ ...journal, ops: sending });
+            await tx.setMeta(publicationKey, JSON.stringify(publication));
+          });
+        }`
+        )
+        code = replaceOnce(
+          code,
+          '            outcome = await this.client.commitRaw(sending, key);',
+          `            outcome = publication.outcome ?? await this.client.commitRaw(sending, key);
+            // Save the receipt before any local verdict work. A crash after this
+            // point settles the receipt without another destructive publication.
+            await this.state.setMeta(publicationKey, JSON.stringify({ ...publication, outcome }));`
+        )
+        code = replaceOnce(
+          code,
+          `        if (sending.length === 0) {
+            await this.state.setJournal(null);`,
+          `        if (sending.length === 0) {
+            await transact(this.state, async tx => {
+              await tx.setJournal(null);
+              await tx.setMeta(publicationKey, null);
+            });`
+        )
+        code = replaceOnce(
+          code,
+          `            await this.state.setJournal(null);
+            return;
+        }
+        this.report.committed`,
+          `            await transact(this.state, async tx => {
+              await tx.setJournal(null);
+              await tx.setMeta(publicationKey, null);
+            });
+            return;
+        }
+        this.report.committed`
+        )
         // The SDK yields during source indexing and unchanged-entry refresh.
         code = replaceOnce(
           code,
@@ -1758,6 +1847,7 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
           `                if (!interrupted && k === preparedRuns.length - 1) {
                   await this.opts.onCommitted?.(sending, tx);
                   await tx.setJournal(null);
+                  await tx.setMeta(publicationKey, null);
                 }
             }), preservationPaths);
             for (const change of applied.splice(0)) await notifyApplied(this.opts, change);

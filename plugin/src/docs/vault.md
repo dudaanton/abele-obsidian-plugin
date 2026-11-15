@@ -157,6 +157,14 @@ refusals and held-delete reviews still apply. Automatic actions appear in the co
 Stopped local chat turns retain a visible system message in their transcript. Approved tool
 rows retain the arguments actually executed, including content edited during approval.
 
+Push recovery stores `push-publication:<idempotency-key>` in device-local ledger metadata.
+Its prepared phase is saved atomically with the push journal before uploads. Before submitting,
+sync freshly confirms each deletion's path is absent and saves the exact submitted operations.
+Returned commit receipts stay there until their ledger verdict and journal cleanup commit.
+A restored file cancels an unsent deletion; an uncertain submitted deletion with a restored
+path keeps its journal and stops until its commit receipt can be established. Legacy journals
+without publication metadata are treated as uncertain. These records do not travel in settings.
+
 Device-local sync scan fingerprints distinguish verified installations from ordinary scan
 hints. Installation receipts retain the native identity, size, modification/creation times,
 content-change revision and verified hash in the host IndexedDB store. Fresh watcher checks
