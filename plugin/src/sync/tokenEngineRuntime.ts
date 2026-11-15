@@ -1419,33 +1419,47 @@ export class TokenEngineRuntime
           return typeof value === 'function' ? value.bind(target) : value
         },
       })
-    const progressState = new Proxy(refusalState(options.engineState ?? options.state), {
-      get: (target, name) => {
-        if (name === 'setJournal')
-          return async (journal: Awaited<ReturnType<StateStore['getJournal']>>) => {
-            await target.setJournal(journal)
-            // A new push journal is published only after the SDK's local scan completes.
-            if (journal) activityLog.finishComparison(this.inventoryTotal)
-            this.journalActive = journal !== null
-            if (!journal) return
-            this.progress.clear()
-            if (!this.uploadProgress.stage) this.uploadProgress.begin('Checking the vault')
-            else this.uploadProgress.phase('Checking the vault')
-            for (const op of journal.ops) {
-              const path =
-                'path' in op
-                  ? op.path
-                  : 'to_path' in op
-                    ? op.to_path
-                    : await this.pathFor(op.file_id)
-              if (path) this.uploadProgress.current(path)
-              if (path && 'sha' in op) this.uploadNames.set(op.sha, path)
+    const progressStateFor = (state: StateStore): StateStore =>
+      new Proxy(state, {
+        get: (target, name) => {
+          if (name === 'transaction')
+            return <T>(work: (tx: StateStore) => Promise<T>) =>
+              target.transaction((tx) => work(progressStateFor(tx)))
+          if (name === 'setJournal')
+            return async (journal: Awaited<ReturnType<StateStore['getJournal']>>) => {
+              await target.setJournal(journal)
+              const sources: Array<{ path: string; sha?: string }> = []
+              for (const op of journal?.ops ?? []) {
+                const path =
+                  'path' in op
+                    ? op.path
+                    : 'to_path' in op
+                      ? op.to_path
+                      : await this.pathFor(op.file_id)
+                if (path) sources.push({ path, ...('sha' in op ? { sha: op.sha } : {}) })
+              }
+              const publish = () => {
+                // A transactional journal publishes source identity and progress only
+                // after its durable commit, before uploads can consult cached refusals.
+                if (journal) activityLog.finishComparison(this.inventoryTotal)
+                this.journalActive = journal !== null
+                if (!journal) return
+                this.progress.clear()
+                if (!this.uploadProgress.stage) this.uploadProgress.begin('Checking the vault')
+                else this.uploadProgress.phase('Checking the vault')
+                for (const { path, sha } of sources) {
+                  this.uploadProgress.current(path)
+                  if (sha !== undefined) this.uploadNames.set(sha, path)
+                }
+              }
+              if (target.afterCommit) target.afterCommit(publish)
+              else publish()
             }
-          }
-        const value = Reflect.get(target, name)
-        return typeof value === 'function' ? value.bind(target) : value
-      },
-    })
+          const value = Reflect.get(target, name)
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      })
+    const progressState = progressStateFor(refusalState(options.engineState ?? options.state))
     const beginPull = this.trace.beginPull.bind(this.trace)
     const engineClient = options.engineClient?.(this.client) ?? this.client
     const hearIncoming = async (
