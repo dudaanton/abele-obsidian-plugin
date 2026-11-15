@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { expect, it, vi } from 'vitest'
 import {
   MemoryFileSystem,
@@ -88,7 +89,8 @@ it.each(
       }
     })
     try {
-      await vi.waitFor(() => expect(entered).toBe(true), { timeout: 100 })
+      // Uncontended leases enter synchronously, while the source is still held.
+      expect(entered).toBe(true)
     } finally {
       release.resolve()
       await other
@@ -106,7 +108,8 @@ it.each(
     expect(app.loadLocalStorage(JOURNAL_KEY) ?? []).toEqual([])
     if (outcome === 'complete') {
       expect(result).toBe(true)
-      expect(await disk.read(change.path)).toEqual(bytes)
+      // Compare every byte and the length without a million-element assertion walk.
+      expect(Buffer.from(await disk.read(change.path)).equals(Buffer.from(bytes))).toBe(true)
       expect((await state.get(change.path))?.sha).toBe(sha)
     } else {
       expect(await state.get(change.path)).toBeNull()

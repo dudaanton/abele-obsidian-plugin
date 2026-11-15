@@ -64,12 +64,21 @@ type Measurement = {
   interrupted: boolean
   timeline: SyncStartupMark[]
   native: Record<string, number>
-  ledgerRows: { native: Record<string, number>; indexedFileProbes: number; readonly: number; requests: number; yields: number; classifications: number }
+  ledgerRows: {
+    native: Record<string, number>
+    indexedFileProbes: number
+    readonly: number
+    requests: number
+    yields: number
+    rows: number
+    classifications: number
+  }
   afterList: { readonly: number; readwrite: number; requests: number; gets: number; metadataGets: number; metadataBatches: number; metadataBatchKeys: number; lstat: number; readdir: number }
   fileList: { lstat: number; indexedFileProbes: number }
   writes: { method: string; store: string }[]
 }
 const results: Measurement[] = []
+const metadataRowsPerSlice = 128
 let measured: Promise<void> | undefined
 const ensureMeasured = () => (measured ??= measure())
 
@@ -189,10 +198,27 @@ async function measure() {
     metadataBatchKeys += args[0].length
     return getMetaMany.apply(this, args)
   })
-  let metadataYields = 0
+  let metadataYields = 0,
+    metadataRows = 0
+  let budgetClock: number | undefined
+  const realNow = performance.now.bind(performance)
+  const clock = vi.spyOn(performance, 'now').mockImplementation(() => budgetClock ?? realNow())
+  const budgetRows = new WeakMap<SyncTaskBudget, number>()
   const metadataRow = SyncTaskBudget.prototype.metadataRow
   const budgetSpy = vi.spyOn(SyncTaskBudget.prototype, 'metadataRow').mockImplementation(function (...args) {
-    const pause = metadataRow.apply(this, args)
+    const rows = (budgetRows.get(this) ?? 0) + 1
+    metadataRows++
+    // Emulate a slow CPU consuming 8 ms per 128 metadata rows. Replace only
+    // the budget's synchronous clock read; host and timeline clocks stay real.
+    // Its slice start is reset after each asynchronous yield.
+    budgetClock = Reflect.get(this, 'since') + (rows * 8) / metadataRowsPerSlice
+    let pause: Promise<void> | undefined
+    try {
+      pause = metadataRow.apply(this, args)
+    } finally {
+      budgetClock = undefined
+    }
+    budgetRows.set(this, pause === undefined ? rows : 0)
     if (pause !== undefined) metadataYields++
     return pause
   })
@@ -370,6 +396,7 @@ async function measure() {
         readwrite: transactions.readwrite,
         requests: idbRequests.reduce((sum, spy) => sum + spy.mock.calls.length, 0),
         yields: metadataYields,
+        rows: metadataRows,
         classifications,
         gets: stateGets,
         metadataGets,
@@ -412,6 +439,7 @@ async function measure() {
             readonly: end.readonly - ledgerStart.readonly,
             requests: end.requests - ledgerStart.requests,
             yields: end.yields - ledgerStart.yields,
+            rows: end.rows - ledgerStart.rows,
             classifications: end.classifications - ledgerStart.classifications,
           }
         }
@@ -537,6 +565,7 @@ async function measure() {
     getMetaSpy.mockRestore()
     getMetaManySpy?.mockRestore()
     budgetSpy.mockRestore()
+    clock.mockRestore()
     restoreWriteSpies()
     for (const spy of idbRequests) spy.mockRestore()
     clearInterval(progress)
@@ -626,7 +655,13 @@ it('walks 33000 trusted ledger rows without per-file classification, disk work o
     expect(result.ledgerRows.readonly).toBeLessThanOrEqual(4)
     // Two paged snapshots (ledger and inspection) plus small metadata reads.
     expect(result.ledgerRows.requests).toBeLessThanOrEqual(150)
-    expect(result.ledgerRows.yields).toBeLessThan(64)
+    // The synthetic clock exhausts a slice every 128 rows, independently of
+    // runner load. Allow partial slices from the budgets active at phase entry.
+    expect(result.ledgerRows.rows).toBeLessThanOrEqual(5 * 33000)
+    expect(result.ledgerRows.yields).toBeGreaterThan(64)
+    expect(result.ledgerRows.yields).toBeLessThanOrEqual(
+      Math.ceil(result.ledgerRows.rows / metadataRowsPerSlice) + 4
+    )
   }
 }, 240000)
 
