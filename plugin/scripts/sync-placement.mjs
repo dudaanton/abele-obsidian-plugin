@@ -1136,6 +1136,28 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         if (restoredProtection && JSON.parse(restoredProtection).entry.versionId === entry.versionId) {
           const confirm = this.fs[Symbol.for('abele.sync.confirm-missing-v1')];
           if (!(confirm ? await confirm.call(this.fs, entry.path) : await this.fs.stat(entry.path) === null)) {
+            if (change && (change.op === 'delete' || change.sha === null)) {
+              if (await this.pending.refused(entry.fileId, [change.path, change.prev_path], entry)) return false;
+              await this.settlement();
+              let kept = false;
+              await commitAppliedSettlement(this.state, async () => ({ reached: await this.state.getCursor(), firstUnresolved: null }), async tx => {
+                const current = await tx.byFileId(entry.fileId);
+                if (current?.path !== entry.path || current.versionId !== entry.versionId ||
+                    await tx.getMeta?.('restored-delete-protection:' + entry.fileId) !== restoredProtection) return;
+                if (await new PendingPullWrites(tx, this.fs, this.sequenceKnown, this.client).refused(entry.fileId, [change.path, change.prev_path], entry)) return;
+                // Acknowledge the old identity's tombstone without touching disk.
+                // The restored bytes become an ordinary create, durably surviving
+                // a crash before the scanner or uploader can run.
+                await tx.delete(entry.path);
+                await recordPull(tx, change, true);
+                await tx.setMeta?.(scanHintKey(entry.path), null);
+                await new PendingPullWrites(tx, this.fs, this.sequenceKnown, this.client).clear(entry.fileId);
+                await tx.setMeta?.('restored-delete-protection:' + entry.fileId, null);
+                kept = true;
+              });
+              if (kept) this.opts.log?.('pull: keeping restored file for upload: ' + entry.wirePath);
+              return kept;
+            }
             this.opts.log?.('pull: holding deletion of a restored file for review: ' + entry.wirePath);
             return false;
           }
@@ -1143,9 +1165,10 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         )
         code = replaceOnce(
           code,
-          '            await tx.delete(entry.path);',
+          '            await tx.delete(entry.path);\n            await commitRemoval(tx, entry, this.fs);',
           `            await tx.delete(entry.path);
-            await tx.setMeta?.('restored-delete-protection:' + entry.fileId, null);`
+            await tx.setMeta?.('restored-delete-protection:' + entry.fileId, null);
+            await commitRemoval(tx, entry, this.fs);`
         )
         code = replaceOnce(
           code,

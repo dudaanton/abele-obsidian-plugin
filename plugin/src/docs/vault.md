@@ -173,8 +173,12 @@ These records do not travel in settings.
 Retiring a destructive journal also records `restored-delete-protection:<file-id>` for
 each restored local file, atomically with retirement. This snapshot binds protection to
 the file's tracked version even when restored bytes and timestamps match its old baseline.
-Incoming deletions of that version remain held for review across cycle and process restarts;
-the connection log explains the hold. A later acknowledged version ends that protection.
+On receiving that version's server tombstone, Keep is automatic: one transaction records the
+tombstone, retires the old tracked identity and clears the protection without removing local
+bytes. Ordinary scanning then uploads the restored file as a new create, even with unchanged
+bytes and timestamps. A crash before upload leaves an untracked local file that the next scan
+uploads normally. Other destructive changes remain held until their authority is resolved;
+the connection log explains them. A later acknowledged version ends the old protection.
 If the local path is physically absent, ordinary deletion settlement can retire the snapshot.
 
 Device-local sync scan fingerprints distinguish verified installations from ordinary scan
