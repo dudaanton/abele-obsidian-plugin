@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { expect, it, vi } from 'vitest'
+import { expect, it } from 'vitest'
 import {
   MemoryFileSystem,
   MemoryStateStore,
@@ -117,14 +117,10 @@ it.each(['revision', 'always', 'remote', 'pause'] as const)(
         if (continuous) {
           expect(new TextDecoder().decode(await fs.read('typing.md'))).toBe(typed)
           armed = false
+          await engine.sync()
           const latestSha = await sha256(new TextEncoder().encode(typed))
-          await vi.waitFor(
-            async () => {
-              expect((await client.manifest(null)).items).toEqual(
-                expect.arrayContaining([expect.objectContaining({ sha: latestSha })])
-              )
-            },
-            { timeout: 1500, interval: 20 }
+          expect((await client.manifest(null)).items).toEqual(
+            expect.arrayContaining([expect.objectContaining({ sha: latestSha })])
           )
         }
       }

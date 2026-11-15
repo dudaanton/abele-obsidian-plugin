@@ -125,33 +125,6 @@ export function syncPlacementPlugin() {
       if (file.endsWith('/engine.js')) {
         code = replaceOnce(
           code,
-          '    async run() {',
-          `    scheduleInventoryFollowUp() {
-        if (this.inventoryFollowUp !== undefined || this.paused || this.stopping || this.halted) return;
-        this.inventoryFollowUp = setTimeout(() => {
-          this.inventoryFollowUp = undefined;
-          if (!this.paused && !this.stopping && !this.halted)
-            void this.sync('inventory-follow-up').catch(noop);
-        }, this.opts.debounceMs ?? DEFAULT_DEBOUNCE_MS);
-    }
-    async run() {`
-        )
-        code = replaceOnce(
-          code,
-          '            completed = true;',
-          `            completed = true;
-            if (this.cycle.inventoryFollowUpNeeded) this.scheduleInventoryFollowUp();`
-        )
-        for (const method of ['async stop()', 'pause()'])
-          code = replaceOnce(
-            code,
-            `    ${method} {`,
-            `    ${method} {
-        clearTimeout(this.inventoryFollowUp);
-        this.inventoryFollowUp = undefined;`
-          )
-        code = replaceOnce(
-          code,
           '    trigger(why) {',
           `    trigger(why) {
         // An active exchange already polls the remote head. The periodic timer
@@ -430,7 +403,6 @@ export function syncPlacementPlugin() {
         this.ctx.set({ headSeq: Math.max(this.ctx.status().headSeq ?? 0, (secondPull ?? before).cursor) });
         if (inventory.changed()) {
           this.unscanned = true;
-          this.inventoryFollowUpNeeded = true;
           this.ctx.log('sync: inventory changed during scan; retaining unfinished inspection for the next pass');
         }
         if (!inventory.changed() && localRevision !== undefined && localRevision === fs[Symbol.for('abele.sync.local-scan-revision-v1')]?.() &&
@@ -487,7 +459,6 @@ export function syncPlacementPlugin() {
           return pass ? pass.call(this.ctx.opts.fs, run) : run();
         }
         async cycleUnlocked() {
-          this.inventoryFollowUpNeeded = false;
           const priorSettledLocalRevision = this.settledLocalRevision;
           const priorSettledEntryRevision = this.settledEntryRevision;
           // Failure/cancellation cannot leave an earlier pass's proof reusable.

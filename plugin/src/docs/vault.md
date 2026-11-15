@@ -3905,12 +3905,7 @@ in bounded background passes. Tracked edits and explicit file events are not def
 Edits arriving during enumeration do not restart the whole sync cycle. Its candidate
 inventory can still advance unchanged files through the ordinary per-file write checks.
 An overlapping edit prevents reuse of the completed-inspection shortcut and leaves another
-inspection due; a debounced follow-up runs automatically outside the current cycle's
-exclusive queue slot. Pause and stop cancel that follow-up. Watcher changes and direct disk
-checks continue to protect local edits. A changing inventory is incomplete for deletion
-decisions. New deletion publication also confirms the path's absence directly on disk after
-uploads, bypassing cached inventory and index observations; a file or folder at that path
-keeps the deletion local instead of sending it.
+inspection due; watcher changes and direct disk checks continue to protect local edits.
 While candidates remain unexamined, the scanner preserves missing tracked identities and
 postpones rename publication rather than inferring deletion from partial content evidence.
 An incomplete content pass preserves existing deletion holds and queued confirmations;
