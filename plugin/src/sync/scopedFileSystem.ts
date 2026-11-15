@@ -206,6 +206,7 @@ export function scopedFileSystem(
       if (
         key === Symbol.for('abele.sync.fingerprint-pull-v1') ||
         key === Symbol.for('abele.sync.cached-scan-hash-v1') ||
+        key === Symbol.for('abele.sync.confirm-missing-v1') ||
         key === Symbol.for('abele.sync.fingerprint-fresh-v1')
       )
         return (path: string, ...args: unknown[]) => {

@@ -4480,6 +4480,12 @@ export class ObsidianFileSystem implements FileSystem {
     return info === null ? null : this.told(info, false)
   }
 
+  /** Destructive publication cannot trust an index or an inventory's cached absence. */
+  async [Symbol.for('abele.sync.confirm-missing-v1')](path: string): Promise<boolean> {
+    this.runtimeFence?.assertOwned()
+    return (await this.rawStat(path)) === null
+  }
+
   /** The file at `path` as the disk has it, before `told`; null for none, or not a file. */
   private async fileAt(path: string): Promise<FileInfo | null> {
     const indexed = this.app.vault.getFileByPath(path)
