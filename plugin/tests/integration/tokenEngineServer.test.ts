@@ -312,7 +312,10 @@ it('shows normalization collisions as pending refusals while unrelated files syn
     }
     // Diagnostics: every status carries how classification used its cache, by caller.
     const classification = fixture.ui.activity.value[fixture.id].classification
-    expect(classification?.callers.list?.['miss-absent']).toBeGreaterThan(0)
+    console.debug('[sample normalization classification]', classification)
+    // Listing consumes the name index; cold content inspection belongs to fingerprint.
+    expect(classification?.callers.list?.indexed).toBeGreaterThan(0)
+    expect(classification?.callers.fingerprint?.['miss-absent']).toBeGreaterThan(0)
     expect(classification?.contentReads).toBeGreaterThan(0)
     expect(await app.vault.adapter.read(path)).toBe('composed bytes')
     expect(await app.vault.adapter.read(path.normalize('NFD'))).toBe('decomposed bytes')
