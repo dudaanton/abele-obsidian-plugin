@@ -1,6 +1,7 @@
 import { type App, PluginSettingTab } from 'obsidian'
 import type AbelePlugin from './main'
 import { GlobalStore } from './stores/GlobalStore'
+import { genid } from './helpers/vueUtils'
 
 /**
  * Obsidian 1.13 added a declarative settings API (`getSettingDefinitions()`) that makes a
@@ -27,6 +28,7 @@ export class AbeleSettingTab extends PluginSettingTab {
     // so the Vue app teleports into this element directly — a CSS selector would
     // only ever be resolved against the main window document.
     this.container = containerEl.createDiv()
+    this.container.id = genid()
 
     GlobalStore.getInstance().settingsContainer.value = this.container
   }

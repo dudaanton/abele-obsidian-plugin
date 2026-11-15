@@ -75,7 +75,8 @@
   />
   <DeletedFilesModal v-if="deletedFilesModalOpened" @close="deletedFilesModalOpened = false" />
   <Teleport v-if="settingsContainer" :to="settingsContainer">
-    <SettingsView />
+    <!-- A hide/display pair can share a Vue tick: the new host needs fresh page state. -->
+    <SettingsView :key="settingsContainer.id" />
   </Teleport>
 </template>
 
