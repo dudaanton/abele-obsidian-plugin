@@ -1,7 +1,7 @@
 import type { App } from 'obsidian'
 import { SHA256 } from '@noble/hashes/sha2.js'
 import { durableHostOf } from '@/sync/hostSyncStorage'
-import { storageOf } from '@/sync/hostSyncSchema'
+import { storageOf } from '@/sync/vaultWrites'
 import { BoundedVaultIo } from '@/sync/boundedVaultIo'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 

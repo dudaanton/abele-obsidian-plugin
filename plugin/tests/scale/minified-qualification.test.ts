@@ -30,14 +30,16 @@ it.each([undefined, false, true])(
               path: args.path,
               namespace: 'sample-host',
             }))
-            api.onLoad({ filter: /.*/, namespace: 'sample-host' }, () => ({
-              contents: `
-        export const storageOf = app => app.storage;
-        export const durableHostOf = storage => storage.host;
-        export class BoundedVaultIo {}
-        export class ObsidianFileSystem {}
-      `,
-            }))
+            const stubs: Record<string, string> = {
+              '@/sync/vaultWrites': 'export const storageOf = app => app.storage;',
+              '@/sync/hostSyncStorage': 'export const durableHostOf = storage => storage.host;',
+              '@/sync/boundedVaultIo': 'export class BoundedVaultIo {}',
+              '@/sync/ObsidianFileSystem': 'export class ObsidianFileSystem {}',
+            }
+            api.onLoad({ filter: /.*/, namespace: 'sample-host' }, args => {
+              if (!stubs[args.path]) throw new Error('Unexpected sample host dependency')
+              return { contents: stubs[args.path] }
+            })
           },
         },
       ],
