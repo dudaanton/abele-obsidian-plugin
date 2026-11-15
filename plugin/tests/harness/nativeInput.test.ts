@@ -229,6 +229,40 @@ it('rejects a probe without an explicit input port instead of silently running u
   expect(() => nativeInputProbe('(async () => {})()')).toThrow('no explicit CDP port')
 })
 
+it('reports lane wait separately from the active input deadline', async () => {
+  const lock = join(dir, 'deadline.lock')
+  let release!: () => void
+  const held = withNativeInput(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve
+      }),
+    lock
+  )
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+  const source = `(async () => {
+    const cdp = (method, params) => debuggerApi.sendCommand(method, params)
+    let queued = 0
+    const extendInputDeadline = ms => { queued += ms }
+    const inputGesture = async run => run()
+    await inputGesture(() => cdp('Input.dispatchMouseEvent', {type:'mouseWheel'}))
+    return queued
+  })()`
+  const nodeRequire = Module.createRequire(import.meta.url)
+  const api = { sendCommand: async () => {} }
+  const execute = new Function('require', `return ${nativeInputProbe(source, lock)}`)
+  const pending = execute((name: string) =>
+    name === '@electron/remote'
+      ? { getCurrentWebContents: () => ({ debugger: api }) }
+      : nodeRequire(name)
+  )
+  // Keep a live owner in front of the probe's queued gesture.
+  await new Promise((resolve) => setTimeout(resolve, 60))
+  release()
+  await held
+  expect(await pending).toBeGreaterThanOrEqual(50)
+})
+
 it.each([false, true])(
   'holds one wheel sweep through receipt waits and releases it on exit (failure: %s)',
   async (fail) => {

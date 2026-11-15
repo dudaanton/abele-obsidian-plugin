@@ -10,7 +10,8 @@ import { stopScrollProfilers } from './helpers/stopScrollProfilers.mjs'
 targets('desktop')
 const artifacts = shotDir('abele-node-store-refresh')
 // Allocation sampling changes allocation cost and GC timing. Use a separate diagnostic
-// run for it; qualification retains CPU/long-task evidence and the same frame budget.
+// run for it; qualification retains CPU/long-task evidence. The frame budget
+// counts renderer thread CPU; raw frame gaps remain diagnostic under contention.
 const allocationsEnabled = process.env.ABELE_SCROLL_ALLOCATIONS === '1'
 
 beforeEach(async (context) => {

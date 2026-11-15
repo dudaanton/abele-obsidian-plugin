@@ -139,8 +139,12 @@ function createInputDispatch(send: SendInput, acquire: () => Promise<() => void>
       }
     }
   }
-  const gesture = async <T>(run: () => Promise<T>): Promise<T> => {
-    if (!release) release = await acquire()
+  const gesture = async <T>(run: () => Promise<T>, queued?: (ms: number) => void): Promise<T> => {
+    if (!release) {
+      const start = Date.now()
+      release = await acquire()
+      queued?.(Date.now() - start)
+    }
     gestures++
     try {
       return await run()
@@ -160,7 +164,7 @@ export function nativeInputProbe(source: string, lock = INPUT_LOCK): string {
     .replaceAll('debuggerApi.sendCommand(', 'nativeDispatch.dispatch(')
     .replace(
       'const inputGesture = async run => run()',
-      'const inputGesture = nativeDispatch.gesture'
+      'const inputGesture = run => nativeDispatch.gesture(run, typeof extendInputDeadline === "function" ? extendInputDeadline : undefined)'
     )
     .replaceAll('debuggerApi.detach()', '(await nativeDispatch.close(), debuggerApi.detach())')
   return `(async () => {

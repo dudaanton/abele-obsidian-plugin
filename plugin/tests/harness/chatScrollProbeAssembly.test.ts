@@ -8,6 +8,7 @@ vi.mock('../e2e/helpers/shots', () => ({ shotDir: () => '/sample-shots' }))
 it.each([false, true])('assembles gesture-scoped chat probes with touch=%s', (phone) => {
   for (const source of [
     script('short', 'running-tool', phone),
+    script('long', 'idle', phone, 8000, true),
     endScript('long', 'text', phone),
     followScript(phone),
     handoffScript(phone),

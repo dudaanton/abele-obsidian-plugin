@@ -4,6 +4,7 @@ import { traceScrollInput } from './scrollInputTrace'
 import { scrollCompletion } from './scrollCompletion'
 import { prepareScrollbarDrag, scrollbarDragPoint } from './scrollbarDragPoint'
 import { nativeInputReceipt } from './nativeInputReceipt'
+import { inputFrameClock } from './inputFrameClock'
 
 export const states = ['idle', 'text', 'running-tool', 'finished-tool', 'finished-reply'] as const
 const shots = shotDir('abele-phone')
@@ -231,6 +232,8 @@ interface Row {
 }
 export interface Report {
   maxInputFrameMs: number
+  maxInputFrameCpuMs?: number
+  inputCpuSamples?: number
   idleLongTasks?: number[]
   error?: string
   rows: Row[]
@@ -244,11 +247,18 @@ export interface Report {
 
 // A scripted SSE provider and an inert, controllable tool exercise the ordinary session path.
 // Neither model credentials nor a real tool executor are used.
-export const script = (size: string, state: string, phone: boolean, idleMs = 0) => `(async () => {
+export const script = (
+  size: string,
+  state: string,
+  phone: boolean,
+  idleMs = 0,
+  cpuFrames = false
+) => `(async () => {
   const size = ${JSON.stringify(size)}, state = ${JSON.stringify(state)}, phone = ${phone}
   // Hundreds of native gestures include deliberate settle waits; this is a harness
   // budget, independent of the pixel and direction invariants checked below.
-  const deadline = Date.now() + ${phone && size === 'long' && state === 'text' ? 360000 : 270000}
+  let deadline = Date.now() + ${phone && size === 'long' && state === 'text' ? 360000 : 270000}
+  const extendInputDeadline = ms => { deadline += ms }
   const wait = async ms => {
     if (Date.now() > deadline) throw Error('Matrix case exceeded its input budget')
     await new Promise(r => setTimeout(r, ms))
@@ -260,6 +270,9 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
   const realFetch = window.fetch
   const report = { rows: [], streamMs: 0, evicted: false, initialPages: 0, maxInputFrameMs: 0 }
   let previousInputFrame
+  const cpuClock = (${inputFrameClock.toString()})()
+  let cpuGesture = -1
+  let cpuFrame, cpuPending
   const box = () => [...document.querySelectorAll('.abele-ai-chat__messages')].find(e => e.getClientRects().length)
   const item = id => box()?.querySelector('[data-message-id="' + id + '"]')
   const until = async fn => {
@@ -418,6 +431,25 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
       row.samples++
     }
     frame = requestAnimationFrame(sample)
+  }
+  const sampleCpu = () => {
+    if (stop) return
+    cpuPending = (async () => {
+      // ThreadTime counts main-thread CPU, excluding time descheduled by other
+      // windows. Keep raw rAF gaps too: neither clock measures a pixel jump.
+      const active = gestureActive, index = gestureIndex
+      try {
+        const { metrics } = await cdp('Performance.getMetrics')
+        const at = performance.now()
+        if (cpuGesture !== index) cpuClock.sample(at, 0, false)
+        cpuClock.sample(at, metrics.find(m => m.name === 'ThreadTime')?.value,
+          active && gestureActive && index === gestureIndex)
+        cpuGesture = index
+        report.maxInputFrameCpuMs = cpuClock.cpuMs
+        report.inputCpuSamples = cpuClock.samples
+      } catch (error) { report.error = String(error) }
+      if (!stop) cpuFrame = requestAnimationFrame(sampleCpu)
+    })()
   }
   const begin = move => {
     direction = 0; previous = undefined; previousAnchor = null
@@ -655,7 +687,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
         tail = call.id
       }
     }
-    begin('following'); sample(); await wait(streaming ? 5200 : 300)
+    begin('following'); sample(); if (${cpuFrames}) sampleCpu(); await wait(streaming ? 5200 : 300)
     if (state === 'finished-tool') {
       finishTool()
       await until(() => session.messages.value.find(m => m.id === tail)?.toolResult !== undefined)
@@ -845,6 +877,7 @@ export const script = (size: string, state: string, phone: boolean, idleMs = 0) 
     dragTrace?.stop()
     dragCompletion?.stop()
     stop = true; finishInitial = true; finishTool?.(); cancelAnimationFrame(frame)
+    cancelAnimationFrame(cpuFrame); await cpuPending
     require('fs').writeFileSync(${JSON.stringify(shots + '/')} + (phone ? 'touch-' : 'wheel-') + size + '-' + state + '-frames.json', JSON.stringify(trace))
     window.fetch = realFetch
     if (streamingAt) report.streamMs = performance.now() - streamingAt

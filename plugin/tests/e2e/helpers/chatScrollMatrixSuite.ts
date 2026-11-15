@@ -85,13 +85,17 @@ export function chatScrollMatrixSuite(filter?: string, frameBudgetMs?: number, i
               async () => {
                 const probe = () =>
                   evalLong(
-                    nativeInputProbe(script(size, state, phone, idleMs)),
-                    longTouchText ? 390_000 : 300_000
+                    nativeInputProbe(
+                      script(size, state, phone, idleMs, frameBudgetMs !== undefined)
+                    ),
+                    frameBudgetMs !== undefined ? 900_000 : longTouchText ? 390_000 : 300_000
                   ).then((result) => JSON.parse(result) as Report)
                 const result = await probe()
                 console.log('scroll-matrix', JSON.stringify({ phone, size, state, ...result }))
-                if (frameBudgetMs !== undefined)
-                  expect.soft(result.maxInputFrameMs).toBeLessThanOrEqual(frameBudgetMs)
+                if (frameBudgetMs !== undefined) {
+                  expect.soft(result.inputCpuSamples).toBeGreaterThan(1)
+                  expect.soft(result.maxInputFrameCpuMs).toBeLessThanOrEqual(frameBudgetMs)
+                }
                 if (idleMs) expect.soft(result.idleLongTasks).toEqual([])
                 expect.soft(result.error).toBeUndefined()
                 expect.soft(result.rows).toHaveLength(13)
@@ -120,7 +124,7 @@ export function chatScrollMatrixSuite(filter?: string, frameBudgetMs?: number, i
                     .toBeLessThanOrEqual(phone ? 24 : 2)
                 }
               },
-              longTouchText ? 420_000 : 360_000
+              frameBudgetMs !== undefined ? 930_000 : longTouchText ? 420_000 : 360_000
             )
           }
         }
