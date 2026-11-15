@@ -9,19 +9,6 @@ const assertPath = (path: string) => {
   if (!includes(path)) throw new Error('outside scope')
 }
 
-it('keeps fresh absence confirmation inside the granted scope', async () => {
-  const key = Symbol.for('abele.sync.confirm-missing-v1')
-  const confirm = vi.fn(async () => true)
-  const fs = scopedFileSystem(
-    Object.assign(new MemoryFileSystem(), { [key]: confirm }),
-    assertPath,
-    includes
-  )
-  expect(await Reflect.get(fs, key)('Shared/sample.md')).toBe(true)
-  await expect(Reflect.get(fs, key)('Private/sample.md')).rejects.toThrow('outside scope')
-  expect(confirm).toHaveBeenCalledExactlyOnceWith('Shared/sample.md')
-})
-
 it('forwards readonly scan revisions without granting a path and binds the current scope root', () => {
   const revision = Symbol.for('abele.sync.local-scan-revision-v1')
   let root = 'Shared'

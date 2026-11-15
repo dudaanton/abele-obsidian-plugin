@@ -306,7 +306,6 @@ export function scopedFileSystem(
         key === FINGERPRINT_UPLOAD ||
         key === UPLOAD_READ ||
         key === Symbol.for('abele.sync.written-stat-v1') ||
-        key === Symbol.for('abele.sync.confirm-missing-v1') ||
         key === Symbol.for('abele.sync.index-absent-v1')
       )
         return async (path: string, ...args: unknown[]) => {

@@ -4480,12 +4480,6 @@ export class ObsidianFileSystem implements FileSystem {
     return info === null ? null : this.told(info, false)
   }
 
-  /** A delete publication needs a current disk observation, outside inventory caches. */
-  async [Symbol.for('abele.sync.confirm-missing-v1')](path: string): Promise<boolean> {
-    this.runtimeFence?.assertReady()
-    return (await this.rawStat(path)) === null
-  }
-
   /** The file at `path` as the disk has it, before `told`; null for none, or not a file. */
   private async fileAt(path: string): Promise<FileInfo | null> {
     const indexed = this.app.vault.getFileByPath(path)
