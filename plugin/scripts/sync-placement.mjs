@@ -253,6 +253,11 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/cycle.js')) {
         code = replaceOnce(
           code,
+          '        const judged = await this.gate.judge(',
+          '        if (inventory.changed()) found.complete = false;\n        const judged = await this.gate.judge('
+        )
+        code = replaceOnce(
+          code,
           'scanSnapshot(fs, () => this.ctx.signal?.(), scheduling)',
           'scanSnapshot(fs, () => this.ctx.signal?.(), { ...scheduling, allowConcurrentChanges: true })'
         )
@@ -469,7 +474,19 @@ export function syncPlacementPlugin() {
         code = replaceOnce(
           code,
           'const snapshots = new Map();',
-          'const snapshots = new Map();\n    let revision, changed = false;'
+          `const snapshots = new Map();
+    let revision, changed = false;
+    const complete = () => {
+      const clock = fs[Symbol.for('abele.sync.local-scan-revision-v1')];
+      if (revision !== undefined && typeof clock === 'function' && revision !== clock.call(fs)) changed = true;
+      return !changed;
+    };`
+        )
+        code = replaceOnce(
+          code,
+          '            const value = Reflect.get(target, key);',
+          `            if (key === Symbol.for('abele.sync.inventory-complete-v1')) return complete;
+            const value = Reflect.get(target, key);`
         )
         code = replaceOnce(
           code,
@@ -496,7 +513,7 @@ export function syncPlacementPlugin() {
         code = replaceOnce(
           code,
           'return { fs: proxy, invalidate: () => snapshots.clear() };',
-          'return { fs: proxy, invalidate: () => snapshots.clear(), changed: () => changed };'
+          'return { fs: proxy, invalidate: () => snapshots.clear(), changed: () => !complete() };'
         )
       } else if (file.endsWith('/pullWrite.js')) {
         code = replaceOnce(
@@ -1007,6 +1024,11 @@ export function syncPlacementPlugin() {
           'if (cached === null) await recordPaired(fs, state, info.path, info, fingerprint.sha, beforeIdentity);\n                found.hashes.set(path, fingerprint.sha);'
         )
       } else if (file.endsWith('/scanner.js')) {
+        code = replaceOnce(
+          code,
+          'complete: !unreadCandidate && skipped.length === 0',
+          `complete: !unreadCandidate && skipped.length === 0 && fs[Symbol.for('abele.sync.inventory-complete-v1')]?.() !== false`
+        )
         code = replaceOnce(
           code,
           'export async function scan(fs, state, filter, opts = {}) {',
@@ -1645,6 +1667,45 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
           return await (upload ? upload.call(fs, path) : fs.openRead(path));`
         )
       } else if (file.endsWith('/pusher.js')) {
+        code = replaceOnce(
+          code,
+          'const preferred = await preferring(scan.ops, opts.prefer, work);',
+          `const freshOps = scan.complete === false ? scan.ops.filter(op => op.op !== 'delete') : scan.ops;
+    const preferred = await preferring(freshOps, opts.prefer, work);`
+        )
+        code = replaceOnce(
+          code,
+          'async sendable(ops, checkPaths = true) {',
+          'async sendable(ops, checkPaths = true, verifyDeletes = checkPaths) {'
+        )
+        code = replaceOnce(
+          code,
+          "            const cached = 'sha' in op ? this.refused.get(op.sha) : undefined;",
+          `            if (verifyDeletes && op.op === 'delete') {
+              const entry = await this.state.byFileId(op.file_id);
+              const confirmMissing = this.fs[Symbol.for('abele.sync.confirm-missing-v1')];
+              const absent = entry && entry.versionId === op.base_version_id &&
+                (confirmMissing ? await confirmMissing.call(this.fs, entry.path) : await this.fs.stat(entry.path) === null);
+              if (!absent) {
+                if (entry) this.report.kept.push(entry.wirePath);
+                this.opts.log?.('push: holding deletion whose path is no longer confirmed missing');
+                continue;
+              }
+            }
+            const cached = 'sha' in op ? this.refused.get(op.sha) : undefined;`
+        )
+        // A historical request must retain its identity and contents. Only new
+        // publication is filtered after uploads; uncertain replay stays unchanged.
+        code = replaceOnce(
+          code,
+          '    for (const journal of units) {',
+          '    pusher.replaying = true;\n    for (const journal of units) {'
+        )
+        code = replaceOnce(
+          code,
+          'const sending = await this.sendable(ops, false);',
+          'const sending = await this.sendable(ops, false, !this.replaying);'
+        )
         // The SDK yields during source indexing and unchanged-entry refresh.
         code = replaceOnce(
           code,
