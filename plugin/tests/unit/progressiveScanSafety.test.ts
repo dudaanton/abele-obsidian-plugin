@@ -16,9 +16,11 @@ afterEach(() => vi.restoreAllMocks())
 const filter = { excluded: () => false }
 const bytes = (text: string) => new TextEncoder().encode(text)
 
-it.each(['none', 'confirm', 'restore'] as const)(
+it.each(['none', 'confirm', 'restore', 'restore-with-directory-review'] as const)(
   'retains a bulk-deletion hold through a bounded restart after all but one source return (decision=%s)',
-  async (decisionKind) => {
+  async (decisionCase) => {
+    const directoryReview = decisionCase === 'restore-with-directory-review'
+    const decisionKind = directoryReview ? 'restore' : decisionCase
     const queued = decisionKind !== 'none'
     const raw = new MemoryFileSystem()
     const state = new MemoryStateStore()
@@ -190,6 +192,24 @@ it.each(['none', 'confirm', 'restore'] as const)(
         await state.setMeta('delete-decision', decision)
         await state.setMeta('recent-deletes', '[[1,2]]')
       }
+      if (directoryReview)
+        await state.setMeta(
+          'v2-directories',
+          JSON.stringify({
+            directories: [],
+            removals: [],
+            refused: [
+              {
+                path: 'sample-review',
+                source: 'sample-review',
+                code: 'conflict',
+                message: 'directory move evidence is ambiguous',
+                direction: 'push',
+                evidence: true,
+              },
+            ],
+          })
+        )
       budget = new ProgressiveLocalScan()
       engine = make()
       await engine.sync()
@@ -200,6 +220,7 @@ it.each(['none', 'confirm', 'restore'] as const)(
         expect(await state.getMeta('recent-deletes')).toBe('[[1,2]]')
       }
       expect(sent.some((op) => op.op === 'delete')).toBe(false)
+      if (directoryReview) await state.setMeta('v2-directories', null)
       const edited = bytes('edited! content')
       if (decisionKind === 'restore') {
         await raw.writeAtomic('tracked-059.md', edited, 1000)

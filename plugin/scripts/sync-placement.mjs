@@ -251,6 +251,7 @@ export function syncPlacementPlugin() {
     /** Read afresh each time:`
         )
       } else if (file.endsWith('/cycle.js')) {
+        code = `import { heldDirectoryPaths } from './v2Directories.js';\n` + code
         code = replaceOnce(
           code,
           'await recoverPendingPullWrites(fs, state, await work.collect(pendingFiles), client, {\n            log,',
@@ -306,12 +307,16 @@ export function syncPlacementPlugin() {
           'const unresolved = this.retries.list().length > 0 ||',
           'const unresolved = found.complete === false || inspection.found.complete === false || this.retries.list().length > 0 ||'
         )
-        // Put-back is additive and checks each selected path itself. A directory
-        // evidence barrier can make the scan incomplete until that very restore.
+        // Only directory review may unblock an explicit additive restore early.
+        // Ordinary bounded discovery retains its hold and queued decision until
+        // complete; recursing there would reset the cold-file budget mid-sync.
         code = replaceOnce(
           code,
           "if (filed?.decision.kind === 'restore' && found.complete !== false)",
-          "if (filed?.decision.kind === 'restore')"
+          `if (filed?.decision.kind === 'restore' && (found.complete !== false ||
+            (!found[Symbol.for('abele.sync.discovery-pending-v1')] && found.skipped.length > 0 &&
+              found.skipped.every(row => row.reason === 'directory move evidence is ambiguous') &&
+              (await heldDirectoryPaths(state)).size > 0)))`
         )
         code = replaceOnce(
           code,
@@ -989,6 +994,17 @@ export function syncPlacementPlugin() {
           'if (cached === null) await recordPaired(fs, state, info.path, info, fingerprint.sha, beforeIdentity);\n                found.hashes.set(path, fingerprint.sha);'
         )
       } else if (file.endsWith('/scanner.js')) {
+        // Keep discovery incompleteness distinct from directory-only review.
+        // The private non-enumerable observation does not change the public scan image.
+        code = replaceOnce(
+          code,
+          `    return { ops, hashes, diskPaths, infos, verified, dirty, skipped, collisions,
+        complete: !unreadCandidate && skipped.length === 0 };`,
+          `    const result = { ops, hashes, diskPaths, infos, verified, dirty, skipped, collisions,
+        complete: !unreadCandidate && skipped.length === 0 };
+    Object.defineProperty(result, Symbol.for('abele.sync.discovery-pending-v1'), { value: unreadCandidate });
+    return result;`
+        )
         code = replaceOnce(
           code,
           'export async function scan(fs, state, filter, opts = {}) {',

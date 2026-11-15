@@ -3904,9 +3904,11 @@ inventories enumerate names without reading every file; new untracked content is
 in bounded background passes. Tracked edits and explicit file events are not deferred.
 While candidates remain unexamined, the scanner preserves missing tracked identities and
 postpones rename publication rather than inferring deletion from partial content evidence.
-An incomplete content pass preserves existing deletion holds and queued confirmations;
-only a complete pass can settle confirmed deletions. An explicit put-back checks its chosen
-missing targets independently and retains their restore identities until settlement.
+An incomplete bounded content pass preserves existing deletion holds and queued decisions;
+only a complete pass can settle confirmed deletions. Directory-review evidence alone may unblock
+an explicit put-back early: it checks its chosen missing targets independently and retains
+their restore identities until settlement. Ordinary deferred content discovery keeps the
+restore decision queued, so restarting comparison cannot reset its budget inside one sync.
 Matching durable scan hints count as completed work
 before the cold-file budget is charged, so restart discovery can advance without rereading.
 Cold indexed files use bounded concurrent reads with time-based cooperative yields. A saved
