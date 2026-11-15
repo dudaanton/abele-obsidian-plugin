@@ -170,6 +170,13 @@ continue. Legacy journals without publication metadata are treated as uncertain.
 confirmation on the host reads the physical disk, bypassing its index and inventory caches.
 These records do not travel in settings.
 
+Retiring a destructive journal also records `restored-delete-protection:<file-id>` for
+each restored local file, atomically with retirement. This snapshot binds protection to
+the file's tracked version even when restored bytes and timestamps match its old baseline.
+Incoming deletions of that version remain held for review across cycle and process restarts;
+the connection log explains the hold. A later acknowledged version ends that protection.
+If the local path is physically absent, ordinary deletion settlement can retire the snapshot.
+
 Device-local sync scan fingerprints distinguish verified installations from ordinary scan
 hints. Installation receipts retain the native identity, size, modification/creation times,
 content-change revision and verified hash in the host IndexedDB store. Fresh watcher checks

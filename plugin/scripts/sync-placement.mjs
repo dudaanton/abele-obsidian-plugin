@@ -27,6 +27,20 @@ function replaceBoundary(code, before, after, id) {
   return code.replace(before, after)
 }
 const helper = `
+// A restored file is a new local intention even when its bytes and timestamps
+// match the old baseline. Keep that fact across retirement and process cuts.
+async function protectRestoredJournalDeletes(fs, state, journal) {
+  if (!fs) return;
+  for (const op of journal.ops) {
+    if (op.op !== 'delete') continue;
+    const entry = await state.byFileId(op.file_id);
+    if (!entry) continue;
+    const confirm = fs[Symbol.for('abele.sync.confirm-missing-v1')];
+    if (confirm ? await confirm.call(fs, entry.path) : await fs.stat(entry.path) === null) continue;
+    await state.setMeta('restored-delete-protection:' + entry.fileId,
+      JSON.stringify({ entry, journalKey: journal.idempotencyKey }));
+  }
+}
 // Keep replay batches small even on hosts where a time-based checkpoint is coarse.
 function replayWork(options) {
   const work = new ScanWork(options);
@@ -928,6 +942,12 @@ export function syncPlacementPlugin() {
         code = `import { heldDirectoryPaths } from './v2Directories.js';\n` + code
         code = replaceOnce(
           code,
+          '        await tx.setMeta(`reconciliation-journal:${journal.idempotencyKey}`, JSON.stringify(journal));',
+          `        await protectRestoredJournalDeletes(fs, tx, journal);
+        await tx.setMeta(\`reconciliation-journal:\${journal.idempotencyKey}\`, JSON.stringify(journal));`
+        )
+        code = replaceOnce(
+          code,
           'if (active && found.skipped.length > 0)',
           `// A deliberate directory barrier is review-pending work, not failed I/O.
     // Its subtree remains excluded from scans and refused by every pull placement.
@@ -1108,6 +1128,25 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
           'const children = candidates ?? (await (indexed ? fs.listChildren(parent) : inventoryChildren(fs, parent, path)));'
         )
       } else if (file.endsWith('/pullPlace.js')) {
+        code = replaceOnce(
+          code,
+          '    async drop(entry, change) {',
+          `    async drop(entry, change) {
+        const restoredProtection = await this.state.getMeta?.('restored-delete-protection:' + entry.fileId);
+        if (restoredProtection && JSON.parse(restoredProtection).entry.versionId === entry.versionId) {
+          const confirm = this.fs[Symbol.for('abele.sync.confirm-missing-v1')];
+          if (!(confirm ? await confirm.call(this.fs, entry.path) : await this.fs.stat(entry.path) === null)) {
+            this.opts.log?.('pull: holding deletion of a restored file for review: ' + entry.wirePath);
+            return false;
+          }
+        }`
+        )
+        code = replaceOnce(
+          code,
+          '            await tx.delete(entry.path);',
+          `            await tx.delete(entry.path);
+            await tx.setMeta?.('restored-delete-protection:' + entry.fileId, null);`
+        )
         code = replaceOnce(
           code,
           '            if (this.sequenceKnown)\n                await recordPull(tx, change);',
@@ -1668,6 +1707,7 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
             // rather than replaying it or blocking unrelated work indefinitely.
             const reason = 'uncertain deletion has a restored path; reconciling current state';
             await transact(this.state, async tx => {
+              await protectRestoredJournalDeletes(this.fs, tx, journal);
               await requestReconciliation(tx, reason);
               await tx.setMeta('reconciliation-journal:' + key, JSON.stringify(journal));
               await tx.setMeta('reconciliation-publication:' + key, JSON.stringify(publication));

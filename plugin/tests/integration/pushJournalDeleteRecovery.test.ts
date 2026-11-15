@@ -11,7 +11,7 @@ import {
   selectiveDefaults,
   type EngineClient,
 } from '@abele/sync-sdk/core'
-import type { CommitOp, CommitResponse } from '@abele/sync-sdk/protocol'
+import type { ChangeItem, CommitOp, CommitResponse } from '@abele/sync-sdk/protocol'
 
 async function fixture() {
   const fs = new MemoryFileSystem(),
@@ -235,3 +235,107 @@ it('replays the exact lost-response request once when its deleted path stays abs
   expect(await s.state.byFileId('sample-file')).toBeNull()
   expect(await s.state.metadataKeys('push-publication:')).toEqual([])
 })
+
+it.each(['recovery', 'restart-after-retirement', 'crash-before-retirement-commit'])(
+  'keeps an identical restored file when pulling the committed deletion: %s',
+  async (cut) => {
+    const s = await fixture()
+    await s.fs.remove('other.md')
+    await s.state.setCursor(1)
+    s.client.hasBlob.mockResolvedValue(true)
+    s.client.commitRaw.mockRejectedValueOnce(new Error('committed response lost'))
+    await expect(s.freshPush()).rejects.toThrow('committed response lost')
+    // The server accepted the request. Restore the exact prior bytes and timestamp.
+    await s.fs.writeAtomic('sample.md', s.bytes, 1)
+    const deletion: ChangeItem = {
+      seq: 2,
+      file_id: 'sample-file',
+      version_id: 'deleted-version',
+      op: 'delete',
+      path: 'sample.md',
+      prev_path: null,
+      sha: null,
+      size: null,
+      mtime: null,
+      kind: 'note',
+      actor: { kind: 'device', id: 'sample-peer', name: 'Sample peer' },
+      at: '2025-01-01T00:00:00.000Z',
+    }
+    if (cut === 'crash-before-retirement-commit') {
+      const pending = await s.state.getJournal()
+      const transaction = s.state.transaction.bind(s.state)
+      const commit = vi.spyOn(s.state, 'transaction').mockImplementationOnce((work) =>
+        transaction(async (tx) => {
+          await work(tx)
+          expect(await tx.getJournal()).toBeNull()
+          expect(await tx.getMeta('restored-delete-protection:sample-file')).not.toBeNull()
+          throw new Error('crash before retirement commit')
+        })
+      )
+      await expect(s.resume()).rejects.toThrow('crash before retirement commit')
+      commit.mockRestore()
+      expect(await s.state.getJournal()).toEqual(pending)
+      expect(await s.state.getMeta('restored-delete-protection:sample-file')).toBeNull()
+    } else if (cut === 'restart-after-retirement') {
+      expect((await s.resume())?.reconciliationRequired).toBe(true)
+      expect(await s.state.getJournal()).toBeNull()
+      expect(await s.state.getMeta('restored-delete-protection:sample-file')).not.toBeNull()
+      // No in-memory kept set survives this process cut.
+    }
+    const client = {
+      ...s.client,
+      state: async () => ({
+        head_seq: 2,
+        settings: {
+          conflict: 'merge',
+          max_file_bytes: 1000000,
+          quota_bytes: null,
+          retention: { notes_days: 30, attachments_days: 30, settings_days: 30 },
+        },
+      }),
+      changes: async (since: number) => ({
+        items: since < 2 ? [deletion] : [],
+        head_seq: 2,
+        next_since: 2,
+      }),
+      versions: async () => [
+        { ...deletion },
+        {
+          ...deletion,
+          op: 'create',
+          version_id: 'base',
+          sha: await sha256(s.bytes),
+          size: s.bytes.length,
+          mtime: 1,
+        },
+      ],
+    } as unknown as EngineClient
+    const engine = new SyncEngine({
+      fs: s.fs,
+      state: s.state,
+      client,
+      selective: selectiveDefaults(),
+    })
+    try {
+      await engine.sync()
+      expect(await s.fs.read('sample.md')).toEqual(s.bytes)
+      // The incoming deletion is held for review, rather than silently acknowledged.
+      expect(await s.state.getMeta('pull-held:sample-file')).not.toBeNull()
+      await engine.stop()
+      const restarted = new SyncEngine({
+        fs: s.fs,
+        state: s.state,
+        client,
+        selective: selectiveDefaults(),
+      })
+      try {
+        await restarted.sync()
+        expect(await s.fs.read('sample.md')).toEqual(s.bytes)
+      } finally {
+        await restarted.stop()
+      }
+    } finally {
+      await engine.stop()
+    }
+  }
+)
