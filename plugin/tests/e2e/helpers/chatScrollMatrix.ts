@@ -235,7 +235,7 @@ export interface Report {
   maxInputFrameMs: number
   maxInputFrameCpuMs?: number
   inputCpuSamples?: number
-  maxScrollScriptMs?: number
+  blockingCalls?: { operation: string; caller: string }[]
   idleLongTasks?: number[]
   error?: string
   rows: Row[]
@@ -276,7 +276,6 @@ export const script = (
   let cpuGesture = -1
   let cpuFrame, cpuPending
   const blocking = (${scrollBlocking.toString()})()
-  let blockingObserver
   const box = () => [...document.querySelectorAll('.abele-ai-chat__messages')].find(e => e.getClientRects().length)
   const item = id => box()?.querySelector('[data-message-id="' + id + '"]')
   const until = async fn => {
@@ -692,10 +691,7 @@ export const script = (
       }
     }
     if (${cpuFrames}) {
-      if (!PerformanceObserver.supportedEntryTypes.includes('long-animation-frame'))
-        throw Error('Missing long-animation-frame script timing evidence')
-      blockingObserver = new PerformanceObserver(list => blocking.record(list.getEntries()))
-      blockingObserver.observe({ type: 'long-animation-frame' })
+      blocking.install(require)
     }
     begin('following'); sample(); if (${cpuFrames}) sampleCpu(); await wait(streaming ? 5200 : 300)
     if (state === 'finished-tool') {
@@ -878,12 +874,8 @@ export const script = (
     row.bottomGap = box().scrollHeight - box().scrollTop - box().clientHeight
   } catch (e) { report.error = String(e?.stack || e) }
   finally {
-    if (blockingObserver) {
-      blocking.record(blockingObserver.takeRecords())
-      blockingObserver.disconnect()
-      report.maxScrollScriptMs = blocking.maxScriptMs
-      report.scrollBlockingScripts = blocking.scripts
-    }
+    blocking.stop()
+    if (${cpuFrames}) report.blockingCalls = blocking.calls
     console.debug = realDebug
     window.removeEventListener('wheel', nativeInput, true)
     window.removeEventListener('touchmove', nativeInput, true)

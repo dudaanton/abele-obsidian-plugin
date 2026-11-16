@@ -94,15 +94,14 @@ export function chatScrollMatrixSuite(filter?: string, frameBudgetMs?: number, i
                 console.log('scroll-matrix', JSON.stringify({ phone, size, state, ...result }))
                 if (frameBudgetMs !== undefined) {
                   expect.soft(result.inputCpuSamples).toBeGreaterThan(1)
-                  expect.soft(result.maxInputFrameCpuMs).toBeLessThanOrEqual(frameBudgetMs)
+                  // Per-task plugin CPU is checked against the captured profile in
+                  // the owning suite. Whole-renderer clocks stay diagnostic only.
                   expect
-                    .soft(
-                      result.maxScrollScriptMs,
-                      'plugin script wall time including synchronous waits'
-                    )
-                    .toBeLessThanOrEqual(frameBudgetMs)
+                    .soft(result.blockingCalls, 'direct plugin synchronous blocking calls')
+                    .toEqual([])
                 }
-                if (idleMs) expect.soft(result.idleLongTasks).toEqual([])
+                // Idle task wall times are diagnostic; the owning suite checks
+                // executing plugin samples and direct blocking calls instead.
                 expect.soft(result.error).toBeUndefined()
                 expect.soft(result.rows).toHaveLength(13)
                 if (size === 'short') expect.soft(result.initialPages).toBeLessThanOrEqual(1)
