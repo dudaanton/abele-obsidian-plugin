@@ -5,6 +5,7 @@ import { scrollCompletion } from './scrollCompletion'
 import { prepareScrollbarDrag, scrollbarDragPoint } from './scrollbarDragPoint'
 import { nativeInputReceipt } from './nativeInputReceipt'
 import { inputFrameClock } from './inputFrameClock'
+import { scrollBlocking } from './scrollBlocking'
 
 export const states = ['idle', 'text', 'running-tool', 'finished-tool', 'finished-reply'] as const
 const shots = shotDir('abele-phone')
@@ -234,6 +235,7 @@ export interface Report {
   maxInputFrameMs: number
   maxInputFrameCpuMs?: number
   inputCpuSamples?: number
+  maxScrollScriptMs?: number
   idleLongTasks?: number[]
   error?: string
   rows: Row[]
@@ -273,6 +275,8 @@ export const script = (
   const cpuClock = (${inputFrameClock.toString()})()
   let cpuGesture = -1
   let cpuFrame, cpuPending
+  const blocking = (${scrollBlocking.toString()})()
+  let blockingObserver
   const box = () => [...document.querySelectorAll('.abele-ai-chat__messages')].find(e => e.getClientRects().length)
   const item = id => box()?.querySelector('[data-message-id="' + id + '"]')
   const until = async fn => {
@@ -687,6 +691,12 @@ export const script = (
         tail = call.id
       }
     }
+    if (${cpuFrames}) {
+      if (!PerformanceObserver.supportedEntryTypes.includes('long-animation-frame'))
+        throw Error('Missing long-animation-frame script timing evidence')
+      blockingObserver = new PerformanceObserver(list => blocking.record(list.getEntries()))
+      blockingObserver.observe({ type: 'long-animation-frame' })
+    }
     begin('following'); sample(); if (${cpuFrames}) sampleCpu(); await wait(streaming ? 5200 : 300)
     if (state === 'finished-tool') {
       finishTool()
@@ -868,6 +878,12 @@ export const script = (
     row.bottomGap = box().scrollHeight - box().scrollTop - box().clientHeight
   } catch (e) { report.error = String(e?.stack || e) }
   finally {
+    if (blockingObserver) {
+      blocking.record(blockingObserver.takeRecords())
+      blockingObserver.disconnect()
+      report.maxScrollScriptMs = blocking.maxScriptMs
+      report.scrollBlockingScripts = blocking.scripts
+    }
     console.debug = realDebug
     window.removeEventListener('wheel', nativeInput, true)
     window.removeEventListener('touchmove', nativeInput, true)

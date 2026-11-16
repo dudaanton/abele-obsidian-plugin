@@ -95,6 +95,12 @@ export function chatScrollMatrixSuite(filter?: string, frameBudgetMs?: number, i
                 if (frameBudgetMs !== undefined) {
                   expect.soft(result.inputCpuSamples).toBeGreaterThan(1)
                   expect.soft(result.maxInputFrameCpuMs).toBeLessThanOrEqual(frameBudgetMs)
+                  expect
+                    .soft(
+                      result.maxScrollScriptMs,
+                      'plugin script wall time including synchronous waits'
+                    )
+                    .toBeLessThanOrEqual(frameBudgetMs)
                 }
                 if (idleMs) expect.soft(result.idleLongTasks).toEqual([])
                 expect.soft(result.error).toBeUndefined()

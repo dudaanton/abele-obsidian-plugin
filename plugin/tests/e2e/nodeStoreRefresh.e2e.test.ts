@@ -6,13 +6,55 @@ import { idleStoreJournal } from '../fixtures/idleStoreJournal.mjs'
 import { largeMutationHistory } from '../fixtures/largeMutationHistory.mjs'
 import { shotDir } from './helpers/shots'
 import { stopScrollProfilers } from './helpers/stopScrollProfilers.mjs'
+import { scrollBlocking } from './helpers/scrollBlocking'
+import { nativeInputProbe } from './helpers/nativeInput'
 
 targets('desktop')
 const artifacts = shotDir('abele-node-store-refresh')
 // Allocation sampling changes allocation cost and GC timing. Use a separate diagnostic
 // run for it; qualification retains CPU/long-task evidence. The frame budget
-// counts renderer thread CPU; raw frame gaps remain diagnostic under contention.
+// counts renderer thread CPU and plugin script wall time (including synchronous
+// waits); raw frame gaps remain diagnostic under contention.
 const allocationsEnabled = process.env.ABELE_SCROLL_ALLOCATIONS === '1'
+
+it('detects a synchronous blocking wait in a native scroll handler', async () => {
+  const report = JSON.parse(
+    await evalLong(
+      nativeInputProbe(`(async () => {
+    const debuggerApi = require('@electron/remote').getCurrentWebContents().debugger;
+    const attached = debuggerApi.isAttached();
+    const cdp = (method, params) => debuggerApi.sendCommand(method, params);
+    const evidence = (${scrollBlocking.toString()})();
+    if (!PerformanceObserver.supportedEntryTypes.includes('long-animation-frame'))
+      throw Error('Missing long-animation-frame script timing evidence');
+    const observer = new PerformanceObserver(list => evidence.record(list.getEntries()));
+    const box = document.createElement('div');
+    box.style.cssText = 'position:fixed;left:30px;top:60px;width:200px;height:200px;overflow:auto;z-index:2147483647';
+    const content = document.createElement('div'); content.style.height = '2000px'; box.append(content);
+    // Inject a low-CPU stall into the native scroll path with a plugin script identity.
+    const handler = new Function('require', 'return () => { require("node:child_process").execFileSync(process.execPath, ["-e", "setTimeout(() => {}, 250)"], { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, timeout: 5000 }); }\\n//# sourceURL=plugin:abele/scroll-regression')(require);
+    try {
+      if (!attached) debuggerApi.attach('1.3');
+      document.body.append(box);
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      box.addEventListener('scroll', handler, { once: true });
+      observer.observe({ type: 'long-animation-frame' });
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 50, y: 100, deltaX: 0, deltaY: 120 });
+      for (let i = 0; i < 200 && evidence.maxScriptMs <= 90; i++)
+        await new Promise(resolve => setTimeout(resolve, 25));
+      evidence.record(observer.takeRecords());
+      return JSON.stringify({ maxScriptMs: evidence.maxScriptMs, scripts: evidence.scripts, moved: box.scrollTop });
+    } finally {
+      observer.disconnect(); box.removeEventListener('scroll', handler); box.remove();
+      if (!attached) debuggerApi.detach();
+    }
+  })()`),
+      15000
+    )
+  ) as { maxScriptMs: number; moved: number }
+  expect(report.moved).toBeGreaterThan(0)
+  expect(report.maxScriptMs, JSON.stringify(report)).toBeGreaterThan(90)
+})
 
 beforeEach(async (context) => {
   if (!context.task.name.startsWith('wheel / long')) return

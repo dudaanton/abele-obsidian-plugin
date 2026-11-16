@@ -5,6 +5,13 @@ import { wideScript } from '../e2e/helpers/chatScrollWide'
 
 vi.mock('../e2e/helpers/shots', () => ({ shotDir: () => '/sample-shots' }))
 
+it('collects script-attributed wall timing alongside the CPU clock', () => {
+  const source = script('long', 'idle', false, 8000, true)
+  expect(source).toContain("observe({ type: 'long-animation-frame' })")
+  expect(source).toContain('report.maxScrollScriptMs = blocking.maxScriptMs')
+  expect(source).toContain('blocking.record(blockingObserver.takeRecords())')
+})
+
 it.each([false, true])('assembles gesture-scoped chat probes with touch=%s', (phone) => {
   for (const source of [
     script('short', 'running-tool', phone),
