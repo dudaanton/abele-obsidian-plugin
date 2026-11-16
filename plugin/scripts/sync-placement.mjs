@@ -669,6 +669,13 @@ export function syncPlacementPlugin() {
           'const local = await shaIndex(this.state);',
           'const local = this.opts.nativeBatchLocal ?? await shaIndex(this.state);'
         )
+        // The plugin prefetches small streamed bodies too. Count those bytes even
+        // when the host has no conditionalFile or the budget is smaller than a chunk.
+        code = replaceOnce(
+          code,
+          '(!this.fs.conditionalFile || (change.size ?? 0) > Math.min(MAX_CHUNK_BYTES, budget))',
+          '(budget === 0 || (change.size ?? 0) > MAX_CHUNK_BYTES)'
+        )
         const ordinaryStart = code.indexOf(
           '        const budget = this.opts.prefetchBytes ?? DEFAULT_PREFETCH_BYTES;'
         )
@@ -678,7 +685,26 @@ export function syncPlacementPlugin() {
         )
         if (ordinaryStart < 0 || ordinaryEnd < 0)
           throw boundaryError(id, 'ordinary placement body', 0)
-        const ordinary = code.slice(ordinaryStart, ordinaryEnd)
+        let ordinary = code
+          .slice(ordinaryStart, ordinaryEnd)
+          .replace(
+            'this.opts.prefetchBytes ?? DEFAULT_PREFETCH_BYTES',
+            'this.opts.prefetchBytes ?? Math.min(DEFAULT_PREFETCH_BYTES, 8 * 1024 * 1024)'
+          )
+        ordinary = replaceOnce(
+          ordinary,
+          '                    await finish(change);',
+          `                    // Settlement has published the ledger. Keep only a source hint;
+                    // localCandidate fingerprints it again before any later reuse.
+                    if (report.applied && change.sha !== null) {
+                      const installed = await this.state.byFileId(change.file_id);
+                      if (installed?.sha === change.sha) {
+                        local.set(change.sha, installed);
+                        this.placer.initialLocal?.set(change.sha, installed);
+                      }
+                    }
+                    await finish(change);`
+        )
         code =
           code.slice(0, ordinaryStart) +
           '        await this.placeTaking(taking, local, finish);' +
@@ -820,18 +846,20 @@ export function syncPlacementPlugin() {
           'async prefetch(changes, local) {',
           `async prefetch(changes, local) {
           if (this.opts.prefetchBytes === 0) return new Map();
-          // Reuse the input inventory, not receipts installed by earlier pages of this pull.
+          // Sources are hints only; reuse always verifies their current bytes.
           this.placer.initialLocal ??= new Map(local);
           // Absence belongs to this batch: a later page may move the same id to local bytes.
           this.placer.adoptionCandidates = new Map();
           if (this.fs.beginAtomicWrite && this.fs.reopenStage && this.client.openVersion) {
             const wanted = [];
+            const wantedHashes = new Set();
             const observations = new Map();
             const revision = this.fs[Symbol.for('abele.sync.local-change-revision-v1')];
             const siblings = new Map();
             for (const change of changes) {
               if (change.sha === null || change.op === 'delete' || change.size === null ||
-                  change.size > this.placer.budget.maxChunkBytes || this.passedOver(change)) continue;
+                  change.size > this.placer.budget.maxChunkBytes || this.passedOver(change) ||
+                  wantedHashes.has(change.sha)) continue;
               const entry = await this.state.byFileId(change.file_id);
               if (entry?.versionId === change.version_id || entry?.sha === change.sha ||
                   this.isDirty(change, entry)) continue;
@@ -872,6 +900,7 @@ export function syncPlacementPlugin() {
               }
               if (await this.placer.localCandidate(change.sha, change.size, local)) continue;
               wanted.push(change);
+              wantedHashes.add(change.sha);
               observations.set(change, observed);
             }
             const fetched = new Map();
