@@ -11,7 +11,7 @@ const hash = async (bytes: Uint8Array) =>
 
 /** Exercise the shipped pull partitioner and prefetcher. The publication sink deliberately
  * retains no file bytes, so this measures transfer ownership independently of the host index. */
-async function measure(count: number, conditional: boolean, budget?: number) {
+async function measure(count: number, conditional: boolean, budget?: number, applied = true) {
   const size = 4096
   const changes: ChangeItem[] = Array.from({ length: count }, (_, i) => ({
     seq: i + 1,
@@ -60,10 +60,17 @@ async function measure(count: number, conditional: boolean, budget?: number) {
     }),
   }
   const report = { applied: 0, skipped: 0, deferred: 0, held: [], cursor: 0, bootstrapped: false }
+  const state = new MemoryStateStore()
+  let ledgerReads = 0
+  const byFileId = state.byFileId.bind(state)
+  state.byFileId = (id) => {
+    ledgerReads++
+    return byFileId(id)
+  }
   const puller = new Puller(
     client as never,
     fs,
-    new MemoryStateStore(),
+    state,
     {
       dirty: new Set(),
       expected: new ExpectedWrites(),
@@ -81,23 +88,33 @@ async function measure(count: number, conditional: boolean, budget?: number) {
   const observed = new WeakSet<object>()
   await collectHeap()
   const before = process.memoryUsage()
-  Reflect.set(puller, 'take', async (change: ChangeItem, fetched: Map<string, Uint8Array>) => {
-    if (!observed.has(fetched)) {
-      observed.add(fetched)
-      peakBytes = Math.max(
-        peakBytes,
-        [...fetched.values()].reduce((n, bytes) => n + bytes.byteLength, 0)
-      )
-      if (consumed === 0) {
-        await collectHeap()
-        const memory = process.memoryUsage()
-        heapDelta = memory.heapUsed - before.heapUsed
-        bufferDelta = memory.arrayBuffers - before.arrayBuffers
+  Reflect.set(
+    puller,
+    'take',
+    async (
+      change: ChangeItem,
+      fetched: Map<string, Uint8Array>,
+      _local: unknown,
+      attempt: { report: { applied: number } }
+    ) => {
+      if (!observed.has(fetched)) {
+        observed.add(fetched)
+        peakBytes = Math.max(
+          peakBytes,
+          [...fetched.values()].reduce((n, bytes) => n + bytes.byteLength, 0)
+        )
+        if (consumed === 0) {
+          await collectHeap()
+          const memory = process.memoryUsage()
+          heapDelta = memory.heapUsed - before.heapUsed
+          bufferDelta = memory.arrayBuffers - before.arrayBuffers
+        }
       }
+      expect(await hash(fetched.get(change.sha!)!)).toBe(change.sha)
+      consumed++
+      if (applied) attempt.report.applied++
     }
-    expect(await hash(fetched.get(change.sha!)!)).toBe(change.sha)
-    consumed++
-  })
+  )
   await Reflect.get(puller, 'placeTaking').call(puller, changes, new Map(), async () => {})
   await collectHeap()
   const settled = process.memoryUsage()
@@ -105,6 +122,7 @@ async function measure(count: number, conditional: boolean, budget?: number) {
   expect(downloads).toBe(count)
   return {
     count,
+    ledgerReads,
     peakBytes,
     heapDelta,
     bufferDelta,
@@ -129,6 +147,12 @@ it.each([true, false])(
     expect(memory.peakBytes).toBe(4096)
   }
 )
+
+it('does not build new source hints for hashes that no later file needs', async () => {
+  const baseline = await measure(32, true, undefined, false)
+  const memory = await measure(32, true)
+  expect(memory.ledgerReads).toBe(baseline.ledgerReads)
+})
 
 it.each([
   { edit: false, capacity: 1 },

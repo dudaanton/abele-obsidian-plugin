@@ -696,7 +696,10 @@ export function syncPlacementPlugin() {
           '                    await finish(change);',
           `                    // Settlement has published the ledger. Keep only a source hint;
                     // localCandidate fingerprints it again before any later reuse.
-                    if (report.applied && change.sha !== null) {
+                    const remaining = (remainingSources.get(change.sha) ?? 1) - 1;
+                    if (remaining) remainingSources.set(change.sha, remaining);
+                    else remainingSources.delete(change.sha);
+                    if (report.applied && change.sha !== null && remaining > 0) {
                       const installed = await this.state.byFileId(change.file_id);
                       if (installed?.sha === change.sha) {
                         local.set(change.sha, installed);
@@ -712,7 +715,17 @@ export function syncPlacementPlugin() {
         code = replaceOnce(
           code,
           '    async retryFailure',
-          `    async placeTaking(taking, local, finish) {\n${ordinary}\n    }\n    async retryFailure`
+          `    async placeTaking(taking, local, finish) {
+        // Retain new source hints only for repeated content, not every installed file.
+        const remainingSources = new Map();
+        const sourceWork = new ScanWork({ ...scanScheduling(this.state), signal: this.opts.signal });
+        for (const change of taking) {
+          const pause = sourceWork.step();
+          if (pause) await pause;
+          if (change.sha !== null)
+            remainingSources.set(change.sha, (remainingSources.get(change.sha) ?? 0) + 1);
+        }
+${ordinary}\n    }\n    async retryFailure`
         )
         code = replaceOnce(
           code,
