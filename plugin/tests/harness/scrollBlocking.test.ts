@@ -1,28 +1,126 @@
 // @vitest-environment node
 import { expect, it } from 'vitest'
-import { scrollBlocking, ownScrollTaskCpu } from '../e2e/helpers/scrollBlocking'
+import {
+  scrollBlocking,
+  ownScrollTaskCpu,
+  boundedScrollStall,
+  stopScrollGuards,
+} from '../e2e/helpers/scrollBlocking'
 import { inputFrameClock } from '../e2e/helpers/inputFrameClock'
 import { createRequire } from 'node:module'
 
-it('detects the native process wait used by the live regression and restores the APIs', () => {
+it('does not recurse when formatting a caller stack uses a guarded host API', () => {
+  const evidence = scrollBlocking()
+  const primitive = { block: () => 'done' }
+  const original = Error.prepareStackTrace
+  let formatted = 0
+  evidence.wrap(primitive, 'block')
+  Error.prepareStackTrace = () => {
+    formatted++
+    primitive.block()
+    return 'Error\nwrapper\nplugin:abele/scroll-regression'
+  }
+  const plugin = new Function(
+    'primitive',
+    'return () => primitive.block()\n//# sourceURL=plugin:abele/scroll-regression'
+  )(primitive)
+  try {
+    expect(plugin()).toBe('done')
+    expect(evidence.calls).toHaveLength(1)
+    expect(formatted).toBe(0)
+  } finally {
+    Error.prepareStackTrace = original
+    evidence.stop()
+  }
+})
+
+it('preserves callable properties and rolls back a partially installed guard', () => {
+  const evidence = scrollBlocking()
+  const original = Object.assign(() => {}, { native: () => 'native' })
+  const fs = { realpathSync: original }
+  expect(() =>
+    evidence.install((name) => {
+      if (name === 'node:fs') return fs
+      throw Error('setup failed')
+    })
+  ).toThrow('setup failed')
+  expect(fs.realpathSync).toBe(original)
+  evidence.wrap(fs, 'realpathSync')
+  expect(fs.realpathSync.native()).toBe('native')
+  evidence.stop()
+  evidence.stop()
+  expect(fs.realpathSync).toBe(original)
+})
+
+it('restores the other APIs even when one restoration fails and reports the failure', () => {
+  const evidence = scrollBlocking()
+  const first = { block() {} }
+  const original = first.block
+  const second = { block() {} }
+  const descriptor = Object.getOwnPropertyDescriptor(second, 'block')!
+  let fail = false
+  const proxy = new Proxy(second, {
+    defineProperty(target, key, value) {
+      if (fail) throw Error('restore failed')
+      return Reflect.defineProperty(target, key, value)
+    },
+  })
+  evidence.wrap(first, 'block')
+  evidence.wrap(proxy, 'block')
+  fail = true
+  try {
+    evidence.stop()
+    expect(first.block).toBe(original)
+    expect(stopScrollGuards()).toEqual(['Error: restore failed'])
+  } finally {
+    fail = false
+    Object.defineProperty(second, 'block', descriptor)
+  }
+})
+
+it('detects the bounded in-process wait used by the live regression and restores the APIs', () => {
   const requireModule = createRequire(import.meta.url)
   const child = requireModule('node:child_process')
   const original = child.execFileSync
   const evidence = scrollBlocking()
+  const pause = { wait: boundedScrollStall }
   const handler = new Function(
-    'require',
-    `return () => require('node:child_process').execFileSync(
-    require('node:process').execPath, ['-e', 'setTimeout(() => {}, 250)'], { timeout: 5000 })
+    'pause',
+    `return () => pause.wait()
     //# sourceURL=plugin:abele/scroll-regression`
-  )(requireModule)
+  )(pause)
   try {
     evidence.install((name) => (name === 'electron' ? {} : requireModule(name)))
+    evidence.wrap(pause, 'wait')
+    const start = performance.now()
     handler()
-    expect(evidence.calls.map((call) => call.operation)).toContain('execFileSync')
+    expect(performance.now() - start).toBeGreaterThanOrEqual(250)
+    expect(evidence.calls.map((call) => call.operation)).toContain('wait')
   } finally {
     evidence.stop()
   }
   expect(child.execFileSync).toBe(original)
+  expect(pause.wait).toBe(boundedScrollStall)
+})
+
+it('independently restores a guard after an interrupted case and disables retained wrappers', () => {
+  const requireModule = createRequire(import.meta.url)
+  const evidence = scrollBlocking()
+  const primitive = { block: () => 'done' }
+  const original = primitive.block
+  evidence.install((name) => (name === 'electron' ? {} : requireModule(name)))
+  evidence.wrap(primitive, 'block')
+  const retained = primitive.block
+  // Simulate a probe abandoning its own cleanup; the after-case cleanup is independent.
+  expect(stopScrollGuards()).toEqual([])
+  expect(primitive.block).toBe(original)
+  const plugin = new Function(
+    'call',
+    'return () => call()\n//# sourceURL=plugin:abele/scroll-regression'
+  )(retained)
+  expect(plugin()).toBe('done')
+  expect(evidence.calls).toEqual([])
+  expect(stopScrollGuards()).toEqual([])
 })
 
 it('fails the scroll budget for a synchronous 250 ms wait in a plugin handler', () => {

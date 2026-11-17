@@ -6,7 +6,12 @@ import { idleStoreJournal } from '../fixtures/idleStoreJournal.mjs'
 import { largeMutationHistory } from '../fixtures/largeMutationHistory.mjs'
 import { shotDir } from './helpers/shots'
 import { stopScrollProfilers } from './helpers/stopScrollProfilers.mjs'
-import { scrollBlocking, ownScrollTaskCpu } from './helpers/scrollBlocking'
+import {
+  scrollBlocking,
+  ownScrollTaskCpu,
+  boundedScrollStall,
+  stopScrollGuards,
+} from './helpers/scrollBlocking'
 import { nativeInputProbe } from './helpers/nativeInput'
 
 targets('desktop')
@@ -29,21 +34,25 @@ it('detects a synchronous blocking wait in a native scroll handler', async () =>
     box.style.cssText = 'position:fixed;left:30px;top:60px;width:200px;height:200px;overflow:auto;z-index:2147483647';
     const content = document.createElement('div'); content.style.height = '2000px'; box.append(content);
     const injected = { completed: false, elapsed: 0 };
-    // Inject a low-CPU stall into the native scroll path with a plugin script identity.
-    const handler = new Function('require', 'state', 'return () => { const at = performance.now(); require("node:child_process").execFileSync(process.execPath, ["-e", "setTimeout(() => {}, 250)"], { env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, timeout: 5000 }); state.elapsed = performance.now() - at; state.completed = true; }\\n//# sourceURL=plugin:abele/scroll-regression')(require, injected);
+    const pause = { wait: (${boundedScrollStall.toString()}) };
+    // A fixed in-process block exercises guard attribution without launching Electron again.
+    const handler = new Function('pause', 'state', 'return () => { const at = performance.now(); pause.wait(); state.elapsed = performance.now() - at; state.completed = true; }\\n//# sourceURL=plugin:abele/scroll-regression')(pause, injected);
     try {
       if (!attached) debuggerApi.attach('1.3');
       document.body.append(box);
       await new Promise(resolve => requestAnimationFrame(resolve));
       box.addEventListener('scroll', handler, { once: true });
       evidence.install(require);
+      evidence.wrap(pause, 'wait');
       await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 50, y: 100, deltaX: 0, deltaY: 120 });
       for (let i = 0; i < 200 && !injected.completed; i++)
         await new Promise(resolve => setTimeout(resolve, 25));
       return JSON.stringify({ calls: evidence.calls, moved: box.scrollTop, injected });
     } finally {
-      evidence.stop(); box.removeEventListener('scroll', handler); box.remove();
-      if (!attached) debuggerApi.detach();
+      try { evidence.stop(); } finally {
+        box.removeEventListener('scroll', handler); box.remove();
+        if (!attached) debuggerApi.detach();
+      }
     }
   })()`),
       15000
@@ -59,7 +68,7 @@ it('detects a synchronous blocking wait in a native scroll handler', async () =>
   expect(
     report.calls.map((call) => call.operation),
     JSON.stringify(report)
-  ).toContain('execFileSync')
+  ).toContain('wait')
 })
 
 beforeEach(async (context) => {
@@ -104,7 +113,13 @@ beforeEach(async (context) => {
 })
 
 afterEach(async (context) => {
-  if (!context.task.name.startsWith('wheel / long')) return
+  const cleanupErrors = JSON.parse(
+    await evalLong(`JSON.stringify((${stopScrollGuards.toString()})())`, 10000)
+  )
+  if (!context.task.name.startsWith('wheel / long')) {
+    expect(cleanupErrors, 'all scroll guards must be restored after each case').toEqual([])
+    return
+  }
   const report = await evalLong(
     `(async () => {
     const fixture = window.__sampleNodeRefresh;
@@ -134,6 +149,7 @@ afterEach(async (context) => {
     30000
   )
   console.log('NODE_SCROLL_PROFILE ' + report)
+  expect(cleanupErrors, 'all scroll guards must be restored after each case').toEqual([])
   const measured = JSON.parse(report) as { ownTaskCpuMs: number; cpuSamples: number }
   expect(measured.cpuSamples, 'CPU profile must contain evidence').toBeGreaterThan(0)
   expect(measured.ownTaskCpuMs, 'sampled executing plugin work per task').toBeLessThanOrEqual(90)

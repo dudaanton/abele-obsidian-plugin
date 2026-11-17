@@ -2,39 +2,116 @@
 export function scrollBlocking() {
   const calls: { operation: string; caller: string }[] = []
   const restores: (() => void)[] = []
+  const cleanupErrors: string[] = []
+  let inspecting = false
+  let enabled = true
+  const registry = globalThis as typeof globalThis & {
+    __abeleScrollGuards?: Set<{ stop(): void }>
+    __abeleScrollGuardErrors?: string[]
+  }
   return {
     calls,
+    cleanupErrors,
     wrap(object: Record<string, any>, operation: string, relevant = (_args: unknown[]) => true) {
       const original = object[operation]
       if (typeof original !== 'function') return
-      function guarded(this: unknown, ...args: unknown[]) {
-        // The immediate caller owns the operation, not an ancestor entry point.
-        const caller = new Error().stack?.split('\n')[2] ?? ''
-        if (relevant(args) && /plugin:abele(?:[/:)]|$)|\/plugins\/abele\/main\.js/.test(caller))
-          calls.push({ operation, caller })
-        return Reflect.apply(original, this, args)
-      }
-      object[operation] = guarded
+      enabled = true
+      const descriptor = Object.getOwnPropertyDescriptor(object, operation)
+      // A callable proxy preserves native/custom properties and constructor behavior.
+      const guarded = new Proxy(original, {
+        apply(target, receiver, args) {
+          if (enabled && !inspecting) {
+            inspecting = true
+            const prepare = Object.getOwnPropertyDescriptor(Error, 'prepareStackTrace')
+            try {
+              // Do not invoke the host's stack formatter: it can perform sync
+              // file/IPC work. Read only the immediate V8 call site's identity.
+              Object.defineProperty(Error, 'prepareStackTrace', {
+                configurable: true,
+                writable: true,
+                value: (_error: Error, frames: NodeJS.CallSite[]) =>
+                  frames[1]?.getScriptNameOrSourceURL() ?? frames[1]?.getFileName() ?? '',
+              })
+              const caller = new Error().stack ?? ''
+              if (
+                relevant(args) &&
+                /plugin:abele(?:[/:)]|$)|\/plugins\/abele\/main\.js/.test(caller)
+              )
+                calls.push({ operation, caller })
+            } finally {
+              try {
+                if (prepare) Object.defineProperty(Error, 'prepareStackTrace', prepare)
+                else delete Error.prepareStackTrace
+              } finally {
+                inspecting = false
+              }
+            }
+          }
+          return Reflect.apply(target, receiver, args)
+        },
+      })
+      Object.defineProperty(object, operation, {
+        configurable: descriptor?.configurable ?? true,
+        enumerable: descriptor?.enumerable ?? true,
+        writable: true,
+        value: guarded,
+      })
       restores.push(() => {
-        if (object[operation] === guarded) object[operation] = original
+        if (descriptor) Object.defineProperty(object, operation, descriptor)
+        else delete object[operation]
       })
     },
     install(requireModule: (name: string) => any) {
-      const fs = requireModule('node:fs')
-      for (const key of Object.keys(fs)) if (key.endsWith('Sync')) this.wrap(fs, key)
-      const child = requireModule('node:child_process')
-      for (const key of ['spawnSync', 'execSync', 'execFileSync']) this.wrap(child, key)
-      this.wrap(Atomics, 'wait')
-      for (const key of ['alert', 'confirm', 'prompt']) this.wrap(globalThis, key)
-      if (typeof XMLHttpRequest !== 'undefined')
-        this.wrap(XMLHttpRequest.prototype, 'open', (args) => args[2] === false)
-      const ipc = requireModule('electron').ipcRenderer
-      if (ipc) this.wrap(ipc, 'sendSync')
+      ;(registry.__abeleScrollGuards ??= new Set()).add(this)
+      try {
+        const fs = requireModule('node:fs')
+        for (const key of Object.keys(fs)) if (key.endsWith('Sync')) this.wrap(fs, key)
+        const child = requireModule('node:child_process')
+        for (const key of ['spawnSync', 'execSync', 'execFileSync']) this.wrap(child, key)
+        this.wrap(Atomics, 'wait')
+        for (const key of ['alert', 'confirm', 'prompt']) this.wrap(globalThis, key)
+        if (typeof XMLHttpRequest !== 'undefined')
+          this.wrap(XMLHttpRequest.prototype, 'open', (args) => args[2] === false)
+        const ipc = requireModule('electron').ipcRenderer
+        if (ipc) this.wrap(ipc, 'sendSync')
+      } catch (error) {
+        this.stop()
+        throw error
+      }
     },
     stop() {
-      for (const restore of restores.reverse()) restore()
+      enabled = false
+      for (const restore of restores.reverse()) {
+        try {
+          restore()
+        } catch (error) {
+          cleanupErrors.push(String(error))
+          ;(registry.__abeleScrollGuardErrors ??= []).push(String(error))
+        }
+      }
       restores.length = 0
+      registry.__abeleScrollGuards?.delete(this)
     },
+  }
+}
+
+/** Independent after-case cleanup, including when the probe exits before its own finally. */
+export function stopScrollGuards() {
+  const registry = globalThis as typeof globalThis & {
+    __abeleScrollGuards?: Set<{ stop(): void }>
+    __abeleScrollGuardErrors?: string[]
+  }
+  for (const guard of registry.__abeleScrollGuards ?? []) {
+    guard.stop()
+  }
+  return registry.__abeleScrollGuardErrors?.splice(0) ?? []
+}
+
+/** Fixed in-process injection: no child process, IPC, sleeping worker, or unbounded native wait. */
+export function boundedScrollStall() {
+  const end = performance.now() + 250
+  while (performance.now() < end) {
+    /* deliberate synchronous scroll regression */
   }
 }
 
