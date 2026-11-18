@@ -75,6 +75,7 @@ import {
   type RecipientAction,
 } from '../helpers/keyDestinationLayout'
 import { recipientLayoutProbe } from '../helpers/keyDestinationLayoutProbe'
+import { layoutFixtureScript } from './helpers/layoutFixtureScript'
 import {
   PUBLICATION_SETUP,
   PUBLICATION_PRELUDE,
@@ -288,7 +289,8 @@ type RecipientScreen = Screen &
   }
 
 const fixtureId = Date.now() + '-' + Math.random().toString(36).slice(2)
-const probeScript = `(async () => {
+const probeScript = layoutFixtureScript(
+  `(async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
   const until = (fn, ms) => (${waitForUiMatch.toString()})(fn, wait, ms)
 
@@ -397,8 +399,10 @@ const probeScript = `(async () => {
     await wait(400)
     const path = ${JSON.stringify(SHOTS)} + '/' + label.replace(/[^a-z0-9]+/gi, '-') + '.png'
     if (host) return host.shot(path)
-    win.webContents.sendInputEvent({type:'mouseMove',x:0,y:0})
-    await wait(100)
+    if (label.startsWith('dialog sync-')) {
+      win.webContents.sendInputEvent({type:'mouseMove',x:0,y:0})
+      await wait(100)
+    }
     let img
     try {
       img = await win.webContents.capturePage()
@@ -2119,11 +2123,9 @@ const probeScript = `(async () => {
   }
 
   return report
-})()`
-  // Each invocation owns its files even after an interrupted older run.
-  .replaceAll('Phone probe', 'Sample layout ' + fixtureId)
-  .replaceAll('pnest', 'sample-comment-' + fixtureId + '-')
-  .replaceAll('sample-word-layout.docx', 'sample-word-layout-' + fixtureId + '.docx')
+})()`,
+  fixtureId
+)
 
 /** Closes anything standing over the note. */
 const closeDialog = (): void => {
