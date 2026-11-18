@@ -3,6 +3,8 @@ import { isObsidianRunning, hasTestApi } from './helpers/obsidianCli'
 import { evalAsync, startFakeGithub, type FakeGithub, PRELUDE } from './helpers/githubLive'
 import { targets, onPhone } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { evalLong } from './helpers/obsidianCli'
+import { focusPhoneInput } from './helpers/phoneInput'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -135,12 +137,9 @@ describe.skipIf(!available)(
 
     it('keeps the long connection list and editor controls inside the phone screen', async () => {
       if (!onPhone()) return // 390x844 desktop emulation is covered by phoneLayout.
-      const result = evalAsync<{
-        overflow: number
-        footer: number
-        viewport: number
-        shots: string[]
-      }>(`(async () => {
+      // Native keyboard probes and captures can outlive a single driver reply.
+      const result = JSON.parse(
+        await evalLong(`(async () => {
       ${PRELUDE}
       const paths = []
       window.__abeleTest.openDialog('github-connections')
@@ -153,11 +152,10 @@ describe.skipIf(!available)(
       edit.scrollIntoView({block:'center'}); edit.click()
       modal = await until(() => document.querySelector('input[type=password][placeholder="github_pat_..."]')?.closest('.modal.abele-modal'))
       const token = modal.querySelector('input[type=password]')
-      token.scrollIntoView({block:'center'})
-      await wait(300)
-      const box = token.getBoundingClientRect()
-      await window.__e2eHost.tap(box.left+20,box.top+box.height/2)
-      await window.__e2eHost.type('invented-ui-token')
+      await (${focusPhoneInput.toString()})(token, (x,y) => window.__e2eHost.tap(x,y), wait)
+      // A short value exercises secure native input without a long key-by-key driver run.
+      await window.__e2eHost.type('xx')
+      if (token.value !== 'xx') throw Error('Native token input did not arrive intact')
       await wait(500)
       paths.push(await window.__e2eHost.shot(${JSON.stringify(shots + '/token-keyboard.png')}))
       const footer = modal.querySelector('.abele-modal__footer').getBoundingClientRect().bottom
@@ -167,6 +165,7 @@ describe.skipIf(!available)(
       document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',keyCode:27,bubbles:true}))
       return {overflow, footer, viewport:innerHeight, shots:paths}
     })()`)
+      )
       console.info('connection phone pictures', result.shots)
       expect(result.overflow).toBeLessThanOrEqual(1)
       expect(result.footer).toBeLessThanOrEqual(result.viewport)
