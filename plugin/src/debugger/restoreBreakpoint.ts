@@ -140,6 +140,22 @@ export async function removeForgottenBreakpoints(
       if (receipt && receipt.outcome !== 'completed') throw new Error(t('node.error.generic'))
     }
   }
+  // An in-flight capture can resume and hit another discarded point while the
+  // removals settle. Re-read that stop: the earlier hold epoch no longer owns it,
+  // but a stop caused exclusively by successfully removed points is ours too.
+  const settled = controller.snapshot
+  const settledStop = settled?.threads.find(
+    (thread) => thread.thread_id === settled.selected_thread_id
+  )?.stop
+  if (
+    current() &&
+    isPaused() &&
+    settled?.stop_epoch !== captureEpoch &&
+    settledStop?.reason === 'breakpoint' &&
+    settledStop.hit_breakpoint_ids?.length &&
+    settledStop.hit_breakpoint_ids.every((id) => points.some((point) => point.id === id))
+  )
+    heldEpoch = settled?.stop_epoch
   if (
     heldEpoch !== undefined &&
     current() &&

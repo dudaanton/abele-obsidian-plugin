@@ -6,6 +6,37 @@ import {
 } from '@/debugger/restoreBreakpoint'
 
 it.each([false, true])(
+  'releases a late discarded breakpoint stop only when all hits belong to it (mixed: %s)',
+  async (mixed) => {
+    const snapshot = {
+      stop_epoch: 7,
+      selected_thread_id: 1,
+      threads: [
+        { thread_id: 1, stop: { reason: 'breakpoint', hit_breakpoint_ids: ['sample-removed'] } },
+      ],
+    }
+    const command = vi.fn(async () => ({ outcome: 'completed' }))
+    const controller = {
+      current: true,
+      session: { status: 'paused' },
+      snapshot,
+      command,
+      knownBreakpoints: () => [{ id: 'sample-removed', file: 'sample.ts', requestedLine: 5 }],
+      removeBreakpoint: vi.fn(async () => {
+        // A capture's delayed resume/next hit arrives while removal is in flight.
+        snapshot.stop_epoch++
+        if (mixed) snapshot.threads[0].stop.hit_breakpoint_ids.push('sample-other')
+        return { outcome: 'completed' }
+      }),
+    }
+    await removeForgottenBreakpoints(undefined, { controller } as never, [
+      { file: 'sample.ts', requestedLine: 5 },
+    ])
+    expect(command.mock.calls).toEqual(mixed ? [] : [['continue']])
+  }
+)
+
+it.each([false, true])(
   'discards recording before waiting for a stable stop (mixed: %s)',
   async (mixed) => {
     vi.useFakeTimers()

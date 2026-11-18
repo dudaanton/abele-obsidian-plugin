@@ -61,7 +61,7 @@ const marginAt=line=>{const sel='button.abele-debug-source__point[aria-label^="S
 const debugState=()=>{const service=api.DebuggerService.instance,b=service.active.value,c=b?.controller,n=c?.snapshot,reg=nodes.nodes.value.find(n=>n.label==='Attach fixture')?.id,saved=app.loadLocalStorage('abele-debug-selection');return JSON.stringify({id:b?.sessionId,peers:b?service.peers(b).map(b=>[b.sessionId,b.controller.session.status]):[],options:[...document.querySelectorAll('select[aria-label="Select a debug session"]')].map(s=>[s.value,[...s.options].map(o=>o.value)]),saved:[saved?.sessionId,saved?.sessions],known:[...(service.bindings?.values()??[])].filter(b=>b.registrationId===reg).map(b=>({id:b.sessionId,wanted:b.observationId,state:b.controller.session.status,error:b.controller.error,program:b.controller.session.program})),notices:[...document.querySelectorAll('.notice')].map(n=>n.textContent),status:c?.session.status,error:c?.error,lifecycle:n?.lifecycle,execution:n?.execution,owner:n?.target.process_ownership,identity:n?.target.build_identity,bps:n?.breakpoints?.map(x=>[x.source_id,x.line,x.status])})};
 const statusLabel=()=>document.querySelector('.abele-debug-panel__program [role="status"]')?.getAttribute('aria-label')??'';
 const openPicker=async()=>{
-  document.querySelector('.abele-node-chat [aria-label="More chat actions"]').click();
+  (await until(()=>document.querySelector('.abele-node-chat [aria-label="More chat actions"]'),'chat actions ready')).click();
   press(await until(()=>item('Attach to a running program'),'Attach in the menu'));
   await until(()=>document.querySelector('.modal-container .prompt'),'picker open');
 };
@@ -291,7 +291,7 @@ it('attaches to a program of the chat’s folder, stops it at a breakpoint and l
     after: string
     state: string
   }>(`(async()=>{${prelude}
-    document.querySelector('.abele-node-chat [aria-label="More chat actions"]').click();
+    (await until(()=>document.querySelector('.abele-node-chat [aria-label="More chat actions"]'),'chat actions ready')).click();
     await until(()=>item('Attach to a running program'),'Attach in the menu');
     await shot('2026-10-16-debug-attach-menu-desktop');
     press(item('Attach to a running program'));
@@ -378,7 +378,7 @@ async function sessionLifecycle(phone: boolean) {
     // releases that stop; all point-removal assertions below start from a fresh observation.
     const watchedSession=binding.sessionId;
     await binding.controller.command('stop');
-    document.querySelector('[aria-label="Attach to a running program"]').click();
+    (await until(()=>document.querySelector('[aria-label="Attach to a running program"]'),'attach control ready')).click();
     const freshProgram=await until(()=>rows().find(r=>r.title.includes('src/serve.js')),'clean attach picker');freshProgram.el.click();
     await until(()=>service.active.value?.sessionId!==watchedSession&&service.active.value?.trace&&service.active.value.controller.session.status==='running'&&(()=>{const pause=document.querySelector('.abele-debug-panel [aria-label^="Pause"]');return pause&&!pause.hasAttribute('disabled')})(),'clean session after failed watch',600);
     binding=service.active.value;
@@ -386,7 +386,18 @@ async function sessionLifecycle(phone: boolean) {
     if(document.querySelector('.abele-debug-source__line_here'))throw Error('Stop line survived Continue');
     if(${phone}){debugSplit.collapse();await wait(500)}
     await shot(${JSON.stringify(name + '-continued')});
-    for(const line of [3,4])await binding.trace.savePoint(source,line,{take:['ticks']});
+    // Install both points at a stable stop. Once the first point records every 50 ms,
+    // an edit racing its captures can correctly reject a stale state fence under load.
+    const held=await binding.controller.command('pause');
+    if(held?.outcome!=='completed')throw Error('Record setup pause not confirmed: '+JSON.stringify(held));
+    await until(()=>binding.controller.session.status==='paused','record setup paused');
+    for(const line of [3,4]){
+      try{await binding.trace.savePoint(source,line,{take:['ticks']})}
+      catch(error){throw Error('Record setup failed at line '+line+': '+error.code+'; '+debugState())}
+    }
+    const resumed=await binding.controller.command('continue');
+    if(resumed?.outcome!=='completed')throw Error('Record setup continue not confirmed: '+JSON.stringify(resumed));
+    await until(()=>binding.trace.status?.recording?.steps>0,'record points captured');
     await app.workspace.revealLeaf(debugLeaf);
     if(${phone}){debugSplit.collapse();await wait(300);debugSplit.expand();await wait(700)}
     checkpoint('before-recording-detach',binding);
@@ -475,7 +486,7 @@ it('on a phone: the menu, the picker, the attached panel and the empty list fit 
     const seen = inApp<{ offered: string[]; detach: string; overflow: number }>(
       `(async()=>{${prelude}
       try{
-      document.querySelector('.abele-node-chat [aria-label="More chat actions"]').click();
+      (await until(()=>document.querySelector('.abele-node-chat [aria-label="More chat actions"]'),'chat actions ready')).click();
       await until(()=>item('Attach to a running program'),'Attach in the menu');
       await shot('2026-10-16-debug-attach-menu-phone');
       press(item('Attach to a running program'));
@@ -497,7 +508,7 @@ it('on a phone: the menu, the picker, the attached panel and the empty list fit 
       await wait(500);
       await shot('2026-10-16-debug-attach-attached-phone');
       const panel=document.querySelector('.abele-debug-panel'),overflow=panel.scrollWidth-panel.clientWidth;
-      press(document.querySelector('.abele-debug-panel [aria-label^="Detach"]'));
+      press(await until(()=>document.querySelector('.abele-debug-panel [aria-label^="Detach"]'),'Detach after drawer reveal'));
       await until(()=>api.DebuggerService.instance.active.value?.controller.session.status==='exited','detached',600);
       const detach=detachButton.getAttribute('aria-label');
       return {offered,detach,overflow}
