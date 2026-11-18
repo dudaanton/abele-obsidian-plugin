@@ -1,5 +1,5 @@
 <template>
-  <ObsidianModal :title="title" close-in-footer phone-sheet content-sized @close="emit('cancel')">
+  <ObsidianModal :title="title" size="tall" close-in-footer @close="emit('cancel')">
     <DateTimePicker
       ref="picker"
       :initial-date="initialDate"

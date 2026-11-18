@@ -85,7 +85,7 @@ afterEach(() => {
 
 describe('the date dialog with a keyboard up', () => {
   it.each(['event', 'due'] as const)(
-    '%s dates use a content-sized native phone sheet with pinned actions',
+    '%s dates use the tall native phone sheet with safe-area room and pinned actions',
     (mode) => {
       wrapper?.unmount()
       wrapper = mount(DateTimePickerModal, {
@@ -93,11 +93,12 @@ describe('the date dialog with a keyboard up', () => {
         attachTo: document.body,
       })
 
-      // A six-week calendar and scheduled tasks need the sheet's room below the top inset.
-      // The centered dialog subtracts that inset twice and needlessly scrolls the form.
+      // Tall sheets reserve the bottom safe area in the shared shell. A content-sized
+      // default sheet has no such padding and puts the footer against the home indicator.
       const dialog = document.querySelector('.modal')!
       expect(dialog.classList.contains('mod-lg')).toBe(true)
-      expect(dialog.classList.contains('abele-modal_content-sized')).toBe(true)
+      expect(dialog.classList.contains('abele-modal_tall')).toBe(true)
+      expect(dialog.classList.contains('abele-modal_content-sized')).toBe(false)
       expect(dialog.querySelectorAll('.abele-modal__footer button')).toHaveLength(3)
       expect(dialog.querySelector('.abele-modal__body .abele-modal__footer')).toBeNull()
     }

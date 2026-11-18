@@ -83,6 +83,9 @@ const cleanupFixtures = async (): Promise<void> => {
 }
 
 interface Screen {
+  /** Actual viewport and home-indicator inset, including on phones larger than the emulator. */
+  screen?: number
+  bottomInset?: number
   /** The dialog's top and bottom edges. */
   dialog: [number, number]
   /** The time field's top and bottom edges. */
@@ -181,6 +184,12 @@ const probeScript = `(async () => {
       const content = dialog.querySelector('.abele-modal__body') || dialog.querySelector('.modal-content')
       const d = dialog.getBoundingClientRect()
       const f = field().getBoundingClientRect()
+      const safeArea = document.createElement('div')
+      safeArea.className = 'abele-safe-area-probe'
+      document.body.appendChild(safeArea)
+      entry.bottomInset = parseFloat(getComputedStyle(safeArea).paddingBottom) || 0
+      safeArea.remove()
+      entry.screen = window.innerHeight
       entry.dialog = [Math.round(d.top), Math.round(d.bottom)]
       entry.field = [Math.round(f.top), Math.round(f.bottom)]
       entry.content = { scrollHeight: content.scrollHeight, clientHeight: content.clientHeight }
@@ -392,9 +401,11 @@ describe.skipIf(!available)("the task's date dialog on a phone, keyboard up", ()
   it('shows the whole dialog when nothing covers the screen', () => {
     const s = report['no-keyboard']
     expect(s.dialog[0]).toBeGreaterThanOrEqual(0)
-    expect(s.dialog[1]).toBeLessThanOrEqual(PHONE.height)
+    expect(s.screen).toBeGreaterThan(0)
+    expect(s.dialog[1]).toBeLessThanOrEqual(s.screen!)
     expect(s.buttons).toBeGreaterThan(0)
-    expect(s.buttons).toBeLessThanOrEqual(PHONE.height)
+    expect(s.bottomInset).toBeGreaterThanOrEqual(0)
+    expect(s.buttons).toBeLessThanOrEqual(s.screen! - s.bottomInset!)
     expect(s.field[0]).toBeGreaterThanOrEqual(s.dialog[0])
     expect(s.field[1]).toBeLessThanOrEqual(s.dialog[1])
   })
