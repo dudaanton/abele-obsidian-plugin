@@ -84,7 +84,7 @@ it('captures device-scope states in the real desktop and emulated phone dialogs'
               await poll(()=>button('Create token')&&!button('Create token').disabled,undefined,'Share issue enabled');
               if(state!=='share-pending') {
                 button('Create token').click();
-                if(state==='share-uploading')await poll(()=>box.querySelector('progress'),undefined,'upload progress');
+                if(state==='share-uploading')await poll(()=>box.querySelector('progress')&&textOf(box.querySelector('.abele-share-dialog__sending'))==='Sending 12 of 30'&&button('Create token').disabled,undefined,'upload counter and disabled token action');
                 if(state==='share-failure')await poll(()=>box.querySelector('[role=alert]'),undefined,'upload failure');
                 if(state==='share-issued')await poll(()=>box.querySelector('textarea[readonly]'),undefined,'issued token');
               }

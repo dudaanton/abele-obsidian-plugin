@@ -1,4 +1,6 @@
 export const streamC = {
+  'sync.deviceScope.keyName': 'Device access key',
+  'sync.deviceScope.copyKey': 'Copy device access key',
   'sync.deviceScope.key': 'Device access key: {id}',
   'sync.deviceScope.preparing': 'Preparing device access…',
   'sync.deviceScope.choose': 'Choose at least one folder, group or file.',
@@ -19,13 +21,13 @@ export const streamC = {
   'sync.deviceScope.files': '{count} files',
   'sync.deviceScope.missingLocal': 'Not on this device',
   'sync.deviceScope.missingServer': 'Not on the server yet',
-  'sync.deviceScope.sending': 'Sending {completed} of {total} files',
+  'sync.deviceScope.sending': 'Sending {completed} of {total}',
   'sync.deviceScope.beforeKey':
     'Files not on the server: {count}. They go up first, then the token is made.',
   'sync.deviceScope.afterSend': 'The token is made when the files are on the server.',
   'sync.scopePicker.findKind': 'What to find',
   'sync.scopePicker.noNotes': 'no notes yet',
-  'sync.scopePicker.noteCount': 'Notes: {count}',
+  'sync.scopePicker.noteCount': '{count} notes',
   'sync.scopePicker.folder.title': 'Folders',
   'sync.scopePicker.folder.add': 'Add a folder…',
   'sync.scopePicker.folder.find': 'Find a folder',

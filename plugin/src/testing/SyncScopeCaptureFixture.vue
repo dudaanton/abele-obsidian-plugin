@@ -101,7 +101,7 @@ const source: ShareSetSource = {
     items.length && !published.value ? { files: 32, items: items.map((item) => item.id) } : null,
   issue: async (_id, _set, sending) => {
     if (props.state === 'share-uploading') {
-      sending?.(12, 32)
+      sending?.(12, 30)
       await hold()
     }
     if (props.state === 'share-failure') throw new Error('Sample upload unavailable')

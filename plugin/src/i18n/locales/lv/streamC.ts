@@ -1,4 +1,6 @@
 export const streamC = {
+  'sync.deviceScope.keyName': 'Šīs ierīces piekļuves atslēga',
+  'sync.deviceScope.copyKey': 'Kopēt ierīces piekļuves atslēgu',
   'sync.deviceScope.key': 'Šīs ierīces piekļuves atslēga: {id}',
   'sync.deviceScope.preparing': 'Sagatavo ierīces piekļuvi…',
   'sync.deviceScope.choose': 'Izvēlies vismaz vienu mapi, grupu vai failu.',
@@ -18,13 +20,13 @@ export const streamC = {
   'sync.deviceScope.files': 'Faili: {count}',
   'sync.deviceScope.missingLocal': 'Nav šajā ierīcē',
   'sync.deviceScope.missingServer': 'Vēl nav serverī',
-  'sync.deviceScope.sending': 'Sūta {completed} no {total} failiem',
+  'sync.deviceScope.sending': 'Sūta {completed} no {total}',
   'sync.deviceScope.beforeKey':
     'Serverī vēl nav failu: {count}. Vispirms tos nosūta, tad izveido atslēgu.',
   'sync.deviceScope.afterSend': 'Atslēgu izveido, kad faili ir serverī.',
   'sync.scopePicker.findKind': 'Ko meklēt',
   'sync.scopePicker.noNotes': 'vēl nav piezīmju',
-  'sync.scopePicker.noteCount': 'Piezīmes: {count}',
+  'sync.scopePicker.noteCount': '{count} piezīmes',
   'sync.scopePicker.folder.title': 'Mapes',
   'sync.scopePicker.folder.add': 'Pievienot mapi…',
   'sync.scopePicker.folder.find': 'Meklēt mapi',

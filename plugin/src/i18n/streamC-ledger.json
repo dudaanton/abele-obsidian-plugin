@@ -180,7 +180,7 @@
     ]
   },
   "sync.deviceScope.sending": {
-    "englishHash": "743efbffd4dfa9cb6ac819ebb8d7c830df9178c053f32ee180a4a3e72e3d4c08",
+    "englishHash": "abcf437fcba347ba31e928ac795900872c78e10d154aea47e7a68fadb440c420",
     "context": "Device scope selection and scoped access lifecycle",
     "reviewedLocales": [
       "ru",
@@ -230,8 +230,8 @@
     ]
   },
   "sync.scopePicker.noteCount": {
-    "englishHash": "c6e18e58e58b1aed6c1d1e62d21f6e6bd8fc37567993f8410593b2ba31a0d994",
-    "context": "Device scope selection and scoped access lifecycle",
+    "englishHash": "264a92284c61403f41a8ca5a2ca7ab1f748b7f392e1434c22d75febb0eb20bae",
+    "context": "Device scope controls and group membership count",
     "reviewedLocales": [
       "ru",
       "lv",
@@ -728,5 +728,25 @@
     "englishHash": "8178b31523c8d1f5b11b77e816673079e7e4d09b09255f3edd3e2a1ca41ab1d4",
     "context": "Progress while importing saved HTTP requests",
     "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.deviceScope.keyName": {
+    "englishHash": "36853b8efb64d70b15af68b23f774021b9c44866ba6f5419a15f52bc8bf9bc38",
+    "context": "Device scope controls and group membership count",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.copyKey": {
+    "englishHash": "982e70829de0f5284b84ccacf87d57ef6db503e789f22070b060714e88045b89",
+    "context": "Device scope controls and group membership count",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

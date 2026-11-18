@@ -31,6 +31,49 @@ const detached: ConnectionItem = {
   files: 3,
   edited: 1,
 }
+it('shows upload counters and disables token creation until upload completes', async () => {
+  let finish!: (token: string) => void
+  const pending = new Promise<string>((resolve) => {
+    finish = resolve
+  })
+  const source = {
+    choices: () => [],
+    shares: async () => [],
+    issue: (_id: unknown, _options: unknown, progress: (sent: number, total: number) => void) => {
+      progress(12, 30)
+      return pending
+    },
+  } as unknown as ShareSetSource
+  const wrapper = mount(ShareDialog, {
+    props: { source, host: 'sync.example' },
+    global: {
+      stubs: { Modal: { template: '<div><slot /><slot name="footer" /></div>' }, QrCode: true },
+    },
+  })
+  try {
+    await flushPromises()
+    wrapper
+      .findComponent(SharePicker)
+      .vm.$emit('update:modelValue', [{ kind: 'folder', id: 'sample', path: 'Sample' }])
+    await wrapper
+      .get('input[placeholder="A second device, a colleague"]')
+      .setValue('Sample recipient')
+    const create = () =>
+      wrapper.findAllComponents(Button).find((one) => one.props('text') === 'Create token')!
+    await create().trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.abele-share-dialog__sending[role="status"]').text()).toBe(
+      'Sending 12 of 30'
+    )
+    expect(create().props('disabled')).toBe(true)
+    finish('sample-token')
+    await flushPromises()
+    expect(create().props('disabled')).toBe(false)
+  } finally {
+    finish('sample-token')
+    wrapper.unmount()
+  }
+})
 describe('shared item screens', () => {
   it('shows settled rows for zero-total progress without hiding real transfers', () => {
     const wrapper = mount(ConnectionItems, {

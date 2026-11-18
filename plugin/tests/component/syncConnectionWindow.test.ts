@@ -336,3 +336,49 @@ it('shows first-pull stage and counts as quiet visible text', () => {
     view.unmount()
   }
 })
+
+it('keeps an unsynced connection dot faint', () => {
+  const ui = tokenUiFixture()
+  ui.publish(ui.rows.value[0].id, {
+    lastSync: 0,
+    completed: undefined,
+    total: undefined,
+    refused: [],
+    conflicts: [],
+  })
+  const view = mount(ConnectionWindow, {
+    props: { ui, connectionId: ui.rows.value[0].id },
+    global: { stubs: { Modal: { template: '<div><slot /></div>' }, SelectiveSync: true } },
+  })
+  try {
+    expect(view.get('.abele-sync-window__line').text()).toBe('Not synced yet')
+    expect(view.get('.abele-status-dot').classes()).toContain('abele-status-dot_faint')
+  } finally {
+    view.unmount()
+  }
+})
+
+it('shows the device key after the toggles in a copyable setting row', async () => {
+  const ui = tokenUiFixture()
+  const state = vi.spyOn(ui.deviceScopes, 'state').mockReturnValue({
+    current: { id: 'sample-device-key' },
+  } as NonNullable<ReturnType<typeof ui.deviceScopes.state>>)
+  const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+  const view = mount(ConnectionWindow, {
+    props: { ui, connectionId: ui.rows.value[0].id },
+    global: { stubs: { Modal: { template: '<div><slot /></div>' }, SelectiveSync: true } },
+  })
+  try {
+    const row = view.get('.abele-sync-window__key')
+    expect(row.get('.setting-item-name').text()).toBe('Device access key')
+    expect(row.get('.setting-item-description').text()).toBe('sample-device-key')
+    const icon = row.findComponent({ name: 'Icon' })
+    expect(icon.props('tooltip')).toBe('Copy device access key')
+    await icon.trigger('click')
+    expect(copy).toHaveBeenCalledWith('sample-device-key')
+  } finally {
+    view.unmount()
+    copy.mockRestore()
+    state.mockRestore()
+  }
+})

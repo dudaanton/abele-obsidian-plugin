@@ -85,6 +85,8 @@ export class ShareItemSuggest extends TextInputSuggest<ShareItem> {
       icon: itemGlyph(item),
       title: itemName(item),
       note: place,
+      noteClass: 'abele-share-pick__path',
+      noteTooltip: place,
       titleClass: covered ? 'abele-share-pick__covered' : undefined,
       aux: covered
         ? [{ flair: 'In ' + itemName(covered), cls: 'abele-share-pick__in' }]

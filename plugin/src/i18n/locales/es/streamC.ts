@@ -1,4 +1,6 @@
 export const streamC = {
+  'sync.deviceScope.keyName': 'Clave de acceso del dispositivo',
+  'sync.deviceScope.copyKey': 'Copiar clave de acceso del dispositivo',
   'sync.deviceScope.key': 'Clave de acceso del dispositivo: {id}',
   'sync.deviceScope.preparing': 'Preparando el acceso del dispositivo…',
   'sync.deviceScope.choose': 'Elige al menos una carpeta, grupo o archivo.',
@@ -19,13 +21,13 @@ export const streamC = {
   'sync.deviceScope.files': 'Archivos: {count}',
   'sync.deviceScope.missingLocal': 'No está en este dispositivo',
   'sync.deviceScope.missingServer': 'Todavía no está en el servidor',
-  'sync.deviceScope.sending': 'Enviando {completed} de {total} archivos',
+  'sync.deviceScope.sending': 'Enviando {completed} de {total}',
   'sync.deviceScope.beforeKey':
     'Archivos que faltan en el servidor: {count}. Primero se envían y después se crea la clave.',
   'sync.deviceScope.afterSend': 'La clave se crea cuando los archivos están en el servidor.',
   'sync.scopePicker.findKind': 'Qué buscar',
   'sync.scopePicker.noNotes': 'aún no hay notas',
-  'sync.scopePicker.noteCount': 'Notas: {count}',
+  'sync.scopePicker.noteCount': '{count} notas',
   'sync.scopePicker.folder.title': 'Carpetas',
   'sync.scopePicker.folder.add': 'Añadir carpeta…',
   'sync.scopePicker.folder.find': 'Buscar carpeta',

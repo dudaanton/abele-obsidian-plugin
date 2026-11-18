@@ -60,7 +60,7 @@ export function connectionTone(row: Row, activity?: ConnectionActivity): Connect
     activity?.notSyncedError
   )
     return 'orange'
-  return 'green'
+  return activity?.lastSync ? 'green' : 'faint'
 }
 
 /** The one line under the connection's name: what it is doing, or what it waits on. */

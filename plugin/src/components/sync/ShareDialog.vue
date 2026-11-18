@@ -37,6 +37,9 @@
             :value="sending.sent"
             :max="sending.total"
           />
+          <div class="setting-item-description abele-share-dialog__sending" role="status">
+            {{ t('sync.deviceScope.sending', { completed: sending.sent, total: sending.total }) }}
+          </div>
           <div class="setting-item-description" role="status">
             {{ t('sync.deviceScope.afterSend') }}
           </div>
@@ -55,7 +58,7 @@
         <Button
           text="Create token"
           tooltip="Create one token for everything chosen above"
-          :disabled="busy || !label.trim() || !picked.length"
+          :disabled="busy || !!sending || !label.trim() || !picked.length"
           @click="run(issue)"
         />
       </Setting>

@@ -1,4 +1,6 @@
 export const streamC = {
+  'sync.deviceScope.keyName': 'Zugriffsschlüssel dieses Geräts',
+  'sync.deviceScope.copyKey': 'Zugriffsschlüssel des Geräts kopieren',
   'sync.deviceScope.key': 'Zugriffsschlüssel dieses Geräts: {id}',
   'sync.deviceScope.preparing': 'Gerätezugriff wird vorbereitet…',
   'sync.deviceScope.choose': 'Wähle mindestens einen Ordner, eine Gruppe oder eine Datei.',
@@ -19,14 +21,14 @@ export const streamC = {
   'sync.deviceScope.files': 'Dateien: {count}',
   'sync.deviceScope.missingLocal': 'Nicht auf diesem Gerät',
   'sync.deviceScope.missingServer': 'Noch nicht auf dem Server',
-  'sync.deviceScope.sending': '{completed} von {total} Dateien werden gesendet',
+  'sync.deviceScope.sending': '{completed} von {total} werden gesendet',
   'sync.deviceScope.beforeKey':
     'Noch nicht auf dem Server: {count} Dateien. Zuerst werden sie gesendet, dann wird der Schlüssel erstellt.',
   'sync.deviceScope.afterSend':
     'Der Schlüssel wird erstellt, sobald die Dateien auf dem Server sind.',
   'sync.scopePicker.findKind': 'Was suchen',
   'sync.scopePicker.noNotes': 'noch keine Notizen',
-  'sync.scopePicker.noteCount': 'Notizen: {count}',
+  'sync.scopePicker.noteCount': '{count} Notizen',
   'sync.scopePicker.folder.title': 'Ordner',
   'sync.scopePicker.folder.add': 'Ordner hinzufügen…',
   'sync.scopePicker.folder.find': 'Ordner suchen',

@@ -16,6 +16,7 @@ export interface SuggestionRowProps {
   keepNote?: boolean
   titleClass?: string
   noteClass?: string
+  noteTooltip?: string
   aux?: SuggestionAux[]
 }
 

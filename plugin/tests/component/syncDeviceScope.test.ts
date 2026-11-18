@@ -1,11 +1,33 @@
-import { afterEach, expect, it } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { afterEach, expect, it, vi } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
 import { Platform } from 'obsidian'
 import SharePicker from '@/components/sync/SharePicker.vue'
 import DeviceScopeField from '@/components/sync/DeviceScopeField.vue'
 
 afterEach(() => {
   Platform.isPhone = false
+})
+
+it('reveals the scope section heading when the phone search receives focus', async () => {
+  Platform.isPhone = true
+  const body = document.createElement('div')
+  body.className = 'modal-content'
+  const section = body.appendChild(document.createElement('section'))
+  section.className = 'abele-section'
+  section.scrollIntoView = vi.fn()
+  document.body.append(body)
+  const wrapper = mount(DeviceScopeField, {
+    attachTo: section,
+    props: { modelValue: [], choices: [{ kind: 'folder', id: 'sample', path: 'Sample' }] },
+  })
+  try {
+    await wrapper.get('input').trigger('focusin')
+    await flushPromises()
+    expect(section.scrollIntoView).toHaveBeenCalledWith({ block: 'start' })
+  } finally {
+    wrapper.unmount()
+    body.remove()
+  }
 })
 
 it.each(['narrowing', 'widening'] as const)(
@@ -70,6 +92,24 @@ it('switches local choices by kind on the phone and replaces the whole-vault def
     expect(wrapper.text()).toContain('no notes yet')
     await wrapper.find('[data-share-kind="group"]').trigger('click')
     expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([[group]])
+  } finally {
+    wrapper.unmount()
+  }
+})
+
+it('uses the approved group count wording', async () => {
+  Platform.isPhone = true
+  const wrapper = mount(SharePicker, {
+    props: {
+      modelValue: [],
+      choices: [{ kind: 'group', id: 'sample', path: 'Groups/Sample.md' }],
+      members: () => 18,
+    },
+  })
+  try {
+    await wrapper.get('[data-scope-kind=group]').trigger('click')
+    await wrapper.get('input').trigger('focusin')
+    expect(wrapper.text()).toContain('18 notes')
   } finally {
     wrapper.unmount()
   }

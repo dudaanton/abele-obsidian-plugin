@@ -18,6 +18,19 @@ const item = (parent: HTMLElement) => {
 }
 
 describe('SuggestionRow', () => {
+  it('keeps the full parent path available as a tooltip', () => {
+    const el = item(list())
+    const rows = new SuggestionRows()
+    rows.draw(el, {
+      title: 'Sample',
+      note: 'Sample collection/Long parent',
+      noteTooltip: 'Sample collection/Long parent',
+    })
+    expect(el.querySelector('.suggestion-note')?.getAttribute('aria-label')).toBe(
+      'Sample collection/Long parent'
+    )
+    rows.clear()
+  })
   it("draws Obsidian's row: icon flair, title, note and the aux parts in order", () => {
     const el = item(list())
     new SuggestionRows().draw(el, {

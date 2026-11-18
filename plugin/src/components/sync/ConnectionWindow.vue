@@ -96,18 +96,24 @@
             :disabled="scopeBusy"
             @update:model-value="changeScope"
           />
-          <p v-if="scopeLease" class="setting-item-description" role="status">
-            {{
-              scopeLease.current
-                ? t('sync.deviceScope.key', { id: scopeLease.current.id })
-                : t('sync.deviceScope.preparing')
-            }}
-          </p>
         </template>
       </SelectiveSync>
 
       <Setting :name="t('sync.window.trusted')" :desc="t('sync.window.trustedDesc')">
         <Checkbox :is-enabled="!!row?.trusted" @toggle="toggleTrusted" />
+      </Setting>
+      <Setting
+        v-if="scopeLease"
+        :name="t('sync.deviceScope.keyName')"
+        class="abele-sync-window__key"
+      >
+        <template #desc>{{ scopeLease.current?.id ?? t('sync.deviceScope.preparing') }}</template>
+        <Icon
+          v-if="scopeLease.current"
+          icon="copy"
+          :tooltip="t('sync.deviceScope.copyKey')"
+          @click="copyDeviceKey"
+        />
       </Setting>
 
       <Section v-if="events?.length" :title="t('sync.window.recent')">
@@ -248,6 +254,9 @@ const scopeLease = computed(() => {
 const deviceItems = ref<ShareItem[]>(deviceScope.value?.items ?? [])
 const openedWith = ref<ShareItem[]>([...deviceItems.value])
 const scopeBusy = ref(false)
+async function copyDeviceKey() {
+  if (scopeLease.value?.current) await navigator.clipboard.writeText(scopeLease.value.current.id)
+}
 async function changeScope(items: ShareItem[]) {
   deviceItems.value = items
   if (!items.length || scopeBusy.value) return
@@ -324,7 +333,9 @@ const tone = computed(() =>
   row.value && (activity.value?.notSynced?.length || activity.value?.notSyncedError)
     ? connectionTone(row.value, activity.value)
     : setItems.value
-      ? setTone(setItems.value)
+      ? setTone(setItems.value) === 'green' && row.value
+        ? connectionTone(row.value, activity.value)
+        : setTone(setItems.value)
       : row.value
         ? connectionTone(row.value, activity.value)
         : 'faint'
@@ -382,6 +393,11 @@ onMounted(async () => {
 </script>
 
 <style lang="scss">
+.abele-sync-window__key .setting-item-description {
+  font-family: var(--font-monospace);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
 .abele-sync-window {
   .abele-section:first-of-type {
     margin-top: var(--size-4-6);

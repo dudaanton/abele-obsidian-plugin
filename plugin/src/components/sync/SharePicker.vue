@@ -115,6 +115,8 @@
           :icon="itemGlyph(item)"
           :title="itemName(item)"
           :note="item.kind === 'vault' ? (vaultNote ?? 'For your own devices') : itemPlace(item)"
+          note-class="abele-share-pick__path"
+          :note-tooltip="itemPlace(item)"
           :title-class="coveredBy(item, covers()) ? 'abele-share-pick__covered' : undefined"
           :aux="
             coveredBy(item, covers())
@@ -265,6 +267,10 @@ const reveal = () => {
     const box = root.value?.closest('.modal-content')
     const view = root.value?.ownerDocument.defaultView
     if (!row || !field || !box || !view) return
+    root.value
+      ?.closest('.abele-device-scope')
+      ?.closest('.abele-section')
+      ?.scrollIntoView({ block: 'start' })
     row.scrollIntoView({ block: 'nearest' })
     const bounds = box.getBoundingClientRect()
     const viewport = view.visualViewport
@@ -350,6 +356,7 @@ const makeSuggest = (inputEl: HTMLInputElement) =>
   align-items: center;
   gap: var(--size-4-2);
   min-width: 0;
+  padding-inline: var(--size-4-1);
 
   > .abele-obsidian-search {
     flex: 1 1 auto;
@@ -391,5 +398,16 @@ const makeSuggest = (inputEl: HTMLInputElement) =>
 .abele-share-pick__in {
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
+}
+.suggestion-content:has(.abele-share-pick__path) {
+  min-width: 0;
+}
+.suggestion-item .abele-share-pick__path {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.is-phone .abele-share-picker__find {
+  padding-inline: var(--size-4-4);
 }
 </style>

@@ -5,7 +5,12 @@
   </div>
   <div class="suggestion-content">
     <div class="suggestion-title" :class="titleClass">{{ title }}</div>
-    <div v-if="note !== undefined && (note || keepNote)" class="suggestion-note" :class="noteClass">
+    <div
+      v-if="note !== undefined && (note || keepNote)"
+      ref="noteEl"
+      class="suggestion-note"
+      :class="noteClass"
+    >
       {{ note }}
     </div>
   </div>
@@ -43,13 +48,16 @@ const props = defineProps<{
   keepNote?: boolean
   titleClass?: string
   noteClass?: string
+  noteTooltip?: string
   aux?: SuggestionAux[]
 }>()
 
 const iconEl = ref<HTMLElement>()
+const noteEl = ref<HTMLElement>()
 const dotEls = ref<HTMLElement[]>([])
 
 onMounted(() => {
+  if (noteEl.value && props.noteTooltip) setTooltip(noteEl.value, props.noteTooltip)
   if (iconEl.value && props.icon) setIcon(iconEl.value, props.icon)
   for (const dot of dotEls.value) {
     const tip = dot.dataset.tooltip

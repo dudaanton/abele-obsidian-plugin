@@ -1,4 +1,6 @@
 export const streamC = {
+  'sync.deviceScope.keyName': 'Ключ этого устройства',
+  'sync.deviceScope.copyKey': 'Скопировать ключ устройства',
   'sync.deviceScope.key': 'Ключ этого устройства: {id}',
   'sync.deviceScope.preparing': 'Подготавливаем доступ устройства…',
   'sync.deviceScope.choose': 'Выбери хотя бы одну папку, группу или файл.',
@@ -19,13 +21,13 @@ export const streamC = {
   'sync.deviceScope.files': 'Файлов: {count}',
   'sync.deviceScope.missingLocal': 'Нет на этом устройстве',
   'sync.deviceScope.missingServer': 'Ещё не на сервере',
-  'sync.deviceScope.sending': 'Отправляем {completed} из {total} файлов',
+  'sync.deviceScope.sending': 'Отправляем {completed} из {total}',
   'sync.deviceScope.beforeKey':
     'Файлов ещё нет на сервере: {count}. Сначала отправим их, затем создадим ключ.',
   'sync.deviceScope.afterSend': 'Ключ будет создан, когда файлы окажутся на сервере.',
   'sync.scopePicker.findKind': 'Что искать',
   'sync.scopePicker.noNotes': 'пока нет заметок',
-  'sync.scopePicker.noteCount': 'Заметок: {count}',
+  'sync.scopePicker.noteCount': '{count} заметок',
   'sync.scopePicker.folder.title': 'Папки',
   'sync.scopePicker.folder.add': 'Добавить папку…',
   'sync.scopePicker.folder.find': 'Найти папку',
