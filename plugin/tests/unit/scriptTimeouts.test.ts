@@ -1,14 +1,3 @@
-/**
- * How long a script waits for the network.
- *
- * `ctx.fetch` has a five-minute ceiling, including when its timeout is omitted or longer.
- * A shorter timeout still ends the wait earlier. Downloads also accept a timeout to shorten
- * their service deadline. These expectations deliberately replace the old unlimited-fetch
- * contract with the approved five-minute limit.
- *
- * What is asserted is the waiting and the giving up, not the request: `requestUrl` is
- * Obsidian's and is stubbed here with a promise the test controls.
- */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { buildScriptContext } from '@/scripting/ScriptContext'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -70,7 +59,7 @@ describe('a request with a timeout', () => {
     expect(answered.text).toBe('here')
   })
 
-  it('caps an explicitly longer fetch timeout at five minutes', async () => {
+  it('honors a twenty-minute fetch timeout through the transport', async () => {
     neverAnswers()
     const ctx = context()
 
@@ -80,9 +69,9 @@ describe('a request with a timeout', () => {
       () => (finished = true),
       () => (finished = true)
     )
-    const settled = expect(pending).rejects.toThrow(/timed out after 300s/)
+    const settled = expect(pending).rejects.toThrow(/timed out after 1200s/)
 
-    await vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1)
+    await vi.advanceTimersByTimeAsync(20 * 60 * 1000 - 1)
     expect(finished).toBe(false)
     await vi.advanceTimersByTimeAsync(2)
 

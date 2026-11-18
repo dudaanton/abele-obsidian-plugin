@@ -1,5 +1,5 @@
 import type { AgentTool } from '../client'
-import { request as requestUrl } from '@/helpers/http'
+import { request as requestUrl, type NetworkRequest } from '@/helpers/http'
 import { getAttachmentFolder } from './imageUtils'
 import { appOf, type ToolContext } from '../toolContext'
 import { nanoid } from 'nanoid'
@@ -61,21 +61,16 @@ async function downloadToVault(
   body?: string,
   signal?: AbortSignal,
   basicAuth?: SecretRequest['basicAuth'],
-  ctx?: ToolContext
+  ctx?: ToolContext,
+  limits?: Pick<NetworkRequest, 'maxBytes' | 'timeoutMs'>
 ): Promise<string> {
   signal?.throwIfAborted()
   const prepared = prepareSecretRequest({ url: rawUrl, headers: rawHeaders, body, basicAuth })
   const { url, headers } = prepared
 
-  const reqOpts: {
-    url: string
-    method: string
-    headers?: Record<string, string>
-    body?: string
-    secretValues: string[]
-    contentType?: string
-    throw: boolean
-  } = {
+  const reqOpts: NetworkRequest = {
+    ...limits,
+    signal,
     url,
     secretValues: prepared.secretValues,
     method: method || 'GET',
@@ -165,7 +160,11 @@ export function createDownloadImageTool(): AgentTool {
         undefined,
         signal,
         params.basicAuth as SecretRequest['basicAuth'],
-        ctx
+        ctx,
+        {
+          maxBytes: params.maxBytes as number | undefined,
+          timeoutMs: params.timeoutMs as number | undefined,
+        }
       )
       return { content: [{ type: 'text', text: `Saved: ${targetPath}` }] }
     },
@@ -222,7 +221,11 @@ export function createDownloadFileTool(): AgentTool {
         params.body as string | undefined,
         signal,
         params.basicAuth as SecretRequest['basicAuth'],
-        ctx
+        ctx,
+        {
+          maxBytes: params.maxBytes as number | undefined,
+          timeoutMs: params.timeoutMs as number | undefined,
+        }
       )
       return { content: [{ type: 'text', text: `Saved: ${targetPath}` }] }
     },

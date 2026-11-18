@@ -174,15 +174,23 @@ List values can contain \`;\` separator to add/remove multiple items at once.
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| \`fetch(url, opts?)\` | \`{ status, headers, data, text }\` | HTTP request; at most five minutes and 20 MB. \`timeout\` may shorten the wait |
+| \`fetch(url, opts?)\` | \`{ status, headers, data, text }\` | HTTP request; default five minutes and 20 MiB; configurable up to thirty minutes and 200 MiB |
 | \`downloadImage(url, filename?)\` | \`string\` | Download image to vault, returns saved path |
 | \`downloadFile(url, opts?)\` | \`string\` | Download any file to vault, returns saved path |
 
-\`fetch\` options: \`{ method?, headers?, body?, timeout? }\`
-\`downloadFile\` options: \`{ filename?, extension?, method?, headers?, body?, timeout? }\` — supports POST for APIs that return binary (e.g. TTS).
-\`downloadImage\` options: \`{ filename?, headers?, timeout? }\`
+\`fetch\` options: \`{ method?, headers?, body?, timeout?, maxBytes? }\`
+All three network methods accept \`timeout\` (positive integer milliseconds, default 300000,
+maximum 1800000) and \`maxBytes\` (positive integer bytes, default 20971520, maximum 209715200).
+For example: \`await fetch(url, { timeout: 1200000, maxBytes: 100 * 1024 * 1024 })\`.
+Invalid options fail before sending. Deadlines include redirects. Desktop stops reading at
+the size limit. On mobile, the native API exposes Content-Length only after buffering the
+whole body, so size checks cannot prevent that allocation. A timed-out mobile request may
+finish in the platform; its answer is ignored.
 
-\`timeout\` is milliseconds and takes any value — two seconds for a search API, twenty minutes for an export. Without it the call waits as long as the platform waits, which is what these have always done. It ends the *waiting* and prevents a late response from starting a vault write. Obsidian cannot recall a request already sent, or cancel a vault write already issued.
+\`downloadFile\` options: \`{ filename?, extension?, method?, headers?, body?, timeout?, maxBytes? }\` — supports POST for APIs that return binary (e.g. TTS).
+\`downloadImage\` options: \`{ filename?, headers?, timeout?, maxBytes? }\`
+
+A timeout ends the wait and prevents a late response from starting a vault write. Mobile cannot recall a request already sent, or cancel a vault write already issued.
 Secret substitution: use \`\${abele_key:name}\` in url, headers, or body to inject secrets configured in AI settings.
 
 ### Zip

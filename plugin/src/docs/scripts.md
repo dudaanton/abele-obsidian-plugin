@@ -39,11 +39,20 @@ headers, their Base64 payloads and raw passwords are redacted in results and net
 
 ## Network limits
 
-`ctx.fetch` waits at most five minutes, including redirects, and accepts at most 20 MB.
-Its `timeout` option can shorten that wait, not remove the cap. Other buffered requests default
-to 30 seconds and 20 MB. Desktop requests stop reading at the size limit; on mobile the native
-transport buffers first, so the plugin can only refuse the completed response. A timed-out
-mobile request can still finish in the platform, but its answer is not used.
+`ctx.fetch`, `ctx.downloadFile` and `ctx.downloadImage` accept the same limits:
+
+- `maxBytes`: positive integer bytes, default 20971520 (20 MiB), maximum 209715200 (200 MiB).
+- `timeout`: positive integer milliseconds, default 300000 (five minutes), maximum 1800000
+  (thirty minutes), including redirects.
+
+For example: `await ctx.fetch(url, { maxBytes: 100 * 1024 * 1024, timeout: 1200000 })`.
+Invalid values fail before sending. Size and timeout errors name the limit and the option
+to increase. Desktop requests stop reading at the size limit. On mobile, the native
+request API exposes Content-Length only after buffering the entire body: even a declared
+oversize response cannot be refused before that allocation. The completed response is
+checked against both Content-Length and its actual byte size. A timed-out mobile request
+can still finish in the platform, but its answer is not used. Other buffered requests
+default to 30 seconds and 20 MiB.
 
 ## Agents started by scripts
 

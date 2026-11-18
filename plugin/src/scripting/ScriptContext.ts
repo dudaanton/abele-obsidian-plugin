@@ -52,6 +52,39 @@ import { bookPlaces } from '@/reader/places'
 import { BOOK_VIEW_TYPE } from '@/reader/viewType'
 import { AbeleConfig } from '@/services/AbeleConfig'
 
+export interface ScriptNetworkOptions {
+  /** Positive integer bytes; default 20 MiB, maximum 200 MiB. */
+  maxBytes?: number
+  /** Positive integer milliseconds; default five minutes, maximum thirty minutes. */
+  timeout?: number
+}
+
+function networkOptions(opts?: ScriptNetworkOptions) {
+  const maxBytes = opts?.maxBytes === undefined ? 20 * 1024 * 1024 : opts.maxBytes
+  const timeoutMs = opts?.timeout === undefined ? 300_000 : opts.timeout
+  if (!Number.isInteger(maxBytes) || maxBytes <= 0 || maxBytes > 209_715_200)
+    throw new Error('maxBytes must be a positive integer up to 209715200 bytes (200 MiB)')
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 1_800_000)
+    throw new Error('timeout must be a positive integer up to 1800000 ms (30 minutes)')
+  return { maxBytes, timeoutMs }
+}
+
+async function networkResult<T>(work: Promise<T>): Promise<T> {
+  try {
+    return await work
+  } catch (error) {
+    if (error instanceof Error && /Response too large/.test(error.message))
+      throw new Error(
+        error.message + '; increase maxBytes in the script options, up to 209715200 bytes (200 MiB)'
+      )
+    if (error instanceof Error && /timed out/.test(error.message))
+      throw new Error(
+        error.message + '; increase timeout in the script options, up to 1800000 ms (30 minutes)'
+      )
+    throw error
+  }
+}
+
 /** Extract first text content from tool result */
 function text(result: { content: Array<{ type: string; text?: string }> }): string {
   const item = result.content.find((c) => c.type === 'text')
@@ -92,14 +125,9 @@ function stripPrefix(result: string): string {
 }
 
 /**
- * How long a script is willing to wait, in milliseconds.
- *
- * Any value: what is reasonable belongs to the script, not to this file — a search API that
- * should answer in two seconds and a twenty-minute export are both ordinary. Without one the
- * wait is what it always was, which is however long the platform waits.
- *
- * requestUrl cannot cancel a request already sent. Revoking the operation's signal prevents
- * a late download from starting a vault write; an already-issued write must still settle.
+ * Enforce the selected operation deadline and preserve cancellation from the script run.
+ * Mobile cannot cancel an already-sent request; revoking the signal prevents a late
+ * download from starting a vault write. An already-issued write must still settle.
  */
 function withTimeout<T>(
   work: (signal: AbortSignal) => Promise<T>,
@@ -504,15 +532,14 @@ export function buildScriptContext(opts: {
 
     async fetch(
       url: string,
-      fetchOpts?: {
+      fetchOpts?: ScriptNetworkOptions & {
         method?: string
         headers?: Record<string, string>
         body?: string
         basicAuth?: SecretRequest['basicAuth']
-        /** Milliseconds to wait, capped at five minutes; default five minutes. */
-        timeout?: number
       }
     ): Promise<{ status: number; headers: Record<string, string>; data: any; text: string }> {
+      const limits = networkOptions(fetchOpts)
       const raw = snapshotSecretRequest({
         url,
         headers: fetchOpts?.headers,
@@ -524,24 +551,25 @@ export function buildScriptContext(opts: {
       await approveScriptKeyRequest(raw, s)
       validateSecretBindings(raw, bindings)
       const prepared = prepareSecretRequest(raw)
-      const response = await withTimeout(
-        (signal) =>
-          waitForScript(
-            () =>
-              requestUrl({
-                ...prepared,
-                method,
-                throw: false,
-                timeoutMs: 300_000,
-              }),
-            signal
-          ),
-        fetchOpts?.timeout && fetchOpts.timeout > 0
-          ? Math.min(fetchOpts.timeout, 300_000)
-          : 300_000,
-        url,
-        s,
-        track
+      const response = await networkResult(
+        withTimeout(
+          (signal) =>
+            waitForScript(
+              () =>
+                requestUrl({
+                  ...prepared,
+                  method,
+                  throw: false,
+                  ...limits,
+                  signal,
+                }),
+              signal
+            ),
+          limits.timeoutMs,
+          url,
+          s,
+          track
+        )
       )
       const contentType = (
         Object.entries(response.headers).find(
@@ -570,45 +598,46 @@ export function buildScriptContext(opts: {
       url: string,
       filenameOrOpts?:
         | string
-        | {
+        | (ScriptNetworkOptions & {
             filename?: string
             headers?: Record<string, string>
             basicAuth?: SecretRequest['basicAuth']
-            timeout?: number
-          }
+          })
     ): Promise<string> {
       const opts =
         typeof filenameOrOpts === 'string' ? { filename: filenameOrOpts } : filenameOrOpts
-      const { timeout, ...rest } = opts ?? {}
+      const limits = networkOptions(opts)
+      const { timeout: _timeout, maxBytes: _maxBytes, ...rest } = opts ?? {}
       const raw = snapshotSecretRequest({ url, headers: rest.headers, basicAuth: rest.basicAuth })
       const bindings = secretRequestInfo(raw).bindings
       await approveScriptKeyRequest(raw, s)
       validateSecretBindings(raw, bindings)
       return stripPrefix(
-        await withTimeout(
-          (signal) => call(downloadImageTool, { ...rest, ...raw }, signal),
-          timeout,
-          url,
-          s,
-          track
+        await networkResult(
+          withTimeout(
+            (signal) => call(downloadImageTool, { ...rest, ...raw, ...limits }, signal),
+            limits.timeoutMs,
+            url,
+            s,
+            track
+          )
         )
       )
     },
 
     async downloadFile(
       url: string,
-      opts?: {
+      opts?: ScriptNetworkOptions & {
         filename?: string
         extension?: string
         method?: string
         headers?: Record<string, string>
         body?: string
         basicAuth?: SecretRequest['basicAuth']
-        /** Milliseconds to wait. Any value; without one, as long as the platform waits. */
-        timeout?: number
       }
     ): Promise<string> {
-      const { timeout, ...rest } = opts ?? {}
+      const limits = networkOptions(opts)
+      const { timeout: _timeout, maxBytes: _maxBytes, ...rest } = opts ?? {}
       const raw = snapshotSecretRequest({
         url,
         headers: rest.headers,
@@ -619,12 +648,14 @@ export function buildScriptContext(opts: {
       await approveScriptKeyRequest(raw, s)
       validateSecretBindings(raw, bindings)
       return stripPrefix(
-        await withTimeout(
-          (signal) => call(downloadFileTool, { ...rest, ...raw }, signal),
-          timeout,
-          url,
-          s,
-          track
+        await networkResult(
+          withTimeout(
+            (signal) => call(downloadFileTool, { ...rest, ...raw, ...limits }, signal),
+            limits.timeoutMs,
+            url,
+            s,
+            track
+          )
         )
       )
     },
