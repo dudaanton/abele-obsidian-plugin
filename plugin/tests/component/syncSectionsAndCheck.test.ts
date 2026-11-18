@@ -53,6 +53,11 @@ it('asks which differing version to take in a native phone sheet before enabling
   choice.vm.$emit('answer', 'vault')
   await flushPromises()
   expect(source.choose).toHaveBeenCalledWith('reader', true, 'vault')
+  choice.vm.$emit('close')
+  await flushPromises()
+  expect(view.findComponent(ChoiceModal).exists()).toBe(false)
+  expect(view.get('[data-section=reader]').exists()).toBe(true)
+  expect(view.emitted('choiceClosed')).toHaveLength(1)
   view.unmount()
 })
 it('folds a single group with more than twenty differences', async () => {

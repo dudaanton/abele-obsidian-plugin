@@ -5,6 +5,7 @@
       ref="tree"
       :source="sections"
       :plugin-settings="step !== 11"
+      @choice-closed="step === 9 && emit('close')"
     />
     <VaultCheckBlock v-else :source="check" />
   </Modal>

@@ -168,7 +168,7 @@
       },
     ]"
     @answer="(take) => answer(take as 'vault' | 'device')"
-    @close="asking = null"
+    @close="closeChoice"
   />
 </template>
 
@@ -283,6 +283,13 @@ const keyLine = computed(() => {
 })
 
 const asking = ref<AbeleSectionRow | null>(null)
+/** Standalone capture hosts can end together with their nested question. */
+const emit = defineEmits<{ choiceClosed: [] }>()
+
+function closeChoice(): void {
+  asking.value = null
+  emit('choiceClosed')
+}
 
 async function flip(row: AbeleSectionRow): Promise<void> {
   if (!props.pluginSettings) return
