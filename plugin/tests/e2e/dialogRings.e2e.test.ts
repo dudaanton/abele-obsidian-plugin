@@ -300,6 +300,8 @@ const script = `(async () => {
         if (openingError) throw openingError
         await settle(opened)
         const modal = opened()
+        if (dialogName === 'sync-scope-capture' && !await until(() => modal.querySelector('.abele-device-scope .abele-share-picker input'), 5000))
+          throw new Error('Device scope picker did not finish preflight')
         // Empty, populated and long-path artifact fixtures must all retain their three sections.
         if (dialogName.startsWith('chat-artifacts') && !(dialogName === 'chat-artifacts-empty'
           ? modal.querySelectorAll('.abele-chat-artifacts section').length === 0 && modal.querySelector('.abele-chat-artifacts .abele-empty-state')

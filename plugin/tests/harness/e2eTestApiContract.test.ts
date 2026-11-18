@@ -46,7 +46,7 @@ it('keeps every token dialog in the phone and desktop layout inventory', () => {
   const screens = [...registry.matchAll(/'(?<name>sync-[^']+)':/g)].map(
     (match) => match.groups!.name
   )
-  expect(screens).toHaveLength(17)
+  expect(screens).toHaveLength(18)
   const phone = read('tests/e2e/phoneLayout.e2e.test.ts')
   const inventory = phone.slice(phone.indexOf('const DIALOGS = ['), phone.indexOf('].map('))
   for (const screen of screens) expect(inventory).toContain("'" + screen + "'")
@@ -54,6 +54,8 @@ it('keeps every token dialog in the phone and desktop layout inventory', () => {
     const text = read('tests/e2e/' + name + '.e2e.test.ts')
     expect(text).toContain('window.__abeleTest.dialogNames()')
     expect(text).toContain('window.__abeleTest.openDialog(dialogName)')
+    expect(text).toContain("dialogName === 'sync-scope-capture'")
+    expect(text).toContain('.abele-device-scope .abele-share-picker input')
     expect(text).not.toContain("'publication confirmation'")
   }
 })
@@ -65,7 +67,7 @@ it.each(['throw', 'reject'])(
     const start = text.indexOf('  // Every other dialog')
     const loop = text.slice(start, text.indexOf('\n  }\n', start) + 5)
     const measured: string[] = []
-    const modal = { querySelectorAll: () => [] }
+    const modal = { querySelectorAll: (): Element[] => [] }
     const run = new Function(
       'window',
       'document',

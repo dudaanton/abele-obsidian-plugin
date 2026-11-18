@@ -1,7 +1,8 @@
 /** Native suggestion selection shared by the live single-item and set-sharing cases. */
 export const SHARE_SET_PICKER = `
 const pickShareItem = async (box, label, waitForChip = true) => {
-  let legacy = box.querySelector('.abele-share-picker') ? null : box.querySelector('select');
+  const pickerRoot = () => box.matches('.abele-share-picker') ? box : box.querySelector('.abele-share-picker');
+  let legacy = pickerRoot() ? null : box.querySelector('select');
   if (legacy) {
     let option;
     await poll(() => { legacy = box.querySelector('select'); option = legacy && [...legacy.options].find(one => one.textContent.trim() === label); return !!option }, undefined, 'sharing scopes to load');
@@ -21,7 +22,7 @@ const pickShareItem = async (box, label, waitForChip = true) => {
   const match = () => {
     // Kind changes, host focus and phone layout settle asynchronously. Reacquire
     // the live field rather than retaining a pre-render input or a blurred list.
-    const picker = box.querySelector('.abele-share-picker');
+    const picker = pickerRoot();
     input = picker?.querySelector('input');
     if (!input || input.disabled) return false;
     if (input.ownerDocument.activeElement !== input) input.focus();
@@ -36,7 +37,7 @@ const pickShareItem = async (box, label, waitForChip = true) => {
   };
   try { await poll(match, undefined, 'Share picker: matching suggestion row'); }
   catch (error) {
-    const picker = box.querySelector('.abele-share-picker');
+    const picker = pickerRoot();
     throw new Error(String(error?.message || error) + ': ' + JSON.stringify({
       mode: picker?.dataset.sharePickerMode, query: input?.value,
       focused: input?.ownerDocument.activeElement === input,

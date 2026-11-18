@@ -209,6 +209,7 @@ const DIALOGS = [
   'transfer-preview',
   'transfer-scan',
   'sync-connect',
+  'sync-scope-capture',
   'sync-connect-error',
   'sync-connect-token',
   'sync-connections',
@@ -1541,6 +1542,8 @@ const probeScript = `(async () => {
         if (openingError) throw openingError
         await wait(300)
         const modal = opened()
+        if (dialogName === 'sync-scope-capture' && !(await until(() => modal.querySelector('.abele-device-scope .abele-share-picker input'), 5000)))
+          throw new Error('Device scope picker did not finish preflight')
         if (dialogName === 'github-connections') {
           // Show the long connection rows, not the unrelated general settings above them.
           const heading = [...modal.querySelectorAll('.abele-section__heading')].find(el => el.textContent === 'Connections')
