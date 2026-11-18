@@ -153,7 +153,9 @@ function createInputDispatch(send: SendInput, acquire: () => Promise<() => void>
 
 /** Add gesture-scoped locking to a renderer probe's explicit CDP port. */
 export function nativeInputProbe(source: string, lock = INPUT_LOCK): string {
-  const timed = source.includes('const extendInputDeadline =')
+  // The input lane owns queue time; matrix clocks exclude even an in-progress wait.
+  // Freeze and pixel probes continue to use their original frame and geometry clocks.
+  const timed = source.includes('Matrix case exceeded its input budget')
   const port = 'const cdp = (method, params) => debuggerApi.sendCommand(method, params)'
   if (!source.includes(port)) throw new Error('Native input probe has no explicit CDP port')
   const wrapped = source
@@ -161,17 +163,29 @@ export function nativeInputProbe(source: string, lock = INPUT_LOCK): string {
     .replaceAll('debuggerApi.sendCommand(', 'nativeDispatch.dispatch(')
     .replace(
       'const inputGesture = async run => run()',
-      timed
-        ? 'const inputGesture = run => nativeDispatch.gesture(() => { extendInputDeadline(nativeQueuedMs); nativeQueuedMs = 0; return run() })'
-        : 'const inputGesture = nativeDispatch.gesture'
+      'const inputGesture = nativeDispatch.gesture'
+    )
+    .replaceAll(
+      'deadline = Date.now()',
+      timed ? 'deadline = nativeInputNow()' : 'deadline = Date.now()'
+    )
+    .replaceAll(
+      'Date.now() > deadline',
+      timed ? 'nativeInputNow() > deadline' : 'Date.now() > deadline'
     )
     .replaceAll('debuggerApi.detach()', '(await nativeDispatch.close(), debuggerApi.detach())')
   return `(async () => {
-    const debuggerApiPort = require('@electron/remote').getCurrentWebContents().debugger${timed ? '\n    let nativeQueuedMs = 0' : ''}
+    const debuggerApiPort = require('@electron/remote').getCurrentWebContents().debugger${
+      timed
+        ? `
+    let nativeQueuedMs = 0, nativeQueueStarted
+    const nativeInputNow = () => (nativeQueueStarted ?? Date.now()) - nativeQueuedMs`
+        : ''
+    }
     const nativeDispatch = (${createInputDispatch.toString()})(
       (method, params) => debuggerApiPort.sendCommand(method, params),
-      ${timed ? 'async () => { const start = Date.now(); const release = await' : '() =>'} (${acquireNativeInput.toString()})(${JSON.stringify(lock)}, 60000, require('node:fs'),
-        { pid: ${process.pid}, kill: (...args) => require('node:process').kill(...args) })${timed ? '; nativeQueuedMs += Date.now() - start; return release }' : ''}
+      ${timed ? 'async () => { nativeQueueStarted = Date.now(); try { return await' : '() =>'} (${acquireNativeInput.toString()})(${JSON.stringify(lock)}, 60000, require('node:fs'),
+        { pid: ${process.pid}, kill: (...args) => require('node:process').kill(...args) })${timed ? ' } finally { nativeQueuedMs += Date.now() - nativeQueueStarted; nativeQueueStarted = undefined } }' : ''}
     )
     try { return await (${wrapped}) }
     finally { await nativeDispatch.close() }

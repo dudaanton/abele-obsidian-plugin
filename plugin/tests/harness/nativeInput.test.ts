@@ -245,15 +245,21 @@ it.each([false, true])(
     await vi.waitFor(() => expect(release).toBeTypeOf('function'))
     const source = `(async () => {
     const cdp = (method, params) => debuggerApi.sendCommand(method, params)
-    ${
-      script('long', 'text', true, 0, measure)
-        .split('  const chats =')[0]
-        .match(/(?:let|const) deadline[\s\S]*/)?.[0]
-    }
+    ${script('long', 'text', true, 0, measure)
+      .split('  const chats =')[0]
+      .match(/(?:let|const) deadline[\s\S]*/)?.[0]
+      ?.replace('+ 360000', '+ 100')}
     const originalDeadline = deadline
+    const background = wait(120).then(() => true, () => false)
     const inputGesture = async run => run()
     await inputGesture(() => cdp('Input.dispatchMouseEvent', {type:'mouseWheel'}))
-    return deadline - originalDeadline
+    await wait(0)
+    if (deadline !== originalDeadline) throw Error('Deadline was extended')
+    const queued = Date.now() - nativeInputNow()
+    const backgroundPassed = await background
+    let expired = false
+    try { await wait(130) } catch (error) { expired = error.message.includes('Matrix case exceeded') }
+    return { queued, backgroundPassed, expired }
   })()`
     const nodeRequire = Module.createRequire(import.meta.url)
     const api = { sendCommand: async () => {} }
@@ -264,10 +270,13 @@ it.each([false, true])(
         : nodeRequire(name)
     )
     // Keep a live owner in front of the probe's queued gesture.
-    await new Promise((resolve) => setTimeout(resolve, 60))
+    await new Promise((resolve) => setTimeout(resolve, 160))
     release()
     await held
-    expect(await pending).toBeGreaterThanOrEqual(50)
+    const result = await pending
+    expect(result.queued).toBeGreaterThanOrEqual(150)
+    expect(result.backgroundPassed).toBe(true)
+    expect(result.expired).toBe(true)
   }
 )
 
