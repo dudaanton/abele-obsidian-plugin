@@ -8050,13 +8050,13 @@
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
   "sync.check.unreachable": {
-    "englishHash": "21b98d7a227a1f2b6e96d52231a79d754eed463d7f5c07f4292475bbb11b1f6e",
-    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "englishHash": "baa0b374a937177952be7dc058d56fd9ac9c9ef3b1929c881f9dd552590014a7",
+    "context": "Content check comparison facts and stopped-check reason",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
   "sync.check.unreachableMeta": {
-    "englishHash": "4847fe16faefb750f98127918c7d02a8b23d7d04d3aa15076aa690270d45e54d",
-    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "englishHash": "1b9b86d3b7f6ed91aebff20509b5c04e7d0d00256031c71aac23b235d8c53851",
+    "context": "Content check comparison facts and stopped-check reason",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
   "sync.check.reason.unsent": {
@@ -8127,6 +8127,46 @@
   "sync.check.versions": {
     "englishHash": "10583687c19d3711f96d9e36253c67bbe61c37ef762600bd996acf9513cdabda",
     "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.fact.sizes": {
+    "englishHash": "c302cc9d25157f4e5c0e9ecf2ce5a2bf5666c4d6b44993c6ec0d24459342a737",
+    "context": "Content check comparison facts and stopped-check reason",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.fact.audio": {
+    "englishHash": "d0664a27d43f2c6d1b374ed3a76ec14776c07406e37829256df8480cbf4dc9e8",
+    "context": "Content check comparison facts and stopped-check reason",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.fact.rule": {
+    "englishHash": "0e5e66e1415d7d651df5c246458a5dc23dbf7f8ffafa9ef991ff90fa76ef21d7",
+    "context": "Content check comparison facts and stopped-check reason",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.fact.unsent": {
+    "englishHash": "f705ef081d5e7ac599a007ddd06db3b7aeeb1c986d52e932a50a53f6e08deef3",
+    "context": "Content check comparison facts and stopped-check reason",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.fact.content": {
+    "englishHash": "d32d6ab80bc608464392dff6e6c018752d902c0b78de68c88a42e8958dbd4007",
+    "context": "Content check comparison facts and stopped-check reason",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.fact.server-only": {
+    "englishHash": "fe846cae1f3b3e1de5f3473487038c43071cec69b0541dff820e8f0c930cd117",
+    "context": "Content check comparison facts and stopped-check reason",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.fact.local-only": {
+    "englishHash": "e5f54d7a2332ad55fa945344f1e4f3db158adb9d279bdd2a5e90a16308a7f106",
+    "context": "Content check comparison facts and stopped-check reason",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.fact.unknown": {
+    "englishHash": "920db6c4492e2d48817005d0dc2c27954de08eed777ed808affa366b56f087f4",
+    "context": "Content check comparison facts and stopped-check reason",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   }
 }

@@ -17,6 +17,7 @@ export interface VaultCheckHost {
   fingerprint(path: string, signal: AbortSignal): Promise<{ sha: string; size: number }>
   unchanged(file: FileInfo): Promise<boolean>
   excluded(path: string, size: number): boolean
+  exclusionFact?(path: string, size: number): 'audio' | 'rule'
   pending(path: string, sha: string): Promise<boolean>
   send(path: string): Promise<void>
 }
@@ -86,10 +87,18 @@ export function createVaultCheck(
             if (!(await host.unchanged(file)) || content.size !== file.size)
               throw new Error('Local inventory changed during the check')
             if (host.excluded(file.path, file.size))
-              items.push({ path: file.path, reason: 'skipped' })
+              items.push({
+                path: file.path,
+                reason: 'skipped',
+                rule: host.exclusionFact?.(file.path, file.size) ?? 'rule',
+                localSize: content.size,
+                serverSize: other?.size,
+              })
             else if (!other || content.sha !== other.sha || content.size !== other.size) {
               items.push({
                 path: file.path,
+                localSize: content.size,
+                serverSize: other?.size,
                 reason: (await host.pending(file.path, content.sha))
                   ? 'unsent'
                   : other
@@ -113,6 +122,10 @@ export function createVaultCheck(
             if (names.has(file.path.normalize('NFC'))) continue
             items.push({
               path: file.path,
+              serverSize: file.size,
+              rule: host.excluded(file.path, file.size)
+                ? (host.exclusionFact?.(file.path, file.size) ?? 'rule')
+                : undefined,
               reason: host.excluded(file.path, file.size) ? 'skipped' : 'server-only',
             })
             done++
@@ -146,7 +159,11 @@ export function createVaultCheck(
         } catch (error) {
           if (!signal.aborted) {
             console.debug('[abele-sync] vault check did not complete', error)
-            state.value = { kind: 'unreachable', at: Date.now() }
+            state.value = {
+              kind: 'unreachable',
+              at: Date.now(),
+              reason: error instanceof Error ? error.message : String(error),
+            }
           }
         }
       }
@@ -157,7 +174,11 @@ export function createVaultCheck(
         } catch (error) {
           if (!signal.aborted) {
             console.debug('[abele-sync] vault check inventory did not complete', error)
-            state.value = { kind: 'unreachable', at: Date.now() }
+            state.value = {
+              kind: 'unreachable',
+              at: Date.now(),
+              reason: error instanceof Error ? error.message : String(error),
+            }
           }
         } finally {
           active = undefined

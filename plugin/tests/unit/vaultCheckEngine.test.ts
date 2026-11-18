@@ -1,6 +1,20 @@
 import { expect, it, vi } from 'vitest'
 import { createVaultCheck } from '@/sync/vaultCheckEngine'
 
+it('retains comparison sizes and the real reason a local read stopped', async () => {
+  const { host, source } = fixture()
+  await source.run()
+  expect(source.state.value).toMatchObject({
+    kind: 'differs',
+    items: expect.arrayContaining([
+      expect.objectContaining({ path: 'different.md', localSize: 5, serverSize: 6 }),
+    ]),
+  })
+  host.fingerprint.mockRejectedValueOnce(new Error('Sample read refused'))
+  await source.run()
+  expect(source.state.value).toMatchObject({ kind: 'unreachable', reason: 'Sample read refused' })
+})
+
 function fixture() {
   const local = new Map([
     ['equal.md', 'same'],

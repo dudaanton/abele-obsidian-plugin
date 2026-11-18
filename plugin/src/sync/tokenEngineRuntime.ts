@@ -308,6 +308,10 @@ export class TokenEngineRuntime
       },
       localPath: (path) => this.localPath(this.serverPaths?.map({ path }, true).path ?? path),
       excluded: (path, size) => !this.acceptsLocal(path, size),
+      exclusionFact: (path) =>
+        !this.selective.audio && /\.(mp3|wav|m4a|3gp|flac|ogg|oga|opus)$/i.test(path)
+          ? 'audio'
+          : 'rule',
       entry: (path) => this.entryFor(path),
       pending: async (path, sha) => {
         const entry = await this.entryFor(path)

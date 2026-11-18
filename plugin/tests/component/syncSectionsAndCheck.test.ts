@@ -4,9 +4,81 @@ import { shallowRef } from 'vue'
 import AbeleSections from '@/components/settings/sync/AbeleSections.vue'
 import ChoiceModal from '@/components/obsidian/ChoiceModal.vue'
 import VaultCheckBlock from '@/components/sync/VaultCheckBlock.vue'
+import SyncInspectionFixture from '@/testing/SyncInspectionFixture.vue'
+import VersionHistoryModal from '@/components/sync/VersionHistoryModal.vue'
 import Button from '@/components/obsidian/Button.vue'
 import type { AbeleSectionsSource } from '@/sync/abeleSections'
 import type { VaultCheckSource, VaultCheckState } from '@/sync/vaultCheck'
+
+it('captures the pinned connection footer and connection status with the inspection content', () => {
+  const view = mount(SyncInspectionFixture, {
+    props: { area: 'check', step: 4 },
+    global: {
+      stubs: {
+        Modal: {
+          template: '<div><main><slot /></main><footer><slot name="footer" /></footer></div>',
+        },
+      },
+    },
+  })
+  expect(view.get('footer').text()).toContain('Disconnect')
+  expect(view.get('footer').findAll('button')).toHaveLength(3)
+  expect(view.get('.abele-sync-window__status').text()).toContain('Synced')
+  view.unmount()
+})
+it('provides the server version comparison as inspection step six', () => {
+  const view = mount(SyncInspectionFixture, {
+    props: { area: 'check', step: 6 },
+    global: {
+      stubs: {
+        Modal: { template: '<div><slot /></div>' },
+        VersionHistoryModal: true,
+      },
+    },
+  })
+  expect(view.findComponent(VersionHistoryModal).exists()).toBe(true)
+  view.unmount()
+})
+
+it('shows folder and comparison facts in the quiet row line', () => {
+  const source: VaultCheckSource = {
+    state: shallowRef({
+      kind: 'differs',
+      total: 2,
+      bytes: 4301,
+      at: Date.now(),
+      items: [
+        { path: 'SampleGarden/sample.md', reason: 'differs', localSize: 4301, serverSize: 3891 },
+        { path: 'Attachments/Audio/sample.mp3', reason: 'skipped', rule: 'audio' },
+      ],
+    }),
+    start: vi.fn(),
+    stop: vi.fn(),
+    send: vi.fn(async () => {}),
+  }
+  const view = mount(VaultCheckBlock, { props: { source } })
+  expect(view.get('[data-path="SampleGarden/sample.md"] .abele-entry-row__meta').text()).toBe(
+    'SampleGarden · 4.2 KB here, 3.8 KB there'
+  )
+  expect(view.get('[data-path="Attachments/Audio/sample.mp3"] .abele-entry-row__meta').text()).toBe(
+    'Attachments/Audio · audio is off'
+  )
+  view.unmount()
+})
+it('reports a stopped check with the actual local or server error', () => {
+  const source: VaultCheckSource = {
+    state: shallowRef({ kind: 'unreachable', at: Date.now(), reason: 'Sample local read failed' }),
+    start: vi.fn(),
+    stop: vi.fn(),
+    send: vi.fn(async () => {}),
+  }
+  const view = mount(VaultCheckBlock, { props: { source } })
+  expect(view.get('.abele-vault-check__line').text()).toBe(
+    'The check stopped: Sample local read failed'
+  )
+  expect(view.text()).not.toContain('server did not answer')
+  view.unmount()
+})
 
 function sections(): AbeleSectionsSource {
   return {

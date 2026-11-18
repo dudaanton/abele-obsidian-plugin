@@ -13,6 +13,7 @@ export function runtimeVaultCheck(options: {
   fetch: typeof fetch
   localPath(path: string): string
   excluded(path: string, size: number): boolean
+  exclusionFact?(path: string, size: number): 'audio' | 'rule'
   entry(path: string): Promise<StateEntry | null>
   pending?(path: string, sha: string): Promise<boolean>
   send(path: string): Promise<void>
@@ -115,6 +116,7 @@ export function runtimeVaultCheck(options: {
       )
     },
     excluded: (path, size) => options.excluded(path, size),
+    exclusionFact: (path, size) => options.exclusionFact?.(path, size) ?? 'rule',
     pending: async (path, sha) => {
       if (options.pending) return options.pending(path, sha)
       const entry = await options.entry(path)

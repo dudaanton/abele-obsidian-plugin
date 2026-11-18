@@ -219,7 +219,7 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     ])
   ),
   ...Object.fromEntries(
-    [1, 2, 3, 4, 5, 7, 8].map((step) => [
+    Array.from({ length: 8 }, (_, i) => i + 1).map((step) => [
       `sync-check-${step}`,
       () => mountAlone(SyncInspectionFixture, { area: 'check', step }),
     ])

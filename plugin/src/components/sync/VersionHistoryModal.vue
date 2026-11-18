@@ -153,6 +153,7 @@ import { formatBytes } from '@/helpers/reduceImage'
 const props = defineProps<{
   /** The file whose history this is, as the vault spells it. */
   path: string
+  source?: ReturnType<typeof tokenHistory>
 }>()
 
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -197,7 +198,7 @@ const TEXT_EXTENSIONS = [
   'svg',
 ]
 
-const sync = tokenHistory()
+const sync = props.source ?? tokenHistory()
 
 const versions = ref<VersionInfo[]>([])
 const hasOlder = ref(false)

@@ -1,5 +1,9 @@
 <template>
   <Modal title="sync.example" size="tall" @close="emit('close')">
+    <div v-if="area === 'check'" class="abele-sync-window__status">
+      <StatusDot tone="green" :label="status" />
+      <span>{{ status }}</span>
+    </div>
     <AbeleSections
       v-if="area === 'sections'"
       ref="tree"
@@ -8,11 +12,37 @@
       @choice-closed="step === 9 && emit('close')"
     />
     <VaultCheckBlock v-else :source="check" />
+    <template #footer>
+      <Button
+        :text="t('sync.window.disconnect')"
+        :tooltip="t('sync.window.disconnectTip')"
+        warning
+      />
+      <Button
+        :text="t('sync.window.close')"
+        :tooltip="t('sync.window.closeTip')"
+        @click="emit('close')"
+      />
+      <Button :text="t('sync.window.share')" :tooltip="t('sync.window.shareTip')" />
+    </template>
   </Modal>
+  <VersionHistoryModal
+    v-if="area === 'check' && step === 6"
+    path="Notes/sample-different.md"
+    :source="history"
+    @close="emit('close')"
+  />
 </template>
 <script setup lang="ts">
 import { nextTick, onMounted, ref, shallowRef } from 'vue'
 import Modal from '@/components/obsidian/Modal.vue'
+import Button from '@/components/obsidian/Button.vue'
+import StatusDot from '@/components/obsidian/StatusDot.vue'
+import VersionHistoryModal from '@/components/sync/VersionHistoryModal.vue'
+import { t } from '@/i18n'
+import { settingsSyncText, settingsSyncWhen } from '@/i18n/settingsSync'
+import type { tokenHistory } from '@/sync/tokenHistory'
+import type { V2EngineClient } from '@abele/sync-sdk/core'
 import AbeleSections from '@/components/settings/sync/AbeleSections.vue'
 import VaultCheckBlock from '@/components/sync/VaultCheckBlock.vue'
 import { SECTIONS } from '@/transfer/entries'
@@ -77,6 +107,42 @@ const sections: AbeleSectionsSource = {
   openKeys: () => {},
 }
 const at = Date.now() - 60_000
+const status = settingsSyncText('Synced {when}', {
+  when: settingsSyncWhen(new Date(at - 60_000).toISOString()),
+})
+const history: ReturnType<typeof tokenHistory> = {
+  client: () =>
+    ({
+      versions: async () =>
+        [2, 1].map((no) => ({
+          version_id: `sample-v${no}`,
+          seq: no,
+          no,
+          op: no === 1 ? 'create' : 'modify',
+          path: 'Notes/sample-different.md',
+          sha: `sample-sha-${no}`,
+          size: no === 2 ? 3891 : 4301,
+          mtime: at,
+          actor: { kind: 'device', id: 'sample-device', name: 'Sample computer' },
+          at: new Date(at - no * 60000).toISOString(),
+          merge: null,
+        })),
+      versionBytes: async () => new TextEncoder().encode('Sample earlier contents\n'),
+    }) as unknown as V2EngineClient,
+  entryFor: async () => ({
+    path: 'Notes/sample-different.md',
+    wirePath: 'Notes/sample-different.md',
+    fileId: 'sample-file',
+    versionId: 'sample-v2',
+    sha: 'sample-sha-2',
+    size: 4301,
+    mtime: at,
+  }),
+  syncNow: async () => {},
+  note: () => {},
+  status: { value: { state: 'idle' } },
+  connection: { value: { vaultId: 'sample-vault' } },
+}
 const states: Record<number, VaultCheckState> = {
   1: { kind: 'never' },
   2: {
@@ -95,8 +161,8 @@ const states: Record<number, VaultCheckState> = {
     at,
     items: [
       { path: 'Notes/sample-pending.md', reason: 'unsent' },
-      { path: 'Attachments/sample-audio.mp3', reason: 'skipped' },
-      { path: 'Notes/sample-different.md', reason: 'differs' },
+      { path: 'Attachments/Audio/sample-audio.mp3', reason: 'skipped', rule: 'audio' },
+      { path: 'Notes/sample-different.md', reason: 'differs', localSize: 4301, serverSize: 3891 },
       { path: 'Notes/sample-remote.md', reason: 'server-only' },
       { path: 'Notes/sample-local.md', reason: 'local-only' },
     ],
@@ -112,10 +178,10 @@ const states: Record<number, VaultCheckState> = {
     })),
   },
   7: { kind: 'stopped', done: 18420, total: 33000, at },
-  8: { kind: 'unreachable', at },
+  8: { kind: 'unreachable', at, reason: 'Sample local file could not be read' },
 }
 const check: VaultCheckSource = {
-  state: shallowRef(states[props.step] ?? states[1]),
+  state: shallowRef(states[props.step === 6 ? 4 : props.step] ?? states[1]),
   start: () => {},
   stop: () => {},
   send: async () => {},

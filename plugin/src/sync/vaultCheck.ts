@@ -25,6 +25,9 @@ export interface VaultCheckItem {
   reason: VaultCheckReason
   /** A short fact beside the folder: the rule's name, two sizes. */
   fact?: string
+  localSize?: number
+  serverSize?: number
+  rule?: 'audio' | 'rule'
 }
 
 export type VaultCheckState =
@@ -40,7 +43,7 @@ export type VaultCheckState =
   | { kind: 'matched'; total: number; bytes: number; at: number }
   | { kind: 'differs'; total: number; bytes: number; at: number; items: VaultCheckItem[] }
   | { kind: 'stopped'; done: number; total: number; at: number }
-  | { kind: 'unreachable'; at: number }
+  | { kind: 'unreachable'; at: number; reason?: string }
 
 export interface VaultCheckSource {
   state: Ref<VaultCheckState>

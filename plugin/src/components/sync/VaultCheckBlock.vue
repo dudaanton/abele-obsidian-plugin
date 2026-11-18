@@ -82,9 +82,9 @@
           <template #meta>
             <span class="abele-vault-check__meta-line">
               <span class="abele-vault-check__folder">{{ folderOf(item.path) }}</span>
-              <template v-if="item.fact"
+              <template v-if="factOf(item)"
                 ><span>{{ ' · ' }}</span
-                ><span class="abele-vault-check__part">{{ item.fact }}</span></template
+                ><span class="abele-vault-check__part">{{ factOf(item) }}</span></template
               >
             </span>
           </template>
@@ -114,7 +114,12 @@ import EntryRow from '../obsidian/EntryRow.vue'
 import FoldHeading from '../obsidian/FoldHeading.vue'
 import VersionHistoryModal from './VersionHistoryModal.vue'
 import { formatWhen } from '@/sync/format'
-import { REASON_ORDER, type VaultCheckReason, type VaultCheckSource } from '@/sync/vaultCheck'
+import {
+  REASON_ORDER,
+  type VaultCheckItem,
+  type VaultCheckReason,
+  type VaultCheckSource,
+} from '@/sync/vaultCheck'
 
 const props = defineProps<{ source: VaultCheckSource }>()
 const emit = defineEmits<{ reveal: [path: string]; rule: [] }>()
@@ -128,6 +133,17 @@ const unitOf = (bytes: number) => Math.min(4, Math.floor(Math.log2(Math.max(1, b
 const inUnit = (bytes: number, unit: number) =>
   Number((bytes / 1024 ** unit).toFixed(1)).toLocaleString()
 const size = (bytes: number) => `${inUnit(bytes, unitOf(bytes))} ${UNITS[unitOf(bytes)]}`
+const factOf = (item: VaultCheckItem): string => {
+  if (item.fact) return item.fact
+  if (item.reason === 'differs' && item.localSize !== undefined && item.serverSize !== undefined)
+    return t('sync.check.fact.sizes', {
+      local: size(item.localSize),
+      remote: size(item.serverSize),
+    })
+  return t(
+    `sync.check.fact.${item.reason === 'skipped' ? (item.rule ?? 'rule') : item.reason === 'differs' ? 'content' : item.reason}`
+  )
+}
 const when = (at: number) => formatWhen(new Date(at).toISOString())
 
 const tone = computed(() => {
@@ -165,7 +181,7 @@ const line = computed(() => {
     case 'stopped':
       return t('sync.check.stopped', { done: n(s.done), total: n(s.total) })
     case 'unreachable':
-      return t('sync.check.unreachable')
+      return t('sync.check.unreachable', { reason: s.reason || t('sync.check.fact.unknown') })
   }
 })
 
@@ -281,6 +297,6 @@ const fileIcon = (path: string) => ICONS.find(([re]) => re.test(path))?.[1] ?? '
   overflow-wrap: anywhere;
 }
 .abele-vault-check__part {
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 </style>
