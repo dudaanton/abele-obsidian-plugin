@@ -143,14 +143,12 @@ it('defers only unchanged host constructor scope inventory and repairs marks in 
   expect(walks).toBe(2)
 })
 
-it('shares the prepared inventory while its host revision is stable and cancels a racing snapshot', async () => {
+it('shares a stable inventory and finishes a racing snapshot without caching it', async () => {
   const source = sample(version, 'scanSnapshot.js')
   const code = syncPlacementPlugin().transform(source.input, source.id)?.code ?? source.input
-  class Cancelled extends Error {}
   const snapshot = new Function(
     'ScanWork',
     'checkCancellation',
-    'SyncCancelled',
     code
       .replace(/^import .*;$/gm, '')
       .replace('export function scanSnapshot', 'return function scanSnapshot')
@@ -158,8 +156,7 @@ it('shares the prepared inventory while its host revision is stable and cancels 
     class {
       async step() {}
     },
-    () => {},
-    Cancelled
+    () => {}
   )
   let revision = 0,
     walks = 0,
@@ -181,7 +178,8 @@ it('shares the prepared inventory while its host revision is stable and cancels 
   expect(walks).toBe(2)
   inventory.invalidate()
   race = true
-  await expect(Array.fromAsync(inventory.fs.list())).rejects.toBeInstanceOf(Cancelled)
+  expect(await Array.fromAsync(inventory.fs.list())).toEqual([{ path: 'sample.md' }])
+  expect(walks).toBe(3)
   race = false
   await Array.fromAsync(inventory.fs.list())
   expect(walks).toBe(4)
