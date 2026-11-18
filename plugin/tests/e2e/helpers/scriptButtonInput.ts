@@ -28,7 +28,7 @@ export async function withScriptButtonInput<T>(probe: Probe, run: () => Promise<
             await api.sendCommand('Emulation.setTouchEmulationEnabled', { enabled: false })
           }
         } finally {
-          delete window.__abeleTest.scriptButtonInput
+          window.__abeleTest.scriptButtonInput = null
           if (state.owned && api.isAttached()) api.detach()
         }
         return true

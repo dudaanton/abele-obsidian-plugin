@@ -26,7 +26,7 @@ it('holds the shared native input lane through hover measurement and touch clean
 })
 
 function renderer(attached = false) {
-  const t: Record<string, unknown> = {}
+  const t: Record<string, unknown> = { scriptButtonInput: null }
   const api = {
     isAttached: () => attached,
     attach: vi.fn(() => {
@@ -66,7 +66,7 @@ it('keeps touch down, touch up and paint measurement in one attached input sessi
   })
   expect(api.attach).toHaveBeenCalledOnce()
   expect(api.detach).toHaveBeenCalledOnce()
-  expect(t).toEqual({})
+  expect(t).toEqual({ scriptButtonInput: null })
   expect(lane.held).toBe(false)
 })
 
@@ -87,7 +87,7 @@ it('cancels a possibly delivered touch after a lost down response, without repla
     ['Emulation.setTouchEmulationEnabled', { enabled: false }],
   ])
   expect(api.detach).toHaveBeenCalledOnce()
-  expect(t).toEqual({})
+  expect(t).toEqual({ scriptButtonInput: null })
   expect(lane.held).toBe(false)
 })
 
@@ -122,6 +122,6 @@ it('detaches and releases the lane even when touch cancellation fails', async ()
     enabled: false,
   })
   expect(api.detach).toHaveBeenCalledOnce()
-  expect(t).toEqual({})
+  expect(t).toEqual({ scriptButtonInput: null })
   expect(lane.held).toBe(false)
 })

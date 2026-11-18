@@ -473,6 +473,8 @@ interface AbeleTestApi {
    * that needs to wait for a leaf or a render stores here and the test polls for it.
    */
   viewProbe: unknown
+  /** Native input session retained between script button probes; cleared after each case. */
+  scriptButtonInput: { owned: boolean; touching: boolean } | null
   /** The analytics toolkit: sources and analyses, as the tools and scripts reach them. */
   analytics: typeof analytics
   measureGroupResolve(groupPath: string): GroupResolveMeasurement
@@ -1132,6 +1134,7 @@ export function exposeTestApi(plugin: Plugin): void {
     },
     plugin,
     viewProbe: null,
+    scriptButtonInput: null,
     analytics,
     measureGroupResolve,
     measureNoteRelations,
