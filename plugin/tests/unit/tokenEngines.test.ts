@@ -288,7 +288,9 @@ it.each([false, true])(
       )
       expect([...f.ui.activity.value[parent].events].at(-1).text).toContain('Resume required')
       f.ui.publish(child, { safetyStop: undefined })
-      expect(connectionTone(f.ui.rows.value[0], f.ui.activity.value[parent])).toBe('green')
+      // Clearing a stop does not complete a sync: neither idle folder has synced yet.
+      expect(connectionLine(f.ui.rows.value[0], f.ui.activity.value[parent])).toBe('Not synced yet')
+      expect(connectionTone(f.ui.rows.value[0], f.ui.activity.value[parent])).toBe('faint')
       const prior = f.ui.activity.value[parent].events.length
       backgroundActivity(app, 'Background check completed')
       expect(f.ui.activity.value[parent].events.length).toBe(prior + 1)
