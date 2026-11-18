@@ -593,6 +593,16 @@ export function syncPlacementPlugin() {
       } else if (file.endsWith('/pullRun.js')) {
         code = replaceOnce(
           code,
+          '    async changeRefusal(change) {',
+          `    async changeRefusal(change) {
+        if (change.op !== 'delete' && this.fs.pathKey) {
+          const occupant = await pathOccupant(this.fs, this.state, change.path, change.file_id);
+          if (occupant && occupant.fileId !== change.file_id && occupant.path !== change.path)
+            return { code: 'invalid_path', message: 'unsupported-host-name: Name collides with ' + occupant.path };
+        }`
+        )
+        code = replaceOnce(
+          code,
           '        if (wanted.length === 0)\n            return;',
           `        this.restoreTombstones ??= new Set();
         for (const change of wanted) {
@@ -1186,6 +1196,16 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
           'const children = candidates ?? (await (indexed ? fs.listChildren(parent) : inventoryChildren(fs, parent, path)));'
         )
       } else if (file.endsWith('/pullPlace.js')) {
+        code = replaceOnce(
+          code,
+          '    async refusal(change, entry) {',
+          `    async refusal(change, entry) {
+        if (change.op !== 'delete' && this.fs.pathKey) {
+          const occupant = await pathOccupant(this.fs, this.state, change.path, change.file_id);
+          if (occupant && occupant.fileId !== change.file_id && occupant.path !== change.path)
+            return { code: 'invalid_path', message: 'unsupported-host-name: Name collides with ' + occupant.path };
+        }`
+        )
         code = replaceOnce(
           code,
           '    async drop(entry, change) {',
