@@ -183,6 +183,7 @@
     "components/settings/scripts/StartupScriptsEditor.vue",
     "components/settings/settingsHeaderRoom.ts",
     "components/settings/settingsTab.ts",
+    "components/settings/sync/AbeleSections.vue",
     "components/settings/sync/ExternalFileRules.vue",
     "components/settings/sync/SelectiveSync.vue",
     "components/settings/transfer/TransferPreviewModal.vue",

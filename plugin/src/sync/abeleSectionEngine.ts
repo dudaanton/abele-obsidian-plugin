@@ -1,5 +1,5 @@
 import { SECTIONS, isDeviceOnly } from '@/transfer/entries'
-import { canonicalJson } from '@/services/settingsFile'
+import { canonicalJson } from '@/helpers/canonicalJson'
 import type { AbeleSettings } from '@/services/settingsShape'
 import type { SectionId } from '@/transfer/types'
 import type { KeptSection } from './abeleSections'

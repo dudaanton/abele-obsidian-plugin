@@ -1,7 +1,7 @@
 import type { StateEntry } from '@abele/sync-sdk/core'
 import { caseKey } from '@abele/sync-sdk/protocol'
 import type AbelePlugin from '@/main'
-import { canonicalJson } from '@/services/settingsFile'
+import { canonicalJson } from '@/helpers/canonicalJson'
 import { messageOf, SETTINGS_REPLACED } from './messages'
 
 /**
