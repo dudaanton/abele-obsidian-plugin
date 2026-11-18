@@ -1,7 +1,11 @@
 /** Native suggestion selection shared by the live single-item and set-sharing cases. */
 export const SHARE_SET_PICKER = `
 const pickShareItem = async (box, label, waitForChip = true) => {
-  const pickerRoot = () => box.matches('.abele-share-picker') ? box : box.querySelector('.abele-share-picker');
+  const pickerRoot = () => {
+    if (typeof box.matches === 'function' && box.matches('.abele-share-picker')) return box;
+    const nested = box.querySelector('.abele-share-picker');
+    return typeof nested?.querySelector === 'function' ? nested : null;
+  };
   let legacy = pickerRoot() ? null : box.querySelector('select');
   if (legacy) {
     let option;
