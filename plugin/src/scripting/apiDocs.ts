@@ -179,8 +179,7 @@ List values can contain \`;\` separator to add/remove multiple items at once.
 | \`downloadFile(url, opts?)\` | \`string\` | Download any file to vault, returns saved path |
 
 \`fetch\` options: \`{ method?, headers?, body?, timeout?, maxBytes? }\`
-All three network methods accept \`timeout\` (positive integer milliseconds, default 300000,
-maximum 1800000) and \`maxBytes\` (positive integer bytes, default 20971520, maximum 209715200).
+All three network methods accept \`timeout\` (milliseconds, maximum 1800000; missing, zero or negative values use the default 300000) and \`maxBytes\` (positive integer bytes, default 20971520, maximum 209715200).
 For example: \`await fetch(url, { timeout: 1200000, maxBytes: 100 * 1024 * 1024 })\`.
 Invalid options fail before sending. Deadlines include redirects. Desktop stops reading at
 the size limit. On mobile, the native API exposes Content-Length only after buffering the

@@ -55,17 +55,16 @@ import { AbeleConfig } from '@/services/AbeleConfig'
 export interface ScriptNetworkOptions {
   /** Positive integer bytes; default 20 MiB, maximum 200 MiB. */
   maxBytes?: number
-  /** Positive integer milliseconds; default five minutes, maximum thirty minutes. */
+  /** Milliseconds; nonpositive or omitted uses five minutes, maximum thirty minutes. */
   timeout?: number
 }
 
 function networkOptions(opts?: ScriptNetworkOptions) {
   const maxBytes = opts?.maxBytes === undefined ? 20 * 1024 * 1024 : opts.maxBytes
-  const timeoutMs = opts?.timeout === undefined ? 300_000 : opts.timeout
+  const timeoutMs = opts?.timeout && opts.timeout > 0 ? opts.timeout : 300_000
   if (!Number.isInteger(maxBytes) || maxBytes <= 0 || maxBytes > 209_715_200)
     throw new Error('maxBytes must be a positive integer up to 209715200 bytes (200 MiB)')
-  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 1_800_000)
-    throw new Error('timeout must be a positive integer up to 1800000 ms (30 minutes)')
+  if (timeoutMs > 1_800_000) throw new Error('timeout must not exceed 1800000 ms (30 minutes)')
   return { maxBytes, timeoutMs }
 }
 

@@ -83,9 +83,20 @@ it('accepts the exact size ceiling', async () => {
   ).rejects.toThrow('transport sentinel')
   expect(request).toHaveBeenLastCalledWith(expect.objectContaining({ maxBytes: 209715200 }))
 })
-it.each([0, -1, 1.5, NaN, Infinity])('rejects invalid timeout %s', async (timeout) => {
-  useVault([])
-  await expect(context().fetch('https://sample.invalid/data', { timeout })).rejects.toThrow(
-    /timeout.*1800000/
-  )
-})
+it.each(['fetch', 'downloadFile', 'downloadImage'] as const)(
+  '%s preserves legacy timeout defaults and fractional waits',
+  async (method) => {
+    useVault([])
+    for (const timeout of [undefined, 0, -1, -Infinity, NaN, 1.5]) {
+      vi.mocked(request).mockRejectedValueOnce(new Error('transport sentinel'))
+      await expect(context()[method]('https://sample.invalid/data', { timeout })).rejects.toThrow(
+        'transport sentinel'
+      )
+      expect(request).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          timeoutMs: timeout && timeout > 0 ? timeout : 300000,
+        })
+      )
+    }
+  }
+)

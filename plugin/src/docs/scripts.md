@@ -42,8 +42,8 @@ headers, their Base64 payloads and raw passwords are redacted in results and net
 `ctx.fetch`, `ctx.downloadFile` and `ctx.downloadImage` accept the same limits:
 
 - `maxBytes`: positive integer bytes, default 20971520 (20 MiB), maximum 209715200 (200 MiB).
-- `timeout`: positive integer milliseconds, default 300000 (five minutes), maximum 1800000
-  (thirty minutes), including redirects.
+- `timeout`: milliseconds, maximum 1800000 (thirty minutes), including redirects. Missing,
+  zero or negative values use the default 300000 (five minutes).
 
 For example: `await ctx.fetch(url, { maxBytes: 100 * 1024 * 1024, timeout: 1200000 })`.
 Invalid values fail before sending. Size and timeout errors name the limit and the option

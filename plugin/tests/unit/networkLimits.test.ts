@@ -46,9 +46,14 @@ describe('network limits', () => {
       /too large/i
     )
   })
-  it.each([undefined, 0, -1, 600_000])(
-    'caps script fetch at five minutes (timeout %s)',
-    async (timeout) => {
+  it.each([
+    [undefined, 300_000],
+    [0, 300_000],
+    [-1, 300_000],
+    [600_000, 600_000],
+  ] as const)(
+    'honors script fetch timeout %s with effective deadline %s',
+    async (timeout, deadline) => {
       useVault([])
       AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS }
       vi.useFakeTimers()
@@ -59,8 +64,8 @@ describe('network limits', () => {
       work.catch(() => {
         settled = true
       })
-      const check = expect(work).rejects.toThrow(/timed out after 300s/)
-      await vi.advanceTimersByTimeAsync(299_999)
+      const check = expect(work).rejects.toThrow(`timed out after ${deadline / 1000}s`)
+      await vi.advanceTimersByTimeAsync(deadline - 1)
       expect(settled).toBe(false)
       await vi.advanceTimersByTimeAsync(2)
       await check
