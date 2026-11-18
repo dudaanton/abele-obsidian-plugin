@@ -2765,6 +2765,28 @@ paths in write journals, projections and retained artifacts remain unchanged.
 
 ## Synced keys
 
+### Device settings sections
+
+The connection window selects which Abele settings sections this device shares. The sections
+use the same field ownership and key references as settings transfer. Connections and their
+tokens are excluded from this selection. The device-local host record
+`abele-sync-settings-sections-v1` holds the selection, local section values, the last received
+values and retained conflict copies. It is not part of `data.json` or settings transfer.
+Unticked settings load from this record; saves retain the last received shared value in
+`data.json` while writing private edits to the local record first. Incoming sections win
+concurrent edits, with the displaced local section retained for explicit Restore. The shared
+file may carry `_abeleSectionDevice`, a display label identifying its latest settings writer.
+
+Section credentials remain keychain references in settings. With synced keys enabled, keys
+used exclusively by unticked sections read and change only the local keychain. Previously
+shared encrypted values remain intact; unticking does not revoke another device's key.
+
+The connection's content check retains only an in-memory result. It reads file contents and
+the server manifest, validates local inventory revisions and the server snapshot/generation,
+and classifies the union of paths. It does not reconcile, acknowledge, upload or delete.
+Closing the connection window does not stop it; stopping or disconnecting cancels it.
+Only an explicit Send action retries an unsent path under its current scope rules.
+
 The plugin's settings file (`data.json` in its folder under the config directory) holds, when
 the person has turned synced keys on, a `secretStore`: every API key and token the plugin
 holds, encrypted with AES-GCM under a key derived from a passphrase (PBKDF2-SHA-256, the salt

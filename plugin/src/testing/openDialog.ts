@@ -12,6 +12,7 @@ import { reviewScript } from '@/scripting/reviewScript'
 import { chatArtifactsFixture } from './chatArtifactsFixture'
 import { chatTreeFixture, chatFolderAccessFixture } from './chatTreeFixture'
 import TokenUiFixture from './TokenUiFixture.vue'
+import SyncInspectionFixture from './SyncInspectionFixture.vue'
 import ShareSetsFixture from './ShareSetsFixture.vue'
 import SyncScopeCaptureFixture from './SyncScopeCaptureFixture.vue'
 import NodeSyntaxFixture from './NodeSyntaxFixture.vue'
@@ -211,6 +212,18 @@ const mountNodeQuestion = (kind: 'select' | 'input') =>
   )
 
 const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise<void>> = {
+  ...Object.fromEntries(
+    Array.from({ length: 11 }, (_, i) => [
+      `sync-sections-${i + 1}`,
+      () => mountAlone(SyncInspectionFixture, { area: 'sections', step: i + 1 }),
+    ])
+  ),
+  ...Object.fromEntries(
+    [1, 2, 3, 4, 5, 7, 8].map((step) => [
+      `sync-check-${step}`,
+      () => mountAlone(SyncInspectionFixture, { area: 'check', step }),
+    ])
+  ),
   'file-approval-comparison': () =>
     mountAlone(
       defineComponent({
