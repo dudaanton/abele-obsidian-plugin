@@ -13,16 +13,10 @@
  * Requires Obsidian running with the development build — see docs/Testing.md.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import {
-  isObsidianRunning,
-  hasTestApi,
-  evalJson,
-  evalRaw,
-  runCli,
-  reloadApp,
-} from './helpers/obsidianCli'
+import { isObsidianRunning, hasTestApi, evalJson, evalRaw, reloadApp } from './helpers/obsidianCli'
 
 import { SCRIPT_FIXTURE, type ScriptFixtureSnapshot } from './helpers/scriptFixture'
+import { withScriptButtonInput, scriptButtonCommand } from './helpers/scriptButtonInput'
 import { shotDir } from './helpers/shots'
 
 const shots = shotDir('abele-script-buttons')
@@ -180,14 +174,12 @@ const iconOf = (sel: string) =>
   })()`)
 
 const moveTo = (p: { x: number; y: number }) =>
-  runCli(
-    [
-      'dev:cdp',
-      'method=Input.dispatchMouseEvent',
-      `params=${JSON.stringify({ type: 'mouseMoved', x: p.x, y: p.y, button: 'none' })}`,
-    ],
-    30_000
-  )
+  scriptButtonCommand(probe, 'Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: p.x,
+    y: p.y,
+    button: 'none',
+  })
 
 /** A point inside the view but below the row, where nothing reacts to the pointer. */
 const away = () =>
@@ -258,84 +250,95 @@ for (const phone of [false, true])
     for (const dark of [false, true]) {
       const theme = dark ? 'dark' : 'light'
 
-      it(`look native in the ${theme} theme, idle, hovered and after the pointer leaves`, async () => {
-        evalRaw(`(() => {
+      it(
+        `look native in the ${theme} theme, idle, hovered and after the pointer leaves`,
+        () =>
+          withScriptButtonInput(probe, async () => {
+            evalRaw(`(() => {
         document.body.classList.toggle('theme-dark', ${dark})
         document.body.classList.toggle('theme-light', ${!dark})
         return true
       })()`)
-        moveTo(away())
-        await settle()
-        expectNative(await probe<Looks>(measure), `${theme} idle`)
-        const path = `${shots}/${phone ? 'phone' : 'desktop'}-${theme}.png`
-        await probe(
-          `const image = await require('@electron/remote').getCurrentWebContents().capturePage(); require('fs').writeFileSync(${JSON.stringify(path)}, image.toPNG()); return true`
-        )
+            await moveTo(away())
+            await settle()
+            expectNative(await probe<Looks>(measure), `${theme} idle`)
+            const path = `${shots}/${phone ? 'phone' : 'desktop'}-${theme}.png`
+            await probe(
+              `const image = await require('@electron/remote').getCurrentWebContents().capturePage(); require('fs').writeFileSync(${JSON.stringify(path)}, image.toPNG()); return true`
+            )
 
-        // Hovered: the native of each kind first, then ours with the pointer on its icon.
-        const hovered: Partial<Looks> = await probe<Looks>(measure)
-        for (const [ours, native] of [
-          ['cta', 'nativeCta'],
-          ['plain', 'nativePlain'],
-          ['icon', 'nativeIcon'],
-        ] as const) {
-          moveTo(centreOf(`.e2e-native-${ours}`))
-          await settle()
-          hovered[native] = (await probe<Looks>(measure))[native]
-          moveTo(iconOf(`.e2e-${ours}`))
-          await settle()
-          hovered[ours] = (await probe<Looks>(measure))[ours]
-        }
-        // The pointer really was there: a native icon under it lights up.
-        expect(hovered.nativeIcon?.background, 'the hover reached the page').not.toBe(
-          'rgba(0, 0, 0, 0)'
-        )
-        expectNative(hovered as Looks, `${theme} hovered`, true)
+            // Hovered: the native of each kind first, then ours with the pointer on its icon.
+            const hovered: Partial<Looks> = await probe<Looks>(measure)
+            for (const [ours, native] of [
+              ['cta', 'nativeCta'],
+              ['plain', 'nativePlain'],
+              ['icon', 'nativeIcon'],
+            ] as const) {
+              await moveTo(centreOf(`.e2e-native-${ours}`))
+              await settle()
+              hovered[native] = (await probe<Looks>(measure))[native]
+              await moveTo(iconOf(`.e2e-${ours}`))
+              await settle()
+              hovered[ours] = (await probe<Looks>(measure))[ours]
+            }
+            // The pointer really was there: a native icon under it lights up.
+            expect(hovered.nativeIcon?.background, 'the hover reached the page').not.toBe(
+              'rgba(0, 0, 0, 0)'
+            )
+            expectNative(hovered as Looks, `${theme} hovered`, true)
 
-        moveTo(away())
-        await settle()
-        expectNative(await probe<Looks>(measure), `${theme} after hover-out`)
-      }, 90_000)
+            await moveTo(away())
+            await settle()
+            expectNative(await probe<Looks>(measure), `${theme} after hover-out`)
+          }),
+        150_000
+      )
     }
 
-    it('keep no hover look after a tap on a touch screen', async () => {
-      // A phone has no pointer to hover with, yet a tap leaves `:hover` on what was tapped. Touch
-      // emulation makes this window such a screen — `(hover: none)`, as a phone reports — and
-      // the taps go through the page's own input pipeline.
-      const cdp = (method: string, params: object) =>
-        runCli(['dev:cdp', `method=${method}`, `params=${JSON.stringify(params)}`], 30_000)
-      const tap = (p: { x: number; y: number }) => {
-        cdp('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [p] })
-        cdp('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
-      }
-      moveTo(away())
-      cdp('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 })
-      try {
-        expect(evalJson<boolean>(`matchMedia('(hover: none)').matches`)).toBe(true)
-        await settle()
-        const idle = await probe<Looks>(measure)
-        for (const [ours, native] of [
-          ['cta', 'nativeCta'],
-          ['plain', 'nativePlain'],
-          ['icon', 'nativeIcon'],
-        ] as const) {
-          // The native of the same kind is tapped the same way first, so whatever feedback
-          // Obsidian itself gives a tap is what ours is held to, and nothing more.
-          tap(centreOf(`.e2e-native-${ours}`))
-          await lingering()
-          const nativeTapped = (await probe<Looks>(measure))[native]
-          tap(iconOf(`.e2e-${ours}`))
-          await lingering()
-          const tapped = (await probe<Looks>(measure))[ours]
-          // A plain button is not drawn as a native one, so only its own idle look holds it.
-          if (ours !== 'plain')
-            expect(paint(tapped), `${ours} after a tap`).toEqual(paint(nativeTapped))
-          expect(paint(tapped), `${ours} after a tap, as idle`).toEqual(paint(idle[ours]))
-          expect(tapped.iconColor, `${ours} icon after a tap, as idle`).toBe(idle[ours].iconColor)
-        }
-      } finally {
-        cdp('Emulation.setTouchEmulationEnabled', { enabled: false })
-        moveTo(away())
-      }
-    }, 60_000)
+    it(
+      'keep no hover look after a tap on a touch screen',
+      () =>
+        withScriptButtonInput(probe, async () => {
+          // A phone has no pointer to hover with, yet a tap leaves `:hover` on what was tapped. Touch
+          // emulation makes this window such a screen — `(hover: none)`, as a phone reports — and
+          // the taps go through the page's own input pipeline.
+          const cdp = (method: string, params: object) => scriptButtonCommand(probe, method, params)
+          const tap = async (p: { x: number; y: number }) => {
+            await cdp('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [p] })
+            await cdp('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+          }
+          await moveTo(away())
+          await cdp('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 })
+          try {
+            expect(evalJson<boolean>(`matchMedia('(hover: none)').matches`)).toBe(true)
+            await settle()
+            const idle = await probe<Looks>(measure)
+            for (const [ours, native] of [
+              ['cta', 'nativeCta'],
+              ['plain', 'nativePlain'],
+              ['icon', 'nativeIcon'],
+            ] as const) {
+              // The native of the same kind is tapped the same way first, so whatever feedback
+              // Obsidian itself gives a tap is what ours is held to, and nothing more.
+              await tap(centreOf(`.e2e-native-${ours}`))
+              await lingering()
+              const nativeTapped = (await probe<Looks>(measure))[native]
+              await tap(iconOf(`.e2e-${ours}`))
+              await lingering()
+              const tapped = (await probe<Looks>(measure))[ours]
+              // A plain button is not drawn as a native one, so only its own idle look holds it.
+              if (ours !== 'plain')
+                expect(paint(tapped), `${ours} after a tap`).toEqual(paint(nativeTapped))
+              expect(paint(tapped), `${ours} after a tap, as idle`).toEqual(paint(idle[ours]))
+              expect(tapped.iconColor, `${ours} icon after a tap, as idle`).toBe(
+                idle[ours].iconColor
+              )
+            }
+          } finally {
+            await cdp('Emulation.setTouchEmulationEnabled', { enabled: false })
+            await moveTo(away())
+          }
+        }),
+      120_000
+    )
   })
