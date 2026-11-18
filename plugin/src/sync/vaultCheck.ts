@@ -52,3 +52,15 @@ export interface VaultCheckSource {
 
 /** Set by the plugin for the open connection, or by a design stand. */
 export const vaultCheckSource = shallowRef<VaultCheckSource | null>(null)
+
+/** Presentation sources stay connection-bound, even when more than one window is open. */
+export const vaultChecks = shallowRef<ReadonlyMap<string, VaultCheckSource>>(new Map())
+export function publishVaultCheck(id: string, source: VaultCheckSource): () => void {
+  vaultChecks.value = new Map(vaultChecks.value).set(id, source)
+  return () => {
+    if (vaultChecks.value.get(id) !== source) return
+    const next = new Map(vaultChecks.value)
+    next.delete(id)
+    vaultChecks.value = next
+  }
+}

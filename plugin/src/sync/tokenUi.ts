@@ -4,6 +4,7 @@ import { checkedDeviceScope, readDeviceScope, writeDeviceScope } from './deviceS
 import type { ShareItem } from './shareSets'
 import { scopeInventory } from './deviceScopeInventory'
 import { SyncTaskBudget } from './syncTaskBudget'
+import { publishVaultCheck } from './vaultCheck'
 import { SyncCancelled } from '@abele/sync-sdk/core'
 import { settingsSyncText } from '@/i18n/settingsSync'
 import { STARTUP_STOP } from './startupSafety'
@@ -351,6 +352,7 @@ export function connectionStatusText(
   return statusName(row.status, text)
 }
 export interface TokenUiRuntime extends ExecutableApplyPort, ConsentResolvePort {
+  vaultCheck?: import('./vaultCheck').VaultCheckSource
   localPath?(path: string): string
   scanSnapshot?(): ReturnType<import('./exchangeTrace').ExchangeTrace['snapshot']>
   assertCurrent?(): void
@@ -764,11 +766,13 @@ export class TokenUi {
     }
   }
   bind(id: string, runtime: TokenUiRuntime): () => void {
+    const retireCheck = runtime.vaultCheck ? publishVaultCheck(id, runtime.vaultCheck) : () => {}
     this.runtimes.set(id, runtime)
     this.available.value = true
     this.refresh()
     void this.refreshReviews().catch((error) => this.reviewFailure(id, '', error))
     return () => {
+      retireCheck()
       this.cancelProgress(id)
       if (this.runtimes.get(id) === runtime) this.runtimes.delete(id)
       this.available.value = this.runtimes.size > 0

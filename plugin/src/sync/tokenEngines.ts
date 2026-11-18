@@ -1434,6 +1434,7 @@ export class TokenEngines {
         unbindStarting()
         this.pending.delete(record.id)
         unbind = this.ui.bind(record.id, {
+          vaultCheck: runtime.vaultCheck(),
           scanSnapshot: () => runtime.trace.snapshot(),
           assertCurrent: () => fence.assertReady(),
           sync: () => runtime.sync(),

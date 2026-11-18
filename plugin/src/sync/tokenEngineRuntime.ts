@@ -1,6 +1,7 @@
 import { SizeRefusals } from './sizeRefusals'
 import { HANDLED_MANIFEST_FILES, type HandledManifestPage } from './manifestDelivery'
 import { ExternalRecoveryRequired } from './external/recovery'
+import { runtimeVaultCheck } from './vaultCheckRuntime'
 import { PreparedUploads, PREPARED_UPLOAD_LIFETIME } from './preparedUploads'
 import { localOnlyJournalState } from './localOnlyJournal'
 import { ProgressiveLocalScan } from './progressiveLocalScan'
@@ -295,6 +296,39 @@ export class TokenEngineRuntime
   private readonly largeUploadPaths = new Set<string>()
   readonly engine: SyncEngine
   readonly client: V2EngineClient
+  private check?: ReturnType<typeof runtimeVaultCheck>
+  vaultCheck() {
+    return (this.check ??= runtimeVaultCheck({
+      fs: this.localFs,
+      encoded: this.options.encoded,
+      item: this.options.item,
+      fetch: (input, init) => {
+        this.assertHeld()
+        return this.options.fetch(input, init)
+      },
+      localPath: (path) => this.localPath(this.serverPaths?.map({ path }, true).path ?? path),
+      excluded: (path, size) => !this.acceptsLocal(path, size),
+      entry: (path) => this.entryFor(path),
+      pending: async (path, sha) => {
+        const entry = await this.entryFor(path)
+        if (entry && entry.sha !== sha) return true
+        const journal = await (this.options.engineState ?? this.options.state).getJournal()
+        const wirePath = this.placement?.toServer(path, 'vault check') ?? path
+        return (
+          journal?.ops.some(
+            (op) => 'path' in op && op.path === wirePath && 'sha' in op && op.sha === sha
+          ) ?? false
+        )
+      },
+      send: async (path) => {
+        const stat = await this.localFs.stat(path)
+        if (!stat || !this.acceptsLocal(path, stat.size))
+          throw new Error('File is no longer in scope')
+        await this.retryNotSynced([path])
+        await this.sync()
+      },
+    }))
+  }
   readonly actions: TokenActions
   private readonly outbox: TokenAssetOutbox
   private readonly transferBudget: TransferBudget
@@ -3300,6 +3334,7 @@ export class TokenEngineRuntime
     this.localContentTimer = undefined
     this.cancelStartupIdle()
     this.indexWaitCancellation.abort()
+    this.check?.stop()
     this.quiet.stop()
     this.active = false
     this.updateDiscoveryPriority()
