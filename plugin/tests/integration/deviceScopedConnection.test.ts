@@ -17,12 +17,12 @@ import {
 function fixture(rootPath = '/', folderPath = 'Garden') {
   const values = new Map<string, unknown>(),
     secrets = new Map<string, string>()
-  const registry = TokenConnectionRegistry.open({
-    loadLocalStorage: (key) => structuredClone(values.get(key) ?? null),
-    saveLocalStorage: (key, value) => {
+  const storage = {
+    loadLocalStorage: (key: string) => structuredClone(values.get(key) ?? null),
+    saveLocalStorage: (key: string, value: unknown) => {
       values.set(key, structuredClone(value))
     },
-  })
+  }
   const root = { kind: 'folder' as const, id: 'root', path: rootPath }
   const group = { kind: 'group' as const, id: 'group-note', path: 'Reading.md' }
   const folder = { kind: 'folder' as const, id: 'folder-a', path: folderPath }
@@ -139,23 +139,27 @@ function fixture(rootPath = '/', folderPath = 'Garden') {
     }
     throw new Error('Unexpected test request: ' + url.pathname)
   })
-  const ui = new TokenUi(
-    registry,
-    {
-      get: (reference) => secrets.get(reference) ?? null,
-      set: (reference, key) => {
-        secrets.set(reference, key)
+  const open = () => {
+    const registry = TokenConnectionRegistry.open(storage)
+    const ui = new TokenUi(
+      registry,
+      {
+        get: (reference) => secrets.get(reference) ?? null,
+        set: (reference, key) => {
+          secrets.set(reference, key)
+        },
+        remove: (reference) => {
+          secrets.delete(reference)
+        },
       },
-      remove: (reference) => {
-        secrets.delete(reference)
-      },
-    },
-    transport
-  )
-  ui.connectionsChanged = vi.fn(async () => {})
+      transport
+    )
+    ui.connectionsChanged = vi.fn(async () => {})
+    return { ui, registry }
+  }
   return {
-    ui,
-    registry,
+    ...open(),
+    restart: open,
     source,
     scopes,
     calls,
@@ -365,16 +369,24 @@ it.each(['restart', 'reselect'] as const)(
       false
     )
     await f.ui.itemSets.pauseItem(id, items[0].id, true)
-    if (action === 'restart') await f.ui.deviceScopes.resume()
-    else await f.ui.deviceScopes.change(id, selection)
-    expect(f.registry.records().find((record) => record.id === items[0].recordId)?.paused).toBe(
-      true
-    )
-    expect(f.ui.itemSets.store.get(id)!.items[0].paused).toBe(true)
-    expect(f.registry.records().find((record) => record.id === items[1].recordId)?.paused).toBe(
-      false
-    )
-    expect(f.ui.deviceScopes.state(id)?.activating).toBeUndefined()
+    const owned = f.ui.deviceScopes.state(id)!.current
+    let current = { ui: f.ui, registry: f.registry }
+    if (action === 'restart') {
+      await f.registry.flush()
+      current = f.restart()
+      expect(current.ui).not.toBe(f.ui)
+      expect(current.registry).not.toBe(f.registry)
+      await current.ui.deviceScopes.resume()
+    } else await current.ui.deviceScopes.change(id, selection)
+    expect(
+      current.registry.records().find((record) => record.id === items[0].recordId)?.paused
+    ).toBe(true)
+    expect(current.ui.itemSets.store.get(id)!.items[0].paused).toBe(true)
+    expect(
+      current.registry.records().find((record) => record.id === items[1].recordId)?.paused
+    ).toBe(false)
+    expect(current.ui.deviceScopes.state(id)?.activating).toBeUndefined()
+    expect(current.ui.deviceScopes.state(id)?.current).toEqual(owned)
     expect(f.calls.filter((call) => call === 'POST /v2/tokens')).toHaveLength(1)
   }
 )
