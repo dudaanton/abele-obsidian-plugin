@@ -10,6 +10,7 @@ import { outwardBoxShadowReach } from '../helpers/focusRingPaint'
 import { recipientLayoutProbe } from '../helpers/keyDestinationLayoutProbe'
 import * as chatProbeInteractions from '../helpers/chatProbeInteractions'
 import { NODE_PANEL, NODE_PANEL_FIXTURE } from '../e2e/helpers/nodePanelFixture'
+import { layoutFixtureScript } from '../e2e/helpers/layoutFixtureScript'
 
 it.each([
   ['dialogRings', 'script'],
@@ -34,6 +35,7 @@ it.each([
     ...publication,
     outwardBoxShadowReach,
     recipientLayoutProbe,
+    layoutFixtureScript,
     ...chatProbeInteractions,
     shotDir: () => 'sample-shots',
     shotPath: () => 'sample-shots',
