@@ -1762,7 +1762,8 @@ export const extra = {
   'sync.sections.noneTip': 'Keep every section as this device has it',
   'sync.sections.pageCheck': 'Sync everything under {page}',
   'sync.sections.pageWarn': 'A section here needs a look',
-  'sync.sections.needs': '{section} names things from {needed}, which stay on this device. Click to sync it too.',
+  'sync.sections.needs':
+    '{section} names things from {needed}, which stay on this device. Click to sync it too.',
   'sync.sections.keyOn': {
     one: 'Points at {count} key. It travels through synced keys.',
     other: 'Points at {count} keys. They travel through synced keys.',
@@ -1779,7 +1780,8 @@ export const extra = {
   'sync.sections.keysOffName': 'Keys stay on each device',
   'sync.sections.keysOffDesc': {
     one: 'Ticked sections point at {count} key. Keys travel only through synced keys, under a passphrase.',
-    other: 'Ticked sections point at {count} keys. Keys travel only through synced keys, under a passphrase.',
+    other:
+      'Ticked sections point at {count} keys. Keys travel only through synced keys, under a passphrase.',
   },
   'sync.sections.keysOffAction': 'Set up synced keys',
   'sync.sections.keysLockedName': 'Synced keys are locked',
@@ -1800,8 +1802,10 @@ export const extra = {
   'sync.sections.restoreTip': 'Put this device’s {section} back and send it to the others',
   'sync.sections.restored': '{section}: this device’s version is back and is being sent.',
   'sync.sections.againTitle': 'Sync {section} again?',
-  'sync.sections.againBody': '{section} on this device is not the same as in the vault. Pick the one both keep.',
-  'sync.sections.againKept': 'The other one stays on this device, and this window can bring it back.',
+  'sync.sections.againBody':
+    '{section} on this device is not the same as in the vault. Pick the one both keep.',
+  'sync.sections.againKept':
+    'The other one stays on this device, and this window can bring it back.',
   'sync.sections.cancel': 'Cancel',
   'sync.sections.cancelTip': 'Leave it unticked',
   'sync.sections.takeDevice': 'Send this device’s',
@@ -1821,7 +1825,7 @@ export const extra = {
   'sync.check.bytes': '{done} of {total}',
   'sync.check.background': 'The check goes on if you close this window.',
   'sync.check.matched': {
-    one: 'The file matches the server',
+    one: '{total} file matches the server',
     other: 'All {total} files match the server',
   },
   'sync.check.differs': {
@@ -1839,8 +1843,10 @@ export const extra = {
   'sync.check.reason.server-only': 'Only on the server',
   'sync.check.reason.local-only': 'Only on this device',
   'sync.check.why.unsent': 'Changed here after the last upload. Sync sends them next.',
-  'sync.check.why.skipped': 'What this device syncs leaves them out, so they are not counted as matching.',
-  'sync.check.why.differs': 'Not the same here and on the server, and nothing is waiting to be sent.',
+  'sync.check.why.skipped':
+    'What this device syncs leaves them out, so they are not counted as matching.',
+  'sync.check.why.differs':
+    'Not the same here and on the server, and nothing is waiting to be sent.',
   'sync.check.why.server-only': 'The server has them and this device does not.',
   'sync.check.why.local-only': 'Not on the server, and sync does not know why. Worth a look.',
   'sync.check.send': 'Send now',

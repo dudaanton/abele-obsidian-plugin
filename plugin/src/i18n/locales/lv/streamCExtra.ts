@@ -1790,4 +1790,116 @@ export const extra = {
   'sync.deleteSafetyRetained': 'Pārbauda saglabātos atkopšanas datus.',
   'sync.deleteSafetyListing': 'Izveido lokālo failu sarakstu atkopšanas pārbaudēm.',
   'sync.deleteSafetyClassification': 'Pārbauda lokālos atkopšanas marķierus.',
+  'sync.sections.title': 'Abele iestatījumi',
+  'sync.sections.desc':
+    'Atzīmētās sadaļas tiek pārsūtītas ar spraudņa iestatījumiem. Neatzīmētās paliek šajā ierīcē un saņemtās izmaiņas tās nemaina.',
+  'sync.sections.descOff': 'Ieslēdziet spraudņu iestatījumus augstāk, lai izvēlētos sadaļas.',
+  'sync.sections.list': 'Sadaļas',
+  'sync.sections.allTip': 'Sinhronizēt visas sadaļas šajā ierīcē',
+  'sync.sections.noneTip': 'Saglabāt visas sadaļas tikai šajā ierīcē',
+  'sync.sections.pageCheck': 'Sinhronizēt visu lapā {page}',
+  'sync.sections.pageWarn': 'Kādai sadaļai jāpievērš uzmanība',
+  'sync.sections.needs':
+    '{section} izmanto datus no {needed}, kas paliek šajā ierīcē. Nospiediet, lai sinhronizētu arī tos.',
+  'sync.sections.keyOn': {
+    one: 'Saistītās atslēgas: {count}. Tās pārsūta ar sinhronizētajām atslēgām.',
+    zero: 'Saistītās atslēgas: {count}. Tās pārsūta ar sinhronizētajām atslēgām.',
+    other: 'Saistītās atslēgas: {count}. Tās pārsūta ar sinhronizētajām atslēgām.',
+  },
+  'sync.sections.keyOff': {
+    one: 'Saistītās atslēgas: {count}. Sinhronizētās atslēgas ir izslēgtas, tāpēc tās paliek ierīcēs.',
+    zero: 'Saistītās atslēgas: {count}. Sinhronizētās atslēgas ir izslēgtas, tāpēc tās paliek ierīcēs.',
+    other:
+      'Saistītās atslēgas: {count}. Sinhronizētās atslēgas ir izslēgtas, tāpēc tās paliek ierīcēs.',
+  },
+  'sync.sections.keyLocked': {
+    one: 'Saistītās atslēgas: {count}. Sinhronizētās atslēgas šajā ierīcē ir bloķētas.',
+    zero: 'Saistītās atslēgas: {count}. Sinhronizētās atslēgas šajā ierīcē ir bloķētas.',
+    other: 'Saistītās atslēgas: {count}. Sinhronizētās atslēgas šajā ierīcē ir bloķētas.',
+  },
+  'sync.sections.keyMissing': 'Šajā ierīcē vēl trūkst {count} no {of} atslēgām.',
+  'sync.sections.keysOffName': 'Atslēgas paliek katrā ierīcē',
+  'sync.sections.keysOffDesc': {
+    one: 'Atslēgas atzīmētajās sadaļās: {count}. Tās pārsūta tikai ar sinhronizētajām atslēgām, aizsargātas ar paroli.',
+    zero: 'Atslēgas atzīmētajās sadaļās: {count}. Tās pārsūta tikai ar sinhronizētajām atslēgām, aizsargātas ar paroli.',
+    other:
+      'Atslēgas atzīmētajās sadaļās: {count}. Tās pārsūta tikai ar sinhronizētajām atslēgām, aizsargātas ar paroli.',
+  },
+  'sync.sections.keysOffAction': 'Iestatīt sinhronizētās atslēgas',
+  'sync.sections.keysLockedName': 'Sinhronizētās atslēgas ir bloķētas',
+  'sync.sections.keysLockedDesc': {
+    one: 'Iestatījumi pienāk, bet saistītās atslēgas ({count}) gaida atbloķēšanu.',
+    zero: 'Iestatījumi pienāk, bet saistītās atslēgas ({count}) gaida atbloķēšanu.',
+    other: 'Iestatījumi pienāk, bet saistītās atslēgas ({count}) gaida atbloķēšanu.',
+  },
+  'sync.sections.keysLockedAction': 'Atbloķēt',
+  'sync.sections.keysMissingName': {
+    one: 'Atslēgas, kuru šajā ierīcē vēl nav: {count}',
+    zero: 'Atslēgas, kuru šajā ierīcē vēl nav: {count}',
+    other: 'Atslēgas, kuru šajā ierīcē vēl nav: {count}',
+  },
+  'sync.sections.keysMissingDesc':
+    'Tās pienāks, kad ierīce, kurā tās ir, saglabās tās sinhronizētajās atslēgās.',
+  'sync.sections.keptName': '{section}: izmantota versija no {device}',
+  'sync.sections.keptDesc': 'Mainīts abās ierīcēs, {when}. Šīs ierīces versija ir saglabāta.',
+  'sync.sections.restore': 'Atjaunot',
+  'sync.sections.restoreTip': 'Atjaunot šīs ierīces sadaļu {section} un nosūtīt citām ierīcēm',
+  'sync.sections.restored':
+    '{section}: šīs ierīces versija ir atjaunota un tiek sūtīta citām ierīcēm.',
+  'sync.sections.againTitle': 'Atkal sinhronizēt {section}?',
+  'sync.sections.againBody':
+    'Sadaļa {section} šajā ierīcē atšķiras no krātuves. Izvēlieties versiju abām pusēm.',
+  'sync.sections.againKept': 'Otra versija paliks šajā ierīcē. To varēs atjaunot šajā logā.',
+  'sync.sections.cancel': 'Atcelt',
+  'sync.sections.cancelTip': 'Atstāt sadaļu neatzīmētu',
+  'sync.sections.takeDevice': 'Nosūtīt šīs ierīces versiju',
+  'sync.sections.takeDeviceTip': 'Citas ierīces izmantos šīs ierīces versiju',
+  'sync.sections.takeVault': 'Izmantot krātuves versiju',
+  'sync.sections.takeVaultTip':
+    'Izmantot krātuves versiju un saglabāt šīs ierīces versiju atsevišķi',
+  'sync.check.title': 'Salīdzināšana ar serveri',
+  'sync.check.desc':
+    'Salīdzina katra faila saturu šeit un serverī, nevis sinhronizācijas ierakstus. Neko nemaina un nedzēš.',
+  'sync.check.never': 'Vēl nav pārbaudīts',
+  'sync.check.start': 'Pārbaudīt failus',
+  'sync.check.again': 'Pārbaudīt vēlreiz',
+  'sync.check.startTip': 'Salīdzināt katru failu ar serveri. Nekas netiek mainīts.',
+  'sync.check.stop': 'Apturēt',
+  'sync.check.stopTip': 'Apturēt pārbaudi. Jau pārbaudītais netiks zaudēts.',
+  'sync.check.running': 'Pārbaudīti {done} no {total} failiem',
+  'sync.check.bytes': '{done} no {total}',
+  'sync.check.background': 'Pārbaude turpināsies, arī aizverot šo logu.',
+  'sync.check.matched': {
+    one: 'Visi faili sakrīt ar serveri: {total}',
+    zero: 'Visi faili sakrīt ar serveri: {total}',
+    other: 'Visi faili sakrīt ar serveri: {total}',
+  },
+  'sync.check.differs': {
+    one: 'Atšķiras: {differ}, sakrīt: {match}',
+    zero: 'Atšķiras: {differ}, sakrīt: {match}',
+    other: 'Atšķiras: {differ}, sakrīt: {match}',
+  },
+  'sync.check.checked': '{size} · pārbaudīts {when}',
+  'sync.check.stopped': 'Apturēts pie {done} no {total} failiem',
+  'sync.check.stoppedMeta': '{when}. Pārējie faili nav pārbaudīti.',
+  'sync.check.unreachable': 'Serveris neatbildēja',
+  'sync.check.unreachableMeta':
+    'Nekas nav pārbaudīts. Mēģiniet vēlreiz, kad serveris būs pieejams.',
+  'sync.check.reason.unsent': 'Vēl nav nosūtīts',
+  'sync.check.reason.skipped': 'Izlaists pēc noteikuma',
+  'sync.check.reason.differs': 'Atšķirīgs saturs',
+  'sync.check.reason.server-only': 'Tikai serverī',
+  'sync.check.reason.local-only': 'Tikai šajā ierīcē',
+  'sync.check.why.unsent':
+    'Mainīti šeit pēc pēdējās nosūtīšanas. Sinhronizācija tos nosūtīs nākamos.',
+  'sync.check.why.skipped':
+    'Šīs ierīces izvēle tos izslēdz, tāpēc tie netiek skaitīti kā sakrītoši.',
+  'sync.check.why.differs': 'Saturs šeit un serverī atšķiras, un nekas negaida nosūtīšanu.',
+  'sync.check.why.server-only': 'Serverī ir, šajā ierīcē nav.',
+  'sync.check.why.local-only':
+    'Serverī nav, un sinhronizācijai nav zināms iemesls. Ir vērts apskatīt.',
+  'sync.check.send': 'Nosūtīt tagad',
+  'sync.check.sent': '{name} tiek nosūtīts.',
+  'sync.check.rule': 'Parādīt noteikumu',
+  'sync.check.versions': 'Salīdzināt ar versijām serverī',
 } as const

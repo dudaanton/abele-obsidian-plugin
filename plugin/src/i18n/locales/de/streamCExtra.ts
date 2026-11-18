@@ -1799,4 +1799,112 @@ export const extra = {
   'sync.deleteSafetyRetained': 'Aufbewahrte Wiederherstellungsdaten werden geprüft.',
   'sync.deleteSafetyListing': 'Lokale Dateien werden für Wiederherstellungsprüfungen aufgelistet.',
   'sync.deleteSafetyClassification': 'Lokale Wiederherstellungsmarkierungen werden geprüft.',
+  'sync.sections.title': 'Abele-Einstellungen',
+  'sync.sections.desc':
+    'Markierte Bereiche werden mit den Plugin-Einstellungen übertragen. Nicht markierte bleiben auf diesem Gerät unverändert.',
+  'sync.sections.descOff': 'Aktiviere oben die Plugin-Einstellungen, um Bereiche auszuwählen.',
+  'sync.sections.list': 'Bereiche',
+  'sync.sections.allTip': 'Alle Bereiche auf diesem Gerät synchronisieren',
+  'sync.sections.noneTip': 'Alle Bereiche auf diesem Gerät beibehalten',
+  'sync.sections.pageCheck': 'Alles unter {page} synchronisieren',
+  'sync.sections.pageWarn': 'Ein Bereich benötigt Aufmerksamkeit',
+  'sync.sections.needs':
+    '{section} verweist auf {needed}, die auf diesem Gerät bleiben. Klicke, um sie ebenfalls zu synchronisieren.',
+  'sync.sections.keyOn': {
+    one: 'Verknüpfte Schlüssel: {count}. Sie werden über synchronisierte Schlüssel übertragen.',
+    other: 'Verknüpfte Schlüssel: {count}. Sie werden über synchronisierte Schlüssel übertragen.',
+  },
+  'sync.sections.keyOff': {
+    one: 'Verknüpfte Schlüssel: {count}. Synchronisierte Schlüssel sind deaktiviert; die Schlüssel bleiben auf den Geräten.',
+    other:
+      'Verknüpfte Schlüssel: {count}. Synchronisierte Schlüssel sind deaktiviert; die Schlüssel bleiben auf den Geräten.',
+  },
+  'sync.sections.keyLocked': {
+    one: 'Verknüpfte Schlüssel: {count}. Synchronisierte Schlüssel sind auf diesem Gerät gesperrt.',
+    other:
+      'Verknüpfte Schlüssel: {count}. Synchronisierte Schlüssel sind auf diesem Gerät gesperrt.',
+  },
+  'sync.sections.keyMissing': 'Auf diesem Gerät fehlen noch {count} von {of} Schlüsseln.',
+  'sync.sections.keysOffName': 'Schlüssel bleiben auf jedem Gerät',
+  'sync.sections.keysOffDesc': {
+    one: 'Schlüssel in markierten Bereichen: {count}. Sie werden nur über synchronisierte Schlüssel übertragen, geschützt durch eine Passphrase.',
+    other:
+      'Schlüssel in markierten Bereichen: {count}. Sie werden nur über synchronisierte Schlüssel übertragen, geschützt durch eine Passphrase.',
+  },
+  'sync.sections.keysOffAction': 'Synchronisierte Schlüssel einrichten',
+  'sync.sections.keysLockedName': 'Synchronisierte Schlüssel sind gesperrt',
+  'sync.sections.keysLockedDesc': {
+    one: 'Die Einstellungen kommen an; die verknüpften Schlüssel ({count}) warten auf die Entsperrung.',
+    other:
+      'Die Einstellungen kommen an; die verknüpften Schlüssel ({count}) warten auf die Entsperrung.',
+  },
+  'sync.sections.keysLockedAction': 'Entsperren',
+  'sync.sections.keysMissingName': {
+    one: 'Auf diesem Gerät noch fehlende Schlüssel: {count}',
+    other: 'Auf diesem Gerät noch fehlende Schlüssel: {count}',
+  },
+  'sync.sections.keysMissingDesc':
+    'Sie kommen an, sobald das Gerät mit diesen Schlüsseln sie unter synchronisierten Schlüsseln speichert.',
+  'sync.sections.keptName': '{section}: Version von {device} übernommen',
+  'sync.sections.keptDesc':
+    'Auf beiden Geräten geändert, {when}. Die Version dieses Geräts wurde aufbewahrt.',
+  'sync.sections.restore': 'Wiederherstellen',
+  'sync.sections.restoreTip': '{section} dieses Geräts wiederherstellen und an die anderen senden',
+  'sync.sections.restored':
+    '{section}: Die Version dieses Geräts ist wiederhergestellt und wird gesendet.',
+  'sync.sections.againTitle': '{section} wieder synchronisieren?',
+  'sync.sections.againBody':
+    '{section} auf diesem Gerät unterscheidet sich vom Vault. Wähle die Version für beide.',
+  'sync.sections.againKept':
+    'Die andere Version bleibt auf diesem Gerät und kann hier wiederhergestellt werden.',
+  'sync.sections.cancel': 'Abbrechen',
+  'sync.sections.cancelTip': 'Bereich nicht markieren',
+  'sync.sections.takeDevice': 'Version dieses Geräts senden',
+  'sync.sections.takeDeviceTip': 'Die anderen übernehmen die Version dieses Geräts',
+  'sync.sections.takeVault': 'Version des Vaults übernehmen',
+  'sync.sections.takeVaultTip': 'Version des Vaults übernehmen und die eigene aufbewahren',
+  'sync.check.title': 'Mit dem Server vergleichen',
+  'sync.check.desc':
+    'Vergleicht den Inhalt jeder Datei hier mit dem Server, unabhängig vom Sync-Status. Es wird nichts geändert oder gelöscht.',
+  'sync.check.never': 'Noch nicht geprüft',
+  'sync.check.start': 'Dateien prüfen',
+  'sync.check.again': 'Erneut prüfen',
+  'sync.check.startTip': 'Jede Datei mit dem Server vergleichen. Es wird nichts geändert.',
+  'sync.check.stop': 'Stoppen',
+  'sync.check.stopTip': 'Prüfung stoppen. Bereits Geprüftes geht nicht verloren.',
+  'sync.check.running': '{done} von {total} Dateien werden geprüft',
+  'sync.check.bytes': '{done} von {total}',
+  'sync.check.background': 'Die Prüfung läuft weiter, wenn du dieses Fenster schließt.',
+  'sync.check.matched': {
+    one: 'Alle {total} Dateien stimmen mit dem Server überein',
+    other: 'Alle {total} Dateien stimmen mit dem Server überein',
+  },
+  'sync.check.differs': {
+    one: '{differ} Dateien weichen ab · {match} stimmen überein',
+    other: '{differ} Dateien weichen ab · {match} stimmen überein',
+  },
+  'sync.check.checked': '{size} · geprüft {when}',
+  'sync.check.stopped': 'Bei {done} von {total} Dateien gestoppt',
+  'sync.check.stoppedMeta': '{when}. Die übrigen Dateien wurden nicht geprüft.',
+  'sync.check.unreachable': 'Der Server hat nicht geantwortet',
+  'sync.check.unreachableMeta':
+    'Nichts wurde geprüft. Versuche es erneut, sobald der Server erreichbar ist.',
+  'sync.check.reason.unsent': 'Noch nicht gesendet',
+  'sync.check.reason.skipped': 'Durch eine Regel ausgelassen',
+  'sync.check.reason.differs': 'Unterschiedlicher Inhalt',
+  'sync.check.reason.server-only': 'Nur auf dem Server',
+  'sync.check.reason.local-only': 'Nur auf diesem Gerät',
+  'sync.check.why.unsent':
+    'Hier seit dem letzten Upload geändert. Die Synchronisierung sendet sie als Nächstes.',
+  'sync.check.why.skipped':
+    'Die Auswahl dieses Geräts schließt sie aus; sie zählen nicht als übereinstimmend.',
+  'sync.check.why.differs':
+    'Der Inhalt hier und auf dem Server unterscheidet sich, und nichts wartet auf den Upload.',
+  'sync.check.why.server-only': 'Auf dem Server vorhanden, auf diesem Gerät nicht.',
+  'sync.check.why.local-only':
+    'Nicht auf dem Server, und die Synchronisierung kennt den Grund nicht. Sieh nach.',
+  'sync.check.send': 'Jetzt senden',
+  'sync.check.sent': '{name} wird gesendet.',
+  'sync.check.rule': 'Regel anzeigen',
+  'sync.check.versions': 'Mit den Versionen auf dem Server vergleichen',
 } as const

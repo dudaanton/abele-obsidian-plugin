@@ -1822,4 +1822,119 @@ export const extra = {
   'sync.deleteSafetyListing':
     'Se están enumerando los archivos locales para las comprobaciones de recuperación.',
   'sync.deleteSafetyClassification': 'Se están comprobando los marcadores de recuperación locales.',
+  'sync.sections.title': 'Ajustes de Abele',
+  'sync.sections.desc':
+    'Las secciones marcadas viajan con los ajustes del complemento. Las demás se conservan en este dispositivo y no cambian al recibir ajustes.',
+  'sync.sections.descOff': 'Activa Ajustes de complementos arriba para elegir las secciones.',
+  'sync.sections.list': 'Secciones',
+  'sync.sections.allTip': 'Sincronizar todas las secciones en este dispositivo',
+  'sync.sections.noneTip': 'Conservar todas las secciones en este dispositivo',
+  'sync.sections.pageCheck': 'Sincronizar todo en {page}',
+  'sync.sections.pageWarn': 'Una sección requiere atención',
+  'sync.sections.needs':
+    '{section} usa datos de {needed} que se quedan en este dispositivo. Pulsa para sincronizarlos también.',
+  'sync.sections.keyOn': {
+    many: 'Claves vinculadas: {count}. Se transfieren mediante las claves sincronizadas.',
+    one: 'Claves vinculadas: {count}. Se transfieren mediante las claves sincronizadas.',
+    other: 'Claves vinculadas: {count}. Se transfieren mediante las claves sincronizadas.',
+  },
+  'sync.sections.keyOff': {
+    many: 'Claves vinculadas: {count}. Las claves sincronizadas están desactivadas; se quedan en cada dispositivo.',
+    one: 'Claves vinculadas: {count}. Las claves sincronizadas están desactivadas; se quedan en cada dispositivo.',
+    other:
+      'Claves vinculadas: {count}. Las claves sincronizadas están desactivadas; se quedan en cada dispositivo.',
+  },
+  'sync.sections.keyLocked': {
+    many: 'Claves vinculadas: {count}. Las claves sincronizadas están bloqueadas en este dispositivo.',
+    one: 'Claves vinculadas: {count}. Las claves sincronizadas están bloqueadas en este dispositivo.',
+    other:
+      'Claves vinculadas: {count}. Las claves sincronizadas están bloqueadas en este dispositivo.',
+  },
+  'sync.sections.keyMissing': 'En este dispositivo aún faltan {count} de {of} claves.',
+  'sync.sections.keysOffName': 'Las claves se quedan en cada dispositivo',
+  'sync.sections.keysOffDesc': {
+    many: 'Claves en las secciones marcadas: {count}. Solo viajan mediante las claves sincronizadas, protegidas con una contraseña.',
+    one: 'Claves en las secciones marcadas: {count}. Solo viajan mediante las claves sincronizadas, protegidas con una contraseña.',
+    other:
+      'Claves en las secciones marcadas: {count}. Solo viajan mediante las claves sincronizadas, protegidas con una contraseña.',
+  },
+  'sync.sections.keysOffAction': 'Configurar claves sincronizadas',
+  'sync.sections.keysLockedName': 'Las claves sincronizadas están bloqueadas',
+  'sync.sections.keysLockedDesc': {
+    many: 'Los ajustes llegan, pero las claves vinculadas ({count}) esperan a que las desbloquees.',
+    one: 'Los ajustes llegan, pero las claves vinculadas ({count}) esperan a que las desbloquees.',
+    other:
+      'Los ajustes llegan, pero las claves vinculadas ({count}) esperan a que las desbloquees.',
+  },
+  'sync.sections.keysLockedAction': 'Desbloquear',
+  'sync.sections.keysMissingName': {
+    many: 'Claves que aún faltan en este dispositivo: {count}',
+    one: 'Claves que aún faltan en este dispositivo: {count}',
+    other: 'Claves que aún faltan en este dispositivo: {count}',
+  },
+  'sync.sections.keysMissingDesc':
+    'Llegarán cuando el dispositivo que las tiene las guarde en las claves sincronizadas.',
+  'sync.sections.keptName': '{section}: se tomó la versión de {device}',
+  'sync.sections.keptDesc':
+    'Modificado en ambos dispositivos, {when}. Se conservó la versión de este dispositivo.',
+  'sync.sections.restore': 'Restaurar',
+  'sync.sections.restoreTip': 'Restaurar {section} de este dispositivo y enviarlo a los demás',
+  'sync.sections.restored':
+    '{section}: la versión de este dispositivo se restauró y se está enviando.',
+  'sync.sections.againTitle': '¿Volver a sincronizar {section}?',
+  'sync.sections.againBody':
+    '{section} en este dispositivo difiere de la bóveda. Elige la versión que conservarán ambos.',
+  'sync.sections.againKept':
+    'La otra versión se conserva en este dispositivo y se puede restaurar desde esta ventana.',
+  'sync.sections.cancel': 'Cancelar',
+  'sync.sections.cancelTip': 'Dejar la sección sin marcar',
+  'sync.sections.takeDevice': 'Enviar la de este dispositivo',
+  'sync.sections.takeDeviceTip': 'Los demás tomarán la versión de este dispositivo',
+  'sync.sections.takeVault': 'Tomar la de la bóveda',
+  'sync.sections.takeVaultTip': 'Tomar la versión de la bóveda y conservar la propia aparte',
+  'sync.check.title': 'Comprobar con el servidor',
+  'sync.check.desc':
+    'Compara el contenido de cada archivo con el servidor, independientemente del estado de sincronización. No cambia ni elimina nada.',
+  'sync.check.never': 'Aún no se ha comprobado',
+  'sync.check.start': 'Comprobar archivos',
+  'sync.check.again': 'Volver a comprobar',
+  'sync.check.startTip': 'Comparar cada archivo con el servidor. No se cambia nada.',
+  'sync.check.stop': 'Detener',
+  'sync.check.stopTip': 'Detener la comprobación. No se pierde lo ya comprobado.',
+  'sync.check.running': 'Comprobando {done} de {total} archivos',
+  'sync.check.bytes': '{done} de {total}',
+  'sync.check.background': 'La comprobación continúa aunque cierres esta ventana.',
+  'sync.check.matched': {
+    many: 'Los {total} archivos coinciden con el servidor',
+    one: 'Los {total} archivos coinciden con el servidor',
+    other: 'Los {total} archivos coinciden con el servidor',
+  },
+  'sync.check.differs': {
+    many: '{differ} archivos difieren · {match} coinciden',
+    one: '{differ} archivos difieren · {match} coinciden',
+    other: '{differ} archivos difieren · {match} coinciden',
+  },
+  'sync.check.checked': '{size} · comprobado {when}',
+  'sync.check.stopped': 'Detenido en {done} de {total} archivos',
+  'sync.check.stoppedMeta': '{when}. Los demás archivos no se comprobaron.',
+  'sync.check.unreachable': 'El servidor no respondió',
+  'sync.check.unreachableMeta': 'No se comprobó nada. Inténtalo de nuevo cuando esté disponible.',
+  'sync.check.reason.unsent': 'Aún sin enviar',
+  'sync.check.reason.skipped': 'Excluido por una regla',
+  'sync.check.reason.differs': 'Contenido diferente',
+  'sync.check.reason.server-only': 'Solo en el servidor',
+  'sync.check.reason.local-only': 'Solo en este dispositivo',
+  'sync.check.why.unsent':
+    'Modificados aquí desde el último envío. Se enviarán en la próxima sincronización.',
+  'sync.check.why.skipped':
+    'La selección de este dispositivo los excluye; no se cuentan como coincidentes.',
+  'sync.check.why.differs':
+    'El contenido aquí y en el servidor difiere y no hay ningún envío pendiente.',
+  'sync.check.why.server-only': 'Están en el servidor y no en este dispositivo.',
+  'sync.check.why.local-only':
+    'No están en el servidor y se desconoce el motivo. Conviene revisarlos.',
+  'sync.check.send': 'Enviar ahora',
+  'sync.check.sent': 'Se está enviando {name}.',
+  'sync.check.rule': 'Mostrar regla',
+  'sync.check.versions': 'Comparar con las versiones del servidor',
 } as const

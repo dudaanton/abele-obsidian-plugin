@@ -7777,41 +7777,356 @@
   "sync.deleteSafetyInstallation": {
     "englishHash": "c88eab1677f94d2a667b19194bf00517f57a86ca90914667ef9bf6ece6188806",
     "context": "Server deletion safety check phase while preserving local recovery evidence",
-    "reviewedLocales": [
-      "ru",
-      "lv",
-      "es",
-      "de"
-    ]
+    "reviewedLocales": ["ru", "lv", "es", "de"]
   },
   "sync.deleteSafetyRetained": {
     "englishHash": "44444919f5703135d105db827947432fc9cefb193e2bb4ba5be08c29123c102f",
     "context": "Server deletion safety check phase while preserving local recovery evidence",
-    "reviewedLocales": [
-      "ru",
-      "lv",
-      "es",
-      "de"
-    ]
+    "reviewedLocales": ["ru", "lv", "es", "de"]
   },
   "sync.deleteSafetyListing": {
     "englishHash": "0223746c3bfda287db319cbbd202dd48bdb05f8a4ec4c77f1eb908abcdefb1b3",
     "context": "Server deletion safety check phase while preserving local recovery evidence",
-    "reviewedLocales": [
-      "ru",
-      "lv",
-      "es",
-      "de"
-    ]
+    "reviewedLocales": ["ru", "lv", "es", "de"]
   },
   "sync.deleteSafetyClassification": {
     "englishHash": "3afc78b26bdfd2a4996d675b3a30b902c4863e3444a431a43efc981d6d151eaf",
     "context": "Server deletion safety check phase while preserving local recovery evidence",
-    "reviewedLocales": [
-      "ru",
-      "lv",
-      "es",
-      "de"
-    ]
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.title": {
+    "englishHash": "1bd3156007485746fe329548d72b1a469dc46f5c057e09406a332b1ee1c5bd4e",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.desc": {
+    "englishHash": "df7ef85c6637fd36224850625b6f3b1bea14f7bae57d0c8412f34e16ccb1ddeb",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.descOff": {
+    "englishHash": "4851101c57fe3ea9548260e94f3212d7d6a573463734852adc3fdb897a121197",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.list": {
+    "englishHash": "c9f6ef4a27d3a75de5de3b308f63ed325c231624115805ffc5cea3c3d996b737",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.allTip": {
+    "englishHash": "1e7a5ff1b964aa1002e3a2f04689728d7b2ad6861a5534cd0812c31ece0f7a7c",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.noneTip": {
+    "englishHash": "5dede529de682b00149c31c7808c455e44bcacf919a011ffc360600f2fc4c733",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.pageCheck": {
+    "englishHash": "b0946051d2c05ba98530d6619f49471f53d2741c066581f0fc97292fed740e5b",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.pageWarn": {
+    "englishHash": "49968b1edcd63a9fc93681197f13c35bb45b92f1d632b4ecb36866cdf10e9363",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.needs": {
+    "englishHash": "ea448f0f65f24eacd8c21a5bfb7ffda8e3f2ba34288d0d05e54395eca220353d",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.keyOn": {
+    "englishHash": "bda00106c440baa060518f105ac3cf43f9750a99d5f2c455f629c7c34e62579c",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.keyOff": {
+    "englishHash": "eab531a5cf24601885774873a343a1b3d2683f4713a3eb74aaa376eabf39906c",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.keyLocked": {
+    "englishHash": "5fc44982981e82b9030a94897c6e832401f8aa2247ea6c94ad51bd847b52b4c2",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.keyMissing": {
+    "englishHash": "c85ff34ea5896cb3c2693a76e34603e20dddd14f1226490e965ea711a6b580b4",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.keysOffName": {
+    "englishHash": "f2a8620f293a16e7ae9781d38713331129e9c82e11a4f0e61b285c165a2a3208",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.keysOffDesc": {
+    "englishHash": "5e3b59a245ef8f314c9aed6a9de7ffd233a7cb185e3ee520e35d123a291764d6",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.keysOffAction": {
+    "englishHash": "98f0a961f51c5a4d4f37c6a8f7505f6aeef14af41128a67989c068fbbca5fafc",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.keysLockedName": {
+    "englishHash": "b183d094efdf00fc6b590491424bf07d1975370e98094fd785c76ce4b5a70c01",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.keysLockedDesc": {
+    "englishHash": "efef0871e4c1aa914bb55edd8f65cbbff3c3beb4c1715267b89134804e6da47f",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.keysLockedAction": {
+    "englishHash": "6c500cc253ab3fd4c1063297f99e45eadbcdf9ae6055d37a3426016147fd16db",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.keysMissingName": {
+    "englishHash": "df42064100748ad9fed8962f3bab051d1a6e3ecde541f2f27b4ae3e8438b99d7",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.keysMissingDesc": {
+    "englishHash": "ca80f01b0e48998cd6771369c5f129ac7541883df8a899100fbe7aaefe63e35a",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.keptName": {
+    "englishHash": "148aa071fe37f2aa85ebcf740ea017d0c0657d73a24568eb8c388a4989dfe354",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.keptDesc": {
+    "englishHash": "6f3bdb509cced6b6847ba7ade0bc39cd04cd36fc0842f07559b672860d148737",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.restore": {
+    "englishHash": "9fb92d5ac48a197b0499952ff25f2e8a84937831504f23569b5b8ad549a4334d",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.restoreTip": {
+    "englishHash": "a7fbfaeecb5cdd1bd3e19e1cd5d1393b23930fda4d5d167a9028febc03b90238",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.restored": {
+    "englishHash": "a1e12249be10b2de372315d609341df48edf7369ec436410dc59139c9e1d7912",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.againTitle": {
+    "englishHash": "cf25e0c434ab8097cc094546f17e52ac22d6a0470d663af6fcb99746102b15cc",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.againBody": {
+    "englishHash": "c19157e515b516b2b989dc05107f64ea45d02f13d3e294957502b5605c1608b5",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.againKept": {
+    "englishHash": "c372c4d656e5f80d475ae270289f64439d6610cecf5fc166e8e0ef1f961460b6",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.cancel": {
+    "englishHash": "c0774c185060fc1366ab0c01488af84eb5e4e1f4f59229431e064de73e0de6c5",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.cancelTip": {
+    "englishHash": "0a9cf9da0db10f95494a0fa594ae3111342c1ab42b8ab3a6df44258ff3a75377",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.takeDevice": {
+    "englishHash": "96830dce5a63f6982eee0a382ceb18c7744a69154ce785aaf7f99aa5e49498ef",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.takeDeviceTip": {
+    "englishHash": "a26a2b0057f2d7fa57a1e132c7de7ea9fdbae1bc072095c486da8790862f66dc",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.takeVault": {
+    "englishHash": "d624cbc0ed61ffe643c2e2752594b1bd0858afbe02dcee37c03e86323033e12d",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.sections.takeVaultTip": {
+    "englishHash": "d7c4276fea9872c375d055273d88ff35c26bd8e385ef43c5068ce63c32100886",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.title": {
+    "englishHash": "d73a82d6954fddfda02b1c87071e606dcc38ad31c0cc0799d627fc37706dda7f",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.desc": {
+    "englishHash": "c3c95adf0372eb861c59a925565f27305029cfa18d891f63126d639bf3fc0b90",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.never": {
+    "englishHash": "f2455a868b2303763551fb38ad50be9e00f305c3b5cea17cff6ca50f117c0d32",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.start": {
+    "englishHash": "9341e1ed21b4baf2bf770d5ef845417d246ee2c1eef82ce116e0a3e8aa882f15",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.again": {
+    "englishHash": "875e8b17daace2b383790b4be2ae81bc1d2be71071f23587c1b67ac6fca5b4b1",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.startTip": {
+    "englishHash": "e0aff7e7a6657f6e2f590cf1a5721293843cff434012e2fcab7519f8fd3c8b63",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.stop": {
+    "englishHash": "4a784e3e95a08715513ca46cee31eccacff2cae8533a976da4e173138d137776",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.stopTip": {
+    "englishHash": "fd487584950cf6d3bec1210fdc32815102ecbcd2faf1d93fed15bff043881420",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.running": {
+    "englishHash": "0c6d8fa2374802ed3389644a95e248dfd16e496034db9924639af1f0fe25e32f",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.bytes": {
+    "englishHash": "1640a17e082b7c8fa4160fb6ceeec0bbd2f65c2dfeb7db591565792720e52943",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.background": {
+    "englishHash": "0262d861f0c1a0f4f0fef994fde1a0d445c8c85d2ea2f3b279c674d8496dd5f1",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.matched": {
+    "englishHash": "75f11689c859a4c65c13d554e36e190f28e2e6dc2b57397bd365006907092583",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.differs": {
+    "englishHash": "cda8c2cf8fc207874752401faac565977b750421f3776bd3caf4bef3f09d8b42",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.checked": {
+    "englishHash": "b591cc6dd8b4d87c8648e91a2f64129370314d96cefd004165a35aa81b4bcac9",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.stopped": {
+    "englishHash": "151f7ff5b6db808b3337bcb1a5760d24457b07bbf514690e718658f88ac82eb4",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.stoppedMeta": {
+    "englishHash": "8e97fc729dc08a2a784a6d36cb0601bec3d806935886ab23d01177667e81845d",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.unreachable": {
+    "englishHash": "21b98d7a227a1f2b6e96d52231a79d754eed463d7f5c07f4292475bbb11b1f6e",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.unreachableMeta": {
+    "englishHash": "4847fe16faefb750f98127918c7d02a8b23d7d04d3aa15076aa690270d45e54d",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.reason.unsent": {
+    "englishHash": "14a190add2bc58fec9e85fa372613d78b83e112cec2d4ce80a2f4224577aba49",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.reason.skipped": {
+    "englishHash": "f363c06e2bc7858f3c6aa5f3c571ec3460f9409a223a114b731d13de57532bf2",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.reason.differs": {
+    "englishHash": "0b2b9ac4f27a1bfeddc97e7296e2a0cac732b28ff8d647105ee0bbef20e27357",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.reason.server-only": {
+    "englishHash": "a9d4bbf57088e698767bafffe97f3f7a0066733a0e4cbc2df52cbb6834909ce7",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.reason.local-only": {
+    "englishHash": "1d75ebb1cb9512a39cc2cdb085c5063a16cdcc436c1203652979ea962ed5f18d",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.why.unsent": {
+    "englishHash": "3ac19fb1ecbf056d92189cccf013478084c60a2f1285fd50b12b9c4b3a24b48f",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.why.skipped": {
+    "englishHash": "4c8ba05933204e2f3df3c2cdeea51697be394960b24dde3792cfe95fd277b2c7",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.why.differs": {
+    "englishHash": "67873a77cf76d483629c13dc9b62b0d9b9dc4a5ca70eace2bee122e2b3ac27d3",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.why.server-only": {
+    "englishHash": "15738c0e30a752784c0dac69d2efc6e76297f9b0a0306d5608b60daa7d7fe110",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.why.local-only": {
+    "englishHash": "d6a2c71fa927f04bb2c35a0498be562c1ebaa9026d2600e9e891d3dbde3b467a",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.send": {
+    "englishHash": "36d9098aa3f72490a68481ae5ab1f2487b4b083565b8d8432f1f0d6eaa873d4a",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.sent": {
+    "englishHash": "b0327cfbd487d72591cbba1d3436c03ed9cfdb801118dfa0f9ac5d13f551c8bf",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.rule": {
+    "englishHash": "691b029eb01f24f8d0be53e709ea4156943c3146a4be92a9da7e2cc58d39d35c",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
+  },
+  "sync.check.versions": {
+    "englishHash": "10583687c19d3711f96d9e36253c67bbe61c37ef762600bd996acf9513cdabda",
+    "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
+    "reviewedLocales": ["ru", "lv", "es", "de"]
   }
 }
