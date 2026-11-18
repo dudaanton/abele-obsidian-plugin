@@ -349,6 +349,36 @@ it('preserves a later user pause when revisiting a fully activated scope', async
   expect(f.registry.records().find((record) => record.id === child)?.paused).toBe(true)
 })
 
+it.each(['restart', 'reselect'] as const)(
+  'preserves a user item pause after activation effects but before completion (%s)',
+  async (action) => {
+    const f = fixture()
+    vi.mocked(f.ui.connectionsChanged).mockRejectedValueOnce(new Error('sample host unavailable'))
+    const selection = f.scopes.slice(0, 2)
+    await expect(f.ui.connect(f.source, undefined, selection)).rejects.toThrow(
+      'sample host unavailable'
+    )
+    const id = f.ui.rows.value[0].id
+    expect(f.ui.deviceScopes.state(id)?.activating).toBe(true)
+    const items = f.ui.itemSets.store.get(id)!.items
+    expect(f.registry.records().find((record) => record.id === items[0].recordId)?.paused).toBe(
+      false
+    )
+    await f.ui.itemSets.pauseItem(id, items[0].id, true)
+    if (action === 'restart') await f.ui.deviceScopes.resume()
+    else await f.ui.deviceScopes.change(id, selection)
+    expect(f.registry.records().find((record) => record.id === items[0].recordId)?.paused).toBe(
+      true
+    )
+    expect(f.ui.itemSets.store.get(id)!.items[0].paused).toBe(true)
+    expect(f.registry.records().find((record) => record.id === items[1].recordId)?.paused).toBe(
+      false
+    )
+    expect(f.ui.deviceScopes.state(id)?.activating).toBeUndefined()
+    expect(f.calls.filter((call) => call === 'POST /v2/tokens')).toHaveLength(1)
+  }
+)
+
 it('adopts equal group files after a fresh scoped ledger without downloading or rewriting them', async () => {
   const f = fixture()
   await f.ui.connect(f.source, undefined, [f.scopes[0]])

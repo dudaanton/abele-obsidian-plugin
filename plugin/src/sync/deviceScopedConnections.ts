@@ -209,12 +209,14 @@ export class DeviceScopedConnections {
       },
       activate: async (records) => {
         for (const recordId of records) {
-          const paused = this.pauseFor(id, this.source(recordId).scope)
-          this.ui.registry.setPaused(recordId, paused)
           const item = this.ui.itemSets.store
             .get(id)
             ?.items.find((one) => one.recordId === recordId)
-          if (item) this.ui.itemSets.store.pause(id, item.id, paused)
+          if (!item) throw new Error('Scoped connection enrollment is incomplete')
+          // Enrollment seeds the requested pause; later user changes live in this
+          // durable item, while the registry is only its engine projection.
+          const paused = this.source(id).paused || item.paused
+          this.ui.registry.setPaused(recordId, paused)
         }
         await this.ui.registry.flush()
         this.ui.refresh()
