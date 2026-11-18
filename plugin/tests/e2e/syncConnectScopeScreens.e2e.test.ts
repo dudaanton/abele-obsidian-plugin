@@ -5,6 +5,7 @@ import { probePrelude, type Screen } from './helpers/layoutProbe'
 import { shotDir } from './helpers/shots'
 import { targets } from './helpers/target'
 import { SHARE_SET_PICKER } from './helpers/shareSetPicker'
+import { closeScopeCapture } from './helpers/closeScopeCapture'
 
 // Both sizes run on the desktop app; this file never takes the real phone.
 targets('desktop')
@@ -15,14 +16,7 @@ it('captures device-scope states in the real desktop and emulated phone dialogs'
   const shots = shotDir('abele-sync-connect-scope')
   const close = () =>
     vault.evalAwait(`(async () => {
-    document.dispatchEvent(new Event('abele-scope-capture-release'));
-    document.activeElement?.blur();
-    document.documentElement.style.removeProperty('--keyboard-height');
-    window.dispatchEvent(new Event('keyboardWillHide'));
-    await new Promise(resolve=>setTimeout(resolve,500));
-    for(const button of [...document.querySelectorAll('.modal-close-button')].reverse()) button.click();
-    for(let attempt=0;attempt<30&&document.querySelector('.modal.abele-modal');attempt++)await new Promise(resolve=>setTimeout(resolve,100));
-    if(document.querySelector('.modal.abele-modal'))throw new Error('Scope capture dialog did not close');
+    await (${closeScopeCapture.toString()})(document,window);
     return true;
   })()`)
   const states = [

@@ -22,6 +22,39 @@ const token = (key = 'a') =>
     scope: { kind: 'folder', id: 'root', path: '/' },
   })
 
+it('allows Close while metadata is still pending and aborts that check on dismissal', async () => {
+  const ui = tokenUiFixture(true)
+  const answer = deferred<ConnectScope>()
+  let signal: AbortSignal | undefined
+  vi.spyOn(ui.itemSets, 'connectScope').mockImplementation((_text, current) => {
+    signal = current
+    return answer.promise
+  })
+  const connect = vi.spyOn(ui, 'connect')
+  ui.itemSets.install()
+  const wrapper = mount(TokenDialogs, {
+    props: { ui, mode: 'connect' },
+    global: { stubs: { Modal: { template: '<div><slot /><slot name="footer" /></div>' } } },
+  })
+  try {
+    await wrapper.find('input[type=password]').setValue(token())
+    const close = wrapper
+      .findAllComponents(Button)
+      .find((button) => button.props('text') === 'Close')!
+    expect(close.props('disabled')).toBeFalsy()
+    await close.trigger('click')
+    expect(wrapper.emitted('close')).toHaveLength(1)
+    wrapper.unmount()
+    expect(signal?.aborted).toBe(true)
+    expect(connect).not.toHaveBeenCalled()
+    answer.resolve({ choices: [], serverFiles: 0 })
+    await flushPromises()
+  } finally {
+    if (wrapper.exists()) wrapper.unmount()
+    ui.itemSets.uninstall()
+  }
+})
+
 it('checks metadata without connecting and passes the chosen scope only after Connect', async () => {
   Platform.isPhone = true
   const ui = tokenUiFixture(true)
