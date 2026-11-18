@@ -24,7 +24,7 @@ export function openDesignCatalogue(
   closeDesignCatalogue()
   const { app } = GlobalStore.getInstance()
   const doc = app.workspace.containerEl.ownerDocument
-  const previous = new Set(doc.querySelectorAll('.modal'))
+  const previous = new Set(Array.from(doc.querySelectorAll('.modal')))
   const host = doc.win.createDiv()
   doc.body.appendChild(host)
   mounted = mountKit(
@@ -41,7 +41,7 @@ export function openDesignCatalogue(
     null,
     { remove: true }
   )
-  modal = [...doc.querySelectorAll<HTMLElement>('.modal')].find((el) => !previous.has(el))
+  modal = Array.from(doc.querySelectorAll<HTMLElement>('.modal')).find((el) => !previous.has(el))
   if (modal) modal.dataset.abeleCataloguePage = page
   return { page, variant, synthetic: true }
 }
