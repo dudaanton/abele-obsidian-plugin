@@ -9,6 +9,47 @@ import {
 } from '@abele/sync-sdk/core'
 import { selectiveFrom } from '@/sync/connection'
 
+it('refreshes additive replay spellings through indexed candidates without physical directory reads', async () => {
+  const { refreshLocalPaths } = await import(
+    '../../node_modules/@abele/sync-sdk/dist/internal/core/localPaths.js'
+  )
+  const state = new MemoryStateStore()
+  for (let n = 0; n < 256; n++) {
+    const path = `Notes/section-${n}/sample.md`
+    await state.put({
+      path,
+      wirePath: path,
+      fileId: path,
+      versionId: 'v1',
+      sha: 'a'.repeat(64),
+      size: 1,
+      mtime: 1,
+    })
+  }
+  await state.setJournal({
+    batchId: 'sample',
+    idempotencyKey: 'sample',
+    startedAt: new Date().toISOString(),
+    ops: [{ op: 'create', path: 'pending.md', sha: 'b'.repeat(64), size: 1, mtime: 1 }],
+  })
+  const listChildren = vi.fn(async () => [])
+  const fs = Object.assign(new MemoryFileSystem(), {
+    listChildren,
+    trustedPathCandidates: {
+      lookup: async (parent: string, name: string) => [
+        {
+          path: parent ? parent + '/' + name : name,
+          kind: name.endsWith('.md') ? ('file' as const) : ('directory' as const),
+        },
+      ],
+      lstat: async () => null,
+    },
+  })
+  await refreshLocalPaths(fs, state)
+  expect(listChildren).not.toHaveBeenCalled()
+  expect((await state.get('Notes/section-255/sample.md'))?.versionId).toBe('v1')
+})
+
 it('yields while classifying a large additive replay journal', async () => {
   const { refreshLocalPaths } = await import(
     '../../node_modules/@abele/sync-sdk/dist/internal/core/localPaths.js'

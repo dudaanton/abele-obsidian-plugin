@@ -1151,15 +1151,17 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         const segments = wirePath(entry.wirePath).split('/');
         let parent = '';
         for (let n = 0; n < segments.length; n++) {
-          if (!read.has(parent)) {
-            // This inventory is shared by the pass; each physical sibling is added once.
-            // Read complete directories, never a target-filtered host inventory.
-            for (const child of await fs.listChildren(parent)) {
+          const candidateKey = JSON.stringify([parent, segments[n]]);
+          if (!read.has(parent) && !read.has(candidateKey)) {
+            // Indexed buckets include every canonical alias. Unsupported paths
+            // retain complete physical sibling enumeration and collision checks.
+            const candidates = await fs.trustedPathCandidates?.lookup(parent, segments[n]);
+            for (const child of candidates ?? await fs.listChildren(parent)) {
               inventory.add(child);
               const checkpoint = work.step();
               if (checkpoint) await checkpoint;
             }
-            read.add(parent);
+            read.add(candidates === undefined ? parent : candidateKey);
           }
           const prefix = segments.slice(0, n + 1).join('/');
           const matches = inventory.entries.get(prefix) ?? [];
