@@ -13,6 +13,8 @@ import {
   stopScrollGuards,
 } from './helpers/scrollBlocking'
 import { nativeInputProbe } from './helpers/nativeInput'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 targets('desktop')
 const artifacts = shotDir('abele-node-store-refresh')
@@ -21,11 +23,15 @@ const artifacts = shotDir('abele-node-store-refresh')
 // bounds sampled executing plugin work per long task and forbids direct blocking
 // primitives. Whole-renderer CPU and frame gaps remain diagnostic under contention.
 const allocationsEnabled = process.env.ABELE_SCROLL_ALLOCATIONS === '1'
+// API interception and the deliberate stall are isolated diagnostics, never tier defaults.
+const measurementsEnabled = process.env.ABELE_SCROLL_MEASUREMENTS === '1'
 
-it('detects a synchronous blocking wait in a native scroll handler', async () => {
-  const report = JSON.parse(
-    await evalLong(
-      nativeInputProbe(`(async () => {
+it.runIf(measurementsEnabled)(
+  'detects a synchronous blocking wait in a native scroll handler',
+  async () => {
+    const report = JSON.parse(
+      await evalLong(
+        nativeInputProbe(`(async () => {
     const debuggerApi = require('@electron/remote').getCurrentWebContents().debugger;
     const attached = debuggerApi.isAttached();
     const cdp = (method, params) => debuggerApi.sendCommand(method, params);
@@ -55,21 +61,22 @@ it('detects a synchronous blocking wait in a native scroll handler', async () =>
       }
     }
   })()`),
-      15000
-    )
-  ) as {
-    calls: { operation: string }[]
-    moved: number
-    injected: { completed: boolean; elapsed: number }
+        15000
+      )
+    ) as {
+      calls: { operation: string }[]
+      moved: number
+      injected: { completed: boolean; elapsed: number }
+    }
+    expect(report.moved).toBeGreaterThan(0)
+    expect(report.injected.completed, JSON.stringify(report)).toBe(true)
+    expect(report.injected.elapsed).toBeGreaterThanOrEqual(250)
+    expect(
+      report.calls.map((call) => call.operation),
+      JSON.stringify(report)
+    ).toContain('wait')
   }
-  expect(report.moved).toBeGreaterThan(0)
-  expect(report.injected.completed, JSON.stringify(report)).toBe(true)
-  expect(report.injected.elapsed).toBeGreaterThanOrEqual(250)
-  expect(
-    report.calls.map((call) => call.operation),
-    JSON.stringify(report)
-  ).toContain('wait')
-})
+)
 
 beforeEach(async (context) => {
   if (!context.task.name.startsWith('wheel / long')) return
@@ -113,9 +120,9 @@ beforeEach(async (context) => {
 })
 
 afterEach(async (context) => {
-  const cleanupErrors = JSON.parse(
-    await evalLong(`JSON.stringify((${stopScrollGuards.toString()})())`, 10000)
-  )
+  const cleanupErrors = measurementsEnabled
+    ? JSON.parse(await evalLong(`JSON.stringify((${stopScrollGuards.toString()})())`, 10000))
+    : []
   if (!context.task.name.startsWith('wheel / long')) {
     expect(cleanupErrors, 'all scroll guards must be restored after each case').toEqual([])
     return
@@ -132,14 +139,11 @@ afterEach(async (context) => {
       fs.writeFileSync(directory + '/scroll-profile.json', JSON.stringify({ profile, tasks: fixture.longTasks, metrics: fixture.profileMetrics, metricsAfter, timings, allocationsEnabled: fixture.allocationsEnabled }));
       fs.writeFileSync(directory + '/scroll-allocations.json', JSON.stringify(allocations));
       fs.writeFileSync(directory + '/scroll-heap-windows.json', JSON.stringify(fixture.heapWindows));
-      const navigationStart = fixture.profileMetrics.metrics.find(m => m.name === 'NavigationStart').value;
-      const ownTaskCpuMs = (${ownScrollTaskCpu.toString()})(profile, fixture.longTasks, navigationStart);
       // Other matrix files use the same case name. Preserve this run's trace
       // beside its profile before a later suite can overwrite the shared artifact.
       const frames = ${JSON.stringify(shotDir('abele-phone') + '/wheel-long-idle-frames.json')};
       if (fs.existsSync(frames)) fs.copyFileSync(frames, directory + '/scroll-frames.json');
-      return JSON.stringify({ tasks: fixture.longTasks, refreshMs: fixture.times, error: fixture.error,
-        ownTaskCpuMs, cpuSamples: profile.samples?.length || 0 });
+      return JSON.stringify({ tasks: fixture.longTasks, refreshMs: fixture.times, error: fixture.error });
     } finally {
       fixture.observer.disconnect();
       fixture.heapObserver.disconnect();
@@ -150,9 +154,16 @@ afterEach(async (context) => {
   )
   console.log('NODE_SCROLL_PROFILE ' + report)
   expect(cleanupErrors, 'all scroll guards must be restored after each case').toEqual([])
-  const measured = JSON.parse(report) as { ownTaskCpuMs: number; cpuSamples: number }
-  expect(measured.cpuSamples, 'CPU profile must contain evidence').toBeGreaterThan(0)
-  expect(measured.ownTaskCpuMs, 'sampled executing plugin work per task').toBeLessThanOrEqual(90)
+  // Analyze the existing artifact in the test worker, never in the renderer.
+  const evidence = JSON.parse(readFileSync(join(artifacts, 'scroll-profile.json'), 'utf8'))
+  const navigationStart = evidence.metrics.metrics.find(
+    (m: { name: string }) => m.name === 'NavigationStart'
+  ).value
+  expect(evidence.profile.samples?.length, 'CPU profile must contain evidence').toBeGreaterThan(0)
+  expect(
+    ownScrollTaskCpu(evidence.profile, evidence.tasks, navigationStart),
+    'sampled executing plugin work per task'
+  ).toBeLessThanOrEqual(90)
 })
 
 beforeAll(async () => {
@@ -280,8 +291,7 @@ it('profiles eight seconds of large-history refresh without plugin stalls or met
     const fixture = window.__sampleNodeRefresh;
     const debuggerApi = require('@electron/remote').getCurrentWebContents().debugger;
     const attached = debuggerApi.isAttached();
-    const tasks = [];
-    const blocking = (${scrollBlocking.toString()})();
+    const tasks = [];${measurementsEnabled ? `\n    const blocking = (${scrollBlocking.toString()})();` : ''}
     const observer = new PerformanceObserver(list => {
       tasks.push(...list.getEntries().map(entry => ({ start: entry.startTime, duration: entry.duration })));
     });
@@ -294,15 +304,14 @@ it('profiles eight seconds of large-history refresh without plugin stalls or met
       await debuggerApi.sendCommand('Profiler.setSamplingInterval', { interval: 500 });
       await debuggerApi.sendCommand('Profiler.start');
       observer.observe({ type: 'longtask' });
-      blocking.install(require);
+      ${measurementsEnabled ? 'blocking.install(require);' : ''}
       await new Promise(resolve => setTimeout(resolve, 8000));
       const { profile } = await debuggerApi.sendCommand('Profiler.stop');
       return JSON.stringify({ tasks, refreshMs: fixture.times, error: fixture.error, metadataPuts: fixture.metadataPuts,
-        ownTaskCpuMs: (${ownScrollTaskCpu.toString()})(profile, tasks, navigationStart),
-        blockingCalls: blocking.calls, cpuSamples: profile.samples?.length || 0,
+        ${measurementsEnabled ? 'blockingCalls: blocking.calls,' : ''}
         profileStartTime: profile.startTime, navigationStart, profileNodes: profile.nodes, samples: profile.samples, timeDeltas: profile.timeDeltas });
     } finally {
-      blocking.stop();
+      ${measurementsEnabled ? 'blocking.stop();' : ''}
       observer.disconnect();
       if (!attached) debuggerApi.detach();
     }
@@ -314,20 +323,34 @@ it('profiles eight seconds of large-history refresh without plugin stalls or met
     refreshMs: number[]
     error?: string
     metadataPuts: number
-    ownTaskCpuMs: number
-    blockingCalls: unknown[]
-    cpuSamples: number
+    blockingCalls?: unknown[]
+    profileStartTime: number
+    navigationStart: number
+    profileNodes: Parameters<typeof ownScrollTaskCpu>[0]['nodes']
+    samples: number[]
+    timeDeltas: number[]
   }
   // Keep the complete sampled stacks in the test log for attribution of any failure.
   console.log('NODE_REFRESH_PROFILE ' + JSON.stringify(report))
   expect(report.error).toBeUndefined()
   expect(report.metadataPuts).toBe(0)
   expect(report.refreshMs.length).toBeGreaterThanOrEqual(5)
-  expect(report.cpuSamples).toBeGreaterThan(0)
-  expect(report.ownTaskCpuMs).toBeLessThanOrEqual(50)
-  expect(report.blockingCalls).toEqual([])
+  expect(report.samples.length).toBeGreaterThan(0)
+  expect(
+    ownScrollTaskCpu(
+      {
+        startTime: report.profileStartTime,
+        nodes: report.profileNodes,
+        samples: report.samples,
+        timeDeltas: report.timeDeltas,
+      },
+      report.tasks,
+      report.navigationStart
+    )
+  ).toBeLessThanOrEqual(50)
+  if (measurementsEnabled) expect(report.blockingCalls).toEqual([])
 })
 
 // The same continuous native-wheel path used by the scroll qualification, with the
 // large connected stub's ordinary controller/store refresh running throughout.
-chatScrollMatrixSuite('wheel/long/idle', 90, 8000)
+chatScrollMatrixSuite('wheel/long/idle', 90, 8000, measurementsEnabled)

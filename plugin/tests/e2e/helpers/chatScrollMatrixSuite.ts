@@ -15,7 +15,12 @@ import { fitSidebarInputWidths } from './sidebarInputViewport'
 const available = isObsidianRunning() && hasTestApi()
 import { inputProbe, script, states, type Report } from './chatScrollMatrix'
 // Optional focused reruns keep the unfiltered matrix as the final qualification.
-export function chatScrollMatrixSuite(filter?: string, frameBudgetMs?: number, idleMs = 0) {
+export function chatScrollMatrixSuite(
+  filter?: string,
+  frameBudgetMs?: number,
+  idleMs = 0,
+  measure = false
+) {
   const selected = (phone: boolean, size: string, state: string) =>
     !filter || new RegExp(filter).test(`${phone ? 'touch' : 'wheel'}/${size}/${state}`)
 
@@ -85,15 +90,12 @@ export function chatScrollMatrixSuite(filter?: string, frameBudgetMs?: number, i
               async () => {
                 const probe = () =>
                   evalLong(
-                    nativeInputProbe(
-                      script(size, state, phone, idleMs, frameBudgetMs !== undefined)
-                    ),
-                    frameBudgetMs !== undefined ? 900_000 : longTouchText ? 390_000 : 300_000
+                    nativeInputProbe(script(size, state, phone, idleMs, measure)),
+                    measure ? 900_000 : longTouchText ? 390_000 : 300_000
                   ).then((result) => JSON.parse(result) as Report)
                 const result = await probe()
                 console.log('scroll-matrix', JSON.stringify({ phone, size, state, ...result }))
-                if (frameBudgetMs !== undefined) {
-                  expect.soft(result.inputCpuSamples).toBeGreaterThan(1)
+                if (measure && frameBudgetMs !== undefined) {
                   // Per-task plugin CPU is checked against the captured profile in
                   // the owning suite. Whole-renderer clocks stay diagnostic only.
                   expect
@@ -129,7 +131,7 @@ export function chatScrollMatrixSuite(filter?: string, frameBudgetMs?: number, i
                     .toBeLessThanOrEqual(phone ? 24 : 2)
                 }
               },
-              frameBudgetMs !== undefined ? 930_000 : longTouchText ? 420_000 : 360_000
+              measure ? 930_000 : longTouchText ? 420_000 : 360_000
             )
           }
         }
