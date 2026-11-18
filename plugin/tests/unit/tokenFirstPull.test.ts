@@ -92,8 +92,13 @@ it.each([
       id: 'shared-folder',
       path: count === 1 ? 'Container/Shared sample' : 'Shared sample',
     }
-    const bytes = new TextEncoder().encode('seeded before token issuance')
-    const sha = await sha256(bytes)
+    // Distinct payloads keep the per-file transfer-cost oracle independent of
+    // immutable-content reuse, which has separate same-content regression cases.
+    const payloads = Array.from({ length: count }, (_, i) =>
+      new TextEncoder().encode('seeded before token issuance ' + String(i).padStart(5, '0'))
+    )
+    const hashes = await Promise.all(payloads.map((bytes) => sha256(bytes)))
+    const bytes = payloads[0]
     const directories = Array.from({ length: 12 }, (_, i) => ({
       file_id: 'directory-' + i,
       version_id: 'directory-version-' + i,
@@ -106,8 +111,8 @@ it.each([
       version_id: 'version-' + i,
       path: scope.path + '/section-' + (i % 12) + '/sample-' + i + (i % 7 === 0 ? '.bin' : '.md'),
       kind: i % 7 === 0 ? 'attachment' : 'note',
-      sha,
-      size: bytes.length,
+      sha: hashes[i],
+      size: payloads[i].length,
       mtime: 1000,
     }))
     directories.unshift({
@@ -170,6 +175,8 @@ it.each([
         })
       }
       if (url.pathname.endsWith('/content')) {
+        const file = /\/file-(\d+)\/content$/.exec(url.pathname)
+        const bytes = file ? payloads[Number(file[1])] : payloads[0]
         if (native && /\/file-\d+\/content$/.test(url.pathname) && beforeFirstPull === 0)
           beforeFirstPull = diagnosticCalls
         const range = /^bytes=(\d+)-(\d+)$/.exec(new Headers(init?.headers).get('range') ?? '')
@@ -193,9 +200,9 @@ it.each([
         content: 'untouched',
       })),
       ...(native
-        ? files.slice(0, -1).map((file) => ({
+        ? files.slice(0, -1).map((file, i) => ({
             path: file.path,
-            content: new TextDecoder().decode(bytes),
+            content: new TextDecoder().decode(payloads[i]),
             mtime: 1000,
           }))
         : []),
@@ -447,8 +454,8 @@ it.each([
       const activeReviews = fixture?.ui.reviews ?? reviews
       const [candidate] = await activeReviews.executables.pending()
       expect(candidate).toMatchObject({ path: code.path, kind: 'attachment' })
-      for (const item of files)
-        expect(await app.vault.adapter.read(item.path)).toBe(new TextDecoder().decode(bytes))
+      for (const [i, item] of files.entries())
+        expect(await app.vault.adapter.read(item.path)).toBe(new TextDecoder().decode(payloads[i]))
       for (const item of directories)
         expect(await app.vault.adapter.stat(item.path)).toMatchObject({ type: 'folder' })
       expect(
@@ -496,8 +503,10 @@ it.each([
         await fixture.ui.disconnect(fixture.id)
         expect(await activeReviews.executables.pending()).toEqual([])
         expect(fixture.ui.candidates.value).toEqual([])
-        for (const item of files)
-          expect(await app.vault.adapter.read(item.path)).toBe(new TextDecoder().decode(bytes))
+        for (const [i, item] of files.entries())
+          expect(await app.vault.adapter.read(item.path)).toBe(
+            new TextDecoder().decode(payloads[i])
+          )
         await fixture.ui.connect(
           encodeAccessToken({ v: 1, address: 'https://sync.example', key: 'a'.repeat(43), scope })
         )

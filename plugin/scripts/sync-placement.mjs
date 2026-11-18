@@ -875,8 +875,7 @@ ${ordinary}\n    }\n    async retryFailure`
             const siblings = new Map();
             for (const change of changes) {
               if (change.sha === null || change.op === 'delete' || change.size === null ||
-                  change.size > this.placer.budget.maxChunkBytes || this.passedOver(change) ||
-                  wantedHashes.has(change.sha)) continue;
+                  change.size > this.placer.budget.maxChunkBytes || this.passedOver(change)) continue;
               const entry = await this.state.byFileId(change.file_id);
               if (entry?.versionId === change.version_id || entry?.sha === change.sha ||
                   this.isDirty(change, entry)) continue;
@@ -916,6 +915,9 @@ ${ordinary}\n    }\n    async retryFailure`
                 if (exists && (entry === null || await this.placer.destinationMatches(target, change.sha, change.size))) continue;
               }
               if (await this.placer.localCandidate(change.sha, change.size, local)) continue;
+              // Every destination observation may discover a concurrent local write.
+              // Deduplicate only the network work, after those live checks.
+              if (wantedHashes.has(change.sha)) continue;
               wanted.push(change);
               wantedHashes.add(change.sha);
               observations.set(change, observed);
