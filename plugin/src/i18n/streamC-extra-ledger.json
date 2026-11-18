@@ -7920,7 +7920,7 @@
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },
   "sync.sections.restored": {
-    "englishHash": "a1e12249be10b2de372315d609341df48edf7369ec436410dc59139c9e1d7912",
+    "englishHash": "7d964e042c71572ec4ca75ad12f82c019607620da1e1e5569e5f82993505db47",
     "context": "Device settings section selection, retained versions, synced keys and read-only content comparison",
     "reviewedLocales": ["ru", "lv", "es", "de"]
   },

@@ -10,12 +10,20 @@
       :key="item.id"
       class="abele-sections__kept"
       :name="t('sync.sections.keptName', { section: labelOf(item.id), device: item.from })"
-      :desc="t('sync.sections.keptDesc', { when: formatWhen(new Date(item.at).toISOString()) })"
+      :desc="
+        item.choice
+          ? t('sync.sections.againKept')
+          : t('sync.sections.keptDesc', { when: formatWhen(new Date(item.at).toISOString()) })
+      "
       :data-kept="item.id"
     >
       <Button
         :text="t('sync.sections.restore')"
-        :tooltip="t('sync.sections.restoreTip', { section: labelOf(item.id) })"
+        :tooltip="
+          item.choice
+            ? t('sync.sections.restore')
+            : t('sync.sections.restoreTip', { section: labelOf(item.id) })
+        "
         :loading="restoring === item.id"
         @click="restore(item.id)"
       />
@@ -65,17 +73,17 @@
         @click="fold(page.title)"
       >
         <template #leading>
-            <input
-              type="checkbox"
-              class="abele-sections__check"
-              :disabled="!pluginSettings"
-              :checked="allOf(page.rows)"
-              :indeterminate="someOf(page.rows) && !allOf(page.rows)"
-              :data-indeterminate="someOf(page.rows) && !allOf(page.rows)"
-              :aria-label="t('sync.sections.pageCheck', { page: page.title })"
-              @click.stop
-              @change="chooseMany(page.rows, !allOf(page.rows))"
-            />
+          <input
+            type="checkbox"
+            class="abele-sections__check"
+            :disabled="!pluginSettings"
+            :checked="allOf(page.rows)"
+            :indeterminate="someOf(page.rows) && !allOf(page.rows)"
+            :data-indeterminate="someOf(page.rows) && !allOf(page.rows)"
+            :aria-label="t('sync.sections.pageCheck', { page: page.title })"
+            @click.stop
+            @change="chooseMany(page.rows, !allOf(page.rows))"
+          />
         </template>
         <!-- A folded page still says that something under it wants a look. -->
         <template
@@ -98,15 +106,15 @@
           @click="flip(row)"
         >
           <template #leading>
-              <input
-                type="checkbox"
-                class="abele-sections__check"
-                :disabled="!pluginSettings"
-                :checked="chosen.has(row.id)"
-                :aria-label="row.label"
-                @click.stop
-                @change="flip(row)"
-              />
+            <input
+              type="checkbox"
+              class="abele-sections__check"
+              :disabled="!pluginSettings"
+              :checked="chosen.has(row.id)"
+              :aria-label="row.label"
+              @click.stop
+              @change="flip(row)"
+            />
           </template>
           <template v-if="pluginSettings && chosen.has(row.id)" #end>
             <Icon
@@ -139,6 +147,7 @@
 
   <ChoiceModal
     v-if="asking"
+    phone-sheet
     :title="t('sync.sections.againTitle', { section: asking.label })"
     :message="[
       t('sync.sections.againBody', { section: asking.label }),
@@ -196,7 +205,7 @@ const props = defineProps<{
 
 const chosen = computed(() => props.source.chosen.value)
 const rows = computed(() => props.source.rows.value)
-const rowOf = (id: SectionId) => rows.value.find((row) => row.id === id)!
+const rowOf = (id: SectionId) => rows.value.find((row) => row.id === id)
 const labelOf = (id: SectionId) => rows.value.find((row) => row.id === id)?.label ?? id
 
 const pages = computed(() =>

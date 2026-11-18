@@ -297,7 +297,7 @@ export class TokenEngineRuntime
   readonly engine: SyncEngine
   readonly client: V2EngineClient
   private check?: ReturnType<typeof runtimeVaultCheck>
-  vaultCheck() {
+  vaultCheckSource() {
     return (this.check ??= runtimeVaultCheck({
       fs: this.localFs,
       encoded: this.options.encoded,

@@ -1844,8 +1844,7 @@ export const extra = {
   'sync.sections.keptDesc': 'Mainīts abās ierīcēs, {when}. Šīs ierīces versija ir saglabāta.',
   'sync.sections.restore': 'Atjaunot',
   'sync.sections.restoreTip': 'Atjaunot šīs ierīces sadaļu {section} un nosūtīt citām ierīcēm',
-  'sync.sections.restored':
-    '{section}: šīs ierīces versija ir atjaunota un tiek sūtīta citām ierīcēm.',
+  'sync.sections.restored': '{section}: saglabātā versija ir atjaunota un tiek nosūtīta.',
   'sync.sections.againTitle': 'Atkal sinhronizēt {section}?',
   'sync.sections.againBody':
     'Sadaļa {section} šajā ierīcē atšķiras no krātuves. Izvēlieties versiju abām pusēm.',

@@ -1879,8 +1879,7 @@ export const extra = {
     'Modificado en ambos dispositivos, {when}. Se conservó la versión de este dispositivo.',
   'sync.sections.restore': 'Restaurar',
   'sync.sections.restoreTip': 'Restaurar {section} de este dispositivo y enviarlo a los demás',
-  'sync.sections.restored':
-    '{section}: la versión de este dispositivo se restauró y se está enviando.',
+  'sync.sections.restored': '{section}: la versión conservada se restauró y se está enviando.',
   'sync.sections.againTitle': '¿Volver a sincronizar {section}?',
   'sync.sections.againBody':
     '{section} en este dispositivo difiere de la bóveda. Elige la versión que conservarán ambos.',

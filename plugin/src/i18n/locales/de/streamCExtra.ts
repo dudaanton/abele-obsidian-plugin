@@ -1851,7 +1851,7 @@ export const extra = {
   'sync.sections.restore': 'Wiederherstellen',
   'sync.sections.restoreTip': '{section} dieses Geräts wiederherstellen und an die anderen senden',
   'sync.sections.restored':
-    '{section}: Die Version dieses Geräts ist wiederhergestellt und wird gesendet.',
+    '{section}: Die aufbewahrte Version ist wiederhergestellt und wird gesendet.',
   'sync.sections.againTitle': '{section} wieder synchronisieren?',
   'sync.sections.againBody':
     '{section} auf diesem Gerät unterscheidet sich vom Vault. Wähle die Version für beide.',

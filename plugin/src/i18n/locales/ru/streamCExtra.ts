@@ -1884,7 +1884,7 @@ export const extra = {
   'sync.sections.keptDesc': 'Изменено с двух сторон, {when}. Версия этого устройства сохранена.',
   'sync.sections.restore': 'Вернуть',
   'sync.sections.restoreTip': 'Вернуть свой раздел «{section}» и отправить остальным',
-  'sync.sections.restored': '{section}: своя версия возвращена и отправляется остальным.',
+  'sync.sections.restored': '{section}: сохранённая версия возвращена и отправляется.',
   'sync.sections.againTitle': 'Снова синхронизировать «{section}»?',
   'sync.sections.againBody':
     'Раздел «{section}» на этом устройстве отличается от хранилища. Выберите версию для обоих.',

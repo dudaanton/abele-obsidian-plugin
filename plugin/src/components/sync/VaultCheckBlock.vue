@@ -38,7 +38,7 @@
       :class="{ 'is-nested': groups.length > 1 }"
     >
       <FoldHeading
-        v-if="groups.length > 1"
+        v-if="groups.length > 1 || group.items.length > 20"
         :text="t(`sync.check.reason.${group.reason}`)"
         :count="group.items.length"
         collapsible
@@ -46,12 +46,10 @@
         :collapsed="!isOpen(group.reason)"
         @toggle="fold(group.reason)"
       />
-      <template v-if="groups.length === 1 || isOpen(group.reason)">
+      <template v-if="(groups.length === 1 && group.items.length <= 20) || isOpen(group.reason)">
         <div class="abele-vault-check__desc">{{ t(`sync.check.why.${group.reason}`) }}</div>
         <EntryRow v-for="item in group.items" :key="item.path" :data-path="item.path">
-          <template #leading
-            ><Icon :icon="fileIcon(item.path)" :interactive="false"
-          /></template>
+          <template #leading><Icon :icon="fileIcon(item.path)" :interactive="false" /></template>
           <span class="abele-vault-check__name">{{ fileName(item.path) }}</span>
           <template #actions>
             <Icon

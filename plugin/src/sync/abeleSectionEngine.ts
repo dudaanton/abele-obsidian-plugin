@@ -53,7 +53,11 @@ export class SectionSettings {
     return new Set(this.state.chosen)
   }
   get kept(): KeptSection[] {
-    return [...new Map(this.state.kept.map(({ id, from, at }) => [id, { id, from, at }])).values()]
+    return [
+      ...new Map(
+        this.state.kept.map(({ id, from, at, choice }) => [id, { id, from, at, choice }])
+      ).values(),
+    ]
   }
   private values(settings: AbeleSettings): Values {
     return Object.fromEntries(
@@ -79,8 +83,8 @@ export class SectionSettings {
   private save(): void {
     this.storage.write(clone(this.state))
   }
-  private keep(id: SectionId, value: unknown, from: string): void {
-    this.state.kept.push({ id, value: clone(value), from, at: Date.now() })
+  private keep(id: SectionId, value: unknown, from: string, choice = false): void {
+    this.state.kept.push({ id, value: clone(value), from, at: Date.now(), choice })
   }
   receive(incoming: AbeleSettings, mine?: AbeleSettings, from = 'Another device'): AbeleSettings {
     const remote = this.values(incoming)
@@ -144,7 +148,12 @@ export class SectionSettings {
     let next = mine
     if (different) {
       const own = this.values(mine)[id]
-      this.keep(id, take === 'vault' ? own : this.state.remote[id], 'Another device')
+      this.keep(
+        id,
+        take === 'vault' ? own : this.state.remote[id],
+        take === 'device' ? this.deviceName : (this.state.sender ?? 'Another device'),
+        true
+      )
       if (take === 'vault') next = this.put(mine, this.state.remote, [id])
     }
     this.state.local = this.values(next)

@@ -33,6 +33,8 @@ export interface KeptSection {
   /** The device whose version arrived. */
   from: string
   at: number
+  /** A deliberate re-enable choice retained the alternative, rather than an offline conflict. */
+  choice?: boolean
 }
 
 export interface AbeleSectionsSource {

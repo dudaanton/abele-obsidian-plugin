@@ -82,3 +82,22 @@ it('retains successive local conflict copies until each restore is saved', () =>
   engine.restored('reader')
   expect(engine.restore('reader', settings('remote-two')).reader).toEqual({ theme: 'local-one' })
 })
+it('keeps the vault alternative when explicitly sending this device version', () => {
+  let saved: unknown
+  const engine = new SectionSettings(
+    {
+      read: () => saved,
+      write: (value) => {
+        saved = value
+      },
+    },
+    'Sample computer'
+  )
+  engine.receive(settings('base'))
+  engine.choose('reader', false, settings('device'))
+  const own = engine.receive(settings('vault'), settings('device'))
+  const selected = engine.choose('reader', true, own, 'device')
+  expect(selected.reader).toEqual({ theme: 'device' })
+  expect(engine.kept[0].from).toBe('Sample computer')
+  expect(engine.restore('reader', selected).reader).toEqual({ theme: 'vault' })
+})

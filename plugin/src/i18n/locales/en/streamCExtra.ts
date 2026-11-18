@@ -1800,7 +1800,7 @@ export const extra = {
   'sync.sections.keptDesc': 'Changed on both, {when}. This device’s version is kept.',
   'sync.sections.restore': 'Restore',
   'sync.sections.restoreTip': 'Put this device’s {section} back and send it to the others',
-  'sync.sections.restored': '{section}: this device’s version is back and is being sent.',
+  'sync.sections.restored': '{section}: the kept version is back and is being sent.',
   'sync.sections.againTitle': 'Sync {section} again?',
   'sync.sections.againBody':
     '{section} on this device is not the same as in the vault. Pick the one both keep.',

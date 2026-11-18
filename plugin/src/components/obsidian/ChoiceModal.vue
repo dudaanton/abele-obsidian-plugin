@@ -3,6 +3,7 @@
     :title="title"
     :modal-class="modalClass"
     :close-in-footer="closeInFooter ?? choices.some((c) => c.value === null)"
+    :phone-sheet="phoneSheet"
     @close="emit('close')"
   >
     <p v-if="quote" class="abele-choice__quote">“{{ quote }}”</p>
@@ -55,6 +56,7 @@ const props = withDefaults(
     /** The footer's Cancel is the dismiss action; by default when a choice answers nothing. */
     closeInFooter?: boolean
     modalClass?: string | string[]
+    phoneSheet?: boolean
   }>(),
   // Unset, not Vue's false for a missing boolean: unset follows the choices.
   { closeInFooter: undefined }
