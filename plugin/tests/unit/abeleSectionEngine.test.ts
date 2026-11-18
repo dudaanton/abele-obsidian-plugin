@@ -151,16 +151,19 @@ const orderings = [
 it.each(
   orderings.flatMap((ordering) =>
     [false, true].flatMap((restart) =>
-      ['initial', 'saved', 'private', 'incoming'].map((incoming) => ({
-        ...ordering,
-        restart,
-        incoming,
-      }))
+      [false, true].flatMap((complete) =>
+        ['initial', 'saved', 'private', 'incoming'].map((incoming) => ({
+          ...ordering,
+          restart,
+          complete,
+          incoming,
+        }))
+      )
     )
   )
 )(
-  '$name, restart=$restart, receive=$incoming preserves local intent or a recovery copy',
-  ({ steps, local, shared, on, restart, incoming }) => {
+  '$name, complete=$complete, restart=$restart, receive=$incoming preserves local intent or a recovery copy',
+  ({ steps, local, shared, on, restart, complete, incoming }) => {
     const fixtureState = fixture()
     let engine = fixtureState.engine
     let current = engine.receive(settings('initial'))
@@ -209,17 +212,27 @@ it.each(
     expect(disk.reader).toEqual({
       theme: steps.some((step) => step === 'write-unacknowledged') ? 'private' : shared,
     })
+    if (complete) engine.written(engine.project(current))
     if (restart) engine = new SectionSettings(fixtureState.storage)
     const result = engine.receive(settings(incoming), restart ? undefined : current)
-    expect(result.reader).toEqual({ theme: !on || incoming === shared ? local : incoming })
+    const lastShared = complete && on ? local : shared
+    expect(result.reader).toEqual({ theme: !on || incoming === lastShared ? local : incoming })
     const recoverable = [result.reader]
-    while (engine.kept.length) {
-      recoverable.push(engine.restore('reader', result).reader)
-      engine.restored('reader')
+    const recovery = new SectionSettings({ read: fixtureState.storage.read, write: () => {} })
+    for (let retained = recovery.kept.at(-1); retained; retained = recovery.kept.at(-1)) {
+      const restored = recovery.restore(retained.id, result)
+      if (retained.id === 'reader') recoverable.push(restored.reader)
+      recovery.restored(retained.id)
     }
     expect(recoverable).toContainEqual({ theme: local })
     if (steps.some((step) => step === 'edit-private'))
       expect(recoverable).toContainEqual({ theme: 'private' })
+    // Continue every prefix through publication and another differing incoming section.
+    engine.written(engine.project(result))
+    if (restart) engine = new SectionSettings(fixtureState.storage)
+    const later = engine.receive(settings('later'), restart ? undefined : result)
+    expect(later.reader).toEqual(on ? { theme: 'later' } : result.reader)
+    if (on) expect(engine.restore('reader', later).reader).toEqual(result.reader)
   }
 )
 it('resumes sending the chosen device version after interruption before the settings write', () => {
@@ -263,11 +276,12 @@ it('takes the incoming section after offline edits and durably keeps the local v
   expect(restarted.kept).toMatchObject([{ id: 'reader', from: 'Sample tablet' }])
   expect(restarted.restore('reader', incoming).reader).toEqual({ theme: 'offline' })
 })
-it('does not flag a remote-only change as an offline conflict', () => {
+it('retains the replaced local section even for a remote-only change', () => {
   const { engine } = fixture()
   engine.receive(settings('base'))
   expect(engine.receive(settings('other'), settings('base')).reader).toEqual({ theme: 'other' })
-  expect(engine.kept).toEqual([])
+  expect(engine.kept).toMatchObject([{ id: 'reader' }])
+  expect(engine.restore('reader', settings('other')).reader).toEqual({ theme: 'base' })
 })
 it('requires a choice for a differing section and keeps the alternative when taking the vault copy', () => {
   const { engine } = fixture()

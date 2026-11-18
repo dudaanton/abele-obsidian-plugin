@@ -14,7 +14,7 @@ interface LocalSections {
   chosen: SectionId[]
   local: Values
   remote: Values
-  /** Last incoming ancestor: local writes remain edits against it until a receive. */
+  /** Last incoming snapshot; never gates retention of a displaced local value. */
   base: Values
   kept: (KeptSection & { value: unknown })[]
   sender?: string
@@ -103,9 +103,6 @@ export class SectionSettings {
       if (
         !ownIds.includes(id) &&
         Object.hasOwn(local, id) &&
-        (Object.hasOwn(this.state.pending ?? {}, id) ||
-          (Object.hasOwn(this.state.base, id) &&
-            canonicalJson(local[id]) !== canonicalJson(this.state.base[id]))) &&
         canonicalJson(remote[id]) !== canonicalJson(local[id])
       )
         this.keep(id, local[id], from)

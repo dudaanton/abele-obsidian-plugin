@@ -2771,14 +2771,15 @@ The connection window selects which Abele settings sections this device shares. 
 use the same field ownership and key references as settings transfer. Connections and their
 tokens are excluded from this selection. The device-local host record
 `abele-sync-settings-sections-v1` holds the selection, local section values, the last shared
-values, incoming conflict baselines, pending explicit choices and retained conflict copies.
+values, incoming snapshots, pending explicit choices and retained replaced versions.
 It is not part of `data.json` or settings transfer. Pending choices survive an interrupted
 settings write; any differing incoming version retains the chosen local value for Restore,
 including a version matching an older incoming ancestor. An unchanged shared section keeps
 the durable local edit, even after restart; the incoming ancestor is not a shared-file revision.
 Unticked settings load from this record; saves retain the last successfully written shared value in
-`data.json` while writing private edits to the local record first. Incoming sections win
-concurrent edits, with the displaced local section retained for explicit Restore. The shared
+`data.json` while writing private edits to the local record first. Incoming replacements
+always retain the displaced local section for explicit Restore, whether it matches an
+incoming ancestor, a completed choice, or an unedited prior version. The shared
 file may carry `_abeleSectionDevice`, a display label identifying its latest settings writer.
 
 Section credentials remain keychain references in settings. With synced keys enabled, keys
