@@ -139,6 +139,17 @@ export function syncPlacementPlugin() {
       if (file.endsWith('/engine.js')) {
         code = replaceOnce(
           code,
+          '            const report = await this.cycle.cycle();',
+          `            const report = await this.cycle.cycle();
+            const inventoryClock = this.opts.fs[Symbol.for('abele.sync.local-scan-revision-v1')];
+            const inventoryRevision = this.cycle.inspectedLocalRevision;
+            // Finish this pass even under continuous edits. Queue at most one
+            // ordinary follow-up; the scheduler preserves pause/stop ownership.
+            if (inventoryRevision !== undefined && inventoryRevision !== inventoryClock.call(this.opts.fs))
+              this.trigger('inventory changed');`
+        )
+        code = replaceOnce(
+          code,
           '    trigger(why) {',
           `    trigger(why) {
         // An active exchange already polls the remote head. The periodic timer
@@ -373,6 +384,8 @@ export function syncPlacementPlugin() {
             await this.retries.succeeded(row.path, 'push');
         }
         const localRevision = fs[Symbol.for('abele.sync.local-scan-revision-v1')]?.();
+        // Incoming writes before inspection are already part of this inventory.
+        this.inspectedLocalRevision = localRevision;
         const entryRevision = await state[Symbol.for('abele.sync.local-scan-state-revision-v1')]?.();
         const directoryRevision = await state.getMeta?.('v2-directories');
         const waiting = this.retries.list();
@@ -464,6 +477,7 @@ export function syncPlacementPlugin() {
           return pass ? pass.call(this.ctx.opts.fs, run) : run();
         }
         async cycleUnlocked() {
+          this.inspectedLocalRevision = undefined;
           const priorSettledLocalRevision = this.settledLocalRevision;
           const priorSettledEntryRevision = this.settledEntryRevision;
           // Failure/cancellation cannot leave an earlier pass's proof reusable.
@@ -471,11 +485,6 @@ export function syncPlacementPlugin() {
           this.settledEntryRevision = undefined;`
         )
       } else if (file.endsWith('/scanSnapshot.js')) {
-        code = replaceOnce(
-          code,
-          'import { checkCancellation }',
-          'import { checkCancellation, SyncCancelled }'
-        )
         code = replaceOnce(
           code,
           'const snapshots = new Map();',
@@ -495,7 +504,6 @@ export function syncPlacementPlugin() {
           `const rows = await snapshot;
                     if (current !== (typeof clock === 'function' ? clock.call(fs) : undefined)) {
                       snapshots.clear();
-                      throw new SyncCancelled();
                     }
                     for (const item of rows) {`
         )
