@@ -1,20 +1,47 @@
 import { describe, expect, it } from 'vitest'
-import { evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
+import {
+  activeVaultName,
+  evalLong,
+  hasTestApi,
+  isObsidianRunning,
+  vaultCli,
+} from './helpers/obsidianCli'
 import { shotDir } from './helpers/shots'
+import { reloadAs, setWindowSize } from './helpers/phoneWindow'
+import {
+  desktopCaptureErrors,
+  withDesktopInspection,
+  type DesktopCapture,
+} from './helpers/desktopInspection'
 
-const available = isObsidianRunning() && hasTestApi()
+const available = process.env.E2E_TARGET !== 'phone' && isObsidianRunning() && hasTestApi()
 describe.skipIf(!available)('sync inspection desktop captures', () => {
   it('captures every section and check step at 1200 pixels with pinned actions visible', async () => {
-    const report = JSON.parse(
-      await evalLong(
-        `(async () => {
+    const vault = vaultCli(activeVaultName())
+    await withDesktopInspection(
+      {
+        snapshot: () =>
+          vault.evalAwait(
+            `(() => { const [width,height]=require('@electron/remote').getCurrentWindow().getContentSize(); return {mobile:!!app.isMobile,width,height} })()`
+          ),
+        show: async (width, height, mobile) => {
+          await setWindowSize(vault, width, height)
+          // reloadAs owns the shared emulation lock and clears the persistent mobile flag.
+          await reloadAs(vault, mobile)
+        },
+      },
+      async () => {
+        const report = JSON.parse(
+          await evalLong(
+            `(async () => {
       const remote = require('@electron/remote'), fs = require('fs')
       const win = remote.getCurrentWindow(), contents = win.webContents
-      const original = win.getContentSize(), dir = ${JSON.stringify(shotDir('abele-sync-inspection-desktop'))}
+      const dir = ${JSON.stringify(shotDir('abele-sync-inspection-desktop'))}
       const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
       const names = [...Array.from({length:11},(_,i)=>'sync-sections-'+(i+1)), ...Array.from({length:8},(_,i)=>'sync-check-'+(i+1))]
       const report = []
-      if(document.body.classList.contains('is-mobile')) throw new Error('Desktop capture requires a desktop host')
+      const phoneClasses = () => [document.body,document.documentElement].some(el=>['is-mobile','is-phone','is-tablet'].some(name=>el.classList.contains(name)))
+      if(app.isMobile || phoneClasses()) throw new Error('Desktop capture requires a desktop host')
       const close = async () => {
         for(let i=0;i<5;i++) {
           const modals=[...document.querySelectorAll('.modal.abele-modal')]
@@ -24,7 +51,7 @@ describe.skipIf(!available)('sync inspection desktop captures', () => {
         }
       }
       try {
-        win.setContentSize(1200,900); await wait(300); fs.mkdirSync(dir,{recursive:true})
+        fs.mkdirSync(dir,{recursive:true})
         for(const name of names) {
           await close()
           void window.__abeleTest.openDialog(name)
@@ -44,20 +71,29 @@ describe.skipIf(!available)('sync inspection desktop captures', () => {
           const stays=!!bounds&&!!after&&Math.abs(bounds.top-after.top)<1
           if(body) body.scrollTop=0
           await wait(50)
-          fs.writeFileSync(dir+'/dialog-'+name+'.png',(await contents.capturePage()).toPNG())
-          report.push({name,width:innerWidth,pinned:!!pinned,stays})
+          const box=modal.getBoundingClientRect()
+          const centered=box.left>0&&box.top>0&&box.right<innerWidth&&box.bottom<innerHeight&&Math.abs((box.left+box.right)/2-innerWidth/2)<5&&Math.abs((box.top+box.bottom)/2-innerHeight/2)<5
+          const image=await contents.capturePage(), pixels=image.getSize()
+          // Retina pixels may be 2x CSS pixels; a stale phone frame has a different aspect.
+          if(Math.abs(pixels.width/pixels.height-innerWidth/innerHeight)>0.01) throw new Error(name+' captured a stale or cropped frame')
+          const png=image.resize({width:1200,height:900}).toPNG({scaleFactor:1})
+          const output={width:png.readUInt32BE(16),height:png.readUInt32BE(20)}
+          fs.writeFileSync(dir+'/dialog-'+name+'.png',png)
+          report.push({name,width:innerWidth,height:innerHeight,imageWidth:output.width,imageHeight:output.height,mobile:!!app.isMobile,phoneClasses:phoneClasses()||['is-mobile','is-phone','is-tablet'].some(c=>modal.classList.contains(c)),centered,pinned:!!pinned,stays})
         }
-      } finally { await close(); win.setContentSize(...original) }
+      } finally { await close() }
       return JSON.stringify(report)
     })()`,
-        120000
-      )
-    ) as { name: string; width: number; pinned: boolean; stays: boolean }[]
-    expect(report).toHaveLength(19)
-    for (const capture of report) {
-      expect(capture.width, capture.name).toBe(1200)
-      expect(capture.pinned, capture.name).toBe(true)
-      expect(capture.stays, capture.name).toBe(true)
-    }
+            120000
+          )
+        ) as (DesktopCapture & { name: string; pinned: boolean; stays: boolean })[]
+        expect(report).toHaveLength(19)
+        for (const capture of report) {
+          expect(desktopCaptureErrors(capture), capture.name).toEqual([])
+          expect(capture.pinned, capture.name).toBe(true)
+          expect(capture.stays, capture.name).toBe(true)
+        }
+      }
+    )
   }, 130000)
 })
