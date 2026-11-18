@@ -85,7 +85,26 @@
         <StagedSettingsBlock v-if="changes.length" :changes="changes" :names="{}" :port="port" />
       </Section>
 
-      <SelectiveSync v-if="port" :port="port" />
+      <SelectiveSync v-if="port" :port="port">
+        <template v-if="deviceScope" #scope>
+          <DeviceScopeField
+            :model-value="deviceItems"
+            :choices="deviceScope.choices"
+            :narrowed="deviceScope.narrowed"
+            :saved="openedWith"
+            :notes="deviceScope.notes"
+            :disabled="scopeBusy"
+            @update:model-value="changeScope"
+          />
+          <p v-if="scopeLease" class="setting-item-description" role="status">
+            {{
+              scopeLease.current
+                ? t('sync.deviceScope.key', { id: scopeLease.current.id })
+                : t('sync.deviceScope.preparing')
+            }}
+          </p>
+        </template>
+      </SelectiveSync>
 
       <Setting :name="t('sync.window.trusted')" :desc="t('sync.window.trustedDesc')">
         <Checkbox :is-enabled="!!row?.trusted" @toggle="toggleTrusted" />
@@ -149,10 +168,17 @@ import ConfirmModal from '../obsidian/ConfirmModal.vue'
 import HeldDeletesBlock from './HeldDeletesBlock.vue'
 import StagedSettingsBlock from './StagedSettingsBlock.vue'
 import SelectiveSync from '../settings/sync/SelectiveSync.vue'
+import DeviceScopeField from './DeviceScopeField.vue'
 import ConnectionEvents from './ConnectionEvents.vue'
 import ConnectionItems from './ConnectionItems.vue'
 import RemoveCopyModal from './RemoveCopyModal.vue'
-import { setTone, setLine, shareSetSource, type ConnectionItem } from '@/sync/shareSets'
+import {
+  setTone,
+  setLine,
+  shareSetSource,
+  type ConnectionItem,
+  type ShareItem,
+} from '@/sync/shareSets'
 import { type TokenUi } from '@/sync/tokenUi'
 import { connectionLine, connectionProgress, connectionTone } from '@/sync/connectionLine'
 import { splitNotSynced } from '@/sync/notSynced'
@@ -213,6 +239,28 @@ async function act(action: () => Promise<void>): Promise<void> {
 }
 
 const row = computed(() => props.ui.rows.value.find((one) => one.id === props.connectionId))
+sets.value?.refreshChoices?.()
+const deviceScope = computed(() => sets.value?.deviceScope?.(props.connectionId) ?? null)
+const scopeLease = computed(() => {
+  void row.value
+  return props.ui.deviceScopes.state(props.connectionId)
+})
+const deviceItems = ref<ShareItem[]>(deviceScope.value?.items ?? [])
+const openedWith = ref<ShareItem[]>([...deviceItems.value])
+const scopeBusy = ref(false)
+async function changeScope(items: ShareItem[]) {
+  deviceItems.value = items
+  if (!items.length || scopeBusy.value) return
+  scopeBusy.value = true
+  try {
+    await act(async () => {
+      await sets.value?.setDeviceScope?.(props.connectionId, items)
+    })
+  } finally {
+    deviceItems.value = deviceScope.value?.items ?? []
+    scopeBusy.value = false
+  }
+}
 const trustError = ref('')
 const forgetting = ref('')
 async function forgetCopy(): Promise<void> {

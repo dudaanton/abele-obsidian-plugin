@@ -1,8 +1,13 @@
 <template>
   <Section
     :title="t('settings.sync.SelectiveSync.what_this_device_syncs.979d00ce')"
-    :desc="t('settings.sync.SelectiveSync.notes_and_canvases_always_travel.395d3522')"
+    :desc="
+      $slots.scope
+        ? undefined
+        : t('settings.sync.SelectiveSync.notes_and_canvases_always_travel.395d3522')
+    "
   >
+    <slot name="scope" />
     <p v-if="saveError" class="abele-selective-sync__error">{{ saveError }}</p>
     <Setting
       v-for="kind in KINDS"

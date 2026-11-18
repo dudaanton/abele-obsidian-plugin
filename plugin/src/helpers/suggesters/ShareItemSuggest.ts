@@ -8,6 +8,13 @@ export interface ShareItemSuggestOptions {
   choices: () => ShareItem[]
   /** What is already in the set: left out, and what it covers shown as covered. */
   taken: () => ShareItem[]
+  /** What shows others as already inside; unset, all that is taken. */
+  covers?: () => ShareItem[]
+  /** The vault's quiet words; unset, it is for your own devices. */
+  vaultNote?: string
+  /** A group's members as words at the row's end, «12 notes»; empty for none. */
+  members?: (item: ShareItem) => string
+  replaceWithVault?: boolean
   onPick: (item: ShareItem) => void
 }
 
@@ -15,14 +22,20 @@ export interface ShareItemSuggestOptions {
 export function matchingShareItems(
   choices: ShareItem[],
   taken: ShareItem[],
-  query: string
+  query: string,
+  replaceWithVault = false
 ): ShareItem[] {
   const ids = new Set(taken.map((one) => one.id))
   const exact = query.trim().toLowerCase()
   const words = exact.split(/\s+/).filter(Boolean)
   const ranked: ShareItem[][] = [[], [], []]
   for (const one of choices) {
-    if (ids.has(one.id) || (one.kind === 'vault' && taken.length)) continue
+    if (
+      ids.has(one.id) ||
+      taken.some((item) => item.kind === one.kind && item.path === one.path) ||
+      (one.kind === 'vault' && taken.length && !replaceWithVault)
+    )
+      continue
     const path = one.path.toLowerCase(),
       name = itemName(one).toLowerCase()
     if (!words.every((word) => (path + ' ' + name).includes(word))) continue
@@ -51,7 +64,12 @@ export class ShareItemSuggest extends TextInputSuggest<ShareItem> {
   }
 
   getSuggestions(query: string): ShareItem[] {
-    return matchingShareItems(this.options.choices(), this.options.taken(), query)
+    return matchingShareItems(
+      this.options.choices(),
+      this.options.taken(),
+      query,
+      this.options.replaceWithVault
+    )
   }
 
   renderSuggestion(item: ShareItem, el: HTMLElement): void {
@@ -60,8 +78,9 @@ export class ShareItemSuggest extends TextInputSuggest<ShareItem> {
     const popup = el.closest<HTMLElement>('.suggestion-container')
     if (popup && !this.stopKeyboard)
       this.stopKeyboard = watchSuggestionKeyboard(this.inputEl, popup)
-    const covered = coveredBy(item, this.options.taken())
-    const place = item.kind === 'vault' ? 'For your own devices' : itemPlace(item)
+    const covered = coveredBy(item, (this.options.covers ?? this.options.taken)())
+    const place =
+      item.kind === 'vault' ? (this.options.vaultNote ?? 'For your own devices') : itemPlace(item)
     this.rows.draw(el, {
       icon: itemGlyph(item),
       title: itemName(item),
@@ -69,14 +88,16 @@ export class ShareItemSuggest extends TextInputSuggest<ShareItem> {
       titleClass: covered ? 'abele-share-pick__covered' : undefined,
       aux: covered
         ? [{ flair: 'In ' + itemName(covered), cls: 'abele-share-pick__in' }]
-        : undefined,
+        : this.options.members?.(item)
+          ? [{ flair: this.options.members(item), cls: 'abele-share-pick__in' }]
+          : undefined,
     })
     el.toggleClass('is-disabled', !!covered)
     el.setAttribute('aria-disabled', covered ? 'true' : 'false')
   }
 
   selectSuggestion(item: ShareItem): void {
-    if (coveredBy(item, this.options.taken())) return
+    if (coveredBy(item, (this.options.covers ?? this.options.taken)())) return
     this.inputEl.value = ''
     this.options.onPick(item)
     this.refresh()

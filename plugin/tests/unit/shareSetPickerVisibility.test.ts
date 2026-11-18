@@ -15,6 +15,11 @@ it.each([true, false])(
     const picker = document.createElement('div'),
       results = document.createElement('div')
     picker.className = 'abele-share-picker'
+    const kindTab = document.createElement('button')
+    kindTab.dataset.scopeKind = 'folder'
+    const selectKind = vi.fn()
+    kindTab.addEventListener('click', selectKind)
+    picker.append(kindTab)
     results.className = 'abele-share-picker__results'
     const option = document.createElement('div')
     option.className = 'suggestion-item'
@@ -54,6 +59,7 @@ it.each([true, false])(
       await pending
       expect(row.scrollIntoView).toHaveBeenCalled()
       expect(click).toHaveBeenCalledOnce()
+      expect(selectKind).toHaveBeenCalledOnce()
     } else {
       await expect(pending).rejects.toThrow('suggestion fully above keyboard')
       expect(click).not.toHaveBeenCalled()

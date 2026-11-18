@@ -22,20 +22,23 @@
         v-for="item in modelValue"
         :key="item.kind + ':' + item.id"
         class="multi-select-pill abele-share-picker__pill"
+        :class="{ 'is-faint': notes?.[item.id]?.faint }"
         :data-path="item.path"
       >
         <div class="multi-select-pill-content abele-share-picker__pill-content">
           <Icon :icon="itemGlyph(item)" no-hover class="abele-share-picker__glyph" />
           <span>{{ itemName(item) }}</span>
-          <span v-if="itemPlace(item)" class="abele-share-picker__place">{{
-            itemPlace(item)
+          <span v-if="notes?.[item.id] || itemPlace(item)" class="abele-share-picker__place">{{
+            notes?.[item.id]?.text ?? itemPlace(item)
           }}</span>
         </div>
         <Icon
           icon="x"
+          :disabled="disabled"
           :tooltip="`Take ${itemName(item)} out`"
           class="multi-select-pill-remove-button"
           @click="
+            !disabled &&
             emit(
               'update:modelValue',
               modelValue.filter((one) => one.id !== item.id)
@@ -44,31 +47,54 @@
         />
       </div>
     </div>
-    <Search
-      :model-value="phone ? query : ''"
-      :placeholder="full ? `A share holds up to ${SHARE_LIMIT} items` : placeholder"
-      :make-suggest="phone ? undefined : makeSuggest"
-      :disabled="full || disabled"
-      :autofocus="autofocus"
-      label="Find a folder, group or file"
-      @update:model-value="query = $event"
-      @focusin="focused = true"
-      @focusout="focused = false"
-    />
+    <!-- What the field finds, one kind at a time: the glyphs as Obsidian's search toggles. -->
+    <div class="abele-share-picker__find">
+      <div
+        class="abele-share-picker__kinds"
+        role="group"
+        :aria-label="t('sync.scopePicker.findKind')"
+      >
+        <Icon
+          v-for="one in KINDS"
+          :key="one.kind"
+          :data-scope-kind="one.kind"
+          :icon="one.icon"
+          :tooltip="one.tooltip"
+          :active="kind === one.kind"
+          :disabled="full || disabled"
+          @click="switchKind(one.kind)"
+        />
+      </div>
+      <Search
+        :model-value="phone ? query : ''"
+        :placeholder="
+          full
+            ? (fullText ?? `A share holds up to ${SHARE_LIMIT} items`)
+            : (placeholder ?? t(`sync.scopePicker.${kind}.add`))
+        "
+        :make-suggest="phone ? undefined : makeSuggest"
+        :disabled="full || disabled"
+        :autofocus="autofocus"
+        :label="t(`sync.scopePicker.${kind}.find`)"
+        @update:model-value="query = $event"
+        @focusin="focused = true"
+        @focusout="focused = false"
+      />
+    </div>
     <!-- Keep phone results in the sheet's scrollable body, never in a second native drawer. -->
     <div
       v-if="phone && focused && !full && !disabled"
       ref="list"
       class="suggestion abele-share-picker__results"
       role="listbox"
-      aria-label="Folders, groups and files"
+      :aria-label="t(`sync.scopePicker.${kind}.title`)"
       data-keeps-focus
       @scroll="updateMore"
     >
       <EmptyState
         v-if="!results.length"
         variant="no-matches"
-        text="No matching folders, groups or files."
+        :text="t(`sync.scopePicker.${kind}.empty`)"
       />
       <div
         v-for="item in results"
@@ -78,8 +104,8 @@
         :data-share-path="item.path"
         role="option"
         :aria-selected="false"
-        :aria-disabled="!!coveredBy(item, taken())"
-        :class="{ 'is-disabled': !!coveredBy(item, taken()) }"
+        :aria-disabled="!!coveredBy(item, covers())"
+        :class="{ 'is-disabled': !!coveredBy(item, covers()) }"
         tabindex="0"
         @mousedown.prevent
         @click="pick(item)"
@@ -88,17 +114,19 @@
         <SuggestionRow
           :icon="itemGlyph(item)"
           :title="itemName(item)"
-          :note="item.kind === 'vault' ? 'For your own devices' : itemPlace(item)"
-          :title-class="coveredBy(item, taken()) ? 'abele-share-pick__covered' : undefined"
+          :note="item.kind === 'vault' ? (vaultNote ?? 'For your own devices') : itemPlace(item)"
+          :title-class="coveredBy(item, covers()) ? 'abele-share-pick__covered' : undefined"
           :aux="
-            coveredBy(item, taken())
+            coveredBy(item, covers())
               ? [
                   {
-                    flair: 'In ' + itemName(coveredBy(item, taken())!),
+                    flair: 'In ' + itemName(coveredBy(item, covers())!),
                     cls: 'abele-share-pick__in',
                   },
                 ]
-              : undefined
+              : membersOf(item)
+                ? [{ flair: membersOf(item)!, cls: 'abele-share-pick__in' }]
+                : undefined
           "
         />
       </div>
@@ -144,6 +172,16 @@ const props = defineProps<{
   /** Already in the share, beside what is being picked now: covered the same way. */
   inShare?: ShareItem[]
   placeholder?: string
+  /** How many notes name this one as their group, said beside each group: 0 is «no notes yet». */
+  members?: (item: ShareItem) => number | undefined
+  /** The whole vault is a default to replace, not a choice that covers the rest. */
+  vaultGivesWay?: boolean
+  /** The vault's quiet words in the list; unset, it is for your own devices. */
+  vaultNote?: string
+  /** The field's words once full, where the picker is not a share. */
+  fullText?: string
+  /** Quiet words in a chosen item's pill instead of where it lies; faint when it is gone. */
+  notes?: Record<string, { text: string; faint?: boolean }>
   disabled?: boolean
   autofocus?: boolean
 }>()
@@ -153,6 +191,33 @@ const emit = defineEmits<{
 }>()
 
 const taken = () => [...(props.inShare ?? []), ...props.modelValue]
+const membersOf = (item: ShareItem) => {
+  const n = item.kind === 'group' ? props.members?.(item) : undefined
+  if (n === undefined) return ''
+  return n ? t('sync.scopePicker.noteCount', { count: n }) : t('sync.scopePicker.noNotes')
+}
+
+type FindKind = 'folder' | 'group' | 'file'
+const KINDS: { kind: FindKind; icon: string; tooltip: string }[] = [
+  { kind: 'folder', icon: 'folder', tooltip: t('sync.scopePicker.folder.tip') },
+  { kind: 'group', icon: 'group', tooltip: t('sync.scopePicker.group.tip') },
+  { kind: 'file', icon: 'file', tooltip: t('sync.scopePicker.file.tip') },
+]
+const kind = ref<FindKind>('folder')
+/** The vault is listed with the folders: it is the folder above them all. */
+const ofKind = (item: ShareItem) =>
+  item.kind === kind.value || (kind.value === 'folder' && item.kind === 'vault')
+const shown = computed(() => props.choices.filter(ofKind))
+/** Lists the other kind at once, for what is already typed. */
+function switchKind(next: FindKind) {
+  kind.value = next
+  const input = root.value?.querySelector('input')
+  if (!input) return
+  input.focus()
+  if (!phone) input.dispatchEvent(new Event('input'))
+}
+/** With `vaultGivesWay`, a chosen vault holds nothing back: picking anything replaces it. */
+const covers = () => (props.vaultGivesWay ? taken().filter((one) => one.kind !== 'vault') : taken())
 const full = computed(() => taken().length >= SHARE_LIMIT)
 // Use the host's mobile layout as well as its narrower phone flag, like the dialog shell.
 const phone =
@@ -179,9 +244,11 @@ watch(list, (element) => {
   void nextTick(updateMore)
 })
 const root = ref<HTMLElement>()
-const results = computed(() => matchingShareItems(props.choices, taken(), query.value))
+const results = computed(() =>
+  matchingShareItems(shown.value, taken(), query.value, props.vaultGivesWay)
+)
 const pick = (item: ShareItem) => {
-  if (props.disabled || full.value || coveredBy(item, taken())) return
+  if (props.disabled || full.value || coveredBy(item, covers())) return
   emit(
     'update:modelValue',
     item.kind === 'vault'
@@ -232,8 +299,12 @@ onBeforeUnmount(() => {
 
 const makeSuggest = (inputEl: HTMLInputElement) =>
   new ShareItemSuggest(GlobalStore.getInstance().app, inputEl, {
-    choices: () => props.choices,
+    choices: () => shown.value,
     taken,
+    covers,
+    vaultNote: props.vaultNote,
+    members: membersOf,
+    replaceWithVault: props.vaultGivesWay,
     onPick: pick,
   })
 </script>
@@ -272,6 +343,30 @@ const makeSuggest = (inputEl: HTMLInputElement) =>
   min-width: 0;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+.abele-share-picker__find {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  min-width: 0;
+
+  > .abele-obsidian-search {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+.abele-share-picker__kinds {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--size-2-1);
+}
+
+// Chosen once and gone from this vault since: kept, faint, its note says so.
+.abele-share-picker__pill.is-faint .abele-share-picker__pill-content {
+  color: var(--text-faint);
 }
 
 .abele-share-picker__glyph {

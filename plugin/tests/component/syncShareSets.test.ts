@@ -241,7 +241,7 @@ describe('shared item screens', () => {
         ])
         await input.setValue('Missing/Example')
         expect(wrapper.findAll('.suggestion-item')).toHaveLength(0)
-        expect(wrapper.text()).toContain('No matching folders, groups or files.')
+        expect(wrapper.text()).toContain('No matching folders.')
       } finally {
         wrapper.unmount()
         sheet.remove()

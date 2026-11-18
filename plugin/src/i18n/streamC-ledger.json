@@ -1,4 +1,394 @@
 {
+  "sync.deviceScope.key": {
+    "englishHash": "1e2f12174d40b3bbdb90a27967f3f9f6891157e6258b293ad1d337f66b38ba85",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.preparing": {
+    "englishHash": "3e7546e59d3a4cd89d8a61fa7b10e0f5892c8386076484d1896cd3f12730b91a",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.choose": {
+    "englishHash": "62d634d0e3d1cb4050fd62155b668ac2e7a92eeb146c721023ded73ded2a570f",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.retains": {
+    "englishHash": "41237b64e2fa737719e388eb1805d7e008af3eb46c53a4b439ab0cf04305c968",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.addedOne": {
+    "englishHash": "1bfc16255cae10431da5f23e718b03a537d8ed5a305e3f43b8c29b51fce049d4",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.addedMany": {
+    "englishHash": "79df20787ac9e9a548f4f6058ee971d3d4ff2889ef3cbe2a2c9d8bd602d7c96c",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.every": {
+    "englishHash": "afc048d0201999e81355581a73d2cd284d49f9d362b6c76ad360f2b073195134",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.accessOnly": {
+    "englishHash": "5f44a996d6adfe57cadec2ccd9af51deed11b12538034dda288ae484d2333f11",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.onlyDevice": {
+    "englishHash": "075de6a01679f47c49c3d0c106ef925b6825a15f5d8a50b401d4465611253090",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.onlyScanned": {
+    "englishHash": "cee8a44aa4cde1b4e59a0b614c1be4183d1873251af6a3668f7bfc21c860085b",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.default": {
+    "englishHash": "55391debd499b46863cbedd9334ac04a3a416490f93a179a1b178378e8e809ce",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.addBack": {
+    "englishHash": "fa50493a963458934e09b2c62825976e6c8098d19d71984d95367de1173803e1",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.limit": {
+    "englishHash": "e31ea646850c01cd8949fee079f10f8e3455690a32a20dfd280ec131335742fb",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.server": {
+    "englishHash": "8221a14d92d0c02c92ea3a1fa2fbc417b3cd4d8c0e6dbad02d41f08b1baef8a4",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.empty": {
+    "englishHash": "65b1cbba3b92c5b2597926a0d5dcf1fe03cdb5fa8f518dbfc1c66a523473bc7a",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.files": {
+    "englishHash": "d24d0d586a419e5770bb661780e39c6d3791360707a85aef467d5d38c1b2fa27",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.missingLocal": {
+    "englishHash": "1128dfda92bfd8f0a5f6b92de0e6c32a833eb3776ffe0f64abdf3952b562d0a1",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.missingServer": {
+    "englishHash": "0050e41f0ab12beabddea4dd203d34b76413815bc3bb54c0009cd03dc7c4599b",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.sending": {
+    "englishHash": "743efbffd4dfa9cb6ac819ebb8d7c830df9178c053f32ee180a4a3e72e3d4c08",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.beforeKey": {
+    "englishHash": "13b2359953ed16cd83a7f340c13bb49273f1e34208c7f67c836c0709309847d6",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.deviceScope.afterSend": {
+    "englishHash": "43f7a0ee286fc412a85716df3544d6387c4bf5e7f56b297290dea490c4c74617",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.findKind": {
+    "englishHash": "dcb06f2321aa7e32130553b8d55a2aca4fe92bebbd7cb48372a072fa62ca22ef",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.noNotes": {
+    "englishHash": "96972ded4319feedefad859a6adddf51389e6ab65df5bd6bb0c72d4c803bbde4",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.noteCount": {
+    "englishHash": "c6e18e58e58b1aed6c1d1e62d21f6e6bd8fc37567993f8410593b2ba31a0d994",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.folder.title": {
+    "englishHash": "bc47b89258171c7d438d50fe928a693c6dfe6c22de241df7c9146bdf42b3429a",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.folder.add": {
+    "englishHash": "47ea32439b1e61ee68f1c25b0e1e12bd5bf3b45ac4448a9e9d72c28ab09540cb",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.folder.find": {
+    "englishHash": "b64b220816fc41368e7d2073e4adb9a162e75e50368697e08fe288dafd4b9bc2",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.folder.empty": {
+    "englishHash": "3e4ecd1f96a64835b938c0a30cb2cfff688c231eca0d00f7a5443b29b3c69ce7",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.group.title": {
+    "englishHash": "81c19d5d6b84602896e651b50d8d4d878b32d74e42f71816d5991785e1193bd8",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.group.add": {
+    "englishHash": "12683975b5dd621d99f71a0f72b520a2e6b40fe46fa644934ff768772d797ec8",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.group.find": {
+    "englishHash": "ad089b8c34471ae549964b5cabfa6df7fafadd08285189375988fcb7b4725da1",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.group.empty": {
+    "englishHash": "dd004a88299f5e5131c43d04ff73bfdb6fc8b44d326b3d120a2d0afc9f9da188",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.file.title": {
+    "englishHash": "6e190b061b83b7bf697a1be3963541ff10d3db138305bc3a4bd85547b709ae05",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.file.add": {
+    "englishHash": "98f7a0364648ae8b149f59c875777228d13c8705e5b8f8f2c381284810f87ece",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.file.find": {
+    "englishHash": "a259eca0d6720f2ce5813a808da019d3fbfba33135c18e67bc5b05ebee3cffc0",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.file.empty": {
+    "englishHash": "4b0b01fcf0116a39002d26059bc3027529328f00d3b85de499c5b40e7b33ddf3",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.folder.tip": {
+    "englishHash": "ecae394bef7ff5c11d4763b8bd51a31b31f422577bd68cab0588cff4c7e93c32",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.group.tip": {
+    "englishHash": "18bb21fa6095efc252ee93b631fa6b0b5425e760cad8ffa54aa3f3066fedceaa",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.scopePicker.file.tip": {
+    "englishHash": "88e263f22d5a132708a33b845da2998cb4ad025d18e9c4af959d04408d4c42cd",
+    "context": "Device scope selection and scoped access lifecycle",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
   "sync.nativeMutationStuckNotice": {
     "englishHash": "d8c40ad2e2165f8d457ffb36f49121b2e9048d7d78f1686e80f2e5f00b82cb74",
     "context": "Native file mutation has not settled; one vault notice and restart-required follow-on error",

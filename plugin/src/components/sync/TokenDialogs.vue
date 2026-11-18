@@ -1,7 +1,7 @@
 <template>
   <Modal
     :title="title"
-    :size="mode === 'share' || mode === 'review' ? 'tall' : 'default'"
+    :size="mode === 'connect' || mode === 'share' || mode === 'review' ? 'tall' : 'default'"
     phone-sheet
     @close="close"
   >
@@ -11,30 +11,57 @@
           v-model="text"
           password
           :disabled="busy"
+          :loading="checking"
+          :invalid="!!error"
           :placeholder="t('streamC.9547fcece571e82f')"
       /></Setting>
       <TokenQrReader @token="text = $event" />
       <dl v-if="preview" class="abele-token-dialog__facts">
         <dt>{{ t('settings.CalendarsSettings.server.aef7de28') }}</dt>
         <dd>{{ preview.address }}</dd>
-        <dt>{{ t('streamC.21a71f3e3356eeab') }}</dt>
-        <dd v-if="setPreview">
-          <ul class="abele-token-dialog__items">
-            <li v-for="item in setPreview.items" :key="item.id">
-              <Icon :icon="itemGlyph(item)" no-hover class="abele-token-dialog__glyph" />
-              <span>{{ itemName(item) }}</span>
-              <span v-if="itemPlace(item)" class="abele-token-dialog__place">{{
-                itemPlace(item)
-              }}</span>
-            </li>
-          </ul>
-        </dd>
-        <dd v-else>{{ scopeName(preview.scope) }}</dd>
+        <template v-if="scope">
+          <dt>{{ t('sync.deviceScope.server') }}</dt>
+          <dd>
+            {{
+              scope.serverFiles
+                ? t('sync.deviceScope.files', { count: scope.serverFiles })
+                : t('sync.deviceScope.empty')
+            }}
+          </dd>
+        </template>
+        <!-- Once the server answered, the picker below says what the token opens. -->
+        <template v-if="!scope">
+          <dt>{{ t('streamC.21a71f3e3356eeab') }}</dt>
+          <dd v-if="setPreview">
+            <ul class="abele-token-dialog__items">
+              <li v-for="item in setPreview.items" :key="item.id">
+                <Icon :icon="itemGlyph(item)" no-hover class="abele-token-dialog__glyph" />
+                <span>{{ itemName(item) }}</span>
+                <span v-if="itemPlace(item)" class="abele-token-dialog__place">{{
+                  itemPlace(item)
+                }}</span>
+              </li>
+            </ul>
+          </dd>
+          <dd v-else>{{ scopeName(preview.scope) }}</dd>
+        </template>
         <template v-if="setPreview?.readOnly">
           <dt>{{ t('settings.ai.AgentEditorModal.access.ec5ba0ab') }}</dt>
           <dd>{{ t('sync.readOnly') }}</dd>
         </template>
       </dl>
+    </Section>
+    <!-- Asked once the server answered, before anything is scanned: the whole vault to start with. -->
+    <Section
+      v-if="mode === 'connect' && scope"
+      :title="t('settings.sync.SelectiveSync.what_this_device_syncs.979d00ce')"
+    >
+      <DeviceScopeField
+        v-model="picked"
+        :choices="scope.choices"
+        :narrowed="!!scope.narrowed"
+        :disabled="busy"
+      />
     </Section>
     <template v-if="mode === 'share'">
       <Section :desc="t('streamC.18e1ba7b6b08a056')">
@@ -185,7 +212,13 @@
         v-if="mode === 'connect'"
         :text="t('streamC.1a2303ede07493ac')"
         :tooltip="t('streamC.3a588cb1a419d7f2')"
-        :disabled="busy || !text.trim()"
+        :disabled="
+          busy ||
+          !text.trim() ||
+          checking ||
+          (!!shareSetSource?.connectScope && !scope) ||
+          (!!scope && !picked.length)
+        "
         accent
         @click="run(connect)"
       />
@@ -247,12 +280,21 @@ import Icon from '../obsidian/Icon.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import QrCode from '../obsidian/QrCode.vue'
 import TokenQrReader from './TokenQrReader.vue'
+import DeviceScopeField from './DeviceScopeField.vue'
 import { connectionError, scopeName as scopeSource, type TokenUi } from '@/sync/tokenUi'
 import type { ExecutableCandidate } from '@/sync/executableReview'
 import type { AttachmentQuestion } from '@/sync/attachmentConsent'
 import type { V2Scope, V2TokenInfo } from '@/sync/v2/contract'
 import { decodeAccessToken, tokenScope } from '@/sync/v2/client'
-import { itemGlyph, itemName, itemPlace, shareSetSource, type SharePreview } from '@/sync/shareSets'
+import {
+  itemGlyph,
+  itemName,
+  itemPlace,
+  shareSetSource,
+  type ConnectScope,
+  type SharePreview,
+  type ShareItem,
+} from '@/sync/shareSets'
 const props = defineProps<{
   ui: TokenUi
   mode: 'connect' | 'share' | 'review' | 'attachment' | 'disconnect'
@@ -345,6 +387,33 @@ watch(text, async (value, _, cleanup) => {
     /* Connect still checks authority and reports an actionable error. */
   }
 })
+/** The server read before connecting: what it holds and what this device may choose from. */
+const scope = ref<ConnectScope | null>(null),
+  checking = ref(false),
+  picked = ref<ShareItem[]>([])
+watch(text, async (value, _, cleanup) => {
+  scope.value = null
+  checking.value = false
+  if (props.mode !== 'connect') return
+  const source = shareSetSource.value
+  if (!source?.connectScope || !preview.value) return
+  const controller = new AbortController()
+  cleanup(() => controller.abort())
+  checking.value = true
+  error.value = ''
+  try {
+    const answer = await source.connectScope(value, controller.signal)
+    if (!alive || controller.signal.aborted) return
+    scope.value = answer
+    picked.value = answer.narrowed
+      ? [...answer.narrowed]
+      : answer.choices.filter((one) => one.kind === 'vault').slice(0, 1)
+  } catch (cause) {
+    if (alive && !controller.signal.aborted) error.value = connectionError(cause)
+  } finally {
+    if (!controller.signal.aborted) checking.value = false
+  }
+})
 const time = (value: number) =>
   new Date(value).toLocaleString(
     currentLocale().language === 'en' ? undefined : currentLocale().format
@@ -372,7 +441,7 @@ async function run(action: () => Promise<void>) {
   }
 }
 async function connect() {
-  await props.ui.connect(text.value, enrollment.signal)
+  await props.ui.connect(text.value, enrollment.signal, scope.value ? picked.value : undefined)
   text.value = ''
   new Notice(t('streamC.1e965e25daad8d30'))
   emit('close')

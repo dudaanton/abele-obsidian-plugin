@@ -23,10 +23,27 @@
         <SharePicker
           v-model="picked"
           :choices="choices"
+          :notes="pending"
+          :members="source.members"
           :disabled="busy"
-          placeholder="Add a folder, group or file…"
           @searching="searching = $event"
         />
+        <!-- Chosen on this device, not on the server yet: it goes up first, then the token. -->
+        <template v-if="!searching && sending">
+          <Progress
+            :label="
+              t('sync.deviceScope.sending', { completed: sending.sent, total: sending.total })
+            "
+            :value="sending.sent"
+            :max="sending.total"
+          />
+          <div class="setting-item-description" role="status">
+            {{ t('sync.deviceScope.afterSend') }}
+          </div>
+        </template>
+        <div v-else-if="!searching && waiting" class="setting-item-description" role="status">
+          {{ t('sync.deviceScope.beforeKey', { count: waiting.files }) }}
+        </div>
       </div>
       <Setting name="Read only" desc="They get every change but cannot change anything.">
         <Checkbox :is-enabled="readOnly" @toggle="readOnly = !readOnly" />
@@ -134,6 +151,7 @@ import Icon from '../obsidian/Icon.vue'
 import EmptyState from '../obsidian/EmptyState.vue'
 import QrCode from '../obsidian/QrCode.vue'
 import SharePicker from './SharePicker.vue'
+import Progress from '../obsidian/Progress.vue'
 import ShareDetail from './ShareDetail.vue'
 import ServerDeleteModal from './ServerDeleteModal.vue'
 import { connectionError } from '@/sync/tokenUi'
@@ -162,6 +180,14 @@ const deleting = ref<{ item: string | null } | null>(null)
 const searching = ref(false)
 
 const choices = computed(() => props.source.choices(props.connectionId))
+/** What of the choice the server does not have yet, and how its sending goes once asked. */
+const waiting = computed(() => props.source.notOnServer?.(props.connectionId, picked.value) ?? null)
+const pending = computed(() =>
+  Object.fromEntries(
+    (waiting.value?.items ?? []).map((id) => [id, { text: t('sync.deviceScope.missingServer') }])
+  )
+)
+const sending = ref<{ sent: number; total: number } | null>(null)
 const openedShare = computed(() => shares.value.find((one) => one.id === opened.value) ?? null)
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
@@ -234,19 +260,31 @@ async function reload() {
   shares.value = await props.source.shares(props.connectionId)
 }
 async function issue() {
-  issued.value = await props.source.issue(props.connectionId, {
-    items: picked.value,
-    label: label.value.trim(),
-    readOnly: readOnly.value,
-  })
+  try {
+    issued.value = await props.source.issue(
+      props.connectionId,
+      { items: picked.value, label: label.value.trim(), readOnly: readOnly.value },
+      (sent, total) => {
+        sending.value = { sent, total }
+      }
+    )
+  } finally {
+    sending.value = null
+  }
   await reload()
 }
 async function copy() {
   await navigator.clipboard.writeText(issued.value)
   new Notice('Token copied')
 }
-onMounted(() => void run(reload))
-defineExpose({ open: (id: string) => (opened.value = id) })
+onMounted(() => {
+  void run(reload)
+})
+defineExpose({
+  open: (id: string): void => {
+    opened.value = id
+  },
+})
 </script>
 
 <style lang="scss">
