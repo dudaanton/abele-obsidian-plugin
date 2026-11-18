@@ -441,7 +441,8 @@ async function run(action: () => Promise<void>) {
   }
 }
 async function connect() {
-  await props.ui.connect(text.value, enrollment.signal, scope.value ? picked.value : undefined)
+  if (scope.value) await props.ui.connect(text.value, enrollment.signal, picked.value)
+  else await props.ui.connect(text.value, enrollment.signal)
   text.value = ''
   new Notice(t('streamC.1e965e25daad8d30'))
   emit('close')

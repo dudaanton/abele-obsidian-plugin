@@ -262,6 +262,7 @@ export class TokenItemSets implements ShareSetSource {
   choices = (id?: string): ShareItem[] => {
     const connectionId = this.selected(id)
     const remote = this.choiceCache.get(connectionId) ?? []
+    if (!this.ui.registry.records().some((record) => record.id === connectionId)) return remote
     if (!this.owner(connectionId)) {
       const local = this.ui.deviceScopes.choices(connectionId, this.inventory())
       const known = new Set(local.map((item) => item.kind + ':' + item.path))
