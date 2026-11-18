@@ -528,12 +528,23 @@ export class TokenConnectionRegistry {
       record.address !== source.address ||
       record.spaceId !== source.spaceId ||
       record.scope?.kind !== 'folder' ||
-      source.scope?.kind !== 'folder' ||
-      record.scope.id !== source.scope.id
+      source.scope?.kind !== 'folder'
     )
       throw new Error('Scope placement identity changed')
-    if (source.localRoot !== undefined) record.localRoot = source.localRoot
-    if (source.serverRoot !== undefined) record.serverRoot = source.serverRoot
+    if (record.scope.id === source.scope.id) {
+      if (source.localRoot !== undefined) record.localRoot = source.localRoot
+      if (source.serverRoot !== undefined) record.serverRoot = source.serverRoot
+    } else {
+      const root = [source.serverRoot ?? source.scope.path, source.scope.path].find(
+        (root) => root === '/' || record.scope.path.startsWith(root + '/')
+      )
+      if (root === undefined) throw new Error('Scope placement identity changed')
+      const suffix = root === '/' ? record.scope.path : record.scope.path.slice(root.length + 1)
+      const local = source.localRoot ?? source.scope.path
+      const server = source.serverRoot ?? source.scope.path
+      record.localRoot = local === '/' ? suffix : local + '/' + suffix
+      record.serverRoot = server === '/' ? suffix : server + '/' + suffix
+    }
     if (source.rootIssue !== undefined) record.rootIssue = clone(source.rootIssue)
     this.write(TOKEN_REGISTRY_KEY, doc)
   }

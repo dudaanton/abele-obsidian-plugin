@@ -190,7 +190,10 @@ export class DeviceScopedConnections {
               (source) =>
                 source.scope.kind === 'folder' &&
                 child.scope.kind === 'folder' &&
-                source.scope.id === child.scope.id
+                (source.scope.id === child.scope.id ||
+                  [source.serverRoot ?? source.scope.path, source.scope.path].some(
+                    (root) => root === '/' || child.scope.path.startsWith(root + '/')
+                  ))
             )
           if (original) this.ui.registry.inheritScopePlacement(recordId, original.id)
           this.ui.registry.setPaused(recordId, true)
@@ -415,6 +418,7 @@ export class DeviceScopedConnections {
     const before = this.state(id)
     if (
       before?.current &&
+      !before.activating &&
       !before.pending &&
       !before.cleanup.length &&
       JSON.stringify(before.selection) === JSON.stringify(items) &&
@@ -531,9 +535,9 @@ export class DeviceScopedConnections {
   }
   async remove(id: string) {
     if (!this.ui.registry.records().some((record) => record.id === id)) return
-    if (!this.state(id)) return
+    if (!this.state(id) && !this.source(id).state[SCOPE_SOURCE]) return
     this.ui.registry.storage(id).saveLocalStorage(SCOPE_STOPPED, true)
-    await this.lease(id).remove()
+    if (this.state(id)) await this.lease(id).remove()
     await this.forget(this.sourceRecords(id).filter((recordId) => recordId !== id))
     this.ui.itemSets.store.forget(id)
     this.ui.refresh()
@@ -563,6 +567,7 @@ export class DeviceScopedConnections {
             if (!desired) throw new Error('Device scope selection requires recovery')
             if (
               state?.current &&
+              !state.activating &&
               !state.pending &&
               !state.cleanup.length &&
               JSON.stringify(desired) === JSON.stringify(state.selection)

@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
 
-it('inherits the existing local placement only for the same authenticated scope', () => {
+it('inherits authenticated folder placement for the same scope and its descendants', () => {
   const values = new Map<string, unknown>(),
     keys = new Map<string, string>()
   const registry = TokenConnectionRegistry.open({
@@ -46,4 +46,12 @@ it('inherits the existing local placement only for the same authenticated scope'
   attach(unrelated, 'other', { ...scope, id: 'other-folder', path: 'Other' })
   registry.storage(unrelated).saveLocalStorage('abele-sync-token-state:scope-owned-by', source)
   expect(() => registry.inheritScopePlacement(unrelated, source)).toThrow()
+  const nested = registry.add(true)
+  attach(nested, 'nested', { ...scope, id: 'nested-folder', path: 'Shared moved/Sub' })
+  registry.storage(nested).saveLocalStorage('abele-sync-token-state:scope-owned-by', source)
+  registry.inheritScopePlacement(nested, source)
+  expect(registry.records().find((record) => record.id === nested)).toMatchObject({
+    localRoot: 'Imported/Sub',
+    serverRoot: 'Shared moved/Sub',
+  })
 })

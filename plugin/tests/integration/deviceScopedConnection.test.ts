@@ -14,7 +14,7 @@ import {
   selectiveDefaults,
 } from '@abele/sync-sdk/core'
 
-function fixture() {
+function fixture(rootPath = '/', folderPath = 'Garden') {
   const values = new Map<string, unknown>(),
     secrets = new Map<string, string>()
   const registry = TokenConnectionRegistry.open({
@@ -23,9 +23,9 @@ function fixture() {
       values.set(key, structuredClone(value))
     },
   })
-  const root = { kind: 'folder' as const, id: 'root', path: '/' }
+  const root = { kind: 'folder' as const, id: 'root', path: rootPath }
   const group = { kind: 'group' as const, id: 'group-note', path: 'Reading.md' }
-  const folder = { kind: 'folder' as const, id: 'folder-a', path: 'Garden' }
+  const folder = { kind: 'folder' as const, id: 'folder-a', path: folderPath }
   const file = { kind: 'file' as const, id: 'file-a', path: 'Plan.md' }
   const scopes = [group, folder, file]
   const items = scopes.map((scope, index) => ({
@@ -163,6 +163,7 @@ function fixture() {
     transport,
     content,
     issueRequests,
+    secrets,
     setReadOnly: () => {
       readOnly = true
     },
@@ -276,6 +277,76 @@ it('can disconnect after cleanup completes but whole-vault restoration is interr
   await f.ui.disconnect(id)
   expect(f.registry.records()).toHaveLength(0)
   expect(f.revoked).toEqual(['owned'])
+})
+
+it('finishes disconnect when the durable set still references forgotten owned children', async () => {
+  const f = fixture()
+  await f.ui.connect(f.source, undefined, [f.scopes[0]])
+  const id = f.ui.rows.value[0].id
+  const set = f.ui.itemSets.store.get(id)!
+  await (f.ui.deviceScopes as unknown as { lease(id: string): DeviceScopeLease }).lease(id).remove()
+  // The registry cleanup is durable while the connection-set write was interrupted.
+  f.ui.itemSets.store.create(
+    id,
+    set.label,
+    set.items,
+    Object.fromEntries(set.items.map((item) => [item.id, item.recordId!]))
+  )
+  await f.ui.disconnect(id)
+  expect(f.registry.records()).toHaveLength(0)
+  expect(f.ui.itemSets.store.get(id)).toBeNull()
+  expect(f.secrets.size).toBe(0)
+  expect(f.revoked).toEqual(['owned'])
+})
+
+it('keeps a narrowed subfolder under the relocated local parent', async () => {
+  const f = fixture('Shared', 'Shared/Sub')
+  await f.ui.connect(f.source)
+  const id = f.ui.rows.value[0].id
+  f.registry.setLocalRoot(id, 'Imported')
+  await f.ui.deviceScopes.change(id, [{ ...f.scopes[1], path: 'Imported/Sub' }])
+  const child = f.ui.deviceScopes.state(id)!.current!.records[0]
+  expect(f.registry.records().find((record) => record.id === child)).toMatchObject({
+    localRoot: 'Imported/Sub',
+    serverRoot: 'Shared/Sub',
+  })
+})
+
+it.each(['restart', 'reselect'] as const)(
+  'recovers activation after persisting current (%s)',
+  async (action) => {
+    const f = fixture()
+    const pause = f.registry.setPaused.bind(f.registry)
+    const interrupted = vi.spyOn(f.registry, 'setPaused').mockImplementation((id, paused) => {
+      if (!paused) throw new Error('sample activation interrupted')
+      pause(id, paused)
+    })
+    await expect(f.ui.connect(f.source, undefined, [f.scopes[0]])).rejects.toThrow(
+      'sample activation interrupted'
+    )
+    const id = f.ui.rows.value[0].id
+    expect(f.ui.deviceScopes.state(id)?.current).toBeDefined()
+    const child = f.ui.deviceScopes.state(id)!.current!.records[0]
+    expect(f.registry.records().find((record) => record.id === child)?.paused).toBe(true)
+    interrupted.mockRestore()
+    if (action === 'restart') await f.ui.deviceScopes.resume()
+    else await f.ui.deviceScopes.change(id, [f.scopes[0]])
+    expect(f.registry.records().find((record) => record.id === child)?.paused).toBe(false)
+    expect(f.calls.filter((call) => call === 'POST /v2/tokens')).toHaveLength(1)
+  }
+)
+
+it('preserves a later user pause when revisiting a fully activated scope', async () => {
+  const f = fixture()
+  await f.ui.connect(f.source, undefined, [f.scopes[0]])
+  const id = f.ui.rows.value[0].id
+  const child = f.ui.deviceScopes.state(id)!.current!.records[0]
+  f.registry.setPaused(child, true)
+  const item = f.ui.itemSets.store.get(id)!.items[0]
+  f.ui.itemSets.store.pause(id, item.id, true)
+  await f.ui.deviceScopes.resume()
+  await f.ui.deviceScopes.change(id, [f.scopes[0]])
+  expect(f.registry.records().find((record) => record.id === child)?.paused).toBe(true)
 })
 
 it('adopts equal group files after a fresh scoped ledger without downloading or rewriting them', async () => {

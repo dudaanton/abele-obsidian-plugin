@@ -15,6 +15,7 @@ const schema = z
     selection: z.array(item).min(1).max(20),
     resolved: z.array(item).optional(),
     current: owned.optional(),
+    activating: z.boolean().optional(),
     pending: z
       .object({ label: z.string().min(1), resolved: z.array(item), issued: owned.optional() })
       .strict()
@@ -89,6 +90,8 @@ export class DeviceScopeLease {
         JSON.stringify(state.selection) === JSON.stringify(chosen)
       ) {
         await this.ports.activate(state.current.records)
+        delete state.activating
+        this.save(state)
         return
       }
       if (!state) {
@@ -140,9 +143,12 @@ export class DeviceScopeLease {
       this.save(state)
       active()
       state.current = pending.issued
+      state.activating = true
       delete state.pending
       this.save(state)
       await this.ports.activate(records)
+      delete state.activating
+      this.save(state)
       console.debug('[Abele Sync] device scoped key installed', state.current.id)
     })
   }

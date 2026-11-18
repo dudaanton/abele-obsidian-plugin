@@ -117,6 +117,8 @@ The device's chosen folders, groups and files are stored in each source record's
 `abele-sync-token-state:device-scope-v1` slot. Restricted choices use device-owned scoped
 access keys, with issuance, enrollment and revocation recovery in
 `abele-sync-token-state:device-scope-lease-v1`. Credentials remain in device-secret storage.
+The lease retains an activation intent until its child pause states have been applied, so
+an interrupted activation can finish after restart without replacing the access key.
 The source connection retains management access; its original item grouping, source/owned
 record links and temporary restricted upload records use the `scope-original-set`,
 `scope-source`, `scope-owned-by` and `scope-bootstrap` slots under the same token-state prefix.

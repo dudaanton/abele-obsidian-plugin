@@ -1450,6 +1450,7 @@ export class TokenUi {
         (!scope && record?.state[SCOPE_SOURCE]) ||
         (scope &&
           (!scope.current ||
+            scope.activating ||
             scope.pending ||
             scope.cleanup.length ||
             JSON.stringify(desired) !== JSON.stringify(scope.selection))))
