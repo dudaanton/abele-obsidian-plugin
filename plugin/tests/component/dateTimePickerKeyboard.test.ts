@@ -84,6 +84,25 @@ afterEach(() => {
 })
 
 describe('the date dialog with a keyboard up', () => {
+  it.each(['event', 'due'] as const)(
+    '%s dates use a content-sized native phone sheet with pinned actions',
+    (mode) => {
+      wrapper?.unmount()
+      wrapper = mount(DateTimePickerModal, {
+        props: { mode, initialDate: dayjs('2027-05-15') },
+        attachTo: document.body,
+      })
+
+      // A six-week calendar and scheduled tasks need the sheet's room below the top inset.
+      // The centered dialog subtracts that inset twice and needlessly scrolls the form.
+      const dialog = document.querySelector('.modal')!
+      expect(dialog.classList.contains('mod-lg')).toBe(true)
+      expect(dialog.classList.contains('abele-modal_content-sized')).toBe(true)
+      expect(dialog.querySelectorAll('.abele-modal__footer button')).toHaveLength(3)
+      expect(dialog.querySelector('.abele-modal__body .abele-modal__footer')).toBeNull()
+    }
+  )
+
   it('renders scheduled task wiki links and aliases through the shared renderer', async () => {
     const title = 'Review [[Sample note]] and [[Other note|short label]]'
     const tasks = new TasksList()
