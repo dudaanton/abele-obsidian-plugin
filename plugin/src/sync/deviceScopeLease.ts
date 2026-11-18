@@ -13,6 +13,7 @@ const owned = z
 const schema = z
   .object({
     selection: z.array(item).min(1).max(20),
+    resolved: z.array(item).optional(),
     current: owned.optional(),
     pending: z
       .object({ label: z.string().min(1), resolved: z.array(item), issued: owned.optional() })
@@ -116,6 +117,7 @@ export class DeviceScopeLease {
         // Save the choice before bootstrap or issuance. A failed preparation stays narrow.
         const resolved = await this.ports.resolve(chosen)
         active()
+        state.resolved = chosen.map((item, index) => ({ ...item, id: resolved[index].id }))
         state.pending = { label: 'Device scope ' + crypto.randomUUID(), resolved }
         this.save(state)
       }

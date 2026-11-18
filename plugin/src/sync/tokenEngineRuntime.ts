@@ -105,6 +105,7 @@ export interface TokenEngineOptions {
   WebSocket?: typeof WebSocket
   paths?: ExecutablePaths
   ownSettingsPath?: string
+  applied?(change: import('@abele/sync-sdk/core').AppliedChange): void
   preparePlacement?(paths: readonly string[]): Promise<void>
   recoverPlacement?(): Promise<void>
   retirePlacement?(generation: string, archive: (value: unknown) => Promise<void>): Promise<void>
@@ -1955,6 +1956,7 @@ export class TokenEngineRuntime
       ...(options.paths?.scriptsFolder ? { scriptsFolder: options.paths.scriptsFolder } : {}),
       ...(options.fallbackMs ? { fallbackMs: options.fallbackMs } : {}),
       onApplied: async (change) => {
+        options.applied?.(change)
         await this.notSyncedState.resolved(change.path)
         if (change.kind === 'move' && change.from) await this.notSyncedState.resolved(change.from)
         if (change.kind === 'delete') this.quiet.forget(change.path)

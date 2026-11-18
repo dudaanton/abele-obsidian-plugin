@@ -1,4 +1,7 @@
 import { LocalOnlyCopies } from './localOnlyCopies'
+import { deviceScopeMatcher, readDeviceScope } from './deviceScope'
+import { SCOPE_BOOTSTRAP } from './deviceScopedConnections'
+import { scopeInventory } from './deviceScopeInventory'
 import { excludedFolderPrefix } from './excludedFolder'
 import { observeBackgroundActivity, safetyNotice } from './backgroundActivity'
 import { STARTUP_STOP, startupSafetyReason, waitForStartupIndex } from './startupSafety'
@@ -109,6 +112,22 @@ export class TokenEngines {
     private scriptsFolder = 'Scripts',
     private readonly ownSettings?: { path: string; arrived(): void }
   ) {
+    ui.scopeInventory = () =>
+      scopeInventory(
+        app.vault
+          .getAllLoadedFiles()
+          .filter((file) => file.path !== '/')
+          .map((file) => ({
+            path: file.path,
+            folder: 'children' in file,
+            groups:
+              'extension' in file
+                ? app.metadataCache.getFileCache(file as import('obsidian').TFile)?.frontmatter
+                    ?.groups
+                : undefined,
+            links: Object.keys(app.metadataCache.resolvedLinks?.[file.path] ?? {}),
+          }))
+      )
     this.stopBackgroundActivity = observeBackgroundActivity(app, (owner, text) => {
       for (const row of owner ? ui.registry.records() : ui.rows.value) {
         if (owner && row.id !== owner) continue
@@ -517,6 +536,7 @@ export class TokenEngines {
         (one) =>
           one.secretReference &&
           one.scope &&
+          this.ui.deviceScopes.runnable(one.id) &&
           !this.ui.itemSets.store.forRecord(one.id)?.item.detached &&
           !one.pending &&
           one.status !== 'needs-token' &&
@@ -546,6 +566,9 @@ export class TokenEngines {
       })
       .catch((error) => console.debug('[Abele Sync items]', error))
     this.refreshDestinations()
+    void this.ui.deviceScopes
+      .resume()
+      .catch((error) => console.debug('[Abele Sync device scope]', error))
   }
   private failed(id: string, error: unknown): void {
     if (this.closed || !this.ui.registry.records().some((one) => one.id === id)) return
@@ -1274,6 +1297,14 @@ export class TokenEngines {
             // The root ignore file belongs to the vault, outside a folder connection's
             // native file scope. Read its identity through the vault's own adapter.
             const text = await readIgnore(this.app)
+            const items = record.state[SCOPE_BOOTSTRAP]
+              ? readDeviceScope(this.ui.registry.storage(record.id))
+              : null
+            const index = items?.some((item) => item.kind === 'group')
+              ? this.ui.scopeInventory()
+              : null
+            const selection = deviceScopeMatcher(items, (item) => index?.members(item.path) ?? [])
+            const ignored = ignoreFor(this.app.vault.configDir, text)
             return {
               localCandidates:
                 record.scope.kind === 'group'
@@ -1287,10 +1318,11 @@ export class TokenEngines {
                   : record.scope.kind === 'file'
                     ? [discoveryScope.path]
                     : undefined,
-              key: await scopeKey(selective, text),
-              ignore: ignoreFor(this.app.vault.configDir, text),
+              key: (await scopeKey(selective, text)) + (items ? ':' + JSON.stringify(items) : ''),
+              ignore: { ignores: (path) => selection.ignores(path) || ignored.ignores(path) },
             }
           },
+          applied: (change) => this.ui.deviceScopes.applied(record.id, change),
           reviews: this.ui.reviews,
           fetch: (input, init) => {
             const path = new URL(

@@ -132,6 +132,16 @@ export class ConnectionSets {
     doc.connections = doc.connections.filter((one) => one.id !== connectionId)
     this.save(doc)
   }
+  /** Move an enrolled device-owned key under its visible management connection atomically. */
+  reparent(from: string, to: string): void {
+    const doc = this.read()
+    const source = doc.connections.find((one) => one.id === from)
+    if (!source) throw new Error('Scoped connection is unavailable')
+    if (from === to) return
+    doc.connections = doc.connections.filter((one) => one.id !== to)
+    source.id = to
+    this.save(doc)
+  }
   recoverLeader(connectionId: string, present: ReadonlySet<string>): string {
     const doc = this.read(),
       connection = doc.connections.find((one) => one.id === connectionId)

@@ -17,8 +17,7 @@ import { LocalPlacementError } from '@/sync/localFolderPlacement'
 import { tokenStatus } from '@/sync/tokenStatus'
 import { readDeviceScope } from '@/sync/deviceScope'
 
-// BUG: connect does not yet persist a device include scope before starting the engine.
-it.fails('saves the selected device scope before starting a newly connected engine', async () => {
+it('saves the selected device scope before starting a newly connected engine', async () => {
   const { ui, registry } = setup()
   const only = [{ id: 'sample-folder', kind: 'folder' as const, path: 'Garden' }]
   const started = vi.fn(async () => {
@@ -26,7 +25,12 @@ it.fails('saves the selected device scope before starting a newly connected engi
     expect(readDeviceScope(registry.storage(record.id))).toEqual(only)
   })
   ui.connectionsChanged = started
+  const change = vi.spyOn(ui.deviceScopes, 'change').mockImplementation(async (id, items) => {
+    expect(readDeviceScope(registry.storage(id))).toEqual(items)
+    await ui.connectionsChanged()
+  })
   await Reflect.apply(ui.connect, ui, [token, undefined, only])
+  expect(change).toHaveBeenCalledWith(registry.records()[0].id, only, undefined)
   expect(started).toHaveBeenCalledOnce()
   const restored = TokenConnectionRegistry.open(registry.localStorage)
   expect(readDeviceScope(restored.storage(restored.records()[0].id))).toEqual(only)

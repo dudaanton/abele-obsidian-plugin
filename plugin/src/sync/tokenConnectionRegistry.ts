@@ -517,6 +517,26 @@ export class TokenConnectionRegistry {
     record.localRoot = parsed
     this.write(TOKEN_REGISTRY_KEY, doc)
   }
+  /** A replacement scoped key retains the authenticated scope's existing host placement. */
+  inheritScopePlacement(localId: string, sourceId: string): void {
+    const doc = this.document(),
+      record = this.record(doc, localId),
+      source = this.record(doc, sourceId)
+    if (
+      (!record.state['abele-sync-token-state:scope-owned-by'] &&
+        !record.state['abele-sync-token-state:scope-bootstrap']) ||
+      record.address !== source.address ||
+      record.spaceId !== source.spaceId ||
+      record.scope?.kind !== 'folder' ||
+      source.scope?.kind !== 'folder' ||
+      record.scope.id !== source.scope.id
+    )
+      throw new Error('Scope placement identity changed')
+    if (source.localRoot !== undefined) record.localRoot = source.localRoot
+    if (source.serverRoot !== undefined) record.serverRoot = source.serverRoot
+    if (source.rootIssue !== undefined) record.rootIssue = clone(source.rootIssue)
+    this.write(TOKEN_REGISTRY_KEY, doc)
+  }
   setScopePath(localId: string, path: string): void {
     const doc = this.document(),
       record = this.record(doc, localId)

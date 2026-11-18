@@ -1,4 +1,9 @@
 import { shallowReactive, triggerRef } from 'vue'
+import { DEVICE_SCOPE_LEASE } from './deviceScopeLease'
+import { t } from '@/i18n'
+import { SyncTaskBudget } from './syncTaskBudget'
+import { deviceScopeMatcher } from './deviceScope'
+import { SCOPE_SOURCE, SCOPE_BOOTSTRAP } from './deviceScopedConnections'
 import { connectionBusy } from './connectionLine'
 import { encodeAccessToken, type V2AccessToken } from '@abele/sync-sdk/protocol'
 import {
@@ -20,6 +25,8 @@ import {
   type ConnectionItem,
   type IssuedShare,
   type ShareDeleteFacts,
+  type ConnectScope,
+  type DeviceScope,
 } from './shareSets'
 
 const toItem = (item: ScopeItem): SetItem => ({
@@ -115,6 +122,10 @@ export class TokenItemSets implements ShareSetSource {
     if (this.installed) triggerRef(shareSetSource)
     this.ui.refresh()
   }
+  enableItems(id: string): void {
+    this.capabilities.set(id, true)
+    this.changed()
+  }
   private selected(id?: string): string {
     const selected = id ?? this.ui.rows.value[0]?.id
     if (!selected) throw new Error('Connect to a server first')
@@ -163,6 +174,10 @@ export class TokenItemSets implements ShareSetSource {
     )
   }
   client(id: string): V2Client {
+    if (this.ui.registry.records().find((one) => one.id === id)?.state[DEVICE_SCOPE_LEASE])
+      return this.ui.deviceScopes.managementClient(id)
+    if (this.ui.registry.records().find((one) => one.id === id)?.state[DEVICE_SCOPE_LEASE])
+      return this.ui.deviceScopes.managementClient(id)
     const connection = this.store.get(id)
     const selected =
       connection?.items.find((item) => !item.detached && item.recordId)?.recordId ?? id
@@ -176,7 +191,7 @@ export class TokenItemSets implements ShareSetSource {
   }
   several = (id?: string): boolean => {
     const selected = id ?? this.ui.rows.value[0]?.id
-    return !!selected && this.capabilities.get(selected) === true
+    return !!selected && this.capabilities.get(selected) !== false
   }
   label = (id: string): string | null => this.store.get(id)?.label ?? null
   owner = (id: string): boolean => {
@@ -236,7 +251,143 @@ export class TokenItemSets implements ShareSetSource {
       ...connection.items.flatMap((item) => this.departed.get(item.recordId) ?? []),
     ]
   }
-  choices = (id?: string): ShareItem[] => this.choiceCache.get(this.selected(id)) ?? []
+  private localInventory?: ReturnType<TokenUi['scopeInventory']>
+  private inventory() {
+    return (this.localInventory ??= this.ui.scopeInventory())
+  }
+  refreshChoices = (): void => {
+    this.localInventory = this.ui.scopeInventory()
+    this.changed()
+  }
+  choices = (id?: string): ShareItem[] => {
+    const connectionId = this.selected(id)
+    const remote = this.choiceCache.get(connectionId) ?? []
+    if (!this.owner(connectionId)) {
+      const local = this.ui.deviceScopes.choices(connectionId, this.inventory())
+      const known = new Set(local.map((item) => item.kind + ':' + item.path))
+      return [...local, ...remote.filter((item) => !known.has(item.kind + ':' + item.path))]
+    }
+    const present = new Set(remote.map((item) => item.kind + ':' + item.path))
+    return [
+      ...remote,
+      ...this.inventory().choices.filter((item) => !present.has(item.kind + ':' + item.path)),
+    ]
+  }
+  members = (item: ShareItem): number | undefined =>
+    item.kind === 'group'
+      ? Math.max(
+          0,
+          this.inventory()
+            .members(item.path)
+            .filter((path) => /\.md$/i.test(path)).length - 1
+        )
+      : undefined
+  deviceScope = (id: string): DeviceScope | null => {
+    const record = this.ui.registry.records().find((one) => one.id === id)
+    if (!record?.scope) return null
+    const initial = this.store
+      .get(id)
+      ?.items.filter((item) => !item.detached)
+      .map((item) => ({
+        id: item.id,
+        kind: shareKind(item.kind, item.path),
+        path: item.path,
+      })) ?? [
+      {
+        id: record.scope.id,
+        kind: shareKind(record.scope.kind, record.scope.path),
+        path: record.localRoot ?? record.scope.path,
+      },
+    ]
+    const items = this.ui.deviceScopes.state(id)?.selection ?? initial
+    const narrowed = !this.owner(id)
+    const choices = narrowed
+      ? this.ui.deviceScopes.choices(id, this.inventory())
+      : this.inventory().choices
+    return {
+      items,
+      choices,
+      narrowed,
+      notes: Object.fromEntries(
+        items
+          .filter(
+            (item) => !choices.some((one) => one.kind === item.kind && one.path === item.path)
+          )
+          .map((item) => [item.id, { text: t('sync.deviceScope.missingLocal'), faint: true }])
+      ),
+    }
+  }
+  setDeviceScope = async (id: string, items: ShareItem[]): Promise<void> => {
+    try {
+      await this.ui.deviceScopes.change(id, items)
+    } finally {
+      this.changed()
+    }
+  }
+  async connectScope(text: string, signal: AbortSignal): Promise<ConnectScope> {
+    const token = decodeAccessToken(text)
+    const fetcher: typeof fetch = (input, init) => this.transport(input, { ...init, signal })
+    const client = new V2Client(token, fetcher)
+    const scopes = token.v === 2 ? (await this.resolvePreview(text, signal)).items : null
+    const authority = scopes ? null : await client.connection(signal)
+    const initial: ShareItem[] = scopes ?? [
+      {
+        id: authority.scope.id,
+        kind: shareKind(authority.scope.kind, authority.scope.path),
+        path: authority.scope.path,
+      },
+    ]
+    const narrowed = !initial.some((item) => item.kind === 'vault')
+    this.localInventory = this.ui.scopeInventory()
+    const choices = narrowed ? [...initial] : [...this.inventory().choices]
+    const present = new Set(choices.map((item) => item.kind + ':' + item.path))
+    const budget = new SyncTaskBudget()
+    let serverFiles = 0
+    const clients =
+      token.v === 1 ? [client] : initial.map((item) => new V2Client(token, fetcher, item.id))
+    for (const scopedClient of clients) {
+      let next: string | null = null
+      do {
+        signal.throwIfAborted()
+        const page = await scopedClient.manifest(next)
+        for (const item of page.items) {
+          const checkpoint = budget.metadataRow(signal)
+          if (checkpoint !== undefined) await checkpoint
+          if (item.kind !== 'directory') serverFiles++
+          const kinds: ShareItem['kind'][] =
+            item.kind === 'directory'
+              ? ['folder']
+              : item.kind === 'note'
+                ? ['file', 'group']
+                : ['file']
+          for (const kind of kinds)
+            if (!present.has(kind + ':' + item.path)) {
+              choices.push({ kind, path: item.path, id: item.file_id })
+              present.add(kind + ':' + item.path)
+            }
+        }
+        next = page.next
+      } while (next !== null)
+    }
+    if (narrowed) {
+      for (const item of this.inventory().choices) {
+        if (
+          !initial.some(
+            (root) =>
+              root.kind === 'folder' &&
+              (item.path === root.path || item.path.startsWith(root.path + '/'))
+          )
+        )
+          continue
+        const key = item.kind + ':' + item.path
+        if (!present.has(key)) {
+          choices.push(item)
+          present.add(key)
+        }
+      }
+    }
+    return { choices, serverFiles, ...(narrowed ? { narrowed: initial } : {}) }
+  }
   preview = (text: string) => {
     try {
       const token = decodeAccessToken(text)
@@ -271,7 +422,11 @@ export class TokenItemSets implements ShareSetSource {
       readOnly: authority?.read_only ?? false,
     }
   }
-  async enroll(token: V2AccessToken, signal?: AbortSignal): Promise<string> {
+  async enroll(
+    token: V2AccessToken,
+    signal?: AbortSignal,
+    beforeAttach?: (id: string, leader: string) => void | Promise<void>
+  ): Promise<string> {
     const fetcher: typeof fetch = (input, init) => this.transport(input, { ...init, signal })
     const inventory = await new V2Client(token, fetcher).itemClient().items()
     const items = inventory.items.filter(visible)
@@ -318,7 +473,9 @@ export class TokenItemSets implements ShareSetSource {
         )
           throw new Error('Share authority changed')
         const id = index === 0 && existing ? existing.id : this.ui.registry.add(true)
+        leader ??= id
         if (id !== existing?.id) provisional.push(id)
+        await beforeAttach?.(id, leader)
         await this.ui.registry.attachDurably(
           id,
           { v: 1, address: token.address, key: token.key, scope: item.scope },
@@ -359,6 +516,7 @@ export class TokenItemSets implements ShareSetSource {
   private async refreshNow(id: string): Promise<boolean> {
     const epoch = this.epoch
     const record = this.ui.registry.records().find((one) => one.id === id)
+    if (record?.state[SCOPE_SOURCE] || record?.state[SCOPE_BOOTSTRAP]) return false
     if (!record?.scope || !record.secretReference) return false
     const client = new V2Client(
       decodeAccessToken(this.encoded(record)),
@@ -584,6 +742,7 @@ export class TokenItemSets implements ShareSetSource {
     return item
   }
   async shares(id?: string): Promise<IssuedShare[]> {
+    this.localInventory = this.ui.scopeInventory()
     const connectionId = this.selected(id),
       client = this.client(connectionId)
     const scopes = await this.ui.choices(connectionId)
@@ -625,7 +784,8 @@ export class TokenItemSets implements ShareSetSource {
   }
   async issue(
     id: string | undefined,
-    set: { items: ShareItem[]; label: string; readOnly: boolean }
+    set: { items: ShareItem[]; label: string; readOnly: boolean },
+    sending?: (sent: number, total: number) => void
   ): Promise<string> {
     const connectionId = this.selected(id),
       client = this.client(connectionId)
@@ -638,16 +798,20 @@ export class TokenItemSets implements ShareSetSource {
       }))
     )
     if (!set.items.length) throw new Error('Choose something to share')
+    const missing = this.notOnServer(connectionId, set.items)
+    if (missing) sending?.(0, missing.files)
+    const resolved = await this.ui.deviceScopes.resolve(connectionId, set.items, sending)
+    if (missing) sending?.(missing.files, missing.files)
     const selector = (item: ShareItem) => ({
       kind: item.kind === 'vault' ? ('folder' as const) : item.kind,
       id: item.id,
     })
     const issued = await client.issue({
-      scope: selector(set.items[0]),
+      scope: selector(resolved[0]),
       label: set.label,
-      read_only: set.readOnly,
+      read_only: set.readOnly || (await client.connection()).read_only === true,
     })
-    for (const item of set.items.slice(1))
+    for (const item of resolved.slice(1))
       await client.itemClient().addItem(issued.info.id, selector(item))
     await this.ui.releaseLocalOnly(
       connectionId,
@@ -669,6 +833,27 @@ export class TokenItemSets implements ShareSetSource {
       })),
     })
   }
+  notOnServer = (id: string | undefined, items: ShareItem[]) => {
+    const remote = this.choiceCache.get(this.selected(id)) ?? []
+    const inventory = this.inventory()
+    const remotePaths = new Set(
+      remote.filter((item) => item.kind === 'file').map((item) => item.path)
+    )
+    const localFiles = inventory.choices.filter((item) => item.kind === 'file')
+    const included = (item: ShareItem) => {
+      const matcher = deviceScopeMatcher([item], (one) => inventory.members(one.path))
+      return localFiles.filter((one) => !matcher.ignores(one.path) && !remotePaths.has(one.path))
+    }
+    const missing = items.filter(
+      (item) =>
+        included(item).length ||
+        !remote.some((one) => one.kind === item.kind && one.path === item.path)
+    )
+    if (!missing.length) return null
+    const paths = new Set<string>()
+    for (const item of missing) for (const file of included(item)) paths.add(file.path)
+    return { files: paths.size, items: missing.map((item) => item.id) }
+  }
   async add(id: string | undefined, shareId: string, items: ShareItem[]): Promise<void> {
     const current = this.issued.get(shareId)?.share.items ?? []
     assertItemSet(
@@ -679,8 +864,10 @@ export class TokenItemSets implements ShareSetSource {
         path: one.path,
       }))
     )
-    const client = this.client(this.selected(id)).itemClient()
-    for (const item of items)
+    const selected = this.selected(id)
+    const resolved = await this.ui.deviceScopes.resolve(selected, items)
+    const client = this.client(selected).itemClient()
+    for (const item of resolved)
       await client.addItem(shareId, {
         kind: item.kind === 'vault' ? 'folder' : item.kind,
         id: item.id,

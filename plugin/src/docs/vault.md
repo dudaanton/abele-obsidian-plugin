@@ -113,6 +113,19 @@ pause flags and detached flags. Detached entries are retained so their local cop
 ledger identities can be kept. Grouping never changes the single-scope registry format and
 does not travel through settings transfer.
 
+The device's chosen folders, groups and files are stored in each source record's
+`abele-sync-token-state:device-scope-v1` slot. Restricted choices use device-owned scoped
+access keys, with issuance, enrollment and revocation recovery in
+`abele-sync-token-state:device-scope-lease-v1`. Credentials remain in device-secret storage.
+The source connection retains management access; its original item grouping, source/owned
+record links and temporary restricted upload records use the `scope-original-set`,
+`scope-source`, `scope-owned-by` and `scope-bootstrap` slots under the same token-state prefix.
+`scope-stopped` prevents an interrupted or cancelled setup from restarting unnoticed.
+`scope-pauses` retains the chosen per-item pause states when owned keys are replaced.
+These records never sync or transfer. Changing scope retires only device-owned keys and
+engine records; local files and server files remain. Group membership is resolved by the
+server's scoped manifests and changes, including members first created on another device.
+
 Per-item engine records use `abele-sync-item-connections-v1` separately from the legacy
 registry, including file selectors. Each has its own device-secret reference and ledger;
 the grouping records their local record IDs. The selected item record uses the separate

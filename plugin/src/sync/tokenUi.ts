@@ -1,4 +1,9 @@
 import { DirectoryScopeError } from './vaultDirectories'
+import { DeviceScopedConnections, SCOPE_SOURCE, SCOPE_STOPPED } from './deviceScopedConnections'
+import { checkedDeviceScope, readDeviceScope, writeDeviceScope } from './deviceScope'
+import type { ShareItem } from './shareSets'
+import { scopeInventory } from './deviceScopeInventory'
+import { SyncTaskBudget } from './syncTaskBudget'
 import { SyncCancelled } from '@abele/sync-sdk/core'
 import { settingsSyncText } from '@/i18n/settingsSync'
 import { STARTUP_STOP } from './startupSafety'
@@ -428,6 +433,8 @@ export class TokenUi {
   readonly available = shallowRef(false)
   readonly runtimes = new Map<string, TokenUiRuntime>()
   readonly itemSets: TokenItemSets
+  readonly deviceScopes: DeviceScopedConnections
+  scopeInventory = () => scopeInventory([])
   readonly approvalStatus = shallowRef<Record<string, string>>({})
   private readonly installing = new Map<string, Promise<void>>()
   private readonly deletionFacts = new Map<
@@ -502,6 +509,7 @@ export class TokenUi {
     // Vue must observe the exposed refs, never proxy IndexedDB/state/runtime host objects.
     markRaw(this)
     this.itemSets = new TokenItemSets(this, this.secrets, this.transport)
+    this.deviceScopes = new DeviceScopedConnections(this, this.secrets, this.transport)
     this.registry.finishForgotten(this.secrets)
     this.refresh()
     const activity: Record<string, ConnectionActivity> = {}
@@ -556,6 +564,7 @@ export class TokenUi {
     const records = this.registry.records()
     this.rows.value = records
       .filter((row) => {
+        if (!this.deviceScopes.visible(row.id)) return false
         const binding = this.itemSets.store.forRecord(row.id)
         return !binding || binding.connection.id === row.id
       })
@@ -601,6 +610,7 @@ export class TokenUi {
     }
   }
   setTrusted(id: string, trusted: boolean): void {
+    if (this.deviceScopes.state(id)) this.registry.setTrusted(id, trusted)
     const items = this.itemSets.store.get(id)?.items
     if (items) {
       for (const item of items) if (item.recordId) this.registry.setTrusted(item.recordId, trusted)
@@ -857,20 +867,42 @@ export class TokenUi {
       startupTimings: this.activity.value[row.id]?.startupTimings ?? [],
     }))
   }
-  async connect(text: string, signal?: AbortSignal): Promise<void> {
+  async connect(text: string, signal?: AbortSignal, only?: ShareItem[]): Promise<void> {
     this.connectFailure = undefined
     try {
-      await this.connectToken(text, signal)
+      await this.connectToken(
+        text,
+        signal,
+        only === undefined ? undefined : checkedDeviceScope(only)
+      )
     } catch (error) {
       this.connectFailure = failureDetails(error)
       throw error
     }
   }
-  private async connectToken(text: string, signal?: AbortSignal): Promise<void> {
+  private async connectToken(
+    text: string,
+    signal?: AbortSignal,
+    only?: ShareItem[]
+  ): Promise<void> {
     // Validate with the server before adding a row. Failed paste leaves all existing rows intact.
     const token = decodeAccessToken(text)
+    const beforeAttach =
+      only && !only.some((item) => item.kind === 'vault')
+        ? async (id: string, leader: string) => {
+            this.registry.storage(id).saveLocalStorage(SCOPE_SOURCE, leader)
+            writeDeviceScope(this.registry.storage(id), only)
+            this.deviceScopes.initialize(leader, only)
+            await this.deviceScopes.halt(leader)
+          }
+        : undefined
     if (token.v === 2) {
-      const id = await this.itemSets.enroll(token, signal)
+      const id = await this.itemSets.enroll(token, signal, beforeAttach)
+      if (beforeAttach) this.deviceScopes.captureSourceSet(id)
+      if (only) {
+        await this.deviceScopes.change(id, only, signal)
+        return
+      }
       this.refresh()
       if (this.connectionsChanged !== noConnectionHost)
         void connectStage(
@@ -906,7 +938,12 @@ export class TokenUi {
       )
     } catch (error) {
       if (!(error instanceof V2ClientError) || error.code !== 'forbidden') throw error
-      const id = await this.itemSets.enroll(token, signal)
+      const id = await this.itemSets.enroll(token, signal, beforeAttach)
+      if (beforeAttach) this.deviceScopes.captureSourceSet(id)
+      if (only) {
+        await this.deviceScopes.change(id, only, signal)
+        return
+      }
       this.refresh()
       if (this.connectionsChanged !== noConnectionHost)
         void this.connectionsChanged(() => {
@@ -937,6 +974,13 @@ export class TokenUi {
           assertCurrent()
           savedId ??= this.registry.add()
           assertCurrent()
+          if (only) {
+            writeDeviceScope(this.registry.storage(savedId), only)
+            if (!only.some((item) => item.kind === 'vault'))
+              this.deviceScopes.initialize(savedId, only)
+            if (!only.some((item) => item.kind === 'vault')) await this.deviceScopes.halt(savedId)
+            await this.registry.flush()
+          }
           await this.registry.attachDurably(
             savedId,
             { ...token, address: token.address },
@@ -958,6 +1002,10 @@ export class TokenUi {
       },
       signal
     )
+    if (only) {
+      await this.deviceScopes.change(id, only, signal)
+      return
+    }
     if (this.connectionsChanged === noConnectionHost) return
     if (!this.runtimes.has(id)) this.registry.setStatus(id, 'joining')
     this.refresh()
@@ -1003,6 +1051,7 @@ export class TokenUi {
     }
     if (patch.paused !== undefined) await this.pause(id, patch.paused)
     if (patch.selective !== undefined) {
+      if (this.deviceScopes.state(id)) this.registry.setSelective(id, patch.selective)
       for (const recordId of ids) this.registry.setSelective(recordId, patch.selective)
     }
     this.refresh()
@@ -1392,6 +1441,20 @@ export class TokenUi {
     }
   }
   async sync(id: string): Promise<void> {
+    const record = this.registry.records().find((one) => one.id === id)
+    const scope = record ? this.deviceScopes.state(id) : null
+    const desired = record ? (readDeviceScope(this.registry.storage(id)) ?? scope?.selection) : null
+    if (
+      desired &&
+      (record?.state[SCOPE_STOPPED] ||
+        (!scope && record?.state[SCOPE_SOURCE]) ||
+        (scope &&
+          (!scope.current ||
+            scope.pending ||
+            scope.cleanup.length ||
+            JSON.stringify(desired) !== JSON.stringify(scope.selection))))
+    )
+      await this.deviceScopes.change(id, desired)
     if (
       this.registry.records().find((one) => one.id === id)?.state[
         'abele-sync-token-state:scope-deleted'
@@ -1481,6 +1544,10 @@ export class TokenUi {
     this.refresh()
   }
   async pause(id: string, paused: boolean): Promise<void> {
+    if (this.deviceScopes.state(id)) {
+      this.registry.setPaused(id, paused)
+      await this.deviceScopes.pauseAuxiliary(id, paused)
+    }
     const state = this.registry.records().find((one) => one.id === id)?.state
     if (
       state?.['abele-sync-token-state:scope-deleted'] ||
@@ -1523,6 +1590,7 @@ export class TokenUi {
       })
   }
   async disconnect(id: string): Promise<void> {
+    await this.deviceScopes.remove(id)
     const set = this.itemSets.store.get(id)
     if (set) {
       for (const item of [...set.items].sort(
@@ -1585,13 +1653,16 @@ export class TokenUi {
     this.refresh()
     await this.refreshReviews()
   }
-  async choices(id: string): Promise<V2Scope[]> {
+  async choices(id: string, client = this.client(id)): Promise<V2Scope[]> {
     const record = this.registry.records().find((one) => one.id === id)
     const scopes: V2Scope[] = record.scope ? [record.scope] : []
+    const budget = new SyncTaskBudget()
     let next: string | null = null
     do {
-      const page = await this.client(id).manifest(next)
+      const page = await client.manifest(next)
       for (const item of page.items) {
+        const checkpoint = budget.metadataRow()
+        if (checkpoint !== undefined) await checkpoint
         if (item.kind === 'directory' || item.kind === 'note')
           scopes.push({
             kind: item.kind === 'directory' ? 'folder' : 'group',
@@ -1603,10 +1674,13 @@ export class TokenUi {
       }
       next = page.next
     } while (next !== null)
-    return scopes.filter(
-      (one, index) =>
-        scopes.findIndex((other) => other.kind === one.kind && other.id === one.id) === index
-    )
+    const seen = new Set<string>()
+    return scopes.filter((one) => {
+      const key = one.kind + ':' + one.id
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
   }
   async issued(id: string): Promise<V2TokenInfo[]> {
     // The server lists exactly the tokens this caller may revoke, including root-owner access.

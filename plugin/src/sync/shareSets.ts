@@ -169,11 +169,35 @@ export interface SharePreview {
   readOnly: boolean
 }
 
+/** A checked token's answer before connecting: what this device may choose to sync. */
+export interface ConnectScope {
+  /** Files the server holds now; 0 when this is the first device. */
+  serverFiles: number
+  /** This vault's folders, groups and files together with the server's, the vault first. */
+  choices: ShareItem[]
+  /** The token opens only these: all chosen to start with, nothing beyond them. */
+  narrowed?: ShareItem[]
+}
+
+/**
+ * What this device syncs of one connection. Kept on this device only: it never reaches the server
+ * and never changes what the token allows there.
+ */
+export interface DeviceScope {
+  items: ShareItem[]
+  choices: ShareItem[]
+  /** The token opens only `choices`. */
+  narrowed?: boolean
+  /** Quiet words on a chosen item: gone from this vault since, a group with no notes yet. */
+  notes?: Record<string, { text: string; faint?: boolean }>
+}
+
 /**
  * What the screens ask about sets. Production reads the server's item routes; the design stand
  * sets a fake one.
  */
 export interface ShareSetSource {
+  refreshChoices?: () => void
   /** The server keeps sets; otherwise the dialogs stay as they were, one scope per token. */
   several: (connectionId?: string) => boolean
   /** The connection's set on this device, or null for a connection of one scope. */
@@ -183,10 +207,20 @@ export interface ShareSetSource {
   owner: (connectionId: string) => boolean
   choices: (connectionId?: string) => ShareItem[]
   shares: (connectionId?: string) => Promise<IssuedShare[]>
+  /**
+   * `sending` hears how the chosen files not on the server yet go up: the token is made once
+   * they are there.
+   */
   issue: (
     connectionId: string | undefined,
-    set: { items: ShareItem[]; label: string; readOnly: boolean }
+    set: { items: ShareItem[]; label: string; readOnly: boolean },
+    sending?: (sent: number, total: number) => void
   ) => Promise<string>
+  /** Of what is chosen, what this device holds and the server not yet: files and which items. */
+  notOnServer?: (
+    connectionId: string | undefined,
+    items: ShareItem[]
+  ) => { files: number; items: string[] } | null
   add: (connectionId: string | undefined, shareId: string, items: ShareItem[]) => Promise<void>
   remove: (connectionId: string | undefined, shareId: string, itemId: string) => Promise<void>
   revoke: (connectionId: string | undefined, shareId: string) => Promise<void>
@@ -201,6 +235,13 @@ export interface ShareSetSource {
   deleteFacts: (shareId: string, itemId: string | null) => ShareDeleteFacts | null
   closeDeletePreview?: (shareId: string) => void
   deleteFromServer: (shareId: string, itemId: string | null) => Promise<void>
+  /** How many notes name this one as their group: any note can be picked as a group, 0 is fine. */
+  members?: (item: ShareItem) => number | undefined
+  /** Read a token's server before connecting; unset, Connect syncs what the token opens. */
+  connectScope?: (token: string, signal: AbortSignal) => Promise<ConnectScope>
+  deviceScope?: (connectionId: string) => DeviceScope | null
+  /** Narrowing leaves every file where it is; widening fetches and sends what came in. */
+  setDeviceScope?: (connectionId: string, items: ShareItem[]) => Promise<void>
 }
 
 /** The server's facts for deleting, and the notes that other shared groups hold as well. */
