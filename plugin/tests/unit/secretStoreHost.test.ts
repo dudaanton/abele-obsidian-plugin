@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { Plugin } from 'obsidian'
 import {
   CONFLICT_COPY,
+  createPluginSecrets,
   deviceOnlySecretIds,
   pluginSecretIds,
   pluginStoreHost,
@@ -16,6 +17,10 @@ import { DEFAULT_TRANSCRIPTION } from '@/ai/transcription'
 import { DEFAULT_GITHUB_SETTINGS, GITHUB_TOKEN_KEY_ID } from '@/github/settings'
 import { FIREFLY_TOKEN_KEY_ID } from '@/secrets/legacy'
 import { CONNECTION_KEY, emptyConnection } from '@/sync/connection'
+import { SectionSettings } from '@/sync/abeleSectionEngine'
+import { nextTick } from 'vue'
+import { deviceKeyId, readEntries, type SecretStoreFile } from '@/secrets/storeFile'
+import { fromBase64 } from '@/secrets/crypto'
 
 /** Local storage holding a connection whose token is filed under this id. */
 const connectedUnder = (deviceTokenId: string, local = new Map<string, unknown>()) => {
@@ -28,6 +33,7 @@ const connectedUnder = (deviceTokenId: string, local = new Map<string, unknown>(
 
 beforeEach(() => {
   const config = AbeleConfig.getInstance()
+  config.sectionSettings = undefined
   config.applySettings(undefined)
   config.ai = {
     ...DEFAULT_AI_SETTINGS,
@@ -64,6 +70,58 @@ beforeEach(() => {
 })
 
 describe('the plugin’s secrets', () => {
+  it('admits a saved draft through settings notifications, but never a cancelled draft', async () => {
+    const config = AbeleConfig.getInstance()
+    config.sectionSettings = new SectionSettings({ read: () => null, write: () => {} })
+    config.sectionSettings.choose('ai-mcp-servers', false, config.exportSettings())
+    const plugin = fakePlugin({})
+    const keys = new Map<string, string>()
+    plugin.app.secretStorage = {
+      getSecret: (id: string) => keys.get(id) ?? null,
+      setSecret: (id: string, value: string) => void keys.set(id, value),
+    } as never
+    let stop = () => {}
+    plugin.register = (callback: () => void) => {
+      stop = callback
+    }
+    const save = vi.spyOn(config, 'saveSettings').mockResolvedValue()
+    const store = createPluginSecrets(plugin)
+    try {
+      await store.enable('sample-passphrase', { iterations: 1000 })
+      store.set('sample-token', 'private-token')
+      store.set('sample-cancelled', 'cancelled-token')
+      config.ai.mcpServers = [{ id: 'sample-server', keyId: 'sample-token' } as never]
+      config.version.value++
+      await nextTick()
+      await store.flush()
+      const key = fromBase64(keys.get(deviceKeyId((config.secretStore as SecretStoreFile).id))!)
+      expect(await readEntries(config.secretStore as SecretStoreFile, key)).not.toHaveProperty(
+        'sample-token'
+      )
+      config.sectionSettings.choose('ai-mcp-servers', true, config.exportSettings())
+      config.version.value++
+      await nextTick()
+      await store.flush()
+      const entries = await readEntries(config.secretStore as SecretStoreFile, key)
+      expect(entries['sample-token'].value).toBe('private-token')
+      expect(entries).not.toHaveProperty('sample-cancelled')
+    } finally {
+      stop()
+      save.mockRestore()
+    }
+  })
+  it('keeps an unsaved credential local until a selected section references it', () => {
+    const config = AbeleConfig.getInstance()
+    config.sectionSettings = new SectionSettings({ read: () => null, write: () => {} })
+    config.sectionSettings.choose('ai-mcp-servers', false, config.exportSettings())
+    const host = pluginStoreHost(fakePlugin({}))
+    expect(host.localOnly?.('sample-new-token')).toBe(true)
+    config.ai.mcpServers = [{ id: 'sample-server', keyId: 'sample-new-token' } as never]
+    expect(host.localOnly?.('sample-new-token')).toBe(true)
+    config.sectionSettings.choose('ai-mcp-servers', true, config.exportSettings())
+    expect(host.localOnly?.('sample-new-token')).toBe(false)
+    expect(host.localOnly?.('sample-cancelled-token')).toBe(true)
+  })
   it('are every keychain id the settings point at', () => {
     expect(pluginSecretIds().sort()).toEqual(
       [

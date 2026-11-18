@@ -2782,6 +2782,11 @@ file may carry `_abeleSectionDevice`, a display label identifying its latest set
 Section credentials remain keychain references in settings. With synced keys enabled, keys
 used exclusively by unticked sections read and change only the local keychain. Previously
 shared encrypted values remain intact; unticking does not revoke another device's key.
+Credentials entered before their settings entry is saved stay in the local keychain. They
+can enter the encrypted catalog only once a selected section references them; cancelled
+drafts never enter it. Restarting after saving a reference recovers a missing catalog entry
+from the keychain without replacing an existing shared value. Removing the synced store
+from this device preserves keys belonging to unticked sections, including private replacements.
 
 The connection's content check retains only an in-memory result. It reads file contents and
 the server manifest, validates local inventory revisions and the server snapshot/generation,

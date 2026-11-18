@@ -69,6 +69,76 @@ function device(
 
 afterEach(() => vi.restoreAllMocks())
 
+it('admits a draft key only after its saved reference selects a shared section', async () => {
+  const on = shared()
+  const ids: string[] = []
+  let selected = false
+  const first = device(on, ids, undefined, (id) => !selected || !ids.includes(id))
+  await first.store.enable('sample-passphrase', FAST)
+  first.store.set('sample-draft', 'draft-value')
+  first.store.set('sample-cancelled', 'cancelled-value')
+  await first.store.flush()
+  ids.push('sample-draft')
+  first.store.syncReferenced()
+  await first.store.flush()
+  const second = device(on)
+  await second.store.load()
+  await second.store.unlock('sample-passphrase')
+  expect(second.store.get('sample-draft')).toBe('')
+  selected = true
+  first.store.syncReferenced()
+  await first.store.flush()
+  await second.store.load()
+  expect(second.store.get('sample-draft')).toBe('draft-value')
+  expect(second.store.get('sample-cancelled')).toBe('')
+})
+it('recovers a saved draft reference after restarting before secret admission', async () => {
+  const on = shared()
+  const ids: string[] = []
+  const first = device(on, ids, undefined, (id) => !ids.includes(id))
+  await first.store.enable('sample-passphrase', FAST)
+  first.store.set('sample-draft', 'draft-value')
+  await first.store.flush()
+  ids.push('sample-draft')
+  const restarted = device(on, ids, undefined, (id) => !ids.includes(id))
+  for (const [id, value] of first.keychain.values) restarted.keychain.setSecret(id, value)
+  await restarted.store.load()
+  await restarted.store.flush()
+  const other = device(on)
+  await other.store.load()
+  await other.store.unlock('sample-passphrase')
+  expect(other.store.get('sample-draft')).toBe('draft-value')
+})
+it('admits a previously private new key when its section is selected after restart', async () => {
+  const on = shared()
+  let selected = false
+  const first = device(on, ['sample-key'], undefined, () => !selected)
+  await first.store.enable('sample-passphrase', FAST)
+  first.store.set('sample-key', 'private-value')
+  const restarted = device(on, ['sample-key'], undefined, () => !selected)
+  for (const [id, value] of first.keychain.values) restarted.keychain.setSecret(id, value)
+  await restarted.store.load()
+  selected = true
+  restarted.store.syncReferenced()
+  await restarted.store.flush()
+  const other = device(on)
+  await other.store.load()
+  await other.store.unlock('sample-passphrase')
+  expect(other.store.get('sample-key')).toBe('private-value')
+})
+
+it('keeps a private replacement when removing the shared store from this device', async () => {
+  const on = shared()
+  let local = false
+  const first = device(on, ['sample-key'], undefined, () => local)
+  first.store.set('sample-key', 'shared-value')
+  await first.store.enable('sample-passphrase', FAST)
+  local = true
+  first.store.set('sample-key', 'private-value')
+  await first.store.lock()
+  expect(first.store.get('sample-key')).toBe('private-value')
+})
+
 it('keeps unticked section key edits local without revoking the shared key', async () => {
   const on = shared()
   const first = device(on, ['sample-key'])

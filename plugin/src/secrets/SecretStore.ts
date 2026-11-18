@@ -114,6 +114,7 @@ export class SecretStore {
    */
   private entries: SecretEntries | null = null
   private saving: Promise<void> = Promise.resolve()
+  private drafts = new Set<string>()
 
   constructor(private readonly host: StoreHost) {}
 
@@ -151,6 +152,17 @@ export class SecretStore {
     if (value) this.host.keychain().setSecret(id, value)
     else this.forget(id)
     this.record(id, value)
+  }
+
+  /** A token saved before its editor saves settings becomes eligible only after ownership exists. */
+  syncReferenced(): void {
+    if (this.status.value !== 'unlocked') return
+    const ids = new Set(this.storedIds())
+    for (const id of this.drafts) {
+      if (!ids.has(id)) continue
+      this.drafts.delete(id)
+      this.record(id, this.host.keychain().getSecret(id) ?? '')
+    }
   }
 
   remove(id: string): void {
@@ -319,7 +331,8 @@ export class SecretStore {
     await this.saving
     if (this.storeId) this.forget(deviceKeyId(this.storeId))
     const own = this.ownIds()
-    for (const id of Object.keys(this.entries ?? {})) if (!isOwn(own, id)) this.forget(id)
+    for (const id of Object.keys(this.entries ?? {}))
+      if (!isOwn(own, id) && !this.host.localOnly?.(id)) this.forget(id)
     this.entries = null
     this.key = null
     this.status.value = this.storeId ? 'locked' : 'off'
@@ -401,6 +414,17 @@ export class SecretStore {
     this.entries = merged
     this.status.value = 'unlocked'
     this.mirror(merged)
+    // A crash can separate saving a new reference from admitting its draft token. Only fill
+    // absent entries after decrypting the incoming catalog; never replace a shared value.
+    const own = this.ownIds()
+    for (const id of this.host.ids()) {
+      if (isOwn(own, id) || Object.hasOwn(merged, id)) continue
+      const value = this.host.keychain().getSecret(id)
+      if (!value) continue
+      if (this.host.localOnly?.(id)) this.drafts.add(id)
+      else this.record(id, value)
+    }
+    this.syncReferenced()
     this.version.value++
 
     // Something here the file does not have — a key set while the other device's copy was
@@ -416,6 +440,7 @@ export class SecretStore {
   }
 
   private record(id: string, value: string): void {
+    if (this.host.localOnly?.(id) && !this.host.ids().includes(id)) this.drafts.add(id)
     if (
       this.status.value === 'off' ||
       !this.storeId ||

@@ -9,8 +9,9 @@
  * unchanged, which is harmless: the store is only re-encrypted when a secret changes.
  */
 import type { Plugin } from 'obsidian'
+import { watch } from 'vue'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { collectEntries, isDeviceOnly, SECTIONS } from '@/transfer/entries'
+import { collectEntries, isDeviceOnly } from '@/transfer/entries'
 import { voiceKeyId } from '@/ai/transcriptionSettings'
 import { readConnection } from '@/sync/connection'
 import type { LocalStorage } from '@/sync/ledgerId'
@@ -75,11 +76,11 @@ export function pluginStoreHost(plugin: Plugin): StoreHost {
       const config = AbeleConfig.getInstance()
       const chosen = config.sectionSettings?.chosen
       if (!chosen) return false
-      if (!SECTIONS.some((section) => section.secretsOf && !chosen.has(section.id))) return false
       const uses = collectEntries(config.exportSettings()).filter((entry) =>
         entry.secretIds?.includes(id)
       )
-      return uses.length > 0 && uses.every((entry) => !chosen.has(entry.section))
+      // A draft is not permission to share: its section is known only once settings name it.
+      return uses.length === 0 || uses.every((entry) => !chosen.has(entry.section))
     },
     conflictCopies: async () => {
       const listed = await adapter.list(dir)
@@ -98,5 +99,14 @@ export function pluginStoreHost(plugin: Plugin): StoreHost {
   }
 }
 
-export const createPluginSecrets = (plugin: Plugin): SecretStore =>
-  new SecretStore(pluginStoreHost(plugin))
+export function createPluginSecrets(plugin: Plugin): SecretStore {
+  const store = new SecretStore(pluginStoreHost(plugin))
+  if (AbeleConfig.getInstance().sectionSettings)
+    plugin.register(
+      watch(
+        () => AbeleConfig.getInstance().version.value,
+        () => store.syncReferenced()
+      )
+    )
+  return store
+}
