@@ -61,6 +61,7 @@ interface BlockSection {
   /** The keys this block owns, read off the settings. */
   read(settings: AbeleSettings): Record<string, unknown>
   write(settings: AbeleSettings, data: Record<string, unknown>): void
+  clear?(settings: AbeleSettings): void
   secretsOf?(settings: AbeleSettings): string[]
   /** The block's own values include a credential, so it cannot travel in the open. */
   sensitive?: boolean
@@ -109,6 +110,13 @@ const aiBlock = (
   id,
   label,
   read: (settings) => pick(ai(settings) as unknown as Record<string, unknown>, keys),
+  clear: (settings) => {
+    settings.ai = { ...ai(settings) }
+    for (const key of keys) {
+      if (key === 'mcpLegacyToolMap') continue
+      delete (settings.ai as unknown as Record<string, unknown>)[key]
+    }
+  },
   write: (settings, data) => {
     const incoming = pick(data, keys)
     // A vault's upgrade-time ownership is immutable: an imported alias map must not
@@ -154,6 +162,9 @@ const rootBlock = (
   id,
   label,
   read: (settings) => pick(settings as unknown as Record<string, unknown>, keys),
+  clear: (settings) => {
+    for (const key of keys) delete (settings as unknown as Record<string, unknown>)[key]
+  },
   write: (settings, data) => Object.assign(settings, pick(data, keys)),
   ...extra,
 })
@@ -347,6 +358,11 @@ export const SECTIONS: Section[] = [
     'mapBackgrounds',
   ]),
   rootBlock('github', 'GitHub', ['github'], {
+    clear: (settings) => {
+      if (!settings.github) return
+      const { connections, keyId, server, legacyServer } = settings.github
+      settings.github = { connections, keyId, server, legacyServer } as AbeleSettings['github']
+    },
     // Compatibility fields are never offered here: otherwise choosing this block alone leaks
     // an unselected connection's key through the old keyId alias.
     read: (settings) => {

@@ -9,6 +9,8 @@ import { registerZen } from '@/zen/registerZen'
 import { ChangeTracker } from '@/ai/rewind/ChangeTracker'
 import '@/helpers/deferredCleanup'
 import { openSyncedFile } from './sync/openSyncedFile'
+import { abeleSectionsSource } from './sync/abeleSections'
+import { liveAbeleSections, installSectionSettings } from './sync/abeleSectionsRuntime'
 import { tokenOffloadsOf } from './sync/tokenOffloadCoordinator'
 import { pathCoordinatorOf } from './sync/pathCoordinator'
 import { MarkdownPostProcessorContext, Notice, Plugin, Platform } from 'obsidian'
@@ -316,6 +318,7 @@ export default class AbelePlugin extends Plugin {
       dayjs.extend(dayOfYear)
 
       AbeleConfig.getInstance().init(this)
+      installSectionSettings(AbeleConfig.getInstance(), this.app)
       ;(window as any).process = (window as any).process || {
         env: { NODE_ENV: 'production' },
       } // Ensure process is defined for Node.js compatibility
@@ -352,6 +355,11 @@ export default class AbelePlugin extends Plugin {
       // into a key when this device was unlocked, not now.
       const secretStore = createPluginSecrets(this)
       setSecrets(secretStore)
+      abeleSectionsSource.value = liveAbeleSections(
+        AbeleConfig.getInstance(),
+        this.app,
+        secretStore
+      )
       await startupStepAsync('sync connection', async () => {
         const { TokenEngines } = await import('./sync/tokenEngines')
         if (this.unloaded) return
@@ -829,6 +837,7 @@ export default class AbelePlugin extends Plugin {
       uninstallUntrustedGuard()
       setRequestGuard(undefined)
       setSecrets(null)
+      abeleSectionsSource.value = null
       document.body.classList.remove('abele-full-width-sidebars', 'abele-half-width-sidebars')
       setKeyboardDiagnostics(false)
       setQuickButton(false)

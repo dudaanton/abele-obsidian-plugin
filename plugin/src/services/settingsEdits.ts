@@ -68,6 +68,22 @@ export class SettingsEdits {
     return [...this.edits.values()].some((edit) => edit.path.every((part, at) => path[at] === part))
   }
 
+  /** Incoming section decisions retire only edits at the replaced fields. */
+  retire(paths: readonly string[][]): void {
+    for (const [key, edit] of this.edits) {
+      if (
+        paths.some(
+          (path) =>
+            path.every((part, at) => edit.path[at] === part) ||
+            edit.path.every((part, at) => path[at] === part)
+        )
+      ) {
+        this.edits.delete(key)
+        this.acknowledged.delete(key)
+      }
+    }
+  }
+
   apply<T>(settings: T): T {
     const merged = settingsSnapshot(settings)
     for (const { path, value } of this.edits.values()) {

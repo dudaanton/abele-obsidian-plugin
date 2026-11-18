@@ -41,7 +41,12 @@ interface Device {
  * A device on the shared file. `ids` is what its settings point at; `own` the ids that belong
  * to it alone and must never be in the store.
  */
-function device(on: Shared, ids: string[] = [], own?: string[]): Device {
+function device(
+  on: Shared,
+  ids: string[] = [],
+  own?: string[],
+  localOnly?: (id: string) => boolean
+): Device {
   const keychain = new FakeKeychain()
   const made: Device = { store: null as unknown as SecretStore, keychain, writes: 0 }
   const host: StoreHost = {
@@ -56,12 +61,34 @@ function device(on: Shared, ids: string[] = [], own?: string[]): Device {
     conflictCopies: async () => on.copies,
     now: () => ++on.clock,
     ...(own ? { deviceOnly: () => own } : {}),
+    ...(localOnly ? { localOnly } : {}),
   }
   made.store = new SecretStore(host)
   return made
 }
 
 afterEach(() => vi.restoreAllMocks())
+
+it('keeps unticked section key edits local without revoking the shared key', async () => {
+  const on = shared()
+  const first = device(on, ['sample-key'])
+  first.store.set('sample-key', 'shared-sample')
+  await first.store.enable('sample-passphrase', FAST)
+  await first.store.flush()
+  let local = true
+  const second = device(on, ['sample-key'], undefined, () => local)
+  second.keychain.setSecret('sample-key', 'device-sample')
+  await second.store.load()
+  await second.store.unlock('sample-passphrase')
+  expect(second.store.get('sample-key')).toBe('device-sample')
+  second.store.set('sample-key', 'changed-device-sample')
+  await second.store.flush()
+  await first.store.load()
+  expect(first.store.get('sample-key')).toBe('shared-sample')
+  local = false
+  await second.store.load()
+  expect(second.store.get('sample-key')).toBe('shared-sample')
+})
 
 describe('local credential invalidation', () => {
   it('advances the credential clock for local writes and removal while synced keys are off', () => {

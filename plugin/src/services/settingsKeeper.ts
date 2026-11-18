@@ -1,4 +1,5 @@
 import { Notice } from 'obsidian'
+import type { SectionSettings } from '@/sync/abeleSectionEngine'
 import { SettingsEdits, settingsSnapshot } from './settingsEdits'
 import { ManagedSettingsValue } from './managedSettingsValue'
 import { pruneToolDescriptions } from '@/ai/tools/toolDescriptionOverrides'
@@ -19,6 +20,8 @@ import {
 
 /** What `SettingsKeeper` needs of the settings it reads and writes: `AbeleConfig`. */
 export interface SettingsHost {
+  sections?(): SectionSettings | undefined
+  flushSections?(): Promise<void>
   edits(): SettingsEdits
   fresh(fresh: boolean): void
   plugin(): AbelePlugin | null
@@ -223,7 +226,22 @@ export class SettingsKeeper {
     const tools = Object.keys(candidates).length ? await codeToolDescriptions() : {}
     // Recheck after tool-description loading: a managed save may have been requested
     // during that await and be queued behind this reload. Never apply the old ciphertext.
-    const arrived = this.withManagedWrite(settings)
+    let arrived = this.withManagedWrite(settings)
+    const sections = this.host.sections?.()
+    if (sections && isSettingsObject(file)) {
+      const mine = this.base === null ? undefined : edits.apply(this.host.export())
+      const selected = sections.receive(
+        file as unknown as AbeleSettings,
+        mine,
+        typeof file._abeleSectionDevice === 'string'
+          ? file._abeleSectionDevice.slice(0, 200)
+          : undefined
+      )
+      if (mine)
+        edits.retire(localChanges(mine, selected, ['secretStore']).map((change) => change.path))
+      arrived = this.withManagedWrite(selected)
+      await this.host.flushSections?.()
+    }
     const migrated = this.host.apply(
       (arrived ?? undefined) as AbeleSettings | undefined,
       tools,
@@ -486,7 +504,8 @@ export class SettingsKeeper {
     if (!(await this.catchUp(plugin, edits))) return
     const accepted = this.host.export()
     const managedWritten = this.managedStore.beginWrite()
-    const next = accepted
+    const next = this.host.sections?.()?.project(accepted) ?? accepted
+    await this.host.flushSections?.()
     const text = canonicalJson(next)
     // Nothing changed in meaning: writing would only hand every other device a file to pull
     // and reload for nothing, and a newer mtime to beat whatever they save next.

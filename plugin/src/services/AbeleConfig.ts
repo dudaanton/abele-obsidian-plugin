@@ -21,6 +21,8 @@ import { ref } from 'vue'
 import { ChatIndexKeeper } from './chatIndexKeeper'
 import { applySettingsTo, exportSettingsOf } from './settingsApply'
 import { SettingsEdits, settingsSnapshot } from './settingsEdits'
+import type { SectionSettings } from '@/sync/abeleSectionEngine'
+import { flushHostStorage } from '@/sync/hostSyncStorage'
 import { SettingsKeeper } from './settingsKeeper'
 import type { AbeleSettings, HeaderButtonDefinition, LinkDefinition } from './settingsShape'
 
@@ -107,6 +109,7 @@ export class AbeleConfig {
   public linter: LinterSettings = linterSettingsFrom()
   /** Carried through untouched; `SecretStore` is the only thing that reads or writes it. */
   public secretStore: unknown = undefined
+  public sectionSettings: SectionSettings | undefined
   /**
    * The plugin found no settings file when it loaded: its first start in this vault, which is
    * when the documentation opens by itself. Not a setting — nothing saves it.
@@ -125,6 +128,10 @@ export class AbeleConfig {
 
   /** The settings file itself: every load, reload and write of it, one at a time. */
   private readonly file = new SettingsKeeper({
+    sections: () => this.sectionSettings,
+    flushSections: async () => {
+      if (this.plugin?.app) await flushHostStorage(this.plugin.app)
+    },
     plugin: () => this.plugin,
     edits: () => this.pendingEdits,
     fresh: (fresh) => {
@@ -247,6 +254,7 @@ export class AbeleConfig {
   public init(plugin: AbelePlugin): void {
     this.pendingEdits = new SettingsEdits()
     this.plugin = plugin
+    this.sectionSettings = undefined
     this.file.reset()
     this.chatIndex.reset()
   }
@@ -255,6 +263,7 @@ export class AbeleConfig {
     this.pendingEdits = new SettingsEdits()
     this.file.leaving()
     this.plugin = null
+    this.sectionSettings = undefined
   }
 
   /**

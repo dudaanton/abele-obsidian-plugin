@@ -10,7 +10,7 @@
  */
 import type { Plugin } from 'obsidian'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { collectEntries, isDeviceOnly } from '@/transfer/entries'
+import { collectEntries, isDeviceOnly, SECTIONS } from '@/transfer/entries'
 import { voiceKeyId } from '@/ai/transcriptionSettings'
 import { readConnection } from '@/sync/connection'
 import type { LocalStorage } from '@/sync/ledgerId'
@@ -71,6 +71,16 @@ export function pluginStoreHost(plugin: Plugin): StoreHost {
     },
     ids: pluginSecretIds,
     deviceOnly: () => deviceOnlySecretIds(plugin.app),
+    localOnly: (id) => {
+      const config = AbeleConfig.getInstance()
+      const chosen = config.sectionSettings?.chosen
+      if (!chosen) return false
+      if (!SECTIONS.some((section) => section.secretsOf && !chosen.has(section.id))) return false
+      const uses = collectEntries(config.exportSettings()).filter((entry) =>
+        entry.secretIds?.includes(id)
+      )
+      return uses.length > 0 && uses.every((entry) => !chosen.has(entry.section))
+    },
     conflictCopies: async () => {
       const listed = await adapter.list(dir)
       const copies: unknown[] = []

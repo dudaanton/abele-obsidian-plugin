@@ -7,6 +7,7 @@ import type { SectionId } from './types'
  * not constants: the titles are read in the language chosen when they are drawn.
  */
 export const pageOf = (section: SectionId): string => PAGE_OF()[section]
+export const pageSections = (): SectionId[] => Object.keys(PAGE_OF()) as SectionId[]
 
 const PAGE_OF = (): Record<SectionId, string> => ({
   tasks: t('settings.TransferSettings.notes.8a7525b1'),
@@ -48,4 +49,3 @@ export const pageTitles = (): string[] => [
   t('settings.TransferSettings.buttons.d452583a'),
   t('settings.TransferSettings.data.cec3a9b8'),
 ]
-

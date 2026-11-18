@@ -61,6 +61,8 @@ export interface StoreHost {
    * mirrored or forgotten by the store, and dropped from one that holds them anyway.
    */
   deviceOnly?(): string[]
+  /** A section this device keeps to itself; preserve the shared value without applying it. */
+  localOnly?(id: string): boolean
   /** `secretStore` out of every sync-conflict copy of the settings file lying beside it. */
   conflictCopies(): Promise<unknown[]>
   now(): number
@@ -120,7 +122,8 @@ export class SecretStore {
   /** A device token's id reads as no secret here: see `isReservedSecretId`, and `device`. */
   get(id: string | undefined | null): string {
     if (!id || isReservedSecretId(id)) return ''
-    if (this.status.value === 'unlocked' && this.entries?.[id]) return this.entries[id].value
+    if (!this.host.localOnly?.(id) && this.status.value === 'unlocked' && this.entries?.[id])
+      return this.entries[id].value
     return this.host.keychain().getSecret(id) ?? ''
   }
 
@@ -413,7 +416,12 @@ export class SecretStore {
   }
 
   private record(id: string, value: string): void {
-    if (this.status.value === 'off' || !this.storeId || isOwn(this.ownIds(), id)) {
+    if (
+      this.status.value === 'off' ||
+      !this.storeId ||
+      isOwn(this.ownIds(), id) ||
+      this.host.localOnly?.(id)
+    ) {
       this.version.value++
       return
     }
@@ -435,7 +443,16 @@ export class SecretStore {
         return
       }
       try {
-        await this.host.write(await writeEntries(file, this.key, this.entries))
+        const outgoing = { ...this.entries }
+        if (this.host.localOnly) {
+          const shared = await readEntries(file, this.key)
+          for (const id of Object.keys(outgoing))
+            if (this.host.localOnly(id)) {
+              if (shared[id]) outgoing[id] = shared[id]
+              else delete outgoing[id]
+            }
+        }
+        await this.host.write(await writeEntries(file, this.key, outgoing))
       } catch (e) {
         // Never the secrets themselves: the message names the failure, not what was written.
         console.error('[Abele] the synced secrets could not be saved', (e as Error)?.message)
@@ -448,7 +465,7 @@ export class SecretStore {
     const keychain = this.host.keychain()
     const own = this.ownIds()
     for (const [id, entry] of Object.entries(entries)) {
-      if (isOwn(own, id)) continue
+      if (isOwn(own, id) || this.host.localOnly?.(id)) continue
       try {
         if (!entry.value) this.forget(id)
         else if (keychain.getSecret(id) !== entry.value) keychain.setSecret(id, entry.value)
@@ -469,7 +486,9 @@ export class SecretStore {
   /** What the settings point at and the store may hold. */
   private storedIds(): string[] {
     const own = this.ownIds()
-    return [...new Set(this.host.ids())].filter((id) => !isOwn(own, id))
+    return [...new Set(this.host.ids())].filter(
+      (id) => !isOwn(own, id) && !this.host.localOnly?.(id)
+    )
   }
 
   /**
