@@ -13,6 +13,7 @@ import { chatArtifactsFixture } from './chatArtifactsFixture'
 import { chatTreeFixture, chatFolderAccessFixture } from './chatTreeFixture'
 import TokenUiFixture from './TokenUiFixture.vue'
 import ShareSetsFixture from './ShareSetsFixture.vue'
+import SyncScopeCaptureFixture from './SyncScopeCaptureFixture.vue'
 import NodeSyntaxFixture from './NodeSyntaxFixture.vue'
 import NodeLspFixture from './NodeLspFixture.vue'
 import NodeLspLiveFixture from './NodeLspLiveFixture.vue'
@@ -26,6 +27,7 @@ import ProgramLaunchDialog from '@/debugger/ProgramLaunchDialog.vue'
 import AiToolApproval from '@/components/AiToolApproval.vue'
 
 export interface DialogFixtureOptions {
+  syncScopeState?: string
   lspAdmission?: string
   lspFile?: {
     target: import('@/node/NodePathModel').PathTarget
@@ -880,6 +882,8 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     }),
   'transfer-scan': () => mountAlone(TransferScanModal),
   'sync-connect': () => mountAlone(TokenUiFixture, { screen: 'connect' }),
+  'sync-scope-capture': (options) =>
+    mountAlone(SyncScopeCaptureFixture, { state: options?.syncScopeState ?? 'connect-default' }),
   'sync-connect-error': () => mountAlone(TokenUiFixture, { screen: 'connect-error' }),
   'sync-connect-token': () => mountAlone(TokenUiFixture, { screen: 'connect-token' }),
   'sync-connections': () => mountAlone(TokenUiFixture, { screen: 'connections' }),
