@@ -956,6 +956,9 @@ export class ObsidianFileSystem implements FileSystem {
         ? { revision: this.operationRevision(), cache: new Map() }
         : undefined
     try {
+      // Buffered metadata reads need not suspend. Separate host/pass setup from the SDK's
+      // first scan chunk so their independent budgets cannot form one long renderer task.
+      await yieldSyncTask()
       return await withMetadataInventory(this.app.vault, work)
     } finally {
       this.operationStats = undefined
@@ -3202,14 +3205,24 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   /** Indexed files, bounded to a folder token's subtree without touching the whole index. */
-  private indexedFiles(scope?: string): TFile[] {
+  private async indexedFiles(scope?: string): Promise<TFile[]> {
+    const signal = this.runIndexSignal ?? this.indexWaitSignal?.()
+    signal?.throwIfAborted()
     if (!scope) return this.app.vault.getFiles()
-    const walk = function* (entry: TFile | TFolder): Generator<TFile> {
-      if (entry instanceof TFile) yield entry
-      else for (const child of entry.children) yield* walk(child as TFile | TFolder)
-    }
     const root = this.app.vault.getAbstractFileByPath(scope)
-    return root ? [...walk(root as TFile | TFolder)] : []
+    const pending: (TFile | TFolder)[] = root ? [root as TFile | TFolder] : []
+    const files: TFile[] = []
+    const budget = new SyncTaskBudget()
+    while (pending.length) {
+      const pause = budget.account(4096, signal)
+      if (pause !== undefined) await pause
+      const entry = pending.pop()
+      if (entry instanceof TFile) files.push(entry)
+      else
+        for (let i = entry.children.length - 1; i >= 0; i--)
+          pending.push(entry.children[i] as TFile | TFolder)
+    }
+    return files
   }
 
   /** Expand only components that can have a distinct canonical spelling. */
@@ -3225,7 +3238,7 @@ export class ObsidianFileSystem implements FileSystem {
       return { files, folders }
     }
     const budget = new SyncTaskBudget()
-    const files = new Set(this.indexedFiles(scope).map((file) => file.path))
+    const files = new Set((await this.indexedFiles(scope)).map((file) => file.path))
     const folders = new Set<string>()
     const within = (path: string) => !scope || path === scope || path.startsWith(scope + '/')
     // A folder token reads only its own subtree and the folders leading down to it.
@@ -3398,7 +3411,7 @@ export class ObsidianFileSystem implements FileSystem {
   }> {
     if (this.prepareStartupInventory)
       await this.waitForStartupIndex(this.runIndexSignal ?? this.indexWaitSignal?.())
-    const indexed = new Map(this.indexedFiles(scope).map((file) => [file.path, file]))
+    const indexed = new Map((await this.indexedFiles(scope)).map((file) => [file.path, file]))
     const readiness = this.indexReady()
     if (readiness === false && this.prepareStartupInventory)
       throw new ScanInterrupted('Host index changed during inventory; wait for indexing')
@@ -3423,7 +3436,7 @@ export class ObsidianFileSystem implements FileSystem {
         )
           useDisk = this.indexFallback = true
       }
-      if (this.indexReady() !== true || this.indexedFiles(scope).length !== indexed.size)
+      if (this.indexReady() !== true || (await this.indexedFiles(scope)).length !== indexed.size)
         useDisk = this.indexFallback = true
     }
     if (useDisk) {
@@ -3457,7 +3470,7 @@ export class ObsidianFileSystem implements FileSystem {
       known.add(path)
       spellings.set(key, known)
     }
-    for (const file of this.indexedFiles(scope)) {
+    for (const file of await this.indexedFiles(scope)) {
       await budget.metadataRow()
       remember(file.path)
     }
