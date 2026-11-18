@@ -14,6 +14,7 @@ interface LocalSections {
   chosen: SectionId[]
   local: Values
   remote: Values
+  /** Last incoming ancestor: local writes remain edits against it until a receive. */
   base: Values
   kept: (KeptSection & { value: unknown })[]
   sender?: string
@@ -90,28 +91,27 @@ export class SectionSettings {
   receive(incoming: AbeleSettings, mine?: AbeleSettings, from = 'Another device'): AbeleSettings {
     const remote = this.values(incoming)
     const local = mine ? this.values(mine) : this.state.local
+    // An unchanged shared section cannot supersede a durable local edit, including after
+    // restart. The last incoming baseline may predate our own completed settings writes.
+    const ownIds = this.ids.filter(
+      (id) =>
+        !this.chosen.has(id) ||
+        (Object.hasOwn(this.state.remote, id) &&
+          canonicalJson(remote[id]) === canonicalJson(this.state.remote[id]))
+    )
     for (const id of this.ids) {
       if (
-        this.chosen.has(id) &&
-        Object.hasOwn(this.state.base, id) &&
+        !ownIds.includes(id) &&
         Object.hasOwn(local, id) &&
-        canonicalJson(local[id]) !== canonicalJson(this.state.base[id]) &&
-        canonicalJson(remote[id]) !== canonicalJson(this.state.base[id]) &&
+        (Object.hasOwn(this.state.pending ?? {}, id) ||
+          (Object.hasOwn(this.state.base, id) &&
+            canonicalJson(local[id]) !== canonicalJson(this.state.base[id]))) &&
         canonicalJson(remote[id]) !== canonicalJson(local[id])
       )
         this.keep(id, local[id], from)
     }
     const sender = (incoming as unknown as { _abeleSectionDevice?: unknown })._abeleSectionDevice
     this.state.sender = typeof sender === 'string' ? sender.slice(0, 200) : undefined
-    const ownIds = this.ids.filter(
-      (id) =>
-        !this.chosen.has(id) ||
-        (Object.hasOwn(this.state.pending ?? {}, id) &&
-          canonicalJson(remote[id]) === canonicalJson(this.state.remote[id])) ||
-        (mine !== undefined &&
-          Object.hasOwn(this.state.base, id) &&
-          canonicalJson(remote[id]) === canonicalJson(this.state.base[id]))
-    )
     this.state.remote = remote
     for (const id of Object.keys(this.state.pending ?? {}) as SectionId[])
       if (!ownIds.includes(id)) delete this.state.pending[id]

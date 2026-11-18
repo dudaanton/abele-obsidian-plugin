@@ -71,6 +71,21 @@ it('publishes the chosen device version after restarting before its first settin
   await config.saveSettings()
   expect((disk.stored as any).reader.fontSize).toBe(125)
 })
+it('retains the chosen private section when an older settings file arrives before restart', async () => {
+  const { disk, sections, restart } = await setup()
+  config.reader.fontSize = 125
+  await config.saveSettings()
+  sections.choose('reader', false, config.exportSettings())
+  config.reader.fontSize = 150
+  await config.saveSettings()
+  sections.choose('reader', true, config.exportSettings(), 'device')
+  disk.stored = { ...config.exportSettings(), reader: { ...config.reader, fontSize: 100 } }
+  const restarted = restart()
+  config.sectionSettings = restarted
+  await config.loadSettings()
+  expect(config.reader.fontSize).toBe(100)
+  expect(restarted.restore('reader', config.exportSettings()).reader.fontSize).toBe(150)
+})
 it('never publishes unticked edits and hydrates them after an incoming settings file', async () => {
   const { disk, sections, restart } = await setup()
   const shared = structuredClone(disk.stored) as Record<string, unknown>

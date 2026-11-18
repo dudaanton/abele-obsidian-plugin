@@ -2773,7 +2773,9 @@ tokens are excluded from this selection. The device-local host record
 `abele-sync-settings-sections-v1` holds the selection, local section values, the last shared
 values, incoming conflict baselines, pending explicit choices and retained conflict copies.
 It is not part of `data.json` or settings transfer. Pending choices survive an interrupted
-settings write; a newer incoming version still retains the chosen local value for Restore.
+settings write; any differing incoming version retains the chosen local value for Restore,
+including a version matching an older incoming ancestor. An unchanged shared section keeps
+the durable local edit, even after restart; the incoming ancestor is not a shared-file revision.
 Unticked settings load from this record; saves retain the last successfully written shared value in
 `data.json` while writing private edits to the local record first. Incoming sections win
 concurrent edits, with the displaced local section retained for explicit Restore. The shared
@@ -2787,6 +2789,8 @@ can enter the encrypted catalog only once a selected section references them; ca
 drafts never enter it. Restarting after saving a reference recovers a missing catalog entry
 from the keychain without replacing an existing shared value. Removing the synced store
 from this device preserves keys belonging to unticked sections, including private replacements.
+First tokens entered for an already saved private entry also wait for its section to be
+selected, and are admitted in that session without requiring a restart.
 
 The connection's content check retains only an in-memory result. It reads file contents and
 the server manifest, validates local inventory revisions and the server snapshot/generation,

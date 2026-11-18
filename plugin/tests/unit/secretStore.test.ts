@@ -69,6 +69,22 @@ function device(
 
 afterEach(() => vi.restoreAllMocks())
 
+it('admits the first token of an already saved private entry without restarting', async () => {
+  const on = shared()
+  let selected = false
+  const first = device(on, ['sample-key'], undefined, () => !selected)
+  await first.store.enable('sample-passphrase', FAST)
+  first.store.set('sample-key', 'private-value')
+  await first.store.flush()
+  selected = true
+  first.store.syncReferenced()
+  await first.store.flush()
+  const other = device(on)
+  await other.store.load()
+  await other.store.unlock('sample-passphrase')
+  expect(other.store.get('sample-key')).toBe('private-value')
+})
+
 it('admits a draft key only after its saved reference selects a shared section', async () => {
   const on = shared()
   const ids: string[] = []

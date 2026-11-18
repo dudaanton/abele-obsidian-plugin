@@ -154,7 +154,7 @@ export class SecretStore {
     this.record(id, value)
   }
 
-  /** A token saved before its editor saves settings becomes eligible only after ownership exists. */
+  /** Private first tokens and draft tokens become eligible only after a selected section owns them. */
   syncReferenced(): void {
     if (this.status.value !== 'unlocked') return
     const ids = new Set(this.storedIds())
@@ -440,7 +440,11 @@ export class SecretStore {
   }
 
   private record(id: string, value: string): void {
-    if (this.host.localOnly?.(id) && !this.host.ids().includes(id)) this.drafts.add(id)
+    if (
+      this.host.localOnly?.(id) &&
+      (!this.host.ids().includes(id) || !Object.hasOwn(this.entries ?? {}, id))
+    )
+      this.drafts.add(id)
     if (
       this.status.value === 'off' ||
       !this.storeId ||
