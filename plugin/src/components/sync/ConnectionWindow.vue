@@ -85,6 +85,13 @@
         <StagedSettingsBlock v-if="changes.length" :changes="changes" :names="{}" :port="port" />
       </Section>
 
+      <VaultCheckBlock
+        v-if="checkSource"
+        :source="checkSource"
+        @reveal="(path) => emit('reveal', path)"
+        @rule="showRules"
+      />
+
       <SelectiveSync v-if="port" :port="port">
         <template v-if="deviceScope" #scope>
           <DeviceScopeField
@@ -161,6 +168,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { Notice } from 'obsidian'
 import NotSyncedBlock from './NotSyncedBlock.vue'
+import VaultCheckBlock from './VaultCheckBlock.vue'
+import { vaultCheckSource } from '@/sync/vaultCheck'
 import Modal from '../obsidian/Modal.vue'
 import Section from '../obsidian/Section.vue'
 import Setting from '../obsidian/Setting.vue'
@@ -390,6 +399,14 @@ onMounted(async () => {
     // The window still says what the row knows; what waits is shown again on the next open.
   }
 })
+
+/** Checking against the server, offered once sync can compare this connection's files. */
+const checkSource = vaultCheckSource
+
+/** A file left out by a rule: the rules are this window's "What this device syncs". */
+function showRules(): void {
+  windowEl.value?.querySelector('[data-selective]')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+}
 </script>
 
 <style lang="scss">

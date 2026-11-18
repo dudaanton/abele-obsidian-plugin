@@ -217,6 +217,7 @@
 </template>
 
 <script setup lang="ts">
+import { pageOf, pageTitles } from '@/transfer/pages'
 import { settingsCount } from '@/i18n/settingsCounts'
 import { settingsLabel, transferLabel } from '@/i18n/settingsLabels'
 import { t } from '@/i18n'
@@ -327,49 +328,9 @@ const toggleAll = (list: TransferEntry[]) => {
   chosen.value = next
 }
 
-/** Where each section's settings are found, by the titles of the settings' own left column. */
-const PAGE_OF: Record<SectionId, string> = {
-  tasks: t('settings.TransferSettings.notes.8a7525b1'),
-  journals: t('settings.TransferSettings.notes.8a7525b1'),
-  calendars: t('settings.TransferSettings.notes.8a7525b1'),
-  links: t('settings.TransferSettings.notes.8a7525b1'),
-  linter: t('settings.TransferSettings.notes.8a7525b1'),
-  reader: t('settings.TransferSettings.notes.8a7525b1'),
-  maps: t('settings.TransferSettings.notes.8a7525b1'),
-  finance: t('settings.TransferSettings.money_and_time.ebb5a49d'),
-  'time-tracking': t('settings.TransferSettings.money_and_time.ebb5a49d'),
-  'ai-general': t('settings.TransferSettings.agents.279b44d2'),
-  'ai-providers': t('settings.TransferSettings.agents.279b44d2'),
-  'ai-image-providers': t('settings.TransferSettings.agents.279b44d2'),
-  'ai-agents': t('settings.TransferSettings.agents.279b44d2'),
-  'ai-secrets': t('settings.TransferSettings.agents.279b44d2'),
-  'ai-prompts': t('settings.TransferSettings.agents.279b44d2'),
-  'ai-voice': t('settings.TransferSettings.agents.279b44d2'),
-  'ai-mcp-servers': t('settings.TransferSettings.agents.279b44d2'),
-  scripts: t('settings.TransferSettings.agents.279b44d2'),
-  'script-files': t('settings.TransferSettings.agents.279b44d2'),
-  'skill-notes': t('settings.TransferSettings.agents.279b44d2'),
-  'prompt-notes': t('settings.TransferSettings.agents.279b44d2'),
-  github: t('settings.TransferSettings.agents.279b44d2'),
-  'github-connections': t('settings.TransferSettings.agents.279b44d2'),
-  'quick-button': t('settings.TransferSettings.buttons.d452583a'),
-  'header-buttons': t('settings.TransferSettings.buttons.d452583a'),
-  automations: t('settings.TransferSettings.buttons.d452583a'),
-  sync: t('settings.TransferSettings.data.cec3a9b8'),
-  connection: t('settings.TransferSettings.data.cec3a9b8'),
-  other: t('settings.TransferSettings.data.cec3a9b8'),
-}
-const PAGES = [
-  t('settings.TransferSettings.notes.8a7525b1'),
-  t('settings.TransferSettings.money_and_time.ebb5a49d'),
-  t('settings.TransferSettings.agents.279b44d2'),
-  t('settings.TransferSettings.buttons.d452583a'),
-  t('settings.TransferSettings.data.cec3a9b8'),
-]
-
 const pages = computed(() =>
-  PAGES.map((title) => {
-    const own = groups.value.filter((group) => PAGE_OF[group.section] === title)
+  pageTitles().map((title) => {
+    const own = groups.value.filter((group) => pageOf(group.section) === title)
     return { title, groups: own, entries: own.flatMap((group) => group.entries) }
   }).filter((page) => page.entries.length)
 )

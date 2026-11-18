@@ -48,6 +48,12 @@
     </Setting>
   </Section>
 
+  <AbeleSections
+    v-if="sections && !renamedConfig"
+    :source="sections"
+    :plugin-settings="selective.settings.pluginSettings"
+  />
+
   <Section
     :title="t('settings.sync.SelectiveSync.folders_this_device_skips.f47a9f56')"
     :desc="t('settings.sync.SelectiveSync.nothing_under_a_folder_listed.6abc4f89')"
@@ -117,6 +123,8 @@ import { t } from '@/i18n'
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import ExternalFileRules from './ExternalFileRules.vue'
+import AbeleSections from './AbeleSections.vue'
+import { abeleSectionsSource } from '@/sync/abeleSections'
 import type { SelectiveSettings } from '@abele/sync-sdk/core'
 import Section from '../../obsidian/Section.vue'
 import Setting from '../../obsidian/Setting.vue'
@@ -210,6 +218,9 @@ const SETTINGS_KINDS = (
 ).map((key) => ({ key, ...SETTINGS_TEXT[key] }))
 
 const props = defineProps<{ port?: TokenSettingsPort }>()
+
+/** Abele's own sections, offered once sync has them to offer. */
+const sections = abeleSectionsSource
 const sync = props.port ?? TokenSettingsPort.getInstance()
 
 /**
