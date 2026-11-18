@@ -155,12 +155,14 @@ it('does not build new source hints for hashes that no later file needs', async 
 })
 
 it.each([
-  { edit: false, capacity: 1 },
-  { edit: true, capacity: 1 },
-  { edit: false, capacity: 2 },
+  { edit: false, capacity: 1, pages: false },
+  { edit: true, capacity: 1, pages: false },
+  { edit: false, capacity: 2, pages: false },
+  { edit: false, capacity: 1, pages: true },
+  { edit: true, capacity: 1, pages: true },
 ])(
-  'reuses content only while its source is unchanged: edit=$edit, capacity=$capacity',
-  async ({ edit, capacity }) => {
+  'reuses content only while its source is unchanged: edit=$edit, capacity=$capacity, pages=$pages',
+  async ({ edit, capacity, pages }) => {
     const bytes = new TextEncoder().encode('sample remote content')
     const sha = await sha256(bytes)
     const fs = new MemoryFileSystem()
@@ -210,22 +212,25 @@ it.each([
       },
       report
     )
-    await puller.apply(
-      ['first.bin', 'second.bin'].map((path, i) => ({
-        seq: i + 1,
-        file_id: `sample-${i}`,
-        version_id: 'v1',
-        path,
-        prev_path: null,
-        op: 'create',
-        kind: 'attachment',
-        sha,
-        size: bytes.length,
-        mtime: 1,
-        at: '',
-        actor: { kind: 'system', id: 'sample', name: 'Sample' },
-      }))
-    )
+    const changes: ChangeItem[] = ['first.bin', 'second.bin'].map((path, i) => ({
+      seq: i + 1,
+      file_id: `sample-${i}`,
+      version_id: 'v1',
+      path,
+      prev_path: null,
+      op: 'create',
+      kind: 'attachment',
+      sha,
+      size: bytes.length,
+      mtime: 1,
+      at: '',
+      actor: { kind: 'system', id: 'sample', name: 'Sample' },
+    }))
+    if (pages) {
+      await puller.apply([changes[0]])
+      expect(downloads).toBe(1)
+      await puller.apply([changes[1]])
+    } else await puller.apply(changes)
     expect(report.applied).toBe(2)
     expect(await fs.read('second.bin')).toEqual(bytes)
     expect(new TextDecoder().decode(await fs.read('first.bin'))).toBe(

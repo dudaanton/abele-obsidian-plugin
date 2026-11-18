@@ -667,7 +667,11 @@ export function syncPlacementPlugin() {
         code = replaceOnce(
           code,
           'const local = await shaIndex(this.state);',
-          'const local = this.opts.nativeBatchLocal ?? await shaIndex(this.state);'
+          `const local = this.opts.nativeBatchLocal ?? await shaIndex(this.state);
+        // Each page has a fresh committed source index. Share it rather than
+        // retaining the previous page's hints or copying the inventory again.
+        // Reuse still fingerprints the current source before publication.
+        this.placer.initialLocal = local;`
         )
         // The plugin prefetches small streamed bodies too. Count those bytes even
         // when the host has no conditionalFile or the budget is smaller than a chunk.
