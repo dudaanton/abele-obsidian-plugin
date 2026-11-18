@@ -44,10 +44,7 @@ function writeTimerStack(): string | undefined {
     return WRITE_BEHIND.some((frame) => frame.test(stack)) ? stack : undefined
   }
   const origins = frames
-    .map(
-      (frame) =>
-        `${frame.getTypeName() ?? ''}.${frame.getMethodName() ?? ''} ${frame.getFunctionName() ?? ''}`
-    )
+    .map((frame) => `${frame.getTypeName() ?? ''}.${frame.getFunctionName() ?? ''}`)
     .join('\n')
   if (!WRITE_BEHIND.some((pattern) => pattern.test(origins))) return
   return format

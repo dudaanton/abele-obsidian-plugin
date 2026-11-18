@@ -6,6 +6,7 @@ import { selectiveFrom } from '@/sync/connection'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { TaskCpu } from '../helpers/taskCpu'
 import { withDesktopFs } from '../helpers/fakeDesktopFs'
+import { rawStackNames } from '../helpers/rawStackNames'
 
 let longestStartupCpuMs = Infinity
 let localPathsYielded = false
@@ -42,7 +43,7 @@ it('starts a synced 33k indexed vault without content reads or a per-file disk w
   let phase = 'initialization'
   // Populate a read-only synced baseline without quadratic fixture insertion costs.
   state.all = async function* () {
-    const caller = new Error().stack?.split('\n').slice(2, 5).join(' ')
+    const caller = rawStackNames()
     phase = 'state iteration: ' + caller
     const refresh = caller?.includes('refreshLocalPaths')
     const checkpoint = refresh ? setTimeout(() => (localPathsYielded = true), 0) : undefined
@@ -138,6 +139,8 @@ it('starts a synced 33k indexed vault without content reads or a per-file disk w
       cpuMs: taskCpu.longestMs,
       wallMs: taskCpu.longestWallMs,
       tasks: taskCpu.tasks,
+      from: taskCpu.longestStartedAt,
+      to: taskCpu.longestEndedAt,
     })
     longestStartupCpuMs = taskCpu.longestMs
   } finally {

@@ -63,3 +63,47 @@ it('does not renew the CPU allowance for queueMicrotask continuations', async ()
   }
   expect(monitor.longestMs).toBeGreaterThanOrEqual(50)
 })
+
+it('measures each callback of a recurring native timer as a new task', async () => {
+  const monitor = new TaskCpu()
+  let calls = 0
+  try {
+    await new Promise<void>((resolve) => {
+      const timer = setInterval(() => {
+        spend(10)
+        if (++calls === 6) {
+          clearInterval(timer)
+          resolve()
+        }
+      }, 1)
+    })
+  } finally {
+    monitor.stop()
+  }
+  expect(monitor.tasks).toBeGreaterThanOrEqual(6)
+  expect(monitor.totalMs).toBeGreaterThanOrEqual(60)
+  expect(monitor.longestMs).toBeLessThan(50)
+})
+
+it('renews the allowance for message-port callbacks used by cooperative scan yields', async () => {
+  const monitor = new TaskCpu()
+  try {
+    for (let i = 0; i < 6; i++) {
+      spend(10)
+      await new Promise<void>((resolve) => {
+        const channel = new MessageChannel()
+        channel.port1.onmessage = () => {
+          channel.port1.close()
+          channel.port2.close()
+          resolve()
+        }
+        channel.port2.postMessage(null)
+      })
+    }
+  } finally {
+    monitor.stop()
+  }
+  expect(monitor.tasks).toBeGreaterThanOrEqual(6)
+  expect(monitor.totalMs).toBeGreaterThanOrEqual(60)
+  expect(monitor.longestMs).toBeLessThan(50)
+})

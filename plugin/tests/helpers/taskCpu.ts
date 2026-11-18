@@ -7,6 +7,9 @@ type Sample = { user: number; system: number }
  * is synchronous renderer work. Other test workers and native I/O threads are excluded.
  */
 export class TaskCpu {
+  // A destroy hook enrolls every promise for GC notification, including the microtasks
+  // we deliberately do not measure as boundaries. Keep native ids until this monitor stops;
+  // ids are never reused, so completed resources need no destruction tracking.
   private readonly nativeTasks = new Set<number>()
   private readonly usage = (
     process as NodeJS.Process & { threadCpuUsage(): Sample }
@@ -16,6 +19,8 @@ export class TaskCpu {
   totalMs = 0
   longestMs = 0
   longestWallMs = 0
+  longestStartedAt = 0
+  longestEndedAt = 0
   tasks = 0
   private stopped = false
   private readonly hook = createHook({
@@ -26,7 +31,6 @@ export class TaskCpu {
     before: (id) => {
       if (this.nativeTasks.has(id)) this.boundary()
     },
-    destroy: (id) => this.nativeTasks.delete(id),
   })
 
   constructor() {
@@ -43,7 +47,11 @@ export class TaskCpu {
     const wall = performance.now()
     const elapsedMs = (now - this.started) / 1000
     this.totalMs += elapsedMs
-    this.longestMs = Math.max(this.longestMs, elapsedMs)
+    if (elapsedMs > this.longestMs) {
+      this.longestMs = elapsedMs
+      this.longestStartedAt = this.wallStarted
+      this.longestEndedAt = wall
+    }
     this.longestWallMs = Math.max(this.longestWallMs, wall - this.wallStarted)
     this.started = now
     this.wallStarted = wall
