@@ -17,6 +17,7 @@ interface LocalSections {
   base: Values
   kept: (KeptSection & { value: unknown })[]
   sender?: string
+  pending?: Values
 }
 export interface SectionStorage {
   read(): unknown
@@ -100,16 +101,20 @@ export class SectionSettings {
       )
         this.keep(id, local[id], from)
     }
-    this.state.remote = remote
     const sender = (incoming as unknown as { _abeleSectionDevice?: unknown })._abeleSectionDevice
     this.state.sender = typeof sender === 'string' ? sender.slice(0, 200) : undefined
     const ownIds = this.ids.filter(
       (id) =>
         !this.chosen.has(id) ||
+        (Object.hasOwn(this.state.pending ?? {}, id) &&
+          canonicalJson(remote[id]) === canonicalJson(this.state.remote[id])) ||
         (mine !== undefined &&
           Object.hasOwn(this.state.base, id) &&
           canonicalJson(remote[id]) === canonicalJson(this.state.base[id]))
     )
+    this.state.remote = remote
+    for (const id of Object.keys(this.state.pending ?? {}) as SectionId[])
+      if (!ownIds.includes(id)) delete this.state.pending[id]
     this.state.base = clone(remote)
     const applied = this.put(incoming, local, ownIds)
     this.state.local = this.values(applied)
@@ -118,6 +123,8 @@ export class SectionSettings {
   }
   project(mine: AbeleSettings): AbeleSettings {
     this.state.local = this.values(mine)
+    for (const id of Object.keys(this.state.pending ?? {}) as SectionId[])
+      this.state.pending[id] = clone(this.state.local[id])
     const off = this.ids.filter((id) => !this.chosen.has(id))
     this.save() // A crash after the wire write still has the device's unticked settings.
     const projected = this.put(mine, this.state.remote, off)
@@ -129,6 +136,15 @@ export class SectionSettings {
     const sender = changed ? this.deviceName : this.state.sender
     if (sender) (projected as unknown as Record<string, unknown>)._abeleSectionDevice = sender
     return projected
+  }
+  /** Only a completed write (or an equal file) advances the shared projection. */
+  written(wire: AbeleSettings): void {
+    this.state.remote = this.values(wire)
+    this.state.sender = (wire as unknown as { _abeleSectionDevice?: string })._abeleSectionDevice
+    for (const id of Object.keys(this.state.pending ?? {}) as SectionId[])
+      if (canonicalJson(this.state.pending[id]) === canonicalJson(this.state.remote[id]))
+        delete this.state.pending[id]
+    this.save()
   }
   differs(id: SectionId, mine: AbeleSettings): boolean {
     return (
@@ -157,6 +173,8 @@ export class SectionSettings {
       if (take === 'vault') next = this.put(mine, this.state.remote, [id])
     }
     this.state.local = this.values(next)
+    if (different) (this.state.pending ??= {})[id] = clone(this.state.local[id])
+    if (!on && this.state.pending) delete this.state.pending[id]
     const chosen = new Set(this.state.chosen)
     if (on) chosen.add(id)
     else chosen.delete(id)
@@ -169,6 +187,7 @@ export class SectionSettings {
     if (!kept) throw new Error('No retained version of this section')
     const next = this.put(mine, { [id]: kept.value }, [id])
     this.state.local = this.values(next)
+    ;(this.state.pending ??= {})[id] = clone(this.state.local[id])
     this.restoring.set(id, kept)
     if (!this.state.chosen.includes(id)) this.state.chosen.push(id)
     // Kept until a successful settings save; repeating Restore is safe after an interrupted save.

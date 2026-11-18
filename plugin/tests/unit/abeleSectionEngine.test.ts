@@ -20,6 +20,25 @@ function fixture() {
   }
   return { storage, engine: new SectionSettings(storage) }
 }
+it('resumes sending the chosen device version after interruption before the settings write', () => {
+  const { storage, engine } = fixture()
+  engine.receive(settings('shared'))
+  engine.choose('reader', false, settings('private'))
+  engine.choose('reader', true, settings('private'), 'device')
+  const restarted = new SectionSettings(storage)
+  expect(restarted.receive(settings('shared')).reader).toEqual({ theme: 'private' })
+  expect(restarted.project(settings('private')).reader).toEqual({ theme: 'private' })
+})
+it('keeps a pending choice as recovery when another device changes the section before restart', () => {
+  const { storage, engine } = fixture()
+  engine.receive(settings('shared'))
+  engine.choose('reader', false, settings('private'))
+  engine.choose('reader', true, settings('private'), 'device')
+  const restarted = new SectionSettings(storage)
+  const incoming = restarted.receive(settings('new-shared'))
+  expect(incoming.reader).toEqual({ theme: 'new-shared' })
+  expect(restarted.restore('reader', incoming).reader).toEqual({ theme: 'private' })
+})
 it('keeps device choices and unticked values outside the shared settings across restart', () => {
   const { storage, engine } = fixture()
   const mine = settings('local')

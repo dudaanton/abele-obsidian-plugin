@@ -510,6 +510,8 @@ export class SettingsKeeper {
     // Nothing changed in meaning: writing would only hand every other device a file to pull
     // and reload for nothing, and a newer mtime to beat whatever they save next.
     if (text === this.onDisk) {
+      this.host.sections?.()?.written(next)
+      await this.host.flushSections?.()
       // A coalesced direct save can return to its starting value. Acknowledge the
       // pending request even when its accepted state needs no physical write.
       edits.written()()
@@ -519,6 +521,8 @@ export class SettingsKeeper {
     }
     const written = edits.written()
     await plugin.saveData(settingsSnapshot(next))
+    this.host.sections?.()?.written(next)
+    await this.host.flushSections?.()
     written()
     managedWritten()
     this.gone = false
