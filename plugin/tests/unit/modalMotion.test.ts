@@ -1,9 +1,43 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { menuAction, modalDetached, modalIsMoving, modalReady } from '../e2e/helpers/modalMotion'
+import {
+  menuAction,
+  modalBounds,
+  modalDetached,
+  modalIsMoving,
+  modalReady,
+} from '../e2e/helpers/modalMotion'
 
 afterEach(() => {
   vi.restoreAllMocks()
   document.body.replaceChildren()
+})
+
+it('measures a native sheet after its opening translation ends, without hiding real overflow', async () => {
+  const modal = document.createElement('div')
+  document.body.append(modal)
+  modal.getAnimations = () => []
+  modal.style.transform = 'translateY(10px)'
+  let layoutBottom = 852
+  modal.getBoundingClientRect = () =>
+    ({
+      left: 0,
+      top: modal.style.transform ? 69 : 59,
+      width: 393,
+      height: layoutBottom - 59,
+      bottom: layoutBottom + (modal.style.transform ? 10 : 0),
+    }) as DOMRect
+  let frames = 0
+  vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
+    frames++
+    if (frames === 3) modal.style.transform = ''
+    queueMicrotask(() => callback(frames * 16))
+    return frames
+  })
+
+  expect((await modalBounds(modal)).bottom).toBeLessThanOrEqual(852)
+  expect(frames).toBeGreaterThanOrEqual(6)
+  layoutBottom = 862
+  expect((await modalBounds(modal)).bottom).toBe(862)
 })
 
 it('activates a menu item only after deferred loading and the opening spring settle', async () => {

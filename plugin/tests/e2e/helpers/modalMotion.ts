@@ -30,6 +30,12 @@ export async function modalReady(modal: HTMLElement): Promise<void> {
   throw Error('Modal geometry did not settle: ' + modal.outerHTML.slice(0, 500))
 }
 
+/** Read layout and host transforms together when measuring a sheet's visible bounds. */
+export async function modalBounds(modal: HTMLElement): Promise<DOMRect> {
+  await modalReady(modal)
+  return modal.getBoundingClientRect()
+}
+
 export async function modalDetached(container: HTMLElement | null): Promise<void> {
   const deadline = Date.now() + 5000
   while (container?.isConnected) {
@@ -52,6 +58,7 @@ export async function menuAction(menu: HTMLElement | null, label: string): Promi
 export const modalMotion = `
   const modalIsMoving = ${modalIsMoving.toString()}
   const modalReady = ${modalReady.toString()}
+  const modalBounds = ${modalBounds.toString()}
   const modalDetached = ${modalDetached.toString()}
   const menuAction = ${menuAction.toString()}
 `

@@ -43,6 +43,7 @@ import {
 } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
+import { modalMotion } from './helpers/modalMotion'
 
 targets('desktop', 'phone')
 
@@ -105,6 +106,7 @@ interface Screen {
 type Report = Record<string, Screen>
 
 const probeScript = `(async () => {
+  ${modalMotion}
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
   const until = async (fn, ms) => {
     const deadline = Date.now() + ms
@@ -169,7 +171,7 @@ const probeScript = `(async () => {
     if (!add) throw new Error('no event date button')
     add.click()
     await until(() => document.querySelector('.modal .abele-datetime-picker'), 3000)
-    // A hidden window runs no animations; a dialog measured mid-slide reads where it started.
+    // Disable CSS transitions in hidden windows. Inline host springs are awaited by modalBounds.
     for (const el of document.querySelectorAll('.modal, .modal-container')) el.style.transition = 'none'
     await wait(300)
   }
@@ -182,7 +184,8 @@ const probeScript = `(async () => {
       const dialog = document.querySelector('.modal')
       // The shell's body is what scrolls a dialog.
       const content = dialog.querySelector('.abele-modal__body') || dialog.querySelector('.modal-content')
-      const d = dialog.getBoundingClientRect()
+      const opening = { bottom: dialog.getBoundingClientRect().bottom, transform: getComputedStyle(dialog).transform }
+      const d = await modalBounds(dialog)
       const f = field().getBoundingClientRect()
       const safeArea = document.createElement('div')
       safeArea.className = 'abele-safe-area-probe'
@@ -206,7 +209,10 @@ const probeScript = `(async () => {
       if (scroller) { scroller.scrollTop = 0; field().scrollIntoView({ block: 'center' }); await wait(100) }
       const f2 = field().getBoundingClientRect()
       entry.field = [Math.round(f2.top), Math.round(f2.bottom)]
-      entry.container = document.querySelector('.modal-container').className + ' | ' + document.querySelector('.modal-container').style.cssText + ' | vv ' + (window.visualViewport && window.visualViewport.height)
+      const style = getComputedStyle(dialog)
+      entry.container = document.querySelector('.modal-container').className + ' | ' + document.querySelector('.modal-container').style.cssText + ' | vv ' + (window.visualViewport && window.visualViewport.height) +
+        ' | modal ' + dialog.className + ' | height ' + style.height + ' | max-height ' + style.maxHeight + ' | bottom ' + style.bottom + ' | transform ' + style.transform +
+        ' | before settling ' + JSON.stringify(opening) + ' | measured bottom ' + d.bottom
       entry.shot = await shoot(label)
     } catch (e) {
       entry.error = String((e && e.message) || e)
