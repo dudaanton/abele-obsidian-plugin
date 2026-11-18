@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest'
+import { renderedChatItem } from '../e2e/helpers/renderedChatItem'
 import { visibleChatAnchor } from '../e2e/helpers/visibleChatAnchor'
 
 function rect(top: number, bottom: number): DOMRect {
@@ -46,4 +47,18 @@ it('retains the message fallback when no markdown start is visible', () => {
   message.getBoundingClientRect = () => rect(60, 250)
   el.append(message)
   expect(visibleChatAnchor(el)).toBe(message)
+})
+
+it('recognizes a later call inside a collapsed run as the conversation end', () => {
+  const el = box()
+  const run = document.createElement('div')
+  run.dataset.messageId = 'sample-first'
+  run.dataset.runIds = 'sample-first sample-last'
+  el.append(run)
+  expect(renderedChatItem(el, 'sample-last')).toBe(run)
+  expect(renderedChatItem(el, 'sample-missing')).toBeNull()
+  const call = document.createElement('div')
+  call.dataset.messageId = 'sample-last'
+  run.append(call)
+  expect(renderedChatItem(el, 'sample-last')).toBe(call)
 })

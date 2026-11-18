@@ -1,3 +1,4 @@
+import { renderedChatItem } from './renderedChatItem'
 import { shotDir } from './shots'
 import { visibleChatAnchor } from './visibleChatAnchor'
 import { traceScrollInput } from './scrollInputTrace'
@@ -258,7 +259,7 @@ export const script = (
   const size = ${JSON.stringify(size)}, state = ${JSON.stringify(state)}, phone = ${phone}
   // Hundreds of native gestures include deliberate settle waits; this is a harness
   // budget, independent of the pixel and direction invariants checked below.
-  ${cpuFrames ? 'let' : 'const'} deadline = Date.now() + ${phone && size === 'long' && state === 'text' ? 360000 : 270000}${cpuFrames ? '\n  const extendInputDeadline = ms => { deadline += ms }' : ''}
+  let deadline = Date.now() + ${phone && size === 'long' && state === 'text' ? 360000 : 270000}\n  const extendInputDeadline = ms => { deadline += ms }
   const wait = async ms => {
     if (Date.now() > deadline) throw Error('Matrix case exceeded its input budget')
     await new Promise(r => setTimeout(r, ms))
@@ -271,7 +272,7 @@ export const script = (
   const report = { rows: [], streamMs: 0, evicted: false, initialPages: 0, maxInputFrameMs: 0 }
   let previousInputFrame${cpuFrames ? `\n  const blocking = (${scrollBlocking.toString()})()` : ''}
   const box = () => [...document.querySelectorAll('.abele-ai-chat__messages')].find(e => e.getClientRects().length)
-  const item = id => box()?.querySelector('[data-message-id="' + id + '"]')
+  const item = id => (${renderedChatItem.toString()})(box(), id)
   const until = async fn => {
     for (let n = 0; n < 400; n++) {
       if (session?.error.value) throw Error(session.error.value)

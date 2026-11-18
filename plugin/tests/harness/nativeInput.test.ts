@@ -12,7 +12,8 @@ import { spawn } from 'node:child_process'
 import { buildSync } from 'esbuild'
 import { join } from 'node:path'
 import Module from 'node:module'
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { script } from '../e2e/helpers/chatScrollMatrix'
 import { withNativeInput, nativeInputProbe } from '../e2e/helpers/nativeInput'
 
 let dir: string
@@ -229,39 +230,46 @@ it('rejects a probe without an explicit input port instead of silently running u
   expect(() => nativeInputProbe('(async () => {})()')).toThrow('no explicit CDP port')
 })
 
-it('reports lane wait separately from the active input deadline', async () => {
-  const lock = join(dir, 'deadline.lock')
-  let release!: () => void
-  const held = withNativeInput(
-    () =>
-      new Promise<void>((resolve) => {
-        release = resolve
-      }),
-    lock
-  )
-  await vi.waitFor(() => expect(release).toBeTypeOf('function'))
-  const source = `(async () => {
+it.each([false, true])(
+  'reports matrix lane wait separately from the active input deadline (measurement: %s)',
+  async (measure) => {
+    const lock = join(dir, 'deadline.lock')
+    let release!: () => void
+    const held = withNativeInput(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve
+        }),
+      lock
+    )
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    const source = `(async () => {
     const cdp = (method, params) => debuggerApi.sendCommand(method, params)
-    let queued = 0
-    const extendInputDeadline = ms => { queued += ms }
+    ${
+      script('long', 'text', true, 0, measure)
+        .split('  const chats =')[0]
+        .match(/(?:let|const) deadline[\s\S]*/)?.[0]
+    }
+    const originalDeadline = deadline
     const inputGesture = async run => run()
     await inputGesture(() => cdp('Input.dispatchMouseEvent', {type:'mouseWheel'}))
-    return queued
+    return deadline - originalDeadline
   })()`
-  const nodeRequire = Module.createRequire(import.meta.url)
-  const api = { sendCommand: async () => {} }
-  const execute = new Function('require', `return ${nativeInputProbe(source, lock)}`)
-  const pending = execute((name: string) =>
-    name === '@electron/remote'
-      ? { getCurrentWebContents: () => ({ debugger: api }) }
-      : nodeRequire(name)
-  )
-  // Keep a live owner in front of the probe's queued gesture.
-  await new Promise((resolve) => setTimeout(resolve, 60))
-  release()
-  await held
-  expect(await pending).toBeGreaterThanOrEqual(50)
-})
+    const nodeRequire = Module.createRequire(import.meta.url)
+    const api = { sendCommand: async () => {} }
+    const execute = new Function('require', `return ${nativeInputProbe(source, lock)}`)
+    const pending = execute((name: string) =>
+      name === '@electron/remote'
+        ? { getCurrentWebContents: () => ({ debugger: api }) }
+        : nodeRequire(name)
+    )
+    // Keep a live owner in front of the probe's queued gesture.
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    release()
+    await held
+    expect(await pending).toBeGreaterThanOrEqual(50)
+  }
+)
 
 it.each([false, true])(
   'holds one wheel sweep through receipt waits and releases it on exit (failure: %s)',
