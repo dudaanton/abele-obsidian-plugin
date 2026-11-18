@@ -3,6 +3,26 @@ import { MemoryStateStore } from '@abele/sync-sdk/core'
 import { PreparedUploads } from '@/sync/preparedUploads'
 
 const one = { path: 'Shared/sample.bin', sha: 'a'.repeat(64), size: 12 }
+it('restores probe knowledge independently of payload receipts and retires both before commit', async () => {
+  const state = new MemoryStateStore()
+  let now = 1000
+  const uploads = () =>
+    new PreparedUploads(
+      state,
+      () => 'sample',
+      () => now
+    )
+  await uploads().acknowledge(one.sha)
+  now += 24 * 60 * 60 * 1000
+  await uploads().observe(one.sha)
+  expect(await uploads().known(one.sha)).toBe(true)
+  await uploads().spend([one.sha])
+  expect(await uploads().known(one.sha)).toBe(false)
+  await uploads().observe(one.sha)
+  now += 24 * 60 * 60 * 1000
+  expect(await uploads().known(one.sha)).toBe(false)
+  expect(await new PreparedUploads(state, () => 'other').known(one.sha)).toBe(false)
+})
 it('keeps new in-flight hints bounded even when stale unfinished hints remain', async () => {
   const state = new MemoryStateStore()
   const uploads = new PreparedUploads(state, () => 'same')

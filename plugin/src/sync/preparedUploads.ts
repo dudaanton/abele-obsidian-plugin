@@ -7,6 +7,7 @@ export interface PreparedSource {
 }
 const PENDING = 'plugin:prepared-upload-sources'
 const receiptKey = (sha: string) => 'plugin:prepared-upload:' + sha
+const probeKey = (sha: string) => 'plugin:observed-upload:' + sha
 // Leave a margin before the scoped server's 24-hour prepared-blob lifetime.
 export const PREPARED_UPLOAD_LIFETIME = 23 * 60 * 60 * 1000
 
@@ -28,10 +29,20 @@ export class PreparedUploads {
     const key = this.context() + ':' + sha
     let receipt = this.receipts.get(key)
     if (receipt === undefined) {
-      try {
-        receipt = JSON.parse((await this.state.getMeta?.(receiptKey(sha))) ?? 'null')
-      } catch {
-        receipt = null
+      receipt = null
+      for (const name of [receiptKey(sha), probeKey(sha)]) {
+        try {
+          const saved = JSON.parse((await this.state.getMeta?.(name)) ?? 'null')
+          if (
+            saved?.context === this.context() &&
+            Number.isFinite(saved.at) &&
+            saved.at <= this.now() &&
+            (receipt === null || saved.at > receipt.at)
+          )
+            receipt = saved
+        } catch {
+          // A malformed hint is never evidence of availability.
+        }
       }
       this.receipts.set(key, receipt ?? null)
     }
@@ -83,6 +94,14 @@ export class PreparedUploads {
       await this.forgetPending(sha)
     })
   }
+  /** A positive scoped probe proves availability, without claiming a payload was sent. */
+  observe(sha: string, at = this.now()): Promise<void> {
+    return this.serialize(async () => {
+      const receipt = { context: this.context(), at }
+      await this.state.setMeta?.(probeKey(sha), JSON.stringify(receipt))
+      this.receipts.set(this.context() + ':' + sha, receipt)
+    })
+  }
   private async forgetPending(sha: string): Promise<void> {
     const rows = (await this.pending()).filter((row) => row.sha !== sha)
     await this.state.setMeta?.(
@@ -98,6 +117,7 @@ export class PreparedUploads {
     await this.state.transaction(async (tx) => {
       for (const sha of shas) {
         await tx.setMeta?.(receiptKey(sha), null)
+        await tx.setMeta?.(probeKey(sha), null)
         this.receipts.delete(this.context() + ':' + sha)
       }
     })

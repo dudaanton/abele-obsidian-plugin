@@ -1069,7 +1069,10 @@ export class TokenEngineRuntime
       }
       const startedAt = Date.now()
       const present = await hasBlob(sha, signal)
-      if (present) this.rememberUploadEntitlement(sha, startedAt)
+      if (present) {
+        await this.preparedUploads.observe(sha, startedAt)
+        this.rememberUploadEntitlement(sha, startedAt)
+      }
       return present
     }
     const prepare = this.client.prepare.bind(this.client)

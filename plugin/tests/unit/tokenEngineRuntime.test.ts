@@ -802,6 +802,31 @@ it('evaluates each unchanged ignore path once across repeated inventory and bloc
   }
 })
 
+it('retains successful blob probes across crashes without repeating per-file HEADs', async () => {
+  const wire = await server('Notes/remote.md', 'remote')
+  const state = new MemoryStateStore()
+  const send = wire.fetch.getMockImplementation()!
+  let heads = 0
+  wire.fetch.mockImplementation((input, init) => {
+    if (init?.method === 'HEAD') {
+      heads++
+      return Promise.resolve(new Response(null, { status: 200 }))
+    }
+    return send(input, init)
+  })
+  const hashes = Array.from({ length: 128 }, (_, n) => n.toString(16).padStart(64, '0'))
+  for (let restart = 0; restart < 3; restart++) {
+    const one = runtime(wire, new MemoryFileSystem(), state)
+    try {
+      await one.runtime.sync()
+      for (const sha of hashes) expect(await one.runtime.client.hasBlob(sha)).toBe(true)
+      expect(heads).toBe(hashes.length)
+    } finally {
+      await one.runtime.close()
+    }
+  }
+})
+
 it.each(['receipt', 'head'] as const)(
   'expires a cached %s entitlement without restarting',
   async (mode) => {

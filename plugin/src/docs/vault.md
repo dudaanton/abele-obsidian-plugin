@@ -2802,13 +2802,17 @@ Incoming executable operations require immutable source-aware review in the late
 Attachment consent is connection-specific and cannot be granted by background processing.
 
 The connection ledger also stores device-only prepared-upload receipts under
-`plugin:prepared-upload:<sha>` and at most two unfinished source hints under
+`plugin:prepared-upload:<sha>`, successful scoped availability probes under
+`plugin:observed-upload:<sha>`, and at most two unfinished source hints under
 `plugin:prepared-upload-sources`. A receipt records a successful payload upload, its
 request start time, server address, principal and generation; it expires after 23 hours
 and is retired before sending a namespace commit. Confirmed rejection restores its
 original timestamp only when no operation spent that hash; applied or uncertain outcomes
 keep it retired. It suppresses redundant blob probes
-after a restart, but never authorizes installing or overwriting local bytes. Unfinished
+after a restart, but never authorizes installing or overwriting local bytes. Availability
+probes retain their own request start time and authority context, use the same expiry,
+and are retired alongside payload receipts before a namespace commit. They do not record
+that a payload was sent. Unfinished
 hints contain only relative paths, hashes and sizes: recovery checks scope, upload ownership and the current
 immutable source before resuming them ahead of inventory. These records do not transfer
 to another device.
