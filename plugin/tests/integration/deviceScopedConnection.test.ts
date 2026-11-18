@@ -5,6 +5,7 @@ import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
 import { decodeAccessToken } from '@/sync/v2/client'
 import { encodeAccessToken } from '@/sync/v2/contract'
 import { scopeInventory } from '@/sync/deviceScopeInventory'
+import type { DeviceScopeLease } from '@/sync/deviceScopeLease'
 import {
   MemoryFileSystem,
   MemoryStateStore,
@@ -264,6 +265,17 @@ it('retires only the owned key before restoring whole-vault access', async () =>
   expect(f.ui.deviceScopes.state(id)).toBeNull()
   expect(f.ui.deviceScopes.runnable(id)).toBe(true)
   expect(f.calls.some((call) => /DELETE \/v2\/(files|directories)/.test(call))).toBe(false)
+})
+
+it('can disconnect after cleanup completes but whole-vault restoration is interrupted', async () => {
+  const f = fixture()
+  await f.ui.connect(f.source, undefined, [f.scopes[0]])
+  const id = f.ui.rows.value[0].id
+  await (f.ui.deviceScopes as unknown as { lease(id: string): DeviceScopeLease }).lease(id).remove()
+  expect(f.ui.deviceScopes.state(id)).toBeNull()
+  await f.ui.disconnect(id)
+  expect(f.registry.records()).toHaveLength(0)
+  expect(f.revoked).toEqual(['owned'])
 })
 
 it('adopts equal group files after a fresh scoped ledger without downloading or rewriting them', async () => {
