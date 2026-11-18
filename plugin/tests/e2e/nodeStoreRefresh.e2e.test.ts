@@ -21,7 +21,7 @@ const artifacts = shotDir('abele-node-store-refresh')
 // Allocation sampling changes allocation cost and GC timing. Use a separate diagnostic
 // run for it; qualification retains CPU/long-task evidence. The frame budget
 // bounds sampled executing plugin work per long task and forbids direct blocking
-// primitives. Whole-renderer CPU and frame gaps remain diagnostic under contention.
+// primitives. Whole-renderer CPU stays diagnostic; frame gaps retain a generous freeze limit.
 const allocationsEnabled = process.env.ABELE_SCROLL_ALLOCATIONS === '1'
 // API interception and the deliberate stall are isolated diagnostics, never tier defaults.
 const measurementsEnabled = process.env.ABELE_SCROLL_MEASUREMENTS === '1'
@@ -161,7 +161,7 @@ afterEach(async (context) => {
   ).value
   expect(evidence.profile.samples?.length, 'CPU profile must contain evidence').toBeGreaterThan(0)
   expect(
-    ownScrollTaskCpu(evidence.profile, evidence.tasks, navigationStart),
+    ownScrollTaskCpu(evidence.profile, evidence.tasks, navigationStart, 0.5, measurementsEnabled),
     'sampled executing plugin work per task'
   ).toBeLessThanOrEqual(90)
 })
@@ -345,7 +345,9 @@ it('profiles eight seconds of large-history refresh without plugin stalls or met
         timeDeltas: report.timeDeltas,
       },
       report.tasks,
-      report.navigationStart
+      report.navigationStart,
+      0.5,
+      measurementsEnabled
     )
   ).toBeLessThanOrEqual(50)
   if (measurementsEnabled) expect(report.blockingCalls).toEqual([])

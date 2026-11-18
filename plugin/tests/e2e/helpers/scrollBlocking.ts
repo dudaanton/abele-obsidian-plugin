@@ -126,16 +126,20 @@ export function ownScrollTaskCpu(
   },
   tasks: { start: number; duration: number }[],
   navigationStart: number,
-  intervalMs = 0.5
+  intervalMs = 0.5,
+  requireSamples = false
 ) {
   const nodes = new Map(profile.nodes.map((node) => [node.id, node]))
   const parents = new Map<number, number>()
   for (const node of profile.nodes)
     for (const child of node.children ?? []) parents.set(child, node.id)
   const totals = tasks.map(() => 0)
+  const sampled = tasks.map(() => false)
   let at = profile.startTime / 1000 - navigationStart * 1000
   for (const [index, id] of (profile.samples ?? []).entries()) {
     at += (profile.timeDeltas?.[index] ?? 0) / 1000
+    for (let t = 0; t < tasks.length; t++)
+      if (at >= tasks[t].start && at <= tasks[t].start + tasks[t].duration) sampled[t] = true
     let node = nodes.get(id)
     // Native/VM frames inherit their nearest script caller. A host script below
     // a plugin entry point remains host work, and a plugin listener below a host is ours.
@@ -146,5 +150,7 @@ export function ownScrollTaskCpu(
     for (let t = 0; t < tasks.length; t++)
       if (at >= tasks[t].start && at <= tasks[t].start + tasks[t].duration) totals[t] += intervalMs
   }
+  if (requireSamples && sampled.some((value) => !value))
+    throw new Error('Unknown scroll task: no profile samples within the task')
   return Math.max(0, ...totals)
 }

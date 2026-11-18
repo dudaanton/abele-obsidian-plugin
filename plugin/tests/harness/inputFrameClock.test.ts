@@ -1,5 +1,17 @@
 import { expect, it } from 'vitest'
-import { inputFrameClock } from '../e2e/helpers/inputFrameClock'
+import { inputFrameClock, assertInputFrameDelay } from '../e2e/helpers/inputFrameClock'
+
+it('allows busy frames by default but fails a single 500 ms gesture gap', () => {
+  expect(() => assertInputFrameDelay(248)).not.toThrow()
+  expect(() => assertInputFrameDelay(499.9)).not.toThrow()
+  expect(() => assertInputFrameDelay(500)).toThrow('500')
+  expect(() => assertInputFrameDelay(750)).toThrow()
+})
+
+it('keeps the 90 ms frame budget confined to opt-in measurement', () => {
+  expect(() => assertInputFrameDelay(90, true, 90)).not.toThrow()
+  expect(() => assertInputFrameDelay(90.1, true, 90)).toThrow('90')
+})
 
 it('separates renderer CPU from a scheduling gap without excusing expensive frames', () => {
   const clock = inputFrameClock()

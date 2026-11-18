@@ -11,6 +11,7 @@ import {
 } from './obsidianCli'
 import { nativeInputProbe, withNativeInput } from './nativeInput'
 import { fitSidebarInputWidths } from './sidebarInputViewport'
+import { assertInputFrameDelay } from './inputFrameClock'
 
 const available = isObsidianRunning() && hasTestApi()
 import { inputProbe, script, states, type Report } from './chatScrollMatrix'
@@ -95,9 +96,12 @@ export function chatScrollMatrixSuite(
                   ).then((result) => JSON.parse(result) as Report)
                 const result = await probe()
                 console.log('scroll-matrix', JSON.stringify({ phone, size, state, ...result }))
+                expect
+                  .soft(() => assertInputFrameDelay(result.maxInputFrameMs, measure, frameBudgetMs))
+                  .not.toThrow()
                 if (measure && frameBudgetMs !== undefined) {
                   // Per-task plugin CPU is checked against the captured profile in
-                  // the owning suite. Whole-renderer clocks stay diagnostic only.
+                  // the owning suite.
                   expect
                     .soft(result.blockingCalls, 'direct plugin synchronous blocking calls')
                     .toEqual([])

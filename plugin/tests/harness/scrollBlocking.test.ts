@@ -183,3 +183,21 @@ it('bounds executing plugin samples, not host work or a descheduling gap', () =>
     0.5
   )
 })
+
+it('fails opt-in attribution when any long task has no samples, even if other tasks do', () => {
+  const profile = {
+    startTime: 0,
+    nodes: [{ id: 1, callFrame: { url: 'app://obsidian.md/app.js' } }],
+    samples: [1],
+    timeDeltas: [10000],
+  }
+  const tasks = [
+    { start: 0, duration: 60 },
+    { start: 100, duration: 250 },
+  ]
+  expect(() => ownScrollTaskCpu(profile, tasks, 0, 0.5, true)).toThrow(
+    /unknown.*no profile samples/i
+  )
+  expect(ownScrollTaskCpu(profile, tasks, 0)).toBe(0)
+  expect(ownScrollTaskCpu(profile, [tasks[0]], 0, 0.5, true)).toBe(0)
+})
