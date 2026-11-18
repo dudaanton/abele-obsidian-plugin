@@ -1,7 +1,7 @@
 /** Native suggestion selection shared by the live single-item and set-sharing cases. */
 export const SHARE_SET_PICKER = `
 const pickShareItem = async (box, label, waitForChip = true) => {
-  let legacy = box.querySelector('select');
+  let legacy = box.querySelector('.abele-share-picker') ? null : box.querySelector('select');
   if (legacy) {
     let option;
     await poll(() => { legacy = box.querySelector('select'); option = legacy && [...legacy.options].find(one => one.textContent.trim() === label); return !!option }, undefined, 'sharing scopes to load');
@@ -14,19 +14,39 @@ const pickShareItem = async (box, label, waitForChip = true) => {
   const name = query.split('/').pop().replace(/\\.md$/i, '');
   let input;
   await poll(() => (input = box.querySelector('.abele-share-picker input')) && !input.disabled, undefined, 'Share picker: enabled search field');
-  box.querySelector('[data-scope-kind="' + (kind === 'vault' ? 'folder' : kind) + '"]')?.click();
-  input.focus();
-  typeInto(input, query);
+  const tab = box.querySelector('[data-scope-kind="' + (kind === 'vault' ? 'folder' : kind) + '"]');
+  tab?.click();
+  await poll(() => !tab || tab.getAttribute('aria-pressed') !== 'false', undefined, 'Share picker: kind selected');
   let choice;
-  await poll(() => {
-    const inline = box.querySelector('.abele-share-picker__results');
+  const match = () => {
+    // Kind changes, host focus and phone layout settle asynchronously. Reacquire
+    // the live field rather than retaining a pre-render input or a blurred list.
+    const picker = box.querySelector('.abele-share-picker');
+    input = picker?.querySelector('input');
+    if (!input || input.disabled) return false;
+    if (input.ownerDocument.activeElement !== input) input.focus();
+    if (input.value !== query) typeInto(input, query);
+    const inline = picker.querySelector('.abele-share-picker__results');
+    if (picker.dataset.sharePickerMode === 'inline' && !inline) return false;
     choice = [...(inline || box.ownerDocument).querySelectorAll('.suggestion-item')].find(one =>
       one.dataset.shareKind === kind &&
       (kind === 'vault' ? one.dataset.sharePath === '/' : kind === 'group' && !query.includes('/') ? one.querySelector('.suggestion-title')?.textContent.trim() === name : one.dataset.sharePath === query) &&
       one.getAttribute('aria-disabled') !== 'true');
-    return !!choice;
-  }, undefined, 'Share picker: matching suggestion row');
+    return !!choice && choice.isConnected;
+  };
+  try { await poll(match, undefined, 'Share picker: matching suggestion row'); }
+  catch (error) {
+    const picker = box.querySelector('.abele-share-picker');
+    throw new Error(String(error?.message || error) + ': ' + JSON.stringify({
+      mode: picker?.dataset.sharePickerMode, query: input?.value,
+      focused: input?.ownerDocument.activeElement === input,
+      sourceCount: picker?.dataset.sourceCount, sourcePaths: picker?.dataset.sourcePaths,
+      selected: [...(picker?.querySelectorAll('.multi-select-pill') || [])].map(one=>one.dataset.path),
+      rows: [...(picker?.querySelectorAll('.suggestion-item') || [])].map(one=>({kind:one.dataset.shareKind,path:one.dataset.sharePath,disabled:one.getAttribute('aria-disabled')}))
+    }));
+  }
   await poll(() => {
+    if (!choice?.isConnected && !match()) return false;
     choice.scrollIntoView({ block: 'nearest', behavior: 'instant' });
     const win = choice.ownerDocument.defaultView;
     const viewport = win.visualViewport;

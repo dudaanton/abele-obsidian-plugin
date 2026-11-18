@@ -58,6 +58,11 @@ it('captures device-scope states in the real desktop and emulated phone dialogs'
             const button=label=>[...box.querySelectorAll('button')].find(one=>textOf(one)===label);
             const capture=async label=>screen(label+'-${width}',box,box.querySelector('.abele-modal__body'));
             const picker=()=>box.querySelector('.abele-share-picker');
+            const settlePicker=async()=>{
+              picker()?.querySelector('input')?.blur();
+              await poll(()=>!picker()?.querySelector('input')?.disabled&&!picker()?.querySelector('.abele-share-picker__results'),undefined,'picker settled after selection');
+              await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+            };
             if(state==='connect-checking') await poll(()=>box.querySelector('input[type=password]')?.value&&button('Connect')?.disabled&&!picker(),undefined,'checking before scope is available');
             else if(state==='connect-error') await poll(()=>box.querySelector('.setting-item-error')||box.querySelector('.abele-setting__error')||/could not|unable|failed|unavailable/i.test(textOf(box)),undefined,'Connect preflight error');
             else if(!state.startsWith('share-')) await poll(()=>picker(),undefined,'device scope picker');
@@ -65,6 +70,7 @@ it('captures device-scope states in the real desktop and emulated phone dialogs'
               picker().scrollIntoView({block:'center'});
               if(state==='connection-narrowing'||state==='connection-widening') {
                 await pickShareItem(box,'Folder: Sample collection/Long descriptive parent/Example item '+(state==='connection-narrowing'?'01':'04'));
+                await settlePicker();
                 await poll(()=>!picker().querySelector('input').disabled,undefined,'scope change settled');
               }
               if(!textOf(box).includes('sample-owned-device-key'))throw new Error('Owned key details missing');
@@ -72,6 +78,7 @@ it('captures device-scope states in the real desktop and emulated phone dialogs'
             if(state.startsWith('share-')) {
               await poll(()=>picker()&&!picker().querySelector('input').disabled,undefined,'Share choices ready');
               await pickShareItem(box,'Folder: Sample collection/Long descriptive parent/Example item 01');
+              await settlePicker();
               const name=[...box.querySelectorAll('.setting-item')].find(one=>textOf(one.querySelector('.setting-item-name'))==='Name')?.querySelector('input');
               if(!name)throw new Error('Share name missing');typeInto(name,'Sample field team');
               await poll(()=>button('Create token')&&!button('Create token').disabled,undefined,'Share issue enabled');

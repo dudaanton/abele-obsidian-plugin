@@ -6,6 +6,51 @@ afterEach(() => {
   document.documentElement.style.removeProperty('--keyboard-height')
 })
 
+it('recovers phone focus lost after typing instead of searching a missing inline list', async () => {
+  const box = document.createElement('div'),
+    picker = document.createElement('div')
+  picker.className = 'abele-share-picker'
+  picker.dataset.sharePickerMode = 'inline'
+  const input = document.createElement('input'),
+    results = document.createElement('div')
+  results.className = 'abele-share-picker__results'
+  const row = document.createElement('div')
+  row.className = 'suggestion-item'
+  row.dataset.shareKind = 'folder'
+  row.dataset.sharePath = 'Sample'
+  results.append(row)
+  picker.append(input, results)
+  box.append(picker)
+  document.body.append(box)
+  input.addEventListener('focus', () => {
+    if (!results.isConnected) picker.append(results)
+  })
+  row.scrollIntoView = vi.fn()
+  row.getBoundingClientRect = () => ({ top: 100, bottom: 150, height: 50 }) as DOMRect
+  const click = vi.fn()
+  row.addEventListener('click', click)
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+  await new AsyncFunction(
+    'box',
+    'poll',
+    'typeInto',
+    SHARE_SET_PICKER + '\nawait pickShareItem(box,"Folder: Sample",false)'
+  )(
+    box,
+    async (check: () => boolean, _: unknown, label: string) => {
+      if (check()) return
+      await Promise.resolve()
+      if (!check()) throw new Error(label)
+    },
+    (field: HTMLInputElement, value: string) => {
+      field.value = value
+      field.blur()
+      results.remove()
+    }
+  )
+  expect(click).toHaveBeenCalledOnce()
+})
+
 it.each([true, false])(
   'scrolls the requested suggestion and keeps the keyboard visibility guarantee (scroll works=%s)',
   async (works) => {
