@@ -15,6 +15,22 @@ import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { deferred } from '../helpers/deferred'
 import { LocalPlacementError } from '@/sync/localFolderPlacement'
 import { tokenStatus } from '@/sync/tokenStatus'
+import { readDeviceScope } from '@/sync/deviceScope'
+
+// BUG: connect does not yet persist a device include scope before starting the engine.
+it.fails('saves the selected device scope before starting a newly connected engine', async () => {
+  const { ui, registry } = setup()
+  const only = [{ id: 'sample-folder', kind: 'folder' as const, path: 'Garden' }]
+  const started = vi.fn(async () => {
+    const record = registry.records()[0]
+    expect(readDeviceScope(registry.storage(record.id))).toEqual(only)
+  })
+  ui.connectionsChanged = started
+  await Reflect.apply(ui.connect, ui, [token, undefined, only])
+  expect(started).toHaveBeenCalledOnce()
+  const restored = TokenConnectionRegistry.open(registry.localStorage)
+  expect(readDeviceScope(restored.storage(restored.records()[0].id))).toEqual(only)
+})
 
 it('coalesces 1000 progress callbacks before reading or validating registry state', async () => {
   const { ui, registry } = setup()
