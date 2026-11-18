@@ -87,6 +87,8 @@ describe('startup mark boundaries', () => {
         'onloadStart',
         'onloadEnd',
         'locale',
+        'settings sections',
+        'settings section source',
         'initializeLocale:de',
         'layoutStart',
         'layoutEnd',
@@ -104,6 +106,8 @@ describe('startup mark boundaries', () => {
       before('onloadStart', 'locale')
       before('locale', 'initializeLocale:de')
       before('initializeLocale:de', 'settings')
+      before('settings sections', 'settings')
+      before('settings', 'settings section source')
       before('layoutStart', 'layoutEnd')
       before('sync:onload', 'sync:layout-ready')
       before('links', 'onloadEnd')

@@ -117,7 +117,7 @@ const SHOTS = shotDir('abele-phone')
  */
 const DIALOGS = [
   ...Array.from({ length: 11 }, (_, i) => `sync-sections-${i + 1}`),
-  ...[1, 2, 3, 4, 5, 7, 8].map((step) => `sync-check-${step}`),
+  ...Array.from([1, 2, 3, 4, 5, 7, 8], (step) => `sync-check-${step}`),
   'file-approval-comparison',
   'debugger-launch',
   'map-background',

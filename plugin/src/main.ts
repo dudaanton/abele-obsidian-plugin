@@ -318,7 +318,9 @@ export default class AbelePlugin extends Plugin {
       dayjs.extend(dayOfYear)
 
       AbeleConfig.getInstance().init(this)
-      installSectionSettings(AbeleConfig.getInstance(), this.app)
+      startupStep('settings sections', () =>
+        installSectionSettings(AbeleConfig.getInstance(), this.app)
+      )
       ;(window as any).process = (window as any).process || {
         env: { NODE_ENV: 'production' },
       } // Ensure process is defined for Node.js compatibility
@@ -355,11 +357,13 @@ export default class AbelePlugin extends Plugin {
       // into a key when this device was unlocked, not now.
       const secretStore = createPluginSecrets(this)
       setSecrets(secretStore)
-      abeleSectionsSource.value = liveAbeleSections(
-        AbeleConfig.getInstance(),
-        this.app,
-        secretStore
-      )
+      startupStep('settings section source', () => {
+        abeleSectionsSource.value = liveAbeleSections(
+          AbeleConfig.getInstance(),
+          this.app,
+          secretStore
+        )
+      })
       await startupStepAsync('sync connection', async () => {
         const { TokenEngines } = await import('./sync/tokenEngines')
         if (this.unloaded) return
