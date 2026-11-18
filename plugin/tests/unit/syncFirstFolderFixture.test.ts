@@ -50,3 +50,9 @@ it(
   },
   4 * 20 * 1000
 )
+
+it('gives every first-pull destination distinct content for exact request accounting', () => {
+  const files = firstFolderFixture().files
+  const hashes = files.map((file) => createHash('sha256').update(file.bytes).digest('hex'))
+  expect(new Set(hashes).size).toBe(files.length)
+})

@@ -36,7 +36,7 @@ export function firstFolderFixture(seed = 42): {
         extension === 'md'
           ? `# Sample ${random()}\n\nSynthetic note.\n`
           : extension === 'pdf'
-            ? '%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n'
+            ? `%PDF-1.4\n% Sample ${i}\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n`
             : extension === 'canvas'
               ? JSON.stringify({
                   nodes: [
