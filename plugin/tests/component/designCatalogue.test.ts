@@ -1,10 +1,47 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import DesignCatalogue from '@/testing/DesignCatalogue.vue'
-import { CATALOGUE_PAGES, CATALOGUE_COMPONENTS } from '@/testing/designCatalogue'
+import {
+  CATALOGUE_PAGES,
+  CATALOGUE_COMPONENTS,
+  openDesignCatalogue,
+  closeDesignCatalogue,
+} from '@/testing/designCatalogue'
 import { readdirSync } from 'node:fs'
+import { Modal } from 'obsidian'
+import { useVault } from '../helpers/testEnv'
 
 describe('test-only design catalogue', () => {
+  it('identifies the current icon picker while the prior confirmation is still closing', async () => {
+    const app = useVault([])
+    Object.assign(app.workspace, { containerEl: document.body })
+    const finish: (() => void)[] = []
+    const nativeClose = Modal.prototype.close
+    const closing = vi.spyOn(Modal.prototype, 'close').mockImplementation(function (this: Modal) {
+      finish.push(() => nativeClose.call(this))
+    })
+    try {
+      openDesignCatalogue('confirm')
+      await flushPromises()
+      const previous = document.querySelector('.modal')
+      expect(previous?.classList.contains('abele-modal_footer-dismiss')).toBe(true)
+      openDesignCatalogue('icon-picker')
+      await flushPromises()
+      expect(previous?.isConnected).toBe(true)
+      expect(document.querySelector('.modal')).toBe(previous)
+      expect(previous?.querySelectorAll('.abele-modal__footer button')).toHaveLength(0)
+      const current = document.querySelector('.modal[data-abele-catalogue-page="icon-picker"]')
+      expect(current).not.toBeNull()
+      expect(current).not.toBe(previous)
+      expect(current?.querySelector('.abele-icon-picker')).not.toBeNull()
+      closeDesignCatalogue()
+      expect(document.querySelector('[data-abele-catalogue-page]')).toBeNull()
+    } finally {
+      closeDesignCatalogue()
+      for (const close of finish) close()
+      closing.mockRestore()
+    }
+  })
   it('previews the new reports, short lists, anchored cards and selection bar', async () => {
     const options = {
       global: { stubs: { Modal: { template: '<div><slot /></div>' }, NotePicker: true } },

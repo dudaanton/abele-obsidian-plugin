@@ -6,7 +6,12 @@ import { GlobalStore } from '@/stores/GlobalStore'
 import { CATALOGUE_PAGES, type CataloguePage } from './catalogueShape'
 export { CATALOGUE_PAGES, CATALOGUE_COMPONENTS, type CataloguePage } from './catalogueShape'
 let mounted: KitMount | undefined
+let modal: HTMLElement | undefined
 export function closeDesignCatalogue() {
+  // Native close animations can outlive Vue's footer and content. Retired shells must not
+  // be measured as the page that replaced them.
+  modal?.removeAttribute('data-abele-catalogue-page')
+  modal = undefined
   mounted?.unmount()
   mounted = undefined
 }
@@ -19,6 +24,7 @@ export function openDesignCatalogue(
   closeDesignCatalogue()
   const { app } = GlobalStore.getInstance()
   const doc = app.workspace.containerEl.ownerDocument
+  const previous = new Set(doc.querySelectorAll('.modal'))
   const host = doc.win.createDiv()
   doc.body.appendChild(host)
   mounted = mountKit(
@@ -35,5 +41,7 @@ export function openDesignCatalogue(
     null,
     { remove: true }
   )
+  modal = [...doc.querySelectorAll<HTMLElement>('.modal')].find((el) => !previous.has(el))
+  if (modal) modal.dataset.abeleCataloguePage = page
   return { page, variant, synthetic: true }
 }
