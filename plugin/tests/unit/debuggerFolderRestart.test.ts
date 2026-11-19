@@ -39,6 +39,24 @@ vi.mock('@/debugger/startProgram', async (original) => {
 import { DebugView, showSession } from '@/debugger/register'
 
 afterEach(() => vi.clearAllMocks())
+it('restarts when the adapter disconnects between status and the current observation', async () => {
+  const { context, binding, request } = fixture('connection-lost')
+  await showSession(context, 'sample-ended')
+  const lost = binding.controller.snapshot
+  vi.mocked(context.connection.client.debugger.status).mockResolvedValueOnce({
+    snapshot: { ...lost, lifecycle: 'active', execution: 'running' },
+  } as never)
+  binding.controller.current = false
+  binding.controller.session.status = 'lost'
+  await binding.rerun!()
+  expect(request).toHaveBeenCalledExactlyOnceWith('debugger.v1.restart', {
+    operation_id: expect.any(String),
+    debug_session_id: 'sample-ended',
+  })
+  expect(binding.controller.command).not.toHaveBeenCalled()
+  expect(binding.open).toHaveBeenLastCalledWith('sample-second')
+})
+
 it('does not let a stale leaf state replace the session just explicitly selected', async () => {
   const { binding } = fixture('detached')
   f.active.value = binding

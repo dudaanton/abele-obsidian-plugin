@@ -13,6 +13,7 @@ import { NODE_FILE_VIEW } from '@/node/nodePathNavigation'
 import type { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import type { PathTarget } from '@/node/NodePathModel'
 import { debugIdentity } from '@/debugger/owner'
+import { debuggerSnapshot } from '../fixtures/debugger'
 
 const target: PathTarget = {
   nodeId: 'node-a',
@@ -87,6 +88,37 @@ function fakePresenter() {
 }
 
 afterEach(() => DebuggerService.instance.destroy())
+
+it('restarts a chat program through its retained recipe after a confirmed adapter disconnect', async () => {
+  fakeWorkspace()
+  const { presenter, calls } = fakePresenter()
+  await startProgram(presenter, 'src/page.js', [], target, async () => {})
+  const binding = DebuggerService.instance.binding(presenter, 'child-1')
+  const snapshot = debuggerSnapshot({
+    debug_session_id: 'child-1',
+    lifecycle: 'connection-lost',
+    execution: 'unknown',
+  })
+  binding.controller.observe({ observation: 'current', snapshot })
+  vi.spyOn(binding, 'open').mockImplementation(async () => {
+    binding.controller.observe({ observation: 'current', snapshot })
+  })
+  const request = vi.mocked(presenter.connection.client.request).getMockImplementation()!
+  vi.mocked(presenter.connection.client.request).mockImplementation(async (method, params) => {
+    if (method === 'debugger.v1.restart') {
+      calls.push([method, params])
+      return { debug_session_id: 'child-2', sources: [] }
+    }
+    return request(method, params)
+  })
+  const stop = vi.spyOn(binding.controller, 'command')
+  await expect(binding.rerun!()).resolves.toBe('child-2')
+  expect(stop).not.toHaveBeenCalled()
+  expect(calls.filter(([method]) => method === 'debugger.v1.start')).toHaveLength(1)
+  expect(calls.filter(([method]) => method === 'debugger.v1.restart')).toEqual([
+    ['debugger.v1.restart', { operation_id: expect.any(String), debug_session_id: 'child-1' }],
+  ])
+})
 
 it('restores carried points before publishing the restarted session controls', async () => {
   fakeWorkspace()

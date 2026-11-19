@@ -149,9 +149,12 @@ function configureSessionActions(
         )
       }
       const client = presenter.connection.client
-      const { snapshot: previous } = await client.debugger.status(sessionId)
+      await client.debugger.status(sessionId)
       binding.controller.observe(client.debugger.current(sessionId))
-      if (!['terminated', 'detached', 'failed', 'connection-lost'].includes(previous.lifecycle)) {
+      const previous = binding.controller.snapshot
+      if (
+        !['terminated', 'detached', 'failed', 'connection-lost'].includes(previous?.lifecycle ?? '')
+      ) {
         if (!binding.controller.current)
           throw new Error('Reconnect to the debugger before restarting')
         await binding.controller.command('stop')

@@ -197,7 +197,8 @@ export async function startProgram(
   show: (sessionId: string) => Promise<void>,
   carry: CarriedPoint[] = [],
   argv: string[] = [],
-  options: LaunchOptions & { npmScript?: string; source?: string; stopOnEntry?: boolean } = {}
+  options: LaunchOptions & { npmScript?: string; source?: string; stopOnEntry?: boolean } = {},
+  restartFrom?: string
 ) {
   argv = [...argv]
   const client = presenter.connection.client
@@ -207,18 +208,26 @@ export async function startProgram(
     debuggerAcceptanceCapabilities(await client.describe?.()).launch_stop_on_entry
   const started = StartResultSchema.parse(
     await client
-      .request('debugger.v1.start', {
-        operation_id: crypto.randomUUID(),
-        ...debugOwnerParams(presenter),
-        program,
-        argv,
-        ...(options.runtime_argv ? { runtime_argv: options.runtime_argv } : {}),
-        ...(options.cwd ? { cwd: options.cwd } : {}),
-        ...(options.env ? { env: options.env } : {}),
-        ...(supportsStop ? { stop_on_entry: carry.length ? true : options.stopOnEntry } : {}),
-        ...(options.npmScript ? { npm_script: options.npmScript } : {}),
-        sources: sources.filter((s) => s !== program),
-      })
+      .request(
+        restartFrom ? 'debugger.v1.restart' : 'debugger.v1.start',
+        restartFrom
+          ? {
+              operation_id: crypto.randomUUID(),
+              debug_session_id: restartFrom,
+            }
+          : {
+              operation_id: crypto.randomUUID(),
+              ...debugOwnerParams(presenter),
+              program,
+              argv,
+              ...(options.runtime_argv ? { runtime_argv: options.runtime_argv } : {}),
+              ...(options.cwd ? { cwd: options.cwd } : {}),
+              ...(options.env ? { env: options.env } : {}),
+              ...(supportsStop ? { stop_on_entry: carry.length ? true : options.stopOnEntry } : {}),
+              ...(options.npmScript ? { npm_script: options.npmScript } : {}),
+              sources: sources.filter((s) => s !== program),
+            }
+      )
       .catch((error) => {
         // A lost start reply can leave a retained (even already finished) session on the node.
         // Discover it by reading; never send the launch a second time.
@@ -244,11 +253,15 @@ export async function startProgram(
     // Recover current state before deciding whether the old process needs stopping.
     if (!binding.controller.current && !binding.controller.session.unavailable && binding.sessionId)
       await binding.open(binding.sessionId)
-    if (!binding.controller.current && !binding.controller.session.unavailable)
+    // A retained adapter disconnect cannot become current by reconnecting the client.
+    // Let the node restart its retained recipe; a blind launch could duplicate a live process.
+    const disconnected = binding.controller.snapshot?.lifecycle === 'connection-lost'
+    if (!binding.controller.current && !binding.controller.session.unavailable && !disconnected)
       throw new Error('Reconnect to the debugger before restarting')
     const carried = carriedPoints(binding)
-    if (binding.controller.session.status !== 'exited') await binding.controller.command('stop')
-    if (binding.controller.session.status !== 'exited')
+    if (!disconnected && binding.controller.session.status !== 'exited')
+      await binding.controller.command('stop')
+    if (!disconnected && binding.controller.session.status !== 'exited')
       throw new Error('The previous program has not stopped; reconnect before restarting')
     const taken = [...sources, ...service.takenFiles(binding), ...carried.map((c) => c.path)]
     return startProgram(
@@ -259,7 +272,8 @@ export async function startProgram(
       show,
       carried,
       argv,
-      options
+      options,
+      disconnected ? binding.sessionId : undefined
     )
   }
   // Finish admitting the source before the controls become available. A late file admission
