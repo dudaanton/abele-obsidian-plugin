@@ -3,7 +3,10 @@ import { nativeInputProbe } from '../e2e/helpers/nativeInput'
 import { script, endScript, followScript, handoffScript } from '../e2e/helpers/chatScrollMatrix'
 import { wideScript } from '../e2e/helpers/chatScrollWide'
 
-vi.mock('../e2e/helpers/shots', () => ({ shotDir: () => '/sample-shots' }))
+vi.mock('../e2e/helpers/shots', () => ({
+  shotDir: () => '/sample-shots',
+  shotPath: () => '/sample-shots',
+}))
 
 it('keeps all default matrix variants free of measurement setup and asynchronous teardown', () => {
   for (const source of [

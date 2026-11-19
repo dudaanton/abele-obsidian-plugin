@@ -35,7 +35,10 @@ vi.mock('../e2e/helpers/obsidianCli', () => ({
           : 'closed'
   ),
 }))
-vi.mock('../e2e/helpers/shots', () => ({ shotDir: () => 'fixture-evidence' }))
+vi.mock('../e2e/helpers/shots', () => ({
+  shotDir: () => 'fixture-evidence',
+  shotPath: () => 'fixture-evidence',
+}))
 vi.mock('../e2e/helpers/designLint', () => ({
   measureDesign: vi.fn(
     async (_selector: string, directory: string, capture: unknown, rules: unknown) => {

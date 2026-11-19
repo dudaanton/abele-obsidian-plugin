@@ -5,7 +5,10 @@ import { wideScript } from '../e2e/helpers/chatScrollWide'
 import type { wideWheelStep } from '../e2e/helpers/wideWheelStep'
 import { scrollCompletion } from '../e2e/helpers/scrollCompletion'
 
-vi.mock('../e2e/helpers/shots', () => ({ shotDir: () => 'sample-shots' }))
+vi.mock('../e2e/helpers/shots', () => ({
+  shotDir: () => 'sample-shots',
+  shotPath: () => 'sample-shots',
+}))
 
 const runReceipt = async (deliveryAt: number) => {
   let receivedInputs = 0,

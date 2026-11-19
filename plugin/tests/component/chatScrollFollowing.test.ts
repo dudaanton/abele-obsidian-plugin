@@ -13,7 +13,10 @@ import { fakeChatSession } from '../helpers/fakeChatSession'
 import { script } from '../e2e/helpers/chatScrollMatrix'
 import { nativeInputReceipt } from '../e2e/helpers/nativeInputReceipt'
 
-vi.mock('../e2e/helpers/shots', () => ({ shotDir: () => 'sample-shots' }))
+vi.mock('../e2e/helpers/shots', () => ({
+  shotDir: () => 'sample-shots',
+  shotPath: () => 'sample-shots',
+}))
 
 const advance = useFakeClock()
 

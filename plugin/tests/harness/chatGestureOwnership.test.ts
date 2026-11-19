@@ -5,7 +5,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { script, endScript, followScript, handoffScript } from '../e2e/helpers/chatScrollMatrix'
 import { nativeInputProbe, withNativeInput } from '../e2e/helpers/nativeInput'
 
-vi.mock('../e2e/helpers/shots', () => ({ shotDir: () => '/sample-shots' }))
+vi.mock('../e2e/helpers/shots', () => ({
+  shotDir: () => '/sample-shots',
+  shotPath: () => '/sample-shots',
+}))
 
 let dir: string
 beforeEach(() => {

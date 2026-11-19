@@ -15,7 +15,10 @@ vi.mock('node:fs', async (original) => {
   }
 })
 vi.mock('../e2e/helpers/target', () => ({ onPhone: () => false }))
-vi.mock('../e2e/helpers/shots', () => ({ shotDir: () => 'synthetic-evidence' }))
+vi.mock('../e2e/helpers/shots', () => ({
+  shotDir: () => 'synthetic-evidence',
+  shotPath: () => 'synthetic-evidence',
+}))
 vi.mock('../e2e/helpers/phone', () => ({ driver: vi.fn(), PHONE_VAULT: 'phone' }))
 
 it('never records verified evidence for a body that finishes after timeout teardown', async () => {
