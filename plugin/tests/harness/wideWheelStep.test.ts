@@ -26,6 +26,7 @@ it('waits for renderer receipt and scroll completion after CDP acknowledgement',
   await vi.advanceTimersByTimeAsync(80)
   expect(finished).toBe(false)
   el.dispatchEvent(new Event('scrollend'))
+  await vi.advanceTimersByTimeAsync(16)
   await run
   expect(finished).toBe(true)
 })

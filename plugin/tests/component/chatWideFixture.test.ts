@@ -2,27 +2,37 @@ import { expect, it, vi } from 'vitest'
 import { chatBlocks } from '@/ai/toolRuns'
 import type { ChatMessage } from '@/ai/types'
 import { wideScript } from '../e2e/helpers/chatScrollWide'
+import type { wideWheelStep } from '../e2e/helpers/wideWheelStep'
+import { scrollCompletion } from '../e2e/helpers/scrollCompletion'
 
 vi.mock('../e2e/helpers/shots', () => ({ shotDir: () => 'sample-shots' }))
 
-const runReceipt = (deliveryAt: number) => {
+const runReceipt = async (deliveryAt: number) => {
+  let receivedInputs = 0,
+    elapsed = 0,
+    dispatched = 0
+  const el = document.createElement('div')
+  // Exercise the serialized helper used in the renderer, rather than slicing
+  // executable statements by their whitespace. This fixture isolates delivery;
+  // the wheel-step harness separately exercises delayed scroll completion.
   const code = wideScript()
-  const start = code.indexOf('      const receipt = receivedInputs')
-  const end = code.indexOf('      for (const { e, top } of visible)', start)
-  return new Function(
-    'deliveryAt',
-    `return (async () => {
-    let receivedInputs = 0, elapsed = 0, dispatched = 0
-    const bounds = { left: 0, top: 0 }, delta = -40, wheelScale = 0.8
-    const cdp = async () => { dispatched++ }
-    const wait = async ms => {
+  const start = code.indexOf('    const wheelStep = ')
+  const end = code.indexOf('    const completeScroll = ', start)
+  if (start < 0 || end <= start) throw Error('Wide wheel helper boundaries changed')
+  const step = new Function(`${code.slice(start, end)}; return wheelStep`)() as typeof wideWheelStep
+  await step(
+    el,
+    async () => {
+      dispatched++
+    },
+    () => receivedInputs,
+    scrollCompletion,
+    async (ms) => {
       elapsed += ms
       if (elapsed >= deliveryAt) receivedInputs = 1
     }
-    ${code.slice(start, end)}
-    return { receivedInputs, elapsed, dispatched }
-  })()`
-  )(deliveryAt) as Promise<{ receivedInputs: number; elapsed: number; dispatched: number }>
+  )
+  return { receivedInputs, elapsed, dispatched }
 }
 
 it('waits for delayed native receipt after CDP acknowledges without replaying the wheel', async () => {

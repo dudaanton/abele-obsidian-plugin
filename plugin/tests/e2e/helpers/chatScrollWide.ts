@@ -87,7 +87,7 @@ export function wideScript() {
       await wheelStep(el, () => cdp('Input.dispatchMouseEvent', {
         type: 'mouseWheel', x: bounds.left + 100, y: bounds.top + 400,
         deltaX: 0, deltaY: delta * wheelScale
-      }), () => receivedInputs, completeScroll)
+      }), () => receivedInputs, completeScroll, wait)
       for (const { e, top } of visible) {
         if (!e.isConnected) report.missing.push({ step: n, id: e.dataset.messageId })
         else report.wideDrift = Math.max(report.wideDrift, Math.abs(e.getBoundingClientRect().top - top + delta))
