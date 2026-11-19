@@ -49,6 +49,9 @@ const bindingSetup = `
 `
 
 export const BINDING_RESET = `
+  // A phone reload restarts the whole app. Its test API and chat can be ready before
+  // script discovery finishes; the previous case's undo does not need that index.
+  await window.__abeleTest.ScriptService.getInstance().ready
   document.getSelection()?.removeAllRanges()
   document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
   const chats=window.__abeleTest.ChatService.getInstance()

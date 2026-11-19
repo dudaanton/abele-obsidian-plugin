@@ -2,7 +2,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { runInNewContext } from 'node:vm'
 import { webcrypto } from 'node:crypto'
-import { BINDING_DIR, BINDING_SETUP, BINDING_CLEANUP } from '../e2e/helpers/chatBindings'
+import {
+  BINDING_DIR,
+  BINDING_SETUP,
+  BINDING_CLEANUP,
+  BINDING_RESET,
+} from '../e2e/helpers/chatBindings'
 
 function fixture(failAt: 'folder' | 'open' | undefined) {
   const files = new Map<string, { path: string; source?: string }>()
@@ -29,6 +34,8 @@ function fixture(failAt: 'folder' | 'open' | undefined) {
         files.set(path, { path })
       },
       create: async (path: string, source: string) => files.set(path, { path, source }),
+      modify: async (file: { path: string }, source: string) =>
+        files.set(file.path, { ...file, source }),
       delete: async (file: { path: string }) => {
         for (const path of files.keys())
           if (path === file.path || path.startsWith(file.path + '/')) files.delete(path)
@@ -37,6 +44,7 @@ function fixture(failAt: 'folder' | 'open' | undefined) {
     },
   }
   const scripts = {
+    ready: Promise.resolve(),
     discover: async () => {},
     get: (path: string) => files.get(path),
     confirm: vi.fn(),
@@ -71,11 +79,30 @@ function fixture(failAt: 'folder' | 'open' | undefined) {
     settings,
     context,
     load,
+    scripts,
     run: (code: string) => runInNewContext(`(async()=>{${code}})()`, context),
   }
 }
 
 describe('owned binding fixture', () => {
+  it('waits for the new script index after an app reload before resetting the next case', async () => {
+    const f = fixture(undefined)
+    await f.run(BINDING_SETUP)
+    let finishIndex!: () => void
+    f.scripts.ready = new Promise<void>((resolve) => {
+      finishIndex = resolve
+    })
+    let reset = false
+    const pending = f.run(BINDING_RESET).then(() => {
+      reset = true
+    })
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(reset).toBe(false)
+    finishIndex()
+    await pending
+    expect(reset).toBe(true)
+  })
+
   it('allocates a distinct directory for a new test module run', async () => {
     vi.resetModules()
     const next = await import('../e2e/helpers/chatBindings')
