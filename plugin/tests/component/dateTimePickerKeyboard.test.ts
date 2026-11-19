@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import dayjs from 'dayjs'
-import { MarkdownRenderer } from 'obsidian'
+import { MarkdownRenderer, Platform } from 'obsidian'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { TasksList } from '@/entities/TasksList'
 import { Task } from '@/entities/Task'
@@ -46,6 +46,7 @@ const keyboard = (up: boolean) => {
 
 beforeEach(() => {
   useVault([])
+  Platform.isPhone = true
   viewport = new FakeViewport()
   Object.defineProperty(window, 'visualViewport', { value: viewport, configurable: true })
   // The container covers the whole screen, as Obsidian's does.
@@ -75,6 +76,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  Platform.isPhone = false
+  Platform.isTablet = false
   GlobalStore.getInstance().tasksList.value?.cleanup()
   GlobalStore.getInstance().tasksList.value = null
   wrapper?.unmount()
@@ -103,6 +106,21 @@ describe('the date dialog with a keyboard up', () => {
       expect(dialog.querySelector('.abele-modal__body .abele-modal__footer')).toBeNull()
     }
   )
+
+  it.each(['tablet', 'desktop'])('%s dates keep the native content-sized dialog', (device) => {
+    Platform.isPhone = false
+    Platform.isTablet = device === 'tablet'
+    wrapper?.unmount()
+    wrapper = mount(DateTimePickerModal, {
+      props: { mode: 'event', initialDate: dayjs('2027-05-15') },
+      attachTo: document.body,
+    })
+
+    const dialog = document.querySelector('.modal')!
+    expect(dialog.classList.contains('abele-modal_tall')).toBe(false)
+    expect(dialog.classList.contains('mod-lg')).toBe(false)
+    expect(dialog.querySelectorAll('.abele-modal__footer button')).toHaveLength(3)
+  })
 
   it('renders scheduled task wiki links and aliases through the shared renderer', async () => {
     const title = 'Review [[Sample note]] and [[Other note|short label]]'

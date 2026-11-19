@@ -1,5 +1,10 @@
 <template>
-  <ObsidianModal :title="title" size="tall" close-in-footer @close="emit('cancel')">
+  <ObsidianModal
+    :title="title"
+    :size="Platform.isPhone ? 'tall' : 'default'"
+    close-in-footer
+    @close="emit('cancel')"
+  >
     <DateTimePicker
       ref="picker"
       :initial-date="initialDate"
@@ -34,6 +39,7 @@
 
 <script setup lang="ts">
 import { t } from '@/i18n'
+import { Platform } from 'obsidian'
 import { computed, useTemplateRef } from 'vue'
 import dayjs from 'dayjs'
 import ObsidianModal from './obsidian/Modal.vue'
