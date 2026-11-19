@@ -5,8 +5,9 @@ import { WAIT_PRELUDE } from '../e2e/helpers/wait'
 
 const source = readFileSync(resolve(__dirname, '../e2e/bookPdfZoom.e2e.test.ts'), 'utf8')
 const template = source.match(/const PRELUDE = `([\s\S]*?)`\n/)![1]
-const prelude = new Function('WAIT_PRELUDE', 'shotDir', `return \`${template}\``)(
+const prelude = new Function('WAIT_PRELUDE', 'shotDir', 'shotPath', `return \`${template}\``)(
   WAIT_PRELUDE,
+  () => '',
   () => ''
 )
 

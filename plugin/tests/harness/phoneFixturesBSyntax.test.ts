@@ -37,6 +37,7 @@ it.each(files)('parses emitted browser scripts in %s without contacting a live a
     shots: 'sample-shots',
     shot: 'sample-shots/sample.png',
     shotDir: () => 'sample-shots',
+    shotPath: () => 'sample-shots',
     onPhone: () => true,
     body: '',
     layout: 'phone',

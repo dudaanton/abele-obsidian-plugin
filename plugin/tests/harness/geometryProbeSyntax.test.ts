@@ -36,6 +36,7 @@ it.each([
     recipientLayoutProbe,
     ...chatProbeInteractions,
     shotDir: () => 'sample-shots',
+    shotPath: () => 'sample-shots',
     SHOTS: 'sample-shots',
     WORD_SAMPLE: '',
     fixtureId: 'sample-fixture',

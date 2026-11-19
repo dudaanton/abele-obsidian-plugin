@@ -69,7 +69,10 @@ it('closes a failed case image modal and every extra file leaf before the next c
     './helpers/target': { targets: () => {} },
     './helpers/phone': {},
     './helpers/nativeInput': {},
-    './helpers/shots': { shotDir: () => 'sample-shots' },
+    './helpers/shots': {
+      shotDir: () => 'sample-shots',
+      shotPath: () => 'sample-shots',
+    },
     './helpers/ownNotices': { dismissOwnNotices: () => {} },
     './helpers/fixtureBoundary': { closeFixtureLeaves },
   }

@@ -14,8 +14,9 @@ it.each([false, true])('parses the emitted messaging probe; phone layout: %s', (
   }
   visit(tree)
   expect(probes).toHaveLength(1)
-  const script = new Function('phone', 'shotDir', `return ${probes[0]}`)(
+  const script = new Function('phone', 'shotDir', 'shotPath', `return ${probes[0]}`)(
     phone,
+    () => '/sample/shots',
     () => '/sample/shots'
   )
   expect(() => new Function(`return ${script}`)).not.toThrow()

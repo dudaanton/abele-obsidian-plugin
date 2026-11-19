@@ -26,7 +26,8 @@ function emitted(file: string, expression: string): string[] {
     const req = (id: string): unknown => {
       if (id === 'vitest') return { describe: noop, it: noop, beforeAll: noop, afterAll: noop }
       if (id.endsWith('/obsidianCli')) return { isObsidianRunning: () => false }
-      if (id.endsWith('/shots')) return { shotDir: () => '/sample-shots' }
+      if (id.endsWith('/shots'))
+        return { shotDir: () => '/sample-shots', shotPath: () => '/sample-shots' }
       if (id.endsWith('/target')) return { targets: noop, onPhone: () => false }
       if (id.startsWith('.')) return load(resolve(dirname(path), id + '.ts'))
       return nodeRequire(id)

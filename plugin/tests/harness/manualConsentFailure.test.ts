@@ -89,6 +89,7 @@ function actualConsumer(faults: {
     reloadApp,
     driver: vi.fn(),
     shotDir: () => '/sample',
+    shotPath: () => '/sample',
     onPhone: () => false,
     targets: () => {},
     manualKeyConsentProbe: () => 'sample-setup',

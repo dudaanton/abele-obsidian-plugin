@@ -93,6 +93,7 @@ it.each([
     checkNodeFileMenuGeometry,
     checkNodeChatGeometry,
     shotDir: () => 'sample-shots',
+    shotPath: () => 'sample-shots',
     DIR: 'Sample fixture',
     BOOK: 'Sample fixture/sample.epub',
     PDF: 'Sample fixture/sample.pdf',
