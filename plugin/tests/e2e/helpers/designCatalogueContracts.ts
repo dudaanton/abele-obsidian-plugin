@@ -10,13 +10,13 @@
 import { expect } from 'vitest'
 import { evalLong } from './obsidianCli'
 import { measureDesign } from './designLint'
-import { shotDir } from './shots'
+import { shotPath } from './shots'
 import { KIT_COLORS } from '../../../src/constants/colors'
 import { designCaptureExpression } from '../../helpers/designCapture'
 import { lintDesign, type DesignSnapshot } from '../../helpers/designLint'
 import { settledGeometry } from '../../helpers/settledGeometry'
 
-const directory = process.env.DESIGN_LINT_OUT_DIR ?? shotDir('design-lint')
+const directory = process.env.DESIGN_LINT_OUT_DIR ?? shotPath('design-lint')
 
 type Contract = [name: string, check: () => Promise<void>]
 

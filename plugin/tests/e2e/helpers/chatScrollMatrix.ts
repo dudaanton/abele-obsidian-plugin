@@ -1,5 +1,5 @@
 import { renderedChatItem } from './renderedChatItem'
-import { shotDir } from './shots'
+import { shotPath } from './shots'
 import { visibleChatAnchor } from './visibleChatAnchor'
 import { traceScrollInput } from './scrollInputTrace'
 import { scrollCompletion } from './scrollCompletion'
@@ -8,7 +8,7 @@ import { nativeInputReceipt } from './nativeInputReceipt'
 import { scrollBlocking } from './scrollBlocking'
 
 export const states = ['idle', 'text', 'running-tool', 'finished-tool', 'finished-reply'] as const
-const shots = shotDir('abele-phone')
+const shots = shotPath('abele-phone')
 
 /** Fail setup promptly if native input is not reaching this window, before measuring the chat. */
 export const inputProbe = (phone: boolean) => `(async () => {
@@ -289,6 +289,7 @@ export const script = (
   const capture = async phase => {
     if (size !== 'long') return
     const image = await wc.capturePage()
+    require('fs').mkdirSync(${JSON.stringify(shots)}, { recursive: true })
     require('fs').writeFileSync(${JSON.stringify(shots + '/')} + (phone ? 'touch-' : 'wheel-') + size + '-' + state + '-' + phase + '.png', image.toPNG())
   }
   let file, session, initialTurn, finishTool, frame, row, previous, previousAnchor, previousOffset, direction = 0, pendingDirection = 0
@@ -856,6 +857,7 @@ export const script = (
     dragTrace?.stop()
     dragCompletion?.stop()
     stop = true; finishInitial = true; finishTool?.(); cancelAnimationFrame(frame)
+    require('fs').mkdirSync(${JSON.stringify(shots)}, { recursive: true })
     require('fs').writeFileSync(${JSON.stringify(shots + '/')} + (phone ? 'touch-' : 'wheel-') + size + '-' + state + '-frames.json', JSON.stringify(trace))
     window.fetch = realFetch
     if (streamingAt) report.streamMs = performance.now() - streamingAt
