@@ -22,3 +22,12 @@ export const ENDLESS_DIAGNOSTICS = `
     }));
   };
   const waitFor=async(fn,what)=>{try{return await until(fn,what)}catch(error){throw diagnose(error)}};`
+
+export const ENDLESS_TURN_READY = `
+  const turnReady=tag=>{
+    const projection=presenter().projection.value,marker=tag+' word11:';
+    if(projection.state!=='idle')return false;
+    const answer=projection.messages.find(m=>m.role==='assistant'&&m.content?.includes(marker));
+    return !!answer&&completedTurns.has(answer.nodeTurnId)&&
+      [...chat().querySelectorAll('.abele-chat-msg')].some(m=>m.textContent.includes(marker));
+  };`

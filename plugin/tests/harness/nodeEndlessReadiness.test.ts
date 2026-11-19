@@ -1,5 +1,9 @@
 import { expect, it, vi } from 'vitest'
-import { ENDLESS_COMPACT, ENDLESS_DIAGNOSTICS } from '../e2e/helpers/nodeEndlessProbe'
+import {
+  ENDLESS_COMPACT,
+  ENDLESS_DIAGNOSTICS,
+  ENDLESS_TURN_READY,
+} from '../e2e/helpers/nodeEndlessProbe'
 
 it('waits for reconnect before compacting and still requires the rendered compaction', async () => {
   let connected = false
@@ -99,4 +103,63 @@ it('does not accept command completion when no compacted marker renders', async 
       }
     )
   ).rejects.toThrow('Compaction did not happen')
+})
+
+it('observes a settled rendered turn independently of convenience refs', () => {
+  const answer = { role: 'assistant', nodeTurnId: 'sample-turn', content: 'sample word11: done' }
+  const ready = new Function(
+    'presenter',
+    'chat',
+    'completedTurns',
+    `${ENDLESS_TURN_READY};return turnReady`
+  )(
+    () => ({
+      projection: { value: { state: 'idle', messages: [answer] } },
+      messages: { value: [] },
+      isStreaming: { value: true },
+    }),
+    () => ({ querySelectorAll: () => [{ textContent: answer.content }] }),
+    new Set(['sample-turn'])
+  )
+  expect(ready('sample')).toBe(true)
+})
+
+it('requires the matching successful turn, idle projection and rendered final words', () => {
+  let state = 'running'
+  let rendered = ''
+  const completedTurns = new Set<string>()
+  const answer = { role: 'assistant', nodeTurnId: 'sample-turn', content: 'sample word11: done' }
+  const ready = new Function(
+    'presenter',
+    'chat',
+    'completedTurns',
+    `${ENDLESS_TURN_READY};return turnReady`
+  )(
+    () => ({
+      projection: {
+        value: {
+          get state() {
+            return state
+          },
+          messages: [answer],
+        },
+      },
+      messages: { value: [answer] },
+      isStreaming: { value: false },
+    }),
+    () => ({ querySelectorAll: () => [{ textContent: rendered }] }),
+    completedTurns
+  )
+  expect(ready('sample')).toBe(false)
+  state = 'idle'
+  expect(ready('sample')).toBe(false)
+  completedTurns.add('other-turn')
+  rendered = answer.content
+  expect(ready('sample')).toBe(false)
+  completedTurns.add('sample-turn')
+  rendered = 'sample word0: partial'
+  expect(ready('sample')).toBe(false)
+  rendered = answer.content
+  expect(ready('sample')).toBe(true)
+  expect(ready('other')).toBe(false)
 })

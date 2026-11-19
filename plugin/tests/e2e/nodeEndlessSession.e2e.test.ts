@@ -8,7 +8,11 @@ import { withEmulatedPhone } from './helpers/emulatedPhone'
 import { columnShot } from './helpers/columnShots'
 import { shotDir } from './helpers/shots'
 import { giantJournal } from '../fixtures/giantJournal.mjs'
-import { ENDLESS_COMPACT, ENDLESS_DIAGNOSTICS } from './helpers/nodeEndlessProbe'
+import {
+  ENDLESS_COMPACT,
+  ENDLESS_DIAGNOSTICS,
+  ENDLESS_TURN_READY,
+} from './helpers/nodeEndlessProbe'
 
 targets('desktop', 'phone')
 let node: Awaited<ReturnType<typeof startPairedNode>> | undefined
@@ -94,7 +98,9 @@ it('keeps hundreds of streamed work turns bounded through disconnect, restart, r
       const openMs=performance.now()-opened;
       const probe={tx:0,txMs:0,longTasks:0,longMs:0,idbTx:0,idbTxMs:0,fetchedEvents:0};
       const store=client.store,original=store.transaction;
-      const stopEvents=client.onEvent(e=>{if(e.stream_id===sid){probe.fetchedEvents++;recordEvent(e)}});
+      const completedTurns=new Set();
+      ${ENDLESS_TURN_READY}
+      const stopEvents=client.onEvent(e=>{if(e.stream_id===sid){probe.fetchedEvents++;recordEvent(e);if(e.type==='turn.completed'&&e.data.outcome==='success')completedTurns.add(e.data.turn_id)}});
       const idbTransaction=IDBDatabase.prototype.transaction;
       IDBDatabase.prototype.transaction=function(...args){const t=performance.now(),tx=idbTransaction.apply(this,args);tx.addEventListener('complete',()=>{probe.idbTx++;probe.idbTxMs+=performance.now()-t},{once:true});return tx};
       store.transaction=async function(work){const t=performance.now();try{return await original.call(this,work)}finally{probe.tx++;probe.txMs+=performance.now()-t}};
@@ -116,7 +122,7 @@ it('keeps hundreds of streamed work turns bounded through disconnect, restart, r
           for(const c of 'sample draft') {const t=performance.now();field.value+=c;field.dispatchEvent(new Event('input',{bubbles:true}));await frame();typing.push(performance.now()-t)}
           field.value='';field.dispatchEvent(new Event('input',{bubbles:true}));
           await sending;
-          await waitFor(()=>presenter().messages.value.some(m=>m.content?.includes(tag+' word11:'))&&!presenter().isStreaming.value,'Completed streamed turn '+tag);
+          await waitFor(()=>turnReady(tag),'Completed streamed turn '+tag);
           turnMs.push(performance.now()-started);
         }
         await presenter().refresh();await frame();
