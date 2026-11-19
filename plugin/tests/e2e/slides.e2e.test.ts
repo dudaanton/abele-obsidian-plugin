@@ -13,6 +13,7 @@ import { shotDir } from './helpers/shots'
 import { SAMPLE_IMAGE, SAMPLE_VIDEO } from '../fixtures/slides'
 import { RESTORE_PHONE_SCRIPT } from './helpers/phoneState'
 import { waitForPaint } from '@/helpers/paint'
+import { captureSlideViewport } from './helpers/slidesCapture'
 
 targets('desktop', 'phone')
 
@@ -120,7 +121,9 @@ const PRELUDE = `
     const path = ${JSON.stringify(SHOTS)}+'/'+name+'.png'
     if(window.__e2eHost) return await window.__e2eHost.shot(path)
     const fs=require('fs');fs.mkdirSync(${JSON.stringify(SHOTS)},{recursive:true})
-    fs.writeFileSync(path, (await require('@electron/remote').getCurrentWindow().capturePage()).toPNG())
+    const cdp=require('@electron/remote').getCurrentWebContents().debugger
+    const data=await (${captureSlideViewport.toString()})(cdp)
+    fs.writeFileSync(path, Buffer.from(data,'base64'))
     return path
   }
 `
