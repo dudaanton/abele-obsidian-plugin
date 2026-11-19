@@ -1,4 +1,6 @@
 import { script } from './chatScrollMatrix'
+import { scrollCompletion } from './scrollCompletion'
+import { wideWheelStep } from './wideWheelStep'
 
 /** Same matrix fixture/cleanup, with a wide pane and compact folded history. */
 export function wideScript() {
@@ -63,35 +65,39 @@ export function wideScript() {
     if (!el.contains(document.elementFromPoint(bounds.left + 100, bounds.top + 400)))
       throw Error('Wide wheel target is obscured')
     begin('wide compact upward wheel')
+    const wheelStep = ${wideWheelStep.toString()}
+    const completeScroll = ${scrollCompletion.toString()}
+    // Queue once for the complete matrix, so six sweeps cannot each spend a
+    // minute waiting for another window. Setup and captures leave the lane free.
+    await inputGesture(async () => {
     for (let pass = 0; pass < 3; pass++) {
     for (const delta of [-40, 40]) {
-    // One continuous wheel sweep owns the native lane through renderer receipt
-    // and scrolling. Requeueing each 40px step interleaves other windows' gestures
-    // hundreds of times; setup and captures still leave the lane free.
-    await inputGesture(async () => {
+    let reachedEdge = false
     for (let n = 0; n < 250; n++) {
+      // Retain the matrix's queue-adjusted active-time budget as well as the
+      // per-event receipt/completion limits. Failure returns progress and cleans up.
+      await wait(0)
+      report.wideProgress = { pass, delta, step: n, scrollTop: el.scrollTop,
+        scrollHeight: el.scrollHeight, clientHeight: el.clientHeight, receivedInputs }
       const visible = [...el.querySelectorAll('.abele-chat-msg, .abele-chat-run.is-collapsed')]
         .filter(e => { const r = e.getBoundingClientRect(); return r.top >= bounds.top + 80 && r.bottom <= bounds.bottom - 80 })
         .map(e => ({ e, top: e.getBoundingClientRect().top }))
-      if (delta < 0 && !el.querySelector('.abele-ai-chat__older') && el.scrollTop < 40) break
-      if (delta > 0 && item(tail) && el.scrollHeight - el.scrollTop - el.clientHeight < 40) break
-      const receipt = receivedInputs
-      await cdp('Input.dispatchMouseEvent', { type: 'mouseWheel', x: bounds.left + 100, y: bounds.top + 400, deltaX: 0, deltaY: delta * wheelScale })
-      // CDP acknowledgement precedes renderer delivery. Await the actual receipt,
-      // without replaying input, then let its default scroll action reach layout.
-      for (let attempt = 0; receivedInputs <= receipt && attempt < 60; attempt++)
-        await wait(16)
-      if (receivedInputs <= receipt) throw Error('Wide wheel input was not received')
-      await wait(16)
+      if (delta < 0 && !el.querySelector('.abele-ai-chat__older') && el.scrollTop < 40) { reachedEdge = true; break }
+      if (delta > 0 && item(tail) && el.scrollHeight - el.scrollTop - el.clientHeight < 40) { reachedEdge = true; break }
+      await wheelStep(el, () => cdp('Input.dispatchMouseEvent', {
+        type: 'mouseWheel', x: bounds.left + 100, y: bounds.top + 400,
+        deltaX: 0, deltaY: delta * wheelScale
+      }), () => receivedInputs, completeScroll)
       for (const { e, top } of visible) {
         if (!e.isConnected) report.missing.push({ step: n, id: e.dataset.messageId })
         else report.wideDrift = Math.max(report.wideDrift, Math.abs(e.getBoundingClientRect().top - top + delta))
       }
       report.wideSteps.push({ pass, delta, step: n })
     }
+    if (!reachedEdge) throw Error('Wide wheel sweep exceeded 250 steps: ' + JSON.stringify(report.wideProgress))
+    }
+    }
     })
-    }
-    }
     await capture('wide-compact-multiple-passes')
   ` +
     full.slice(end)

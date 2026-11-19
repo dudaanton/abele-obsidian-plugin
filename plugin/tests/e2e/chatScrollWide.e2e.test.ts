@@ -20,9 +20,11 @@ it.runIf(isObsidianRunning() && hasTestApi())(
       // large enough for the wide pane without changing gesture or pixel budgets.
       evalRaw("require('@electron/remote').getCurrentWebContents().setZoomFactor(0.8)")
       evalRaw("require('@electron/remote').getCurrentWindow().setContentSize(2000, 1100)")
-      const report = JSON.parse(await evalLong(nativeInputProbe(wideScript()), 90_000))
+      // 270 s active matrix budget + two input-lane acquisitions (control and
+      // sweeps, up to 60 s each), with time left for setup and awaited cleanup.
+      const report = JSON.parse(await evalLong(nativeInputProbe(wideScript()), 420_000))
       console.info('wide-scroll-matrix', JSON.stringify(report))
-      expect(report.error).toBeUndefined()
+      expect(report.error, JSON.stringify(report.wideProgress ?? report.setup)).toBeUndefined()
       expect(report.width).toBeGreaterThanOrEqual(1450)
       expect(report.width).toBeLessThanOrEqual(1550)
       expect(report.height).toBeGreaterThanOrEqual(800)
@@ -47,5 +49,5 @@ it.runIf(isObsidianRunning() && hasTestApi())(
       )
     }
   },
-  120_000
+  450_000
 )
