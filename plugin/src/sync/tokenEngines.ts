@@ -957,6 +957,8 @@ export class TokenEngines {
         ledger: physicalLedger,
         preserveEmptyDirectories: true,
         pollMs: pollMsOf(this.deps),
+        verificationReady: () =>
+          runtime?.engine.status.state === 'idle' && !!runtime.engine.status.lastSyncAt,
         onEngineWrite: (path) => {
           own.noteWrite(path)
           runtime?.written(path)

@@ -5,6 +5,32 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { ignoreFor } from '@/sync/scope'
 
+it('132 defers ordinary verification until the first sync settles', async () => {
+  const app = buildFakeVault([{ path: 'Outside/new.md', content: 'new' }])
+  Object.assign(app.workspace, { layoutReady: true })
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
+  vi.spyOn(app.vault, 'getFiles').mockReturnValue([])
+  const listing = vi.spyOn(app.vault.adapter, 'list')
+  let settled = false
+  const fs = new ObsidianFileSystem(app as never, {
+    verificationReady: () => settled,
+  })
+  const changed = vi.fn()
+  const stop = fs.watch(changed)
+  const inspect = () => Reflect.get(fs, Symbol.for('abele.sync.inspect-polled-v1')).call(fs)
+  try {
+    await inspect()
+    expect(listing).not.toHaveBeenCalledWith('Outside')
+    expect(changed).not.toHaveBeenCalled()
+    settled = true
+    await inspect()
+    expect(listing).toHaveBeenCalledWith('Outside')
+    expect(changed.mock.calls.flatMap(([paths]) => paths)).toContain('Outside/new.md')
+  } finally {
+    stop()
+  }
+})
+
 it('132 skips unreadable directories without starving settings or later discoveries', async () => {
   const app = buildFakeVault([
     { path: '.obsidian/app.json', content: '{}' },

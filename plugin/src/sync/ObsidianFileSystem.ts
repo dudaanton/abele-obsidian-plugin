@@ -265,6 +265,8 @@ export interface ObsidianFileSystemOptions {
   }
   /** How often the config folder is polled; 30 s by default. */
   pollMs?: number
+  /** Defer ordinary metadata discovery while the initial exchange is still running. */
+  verificationReady?: () => boolean
   /** The clock the watcher's ceiling reads; `Date.now` by default. */
   now?: () => number
   /**
@@ -1317,6 +1319,7 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly directories: VaultDirectories
   private readonly preserveEmptyDirectories: boolean
   private readonly pollMs: number
+  private readonly verificationReady: () => boolean
   private readonly now: () => number
   private readonly onWatch: ((paths: string[]) => void) | null
   private readonly onEngineWrite: ((path: string) => void) | null
@@ -1462,6 +1465,7 @@ export class ObsidianFileSystem implements FileSystem {
     this.onIndexWait = options.onIndexWait
     this.indexWaitSignal = options.indexWaitSignal
     this.discovery = options.discovery
+    this.verificationReady = options.verificationReady ?? (() => true)
     this.runtimeFence = options.runtimeFence ?? null
     this.externalCoordination = externalCoordinationOf(app.vault)
     const runtimePort = (adapter: DataAdapter): DataAdapter =>
@@ -4919,6 +4923,7 @@ export class ObsidianFileSystem implements FileSystem {
    * and its fresh disk safeguards. Ledger membership does not imply host watch coverage. */
   private async verifyUnindexedFiles(): Promise<string[]> {
     const changed: string[] = []
+    if (!this.verificationReady()) return changed
     if (!this.indexReady()) return changed
     const scope = this.scopedRoot()
     const roots = this.discovery?.roots ?? [scope ?? '']
