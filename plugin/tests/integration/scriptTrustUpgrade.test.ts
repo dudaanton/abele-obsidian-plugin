@@ -22,6 +22,7 @@ import { CONNECTION_KEY, emptyConnection } from '@/sync/connection'
 import { SCOPED_CONNECTION_KEY } from '@/sync/scoped/scopedJoin'
 import { SCRIPT_CONTEXT_HOLD_FILE } from '@/scripting/trust/scriptContextHold'
 import { ScriptProvenance } from '@/scripting/trust/ScriptProvenance'
+import { noteAgentScriptWrite } from '@/scripting/trust/agentScriptWrites'
 
 const path = 'Scripts/local.js'
 const source = '// @name Local sample\nreturn "local result"'
@@ -55,6 +56,22 @@ async function connect(principal = binding.principal) {
 }
 
 describe('device-local script upgrade continuity', () => {
+  it('keeps an exact pre-sync agent review through restart and first connection', async () => {
+    await noteAgentScriptWrite(app, path, source)
+    const confirm = vi.fn(async () => true)
+    await expect(scriptForExecution(app, path, confirm)).resolves.toMatchObject({ path })
+    expect(confirm).toHaveBeenCalledOnce()
+    const sha = await sha256(new TextEncoder().encode(source))
+    expect(app.loadLocalStorage(LOCAL_SCRIPT_UPGRADE_KEY)).toEqual([{ path, sha, explicit: true }])
+    expect(app.loadLocalStorage(TRUST_KEY)?.explicitHashes ?? []).not.toContain(sha)
+
+    ScriptTrust.reset()
+    await preserveLocalScriptVersions(app)
+    await connect()
+    await expect(scriptForExecution(app, path, confirm)).resolves.toMatchObject({ path })
+    expect(confirm).toHaveBeenCalledOnce()
+  })
+
   it('does not promote an old persisted pre-sync policy hint into a new identity', async () => {
     await connect()
     const hash = await sha256(new TextEncoder().encode(source))

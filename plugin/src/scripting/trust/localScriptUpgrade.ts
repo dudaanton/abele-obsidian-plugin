@@ -49,6 +49,8 @@ export async function preserveLocalScriptVersions(app: App): Promise<void> {
     return
   const before = JSON.stringify(app.loadLocalStorage(TRUST_KEY))
   const state = trustStateFrom(app.loadLocalStorage(TRUST_KEY))
+  const receiptsBefore = JSON.stringify(app.loadLocalStorage(LOCAL_SCRIPT_UPGRADE_KEY))
+  const receipts = localScriptVersions(app)
   const versions: LocalScriptVersion[] = []
   const folder = AbeleConfig.getInstance().ai.scriptsFolder
   const visit = async (path: string): Promise<void> => {
@@ -58,7 +60,11 @@ export async function preserveLocalScriptVersions(app: App): Promise<void> {
       if (!file.endsWith('.js')) continue
       const sha = await sha256(new Uint8Array(await app.vault.adapter.readBinary(file)))
       // Being executable under optional policy is not proof of explicit consent.
-      if (hasExplicitReceipt(state, sha) && !agentScriptWaiting(app, file, sha))
+      const explicitlyReviewed = receipts.some((v) => v.path === file && v.sha === sha)
+      if (
+        (hasExplicitReceipt(state, sha) || explicitlyReviewed) &&
+        !agentScriptWaiting(app, file, sha)
+      )
         versions.push({ path: file, sha, explicit: true })
     }
   }
@@ -67,7 +73,8 @@ export async function preserveLocalScriptVersions(app: App): Promise<void> {
   if (
     app.loadLocalStorage(SCRIPT_TRUST_KEY) != null ||
     (await app.vault.adapter.exists(SCRIPT_SENTINEL)) ||
-    before !== JSON.stringify(app.loadLocalStorage(TRUST_KEY))
+    before !== JSON.stringify(app.loadLocalStorage(TRUST_KEY)) ||
+    receiptsBefore !== JSON.stringify(app.loadLocalStorage(LOCAL_SCRIPT_UPGRADE_KEY))
   )
     throw new Error('Script trust changed during upgrade; run the script manually to review it')
   app.saveLocalStorage(LOCAL_SCRIPT_UPGRADE_KEY, versions)
