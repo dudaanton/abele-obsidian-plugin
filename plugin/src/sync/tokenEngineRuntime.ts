@@ -1,4 +1,6 @@
 import { SizeRefusals } from './sizeRefusals'
+import { HANDLED_MANIFEST_FILES, type HandledManifestPage } from './manifestDelivery'
+import { ExternalRecoveryRequired } from './external/recovery'
 import { PreparedUploads, PREPARED_UPLOAD_LIFETIME } from './preparedUploads'
 import { localOnlyJournalState } from './localOnlyJournal'
 import { ProgressiveLocalScan } from './progressiveLocalScan'
@@ -411,7 +413,7 @@ export class TokenEngineRuntime
   private held = new Set<string>()
   private readonly manifestIds = new Set<string>()
   // Only the current wire page: reviewed files and directories have separate delivery paths.
-  private readonly manifestDeliveries = new Map<string, string>()
+  private readonly manifestDeliveries = new Map<string, { path: string; versionId: string }>()
   private manifestDeliveryPage?: { next: string | null; cursor: number }
   private verifyManifestDelivery(
     page: Awaited<ReturnType<EngineClient['manifest']>>,
@@ -423,9 +425,13 @@ export class TokenEngineRuntime
         'protocol',
         'The server inventory checkpoint was not completely delivered; sync stopped'
       )
-    const delivered = new Set(page.items.map((item) => item.file_id))
-    for (const [id, path] of this.manifestDeliveries)
-      if (!delivered.has(id) && client.includes?.(path) !== false) {
+    const delivered = new Map(
+      [...page.items, ...((page as HandledManifestPage)[HANDLED_MANIFEST_FILES] ?? [])].map(
+        (item) => [item.file_id, item.version_id]
+      )
+    )
+    for (const [id, { path, versionId }] of this.manifestDeliveries)
+      if (delivered.get(id) !== versionId && client.includes?.(path) !== false) {
         console.debug('[abele-sync] manifest file missing from engine delivery', path)
         throw new EngineError(
           'protocol',
@@ -958,7 +964,11 @@ export class TokenEngineRuntime
               if (!(await this.reviewItem(item, null, page.cursor))) {
                 await this.joinItem(item)
                 items.push(item)
-                if (item.kind !== 'directory') this.manifestDeliveries.set(item.file_id, item.path)
+                if (item.kind !== 'directory')
+                  this.manifestDeliveries.set(item.file_id, {
+                    path: item.path,
+                    versionId: item.version_id,
+                  })
                 if (!incoming.has(item.path)) this.pulled(item.path)
               } else {
                 if (item.kind === 'directory') this.folderPrepared(item.path)
@@ -2088,7 +2098,7 @@ export class TokenEngineRuntime
           options.failed(rootFailure)
           return
         }
-        if (error instanceof LocalPlacementError) {
+        if (error instanceof LocalPlacementError || error instanceof ExternalRecoveryRequired) {
           this.fatalFailure = error
           this.pauseEngine()
         }
@@ -3061,7 +3071,7 @@ export class TokenEngineRuntime
     try {
       this.renewIndexWait()
       await this.checkRoot()
-      if (this.fatalFailure !== undefined && !this.userPaused) this.quiet.pause(false)
+      if (retryHeld && this.fatalFailure !== undefined && !this.userPaused) this.quiet.pause(false)
       if (retryHeld) await this.quiet.flush(() => this.syncUnpaced(retryHeld))
       else await this.syncUnpaced(false)
     } catch (error) {
@@ -3082,6 +3092,8 @@ export class TokenEngineRuntime
     this.assertHeld()
     try {
       if (this.fatalFailure !== undefined && !this.userPaused) {
+        // Background continuations cannot turn a durable safety stop into a retry loop.
+        if (!retryHeld) throw this.fatalFailure
         this.fatalFailure = undefined
         this.engine.resume()
       }

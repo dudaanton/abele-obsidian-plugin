@@ -1,4 +1,5 @@
 import { sha256 } from './hash'
+import { HANDLED_MANIFEST_FILES, type HandledManifestPage } from '../manifestDelivery'
 import { INSTALL_BATCH, type InstallItem } from '../nativeInstallBatch'
 import {
   type FileSystem,
@@ -1057,7 +1058,8 @@ export class ExternalRepresentation {
         if (method === 'manifest')
           return async (...args: Parameters<EngineClient['manifest']>) => {
             const page = await client.manifest(...args),
-              items = []
+              items = [],
+              handled = [...((page as HandledManifestPage)[HANDLED_MANIFEST_FILES] ?? [])]
             for (const item of page.items) {
               if (
                 !(await self.accept({
@@ -1069,8 +1071,9 @@ export class ExternalRepresentation {
                 }))
               )
                 items.push(item)
+              else handled.push({ file_id: item.file_id, version_id: item.version_id })
             }
-            return { ...page, items }
+            return { ...page, items, [HANDLED_MANIFEST_FILES]: handled }
           }
         if (method === 'commit' || method === 'commitRaw') {
           // Capture this method incarnation: host receipt/publication hooks wrap it after

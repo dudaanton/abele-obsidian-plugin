@@ -40,6 +40,99 @@ import { RetainedShareCopies } from '@/sync/retainedShareCopies'
 import { DirectEntryDurability } from '@/sync/directEntryDurability'
 import { discoveryPriorityOf } from '@/sync/transferBudget'
 import { SCAN_HASH_READY } from '@/sync/progressiveLocalScan'
+import { externalFileFixture } from '../integration/externalFileFollowupFixture'
+import { ExternalRecoveryRequired } from '@/sync/external/recovery'
+import { HANDLED_MANIFEST_FILES } from '@/sync/manifestDelivery'
+
+it('stops visibly without automatic retries when external delivery requires recovery', async () => {
+  const wire = await server('Notes/sample.png', 'sample bytes')
+  const changed = vi.fn()
+  const reason = new ExternalRecoveryRequired('sample representation needs recovery')
+  let blocked = true
+  const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+    changed,
+    engineClient: (client) =>
+      new Proxy(client, {
+        get(target, key) {
+          if (key === 'manifest')
+            return async (...args: Parameters<typeof client.manifest>) => {
+              if (blocked) throw reason
+              return target.manifest(...args)
+            }
+          const value = Reflect.get(target, key)
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      }),
+  })
+  try {
+    await expect(one.runtime.sync()).rejects.toThrow('sample representation needs recovery')
+    expect(one.runtime.statusWithQuiet()).toMatchObject({
+      state: 'error',
+      lastError: expect.stringContaining('recovery'),
+    })
+    expect(one.runtime.engine.status.state).toBe('paused')
+    const beforeContinuation = wire.fetch.mock.calls.length
+    await expect(one.runtime.sync(false)).rejects.toThrow('sample representation needs recovery')
+    expect(wire.fetch.mock.calls).toHaveLength(beforeContinuation)
+    vi.useFakeTimers()
+    const requests = wire.fetch.mock.calls.length
+    await one.runtime.start()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(wire.fetch.mock.calls).toHaveLength(requests)
+    expect(changed).toHaveBeenCalledWith(expect.objectContaining({ state: 'error' }), undefined)
+    blocked = false
+    vi.useRealTimers()
+    await one.runtime.sync()
+    expect(one.runtime.statusWithQuiet().state).toBe('idle')
+  } finally {
+    await one.runtime.close()
+    vi.useRealTimers()
+  }
+})
+
+it.each([false, true])(
+  'accepts an offloaded attachment manifest in a folder connection and on recheck (verification unavailable=%s)',
+  async (verificationUnavailable) => {
+    let unavailable = false
+    const verify = vi.fn(async () => {
+      if (unavailable) throw new Error('sample verification unavailable')
+    })
+    const s = await externalFileFixture('Notes/sample.png', verify)
+    const wire = await server(s.path, 'sample original bytes', undefined, {
+      kind: 'folder',
+      id: 'sample-folder',
+      path: 'Notes',
+    })
+    Object.assign(wire.item, { kind: 'attachment' })
+    const failed = vi.fn()
+    const one = runtime(wire, new MemoryFileSystem(), undefined, undefined, null, {
+      state: s.state,
+      engineState: s.port.state,
+      fs: s.port.fs,
+      engineClient: s.port.client,
+      failed,
+    })
+    try {
+      expect(await s.port.evict(s.path)).toMatchObject({ status: 'complete' })
+      s.head.versionId = wire.item.version_id = 'sample-next-version'
+      unavailable = verificationUnavailable
+      verify.mockClear()
+      await one.runtime.sync()
+      expect(one.runtime.statusWithQuiet().state).toBe('idle')
+      await one.runtime.engine.rescan()
+      await one.runtime.sync()
+      expect(one.runtime.statusWithQuiet().state).toBe('idle')
+      expect(failed).not.toHaveBeenCalled()
+      expect(verify).toHaveBeenCalled()
+      expect(await s.app.vault.adapter.exists(s.path)).toBe(false)
+      expect(await s.app.vault.adapter.exists(s.path + '.abele-ref')).toBe(true)
+      expect((await s.state.byFileId(s.head.fileId))?.versionId).toBe(wire.item.version_id)
+    } finally {
+      await one.runtime.close()
+      s.close()
+    }
+  }
+)
 
 it.each([3, 50, 1000])(
   'delivers every file before a fresh folder reports success (%i files)',
@@ -85,43 +178,73 @@ it.each([3, 50, 1000])(
   30000
 )
 
-it('does not report success when a non-empty server manifest becomes an empty engine result', async () => {
-  const wire = await server('Notes/sample.md', 'sample content')
-  const fs = new MemoryFileSystem()
-  const failed = vi.fn()
-  const one = runtime(wire, fs, undefined, undefined, null, {
-    failed,
-    engineClient: (client) =>
-      new Proxy(client, {
-        get(target, key) {
-          if (key === 'manifest')
-            return async (...args: Parameters<typeof client.manifest>) => ({
-              ...(await target.manifest(...args)),
-              items: [],
-            })
-          const value = Reflect.get(target, key)
-          return typeof value === 'function' ? value.bind(target) : value
-        },
-      }),
-  })
-  try {
-    await expect(one.runtime.sync()).rejects.toThrow('inventory was not completely delivered')
-    expect(await fs.stat(wire.item.path)).toBeNull()
-    expect(one.runtime.engine.status.state).not.toBe('idle')
-    expect(await one.state.getCursor()).toBe(0)
-    expect(failed).toHaveBeenCalled()
-  } finally {
-    await one.runtime.close()
+it.each([false, true])(
+  'does not report success when a non-empty server manifest becomes an empty engine result (stale receipt=%s)',
+  async (staleReceipt) => {
+    const wire = await server('Notes/sample.md', 'sample content')
+    const fs = new MemoryFileSystem()
+    const failed = vi.fn()
+    const changed = vi.fn()
+    const one = runtime(wire, fs, undefined, undefined, null, {
+      failed,
+      changed,
+      engineClient: (client) =>
+        new Proxy(client, {
+          get(target, key) {
+            if (key === 'manifest')
+              return async (...args: Parameters<typeof client.manifest>) => ({
+                ...(await target.manifest(...args)),
+                items: [],
+                [HANDLED_MANIFEST_FILES]: staleReceipt
+                  ? [{ file_id: wire.item.file_id, version_id: 'sample-stale-version' }]
+                  : [],
+              })
+            const value = Reflect.get(target, key)
+            return typeof value === 'function' ? value.bind(target) : value
+          },
+        }),
+    })
+    try {
+      await expect(one.runtime.sync()).rejects.toThrow('inventory was not completely delivered')
+      expect(await fs.stat(wire.item.path)).toBeNull()
+      expect(one.runtime.engine.status.state).not.toBe('idle')
+      expect(await one.state.getCursor()).toBe(0)
+      expect(failed).toHaveBeenCalled()
+      const beforeContinuation = wire.fetch.mock.calls.length
+      await expect(one.runtime.sync(false)).rejects.toThrow(
+        'inventory was not completely delivered'
+      )
+      expect(wire.fetch.mock.calls).toHaveLength(beforeContinuation)
+      expect(changed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          state: 'error',
+          lastError: expect.stringContaining('server response could not be trusted'),
+        }),
+        undefined
+      )
+      vi.useFakeTimers()
+      const requests = wire.fetch.mock.calls.length
+      await one.runtime.start()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(wire.fetch.mock.calls).toHaveLength(requests)
+      expect(one.runtime.statusWithQuiet()).toMatchObject({
+        state: 'error',
+        lastError: expect.stringContaining('server response could not be trusted'),
+      })
+    } finally {
+      await one.runtime.close()
+      vi.useRealTimers()
+    }
+    const restarted = runtime(wire, fs, one.state)
+    try {
+      await restarted.runtime.sync()
+      expect(restarted.runtime.engine.status.state).toBe('idle')
+      expect(await fs.read(wire.item.path)).toEqual(wire.bytes)
+    } finally {
+      await restarted.runtime.close()
+    }
   }
-  const restarted = runtime(wire, fs, one.state)
-  try {
-    await restarted.runtime.sync()
-    expect(restarted.runtime.engine.status.state).toBe('idle')
-    expect(await fs.read(wire.item.path)).toEqual(wire.bytes)
-  } finally {
-    await restarted.runtime.close()
-  }
-})
+)
 
 it.each(['tail', 'head'])(
   'stops before publishing an altered manifest checkpoint (%s)',
