@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { MemoryFileSystem, MemoryStateStore, sha256 } from '@abele/sync-sdk/core'
+import { EngineError, MemoryFileSystem, MemoryStateStore, sha256 } from '@abele/sync-sdk/core'
 import { encodeAccessToken } from '@abele/sync-sdk/protocol'
 import { TokenEngineRuntime, type TokenEngineOptions } from '@/sync/tokenEngineRuntime'
 import { PathCoordinator, coordinatedFileSystem } from '@/sync/pathCoordinator'
@@ -788,6 +788,106 @@ it('B8 keeps a quota-blocked conflicting edit visible and recoverable across res
     await one.runtime.close()
   }
 })
+
+it.each(['case', 'directory'] as const)(
+  '40 explains a first-contact %s obstacle without losing existing local bytes',
+  async (obstacle) => {
+    const remotePath = obstacle === 'case' ? 'Notes/sample.md' : 'Busy'
+    const localPath = obstacle === 'case' ? 'Notes/SAMPLE.md' : 'Busy/child.md'
+    const wire = await server(remotePath, 'remote bytes')
+    const fs = new MemoryFileSystem({ caseInsensitive: true })
+    const bytes = new TextEncoder().encode('existing local bytes')
+    await fs.writeAtomic(localPath, bytes, 1000)
+    if (obstacle === 'directory') {
+      Object.assign(fs, {
+        listDirectories: async function* () {
+          yield { path: 'Busy', identity: 'sample-directory', mtime: 1000 }
+        },
+      })
+      const install = fs.conditionalFile.bind(fs)
+      // A flat memory disk cannot represent a directory itself. Match the real
+      // file port's contract: publishing a file at an occupied directory fails.
+      vi.spyOn(fs, 'conditionalFile').mockImplementation(async (operation) => {
+        if (operation.path === 'Busy' && operation.effect.kind === 'write')
+          throw new EngineError('conflict', 'Busy is a directory')
+        return install(operation)
+      })
+    }
+    const send = wire.fetch.getMockImplementation()!
+    wire.fetch.mockImplementation(async (input, init) => {
+      const route = new URL(String(input)).pathname
+      if (route.endsWith('/history'))
+        return Response.json([
+          {
+            ...wire.item,
+            no: 1,
+            seq: 1,
+            op: 'create',
+            actor: { kind: 'key', id: 'sample-token', name: 'Sample' },
+            at: '2025-01-01T00:00:00Z',
+            merge: null,
+          },
+        ])
+      if (route === '/v2/commit') {
+        const { ops } = JSON.parse(String(init?.body))
+        return Response.json({
+          cursor: 1,
+          results: ops.map(() => ({
+            status: 'rejected',
+            code: 'path_taken',
+            message:
+              obstacle === 'case'
+                ? 'case-insensitive path already occupied'
+                : 'file/directory obstacle',
+          })),
+        })
+      }
+      return send(input, init)
+    })
+    const state = new MemoryStateStore()
+    let one = runtime(wire, fs, state)
+    const verify = async () => {
+      const files = await Array.fromAsync(fs.list())
+      const preserved = []
+      for (const file of files) {
+        const content = await fs.read(file.path)
+        if (content.length === bytes.length && content.every((value, i) => value === bytes[i]))
+          preserved.push(file.path)
+      }
+      expect(preserved).toHaveLength(1)
+      if (obstacle === 'directory') {
+        expect(preserved).toEqual([localPath])
+        expect(await fs.stat(remotePath)).toBeNull()
+      }
+      // A same-path first join may keep the local variant in an ordinary conflict
+      // copy; preservation does not require the original spelling to stay its head.
+      const visible =
+        JSON.stringify({
+          rows: await one.runtime.notSynced(),
+          files: files.map((file) => file.path),
+        }) + String(one.runtime.engine.status.lastError ?? '')
+      expect(visible.toLowerCase()).toContain(remotePath.toLowerCase())
+      expect(visible).toMatch(/collid|case|directory|folder|occupied|obstacle|alias|conflict/i)
+    }
+    const exchange = async () => {
+      try {
+        await one.runtime.sync()
+      } catch (error) {
+        expect(error).toMatchObject({ code: expect.stringMatching(/^(conflict|path_taken)$/) })
+      }
+    }
+    try {
+      await exchange()
+      await verify()
+      await one.runtime.close()
+      one = runtime(wire, fs, state)
+      await exchange()
+      await verify()
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
 
 async function boundaryMove(extension: string) {
   const from = `Shared/sample.${extension}`,

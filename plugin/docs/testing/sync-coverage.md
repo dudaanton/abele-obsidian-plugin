@@ -64,7 +64,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 | S37 | Filled vault + shared folder: files inside the folder sync; files outside are not sent via it. | `plugin/tests/e2e/syncDevices.e2e.test.ts: folder and group tokens from Share connect the second pool vault`<br>`abele-sync/packages/core/tests/acceptance/removalV2.test.ts: 037/048/049 scope departure removes the shared copy without learning the private destination or republishing it` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S38 | Same path, identical local and server files → one file, later edits both ways. | `plugin/tests/e2e/syncJoin.e2e.test.ts: first contact keeps identical files singular and preserves different local bytes`<br>`plugin/tests/integration/syncJoin.test.ts: identical first-contact bytes produce one file and no conflict or redundant version`<br>`abele-sync/packages/server/tests/integration/v2Sync.test.ts: 038/040 identical create is a no-op; case and file/directory obstacles reject without loss` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S39 | Same path, different files → server variant stays, conflict copy holds local bytes; nothing replaced silently. | `plugin/tests/e2e/syncJoin.e2e.test.ts: first contact keeps identical files singular and preserves different local bytes`<br>`abele-sync/packages/server/tests/integration/v2Sync.test.ts: 039 first accepted original and one divergent conflict copy` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
-| S40 | Case-only path differences or a folder at a file's path → nothing lost; the obstacle is visible. | `abele-sync/packages/server/tests/integration/v2Sync.test.ts: 038/040 identical create is a no-op; case and file/directory obstacles reject without loss`<br>`abele-sync/packages/core/tests/localPaths.test.ts: blocks empty directory twins and file/directory aliases without touching bytes`<br>`plugin/tests/integration/tokenEngineServer.test.ts: shows normalization collisions as pending refusals while unrelated files sync` | partly | Server collision rejection and Unicode visibility are tested; first-contact case and file/directory UI visibility are not. |
+| S40 | First-contact case aliases and file/directory obstacles preserve local contents and are visible. | `plugin/tests/unit/syncScenarioConnections.test.ts: 40 explains a first-contact %s obstacle without losing existing local bytes` | covered | The production runtime retains exactly one ordinary local variant across reopening. A directory obstacle retains its child and never installs a file at the directory path; a same-path case alias may retain the local variant in an ordinary conflict copy. The collision or conflict remains visible through file names and pending/error details. |
 | S41 | Same path from two servers, each with its own group → one local note syncing with both. | `abele-sync/packages/core/tests/acceptance/groupsV2.test.ts: 014/041/057–068 production group engines create nested members, preserve foreign groups, converge two servers, remove departures and preserve unavailable files` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S42 | Server paths preserved so links between received notes resolve. | `plugin/tests/e2e/syncDevices.e2e.test.ts: folder and group tokens from Share connect the second pool vault` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S43 | A note created in a synced folder appears for other participants. | `plugin/tests/e2e/syncDevices.e2e.test.ts: folder departure keeps the owner file and return delivers its current bytes`<br>`plugin/tests/e2e/sync.e2e.test.ts: edits renames moves deletes and empty folders travel both ways` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
@@ -181,7 +181,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 
 ## Totals
 
-154 requirements: 126 covered, 28 partly, 0 missing.
+154 requirements: 127 covered, 27 partly, 0 missing.
 
 Zero entirely missing rows does **not** close the coverage gate: every partly covered
 row still has an unproved facet. The matrix records assertions present in source;
@@ -207,40 +207,34 @@ it does not claim those suites passed on this candidate.
   The watcher uses its existing polling interval; discovery latency depends on folder
   count and position in the rotation, without delaying startup for a whole disk walk.
 
+`plugin/tests/unit/syncScenarioConnections.test.ts` runs production token runtimes over
+shared memory filesystems and independent ledgers, with scripted V2 transports. It covers
+slow/lost receipts, delete bridging, cross-scope note/tree/opaque-file moves, overlapping
+tokens, unavailable groups, quota-blocked conflicts and first-contact obstacles. These are
+client-contract tests, not real HTTP-server or native-storage durability results.
+
 `plugin/tests/unit/syncCoverageMatrix.test.ts` checks all 154 unique identifiers,
 explicit verdicts, existing plugin test titles, and prevents a skipped or expected-failure
 plugin test from being used as successful coverage. Server pointers are tied to the
 recorded git revision; validating them requires that source revision, not the stale checkout.
 
-## Remaining automated work, ordered by preservation risk
+## Remaining obligations
 
-These gaps can be exercised with synthetic unit/integration/live tests; they are not
-excused as hardware-only work:
+The 27 partly covered rows fall into three groups. They remain open; additional unit
+assertions alone would not establish the missing platform behavior or decide product policy.
 
-1. S30 is resolved in the focused tier: shared-vault production runtimes preserve an
-   owed edit through delayed/lost commit replies, the faster incoming replacement, and
-   reopening both ledgers; assertions require exact digests, two receipts and no journals.
-2. S50/S55/S72 now cover note, nested tree, binary and canvas moves through two servers
-   with both recipients, private-path confinement and ledger reopenings. S55 also pins
-   untouched shared neighbors and retained recoverable victims on the receiving peer. S52 covers confirmed deletion bridging,
-   lost receipts, journal recovery, peer restart and no duplicate delete or resurrection.
-3. S29/S97/B7: independently resolve concurrent changes at both servers before bridging;
-   assert recoverable variants and bounded copies. Ordering policy must be explicit before
-   claiming a globally first original.
-4. S33 is resolved in the focused tier: distinct overlapping tokens share one physical
-   file, transfer existing bytes once, publish each edit once, reopen both ledgers and
-   keep exchanging after the other connection disconnects.
-5. S131 and S132 are resolved in the focused tier: hidden-folder exclusion is pinned,
-   and omitted ordinary files are found through bounded periodic verification.
-6. S40: exact first-contact obstacle visibility remains unproved. B8 now verifies a
-   quota-blocked conflicting edit, the visible path and reason, restart preservation and
-   unrelated incoming work. S67 verifies unavailable-group reopening and no exchange.
-7. S15/S54/S56/B2: reconcile scenario wording with existing read-only token support,
-   explicit shared-root following and held root deletions. Current tests assert those
-   behaviors; removing their safeguards is not a coverage fix.
-8. U1–U6/U8: finish the full navigation flow assertions beyond component/state
-   evidence. U7 now pins the offline action callback and removal after recovery; real
-   desktop and phone execution remains a separate evidence obligation.
+- **Seven policy/ordering rows:** S15, S29, S54, S56, S97, B2 and B7. Read-only token
+  support, explicit shared-root following and held root deletions differ from the literal
+  catalogue wording. Independently resolving edits on two servers also needs an explicit
+  original/winner policy before a globally first original can be asserted. Existing safety
+  behavior stays covered by its current tests pending those decisions.
+- **Thirteen platform/lifecycle/scale rows:** S3, S103, S107, S117, S119, S120,
+  S125, S126, S127, S129, S130, S133 and S134. Their matrix limits name the remaining
+  camera, network, real process/storage, host-index ordering, performance or scale facet.
+  Source registrations and simulated shutdowns do not replace execution-backed assertions.
+- **Seven complete screen-flow rows:** U1–U6 and U8. Current component/state references
+  cover pieces; the complete desktop/mobile navigation and outcome assertions still need
+  live flow coverage and execution. U7 now pins the offline header action and recovery.
 
 ## What only real devices can establish
 
