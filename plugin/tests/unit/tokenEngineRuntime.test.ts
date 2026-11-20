@@ -41,6 +41,129 @@ import { DirectEntryDurability } from '@/sync/directEntryDurability'
 import { discoveryPriorityOf } from '@/sync/transferBudget'
 import { SCAN_HASH_READY } from '@/sync/progressiveLocalScan'
 
+it.each([3, 50, 1000])(
+  'delivers every file before a fresh folder reports success (%i files)',
+  async (count) => {
+    const wire = await server('Notes/sample.md', 'sample content', undefined, {
+      kind: 'folder',
+      id: 'sample-folder',
+      path: 'Notes',
+    })
+    const items = Array.from({ length: count }, (_, i) => ({
+      ...wire.item,
+      file_id: `sample-file-${i}`,
+      version_id: `sample-version-${i}`,
+      path: `Notes/sample-${i}.md`,
+    }))
+    const fetch = wire.fetch.getMockImplementation()!
+    wire.fetch.mockImplementation(async (input, init) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/v2/manifest') {
+        const offset = Number(url.searchParams.get('next') ?? 0)
+        const end = Math.min(offset + 37, count)
+        return Response.json({
+          items: items.slice(offset, end),
+          cursor: 1,
+          next: end < count ? String(end) : null,
+        })
+      }
+      return fetch(input, init)
+    })
+    const fs = new MemoryFileSystem()
+    const one = runtime(wire, fs)
+    try {
+      await one.runtime.sync()
+      expect(one.runtime.engine.status.state).toBe('idle')
+      for (const item of items) {
+        expect(await fs.read(item.path)).toEqual(wire.bytes)
+        expect((await one.state.byFileId(item.file_id))?.versionId).toBe(item.version_id)
+      }
+    } finally {
+      await one.runtime.close()
+    }
+  },
+  30000
+)
+
+it('does not report success when a non-empty server manifest becomes an empty engine result', async () => {
+  const wire = await server('Notes/sample.md', 'sample content')
+  const fs = new MemoryFileSystem()
+  const failed = vi.fn()
+  const one = runtime(wire, fs, undefined, undefined, null, {
+    failed,
+    engineClient: (client) =>
+      new Proxy(client, {
+        get(target, key) {
+          if (key === 'manifest')
+            return async (...args: Parameters<typeof client.manifest>) => ({
+              ...(await target.manifest(...args)),
+              items: [],
+            })
+          const value = Reflect.get(target, key)
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      }),
+  })
+  try {
+    await expect(one.runtime.sync()).rejects.toThrow('inventory was not completely delivered')
+    expect(await fs.stat(wire.item.path)).toBeNull()
+    expect(one.runtime.engine.status.state).not.toBe('idle')
+    expect(await one.state.getCursor()).toBe(0)
+    expect(failed).toHaveBeenCalled()
+  } finally {
+    await one.runtime.close()
+  }
+  const restarted = runtime(wire, fs, one.state)
+  try {
+    await restarted.runtime.sync()
+    expect(restarted.runtime.engine.status.state).toBe('idle')
+    expect(await fs.read(wire.item.path)).toEqual(wire.bytes)
+  } finally {
+    await restarted.runtime.close()
+  }
+})
+
+it.each(['tail', 'head'])(
+  'stops before publishing an altered manifest checkpoint (%s)',
+  async (fault) => {
+    const wire = await server('Notes/sample.md', 'sample content')
+    const fetch = wire.fetch.getMockImplementation()!
+    wire.fetch.mockImplementation(async (input, init) => {
+      if (new URL(String(input)).pathname === '/v2/manifest')
+        return Response.json({ items: [wire.item], cursor: 1, next: 'sample-next' })
+      return fetch(input, init)
+    })
+    const fs = new MemoryFileSystem()
+    const failed = vi.fn()
+    const one = runtime(wire, fs, undefined, undefined, null, {
+      failed,
+      engineClient: (client) =>
+        new Proxy(client, {
+          get(target, key) {
+            if (key === 'manifest')
+              return async (...args: Parameters<typeof client.manifest>) => {
+                const page = await target.manifest(...args)
+                return fault === 'tail' ? { ...page, next: null } : { ...page, head_seq: 2 }
+              }
+            const value = Reflect.get(target, key)
+            return typeof value === 'function' ? value.bind(target) : value
+          },
+        }),
+    })
+    try {
+      await expect(one.runtime.sync()).rejects.toThrow(
+        'inventory checkpoint was not completely delivered'
+      )
+      expect(one.runtime.engine.status.state).not.toBe('idle')
+      expect(await one.state.getCursor()).toBe(0)
+      expect(await fs.stat(wire.item.path)).toBeNull()
+      expect(failed).toHaveBeenCalled()
+    } finally {
+      await one.runtime.close()
+    }
+  }
+)
+
 it('converges an offline create and delete while another connection continuously receives', async () => {
   vi.useFakeTimers()
   const budget = new TransferBudget()

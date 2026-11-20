@@ -410,6 +410,31 @@ export class TokenEngineRuntime
   }
   private held = new Set<string>()
   private readonly manifestIds = new Set<string>()
+  // Only the current wire page: reviewed files and directories have separate delivery paths.
+  private readonly manifestDeliveries = new Map<string, string>()
+  private manifestDeliveryPage?: { next: string | null; cursor: number }
+  private verifyManifestDelivery(
+    page: Awaited<ReturnType<EngineClient['manifest']>>,
+    client: EngineClient
+  ): void {
+    const wirePage = this.manifestDeliveryPage
+    if (!wirePage || page.next !== wirePage.next || page.head_seq !== wirePage.cursor)
+      throw new EngineError(
+        'protocol',
+        'The server inventory checkpoint was not completely delivered; sync stopped'
+      )
+    const delivered = new Set(page.items.map((item) => item.file_id))
+    for (const [id, path] of this.manifestDeliveries)
+      if (!delivered.has(id) && client.includes?.(path) !== false) {
+        console.debug('[abele-sync] manifest file missing from engine delivery', path)
+        throw new EngineError(
+          'protocol',
+          'The server inventory was not completely delivered; sync stopped'
+        )
+      }
+    this.manifestDeliveries.clear()
+    this.manifestDeliveryPage = undefined
+  }
   private readonly groupCandidates = new Set<string>()
   private localCandidates = new Set<string>()
   private readonly assetPaths = new Map<string, string>()
@@ -898,6 +923,8 @@ export class TokenEngineRuntime
             return Response.json(this.authority, { headers: response.headers })
           } else if (url.pathname === '/v2/manifest') {
             const page = V2ManifestSchema.parse(await this.received(await response.json()))
+            this.manifestDeliveries.clear()
+            this.manifestDeliveryPage = { next: page.next, cursor: page.cursor }
             this.assertIncomingPaths(page.items.map((item) => item.path))
             if (this.progress.stage !== 'Downloading') this.progress.begin('Downloading')
             if (this.pulling) {
@@ -931,6 +958,7 @@ export class TokenEngineRuntime
               if (!(await this.reviewItem(item, null, page.cursor))) {
                 await this.joinItem(item)
                 items.push(item)
+                if (item.kind !== 'directory') this.manifestDeliveries.set(item.file_id, item.path)
                 if (!incoming.has(item.path)) this.pulled(item.path)
               } else {
                 if (item.kind === 'directory') this.folderPrepared(item.path)
@@ -1627,7 +1655,10 @@ export class TokenEngineRuntime
           // including any publication it needs to settle the two versions safely.
           if (name === 'manifest')
             return async (...args: Parameters<EngineClient['manifest']>) => {
+              this.manifestDeliveries.clear()
+              this.manifestDeliveryPage = undefined
               const page = await target.manifest(...args)
+              this.verifyManifestDelivery(page, target)
               await hearIncoming(page.items)
               return page
             }
@@ -3295,6 +3326,8 @@ export class TokenEngineRuntime
     this.compared.clear()
     this.held.clear()
     this.manifestIds.clear()
+    this.manifestDeliveries.clear()
+    this.manifestDeliveryPage = undefined
     this.assetPaths.clear()
     this.incomingNames.clear()
     this.receivedPaths.clear()
