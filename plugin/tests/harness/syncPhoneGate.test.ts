@@ -220,22 +220,77 @@ it('uses kill only when advertised and requires a confirmed stopped process', ()
   const calls: string[][] = []
   const run = (args: string[]) => {
     calls.push(args)
-    return args[0] === '--help' ? 'iphone kill BUNDLE' : '{"ok":true,"state":1}'
+    if (args[0] === '--help') return 'iphone kill BUNDLE'
+    if (args[0] === 'kill') return '{"ok":true}'
+    return '{"state":1}'
   }
   expect(terminatePhone(run)).toEqual({ killed: true, state: 1 })
-  expect(calls).toEqual([['--help'], ['kill', 'md.obsidian']])
+  expect(calls).toEqual([
+    ['--help'],
+    ['kill', 'md.obsidian'],
+    ['call', '/state', '{"bundle":"md.obsidian"}'],
+  ])
   expect(() => terminatePhone(() => 'iphone launch BUNDLE')).toThrow('kill capability')
+  let now = 0
   expect(() =>
-    terminatePhone((args) =>
-      args[0] === '--help' ? 'iphone kill BUNDLE' : '{"ok":true,"state":4}'
+    terminatePhone(
+      (args) =>
+        args[0] === '--help'
+          ? 'iphone kill BUNDLE'
+          : args[0] === 'kill'
+            ? '{"ok":true}'
+            : '{"state":4}',
+      {
+        now: () => now,
+        pause: (ms) => {
+          now += ms
+        },
+      }
     )
-  ).toThrow('notRunning')
+  ).toThrow(/notRunning within 5000ms; last state=4/)
   expect(() =>
     terminatePhone((args) => {
       if (args[0] === '--help') return 'iphone kill BUNDLE'
       throw new Error('unknown path /terminate')
     })
   ).toThrow('device runner')
+})
+
+it('retries a delayed native stopped state after a successful kill reply', () => {
+  let now = 0
+  let stateReads = 0
+  const result = terminatePhone(
+    (args) => {
+      if (args[0] === '--help') return 'iphone kill BUNDLE'
+      if (args[0] === 'kill') return '{"ok":true}'
+      stateReads += 1
+      return stateReads < 3 ? '{"state":4}' : '{"state":1}'
+    },
+    {
+      now: () => now,
+      pause: (ms) => {
+        now += ms
+      },
+    }
+  )
+  expect(result).toEqual({ killed: true, state: 1 })
+  expect(stateReads).toBe(3)
+  expect(now).toBe(500)
+})
+
+it('does not accept a stopped-state reply that arrives after the kill deadline', () => {
+  let now = 0
+  expect(() =>
+    terminatePhone(
+      (args) => {
+        if (args[0] === '--help') return 'iphone kill BUNDLE'
+        if (args[0] === 'kill') return '{"ok":true}'
+        now = 6000
+        return '{"state":1}'
+      },
+      { now: () => now }
+    )
+  ).toThrow(/notRunning within 5000ms/)
 })
 
 it('rejects missing, extra and corrupt files on each replica', () => {

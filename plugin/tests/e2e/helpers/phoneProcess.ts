@@ -116,11 +116,15 @@ export async function waitForPhoneBackground(options: {
   }
 }
 
-/** An old runner fails explicitly; a fresh launch is not evidence of death. */
-export function terminatePhone(run: typeof driver = driver): { killed: true; state: 1 } {
+/** The kill CLI waits for termination but returns only {ok:true}. Confirm the
+ * stopped state separately before a cold relaunch. */
+export function terminatePhone(
+  run: typeof driver = driver,
+  options: { now?: () => number; pause?: (ms: number) => void } = {}
+): { killed: true; state: 1 } {
   if (!/\biphone kill\s+BUNDLE\b/.test(run(['--help'], 10000)))
     throw new Error('Phone driver kill capability is unavailable; update the driver')
-  let result: { ok?: boolean; state?: number }
+  let result: { ok?: boolean }
   try {
     result = JSON.parse(run(['kill', 'md.obsidian'], 30000))
   } catch (error) {
@@ -129,7 +133,36 @@ export function terminatePhone(run: typeof driver = driver): { killed: true; sta
       { cause: error }
     )
   }
-  if (result.ok !== true || result.state !== 1)
-    throw new Error('Phone kill did not confirm notRunning')
-  return { killed: true, state: 1 }
+  if (result.ok !== true) throw new Error('Phone kill did not confirm notRunning')
+  const now = options.now ?? Date.now
+  const pause =
+    options.pause ??
+    ((ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms))
+  const deadline = now() + 5000
+  let lastState: number | undefined
+  for (;;) {
+    const remaining = deadline - now()
+    if (remaining <= 0)
+      throw new Error(
+        `Phone kill did not confirm notRunning within 5000ms; last state=${lastState ?? 'unobserved'}`
+      )
+    let reply: { state?: number }
+    try {
+      reply = JSON.parse(run(['call', '/state', '{"bundle":"md.obsidian"}'], Math.ceil(remaining)))
+    } catch (error) {
+      if ((error as { code?: string })?.code !== 'ETIMEDOUT') throw error
+      if (now() >= deadline) break
+      pause(Math.min(250, deadline - now()))
+      continue
+    }
+    if (typeof reply?.state !== 'number') throw new Error('Invalid native app state after kill')
+    lastState = reply.state
+    if (now() > deadline) break
+    if (lastState === 1) return { killed: true, state: 1 }
+    if (now() >= deadline) break
+    pause(Math.min(250, deadline - now()))
+  }
+  throw new Error(
+    `Phone kill did not confirm notRunning within 5000ms; last state=${lastState ?? 'unobserved'}`
+  )
 }
