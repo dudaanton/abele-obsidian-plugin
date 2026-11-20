@@ -32,6 +32,62 @@ import { connectionLine, connectionTone } from '@/sync/connectionLine'
 import { backgroundActivity } from '@/sync/backgroundActivity'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { deferred } from '../helpers/deferred'
+import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
+
+it('resumes an initially paused runtime when Resume arrives during edit-history startup', async () => {
+  const f = inspectionFixture()
+  const entered = deferred(),
+    release = deferred()
+  let restarted: TokenEngines | undefined
+  let opening: ReturnType<typeof vi.spyOn> | undefined
+  try {
+    f.release()
+    await f.ui.connect(f.encoded)
+    await hostSettled(f.host)
+    const id = f.registry.records()[0].id
+    await f.ui.pause(id, true)
+    await f.host.close()
+    const bytes = new TextEncoder().encode('sample offline edit')
+    await f.app.vault.adapter.writeBinary('Notes/slow.txt', bytes.buffer)
+    const expectedSha = await sha256(bytes)
+    f.transport.mockClear()
+    const open = IndexedDbStateStore.open.bind(IndexedDbStateStore)
+    opening = vi
+      .spyOn(IndexedDbStateStore, 'open')
+      .mockImplementation(async (factory, name, options) => {
+        if (name.startsWith('abele-local-edit-copies-')) {
+          entered.resolve()
+          await release.promise
+        }
+        return open(factory, name, options)
+      })
+    restarted = f.makeHost()
+    restarted.start()
+    await entered.promise
+    expect(f.registry.records()[0].paused).toBe(true)
+    expect(f.ui.runtimes.has(id)).toBe(false)
+    expect(f.ui.startingRuntimes.has(id)).toBe(false)
+    await f.ui.pause(id, false)
+    release.resolve()
+    await hostSettled(restarted)
+    await vi.waitFor(() =>
+      expect(
+        f.transport.mock.calls.some(
+          ([input, init]) =>
+            new URL(String(input)).pathname === '/v2/commit' &&
+            JSON.parse(String(init?.body)).ops.some(
+              (op: { sha?: string }) => op.sha === expectedSha
+            )
+        )
+      ).toBe(true)
+    )
+  } finally {
+    release.resolve()
+    await restarted?.close()
+    await f.host.close()
+    opening?.mockRestore()
+  }
+})
 
 it.each([false, true])(
   'delivers pause while a live runtime is still starting (shared=%s)',

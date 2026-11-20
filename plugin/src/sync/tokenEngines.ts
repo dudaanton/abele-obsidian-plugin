@@ -1422,8 +1422,9 @@ export class TokenEngines {
             this.ui.startingRuntimes.delete(record.id)
         }
         // Pause can arrive while start awaits, or while dependencies were opening.
-        if (this.ui.registry.records().find((one) => one.id === record.id)?.paused)
-          await runtime.pause(true)
+        const paused = this.ui.registry.records().find((one) => one.id === record.id)?.paused
+        // Resume schedules an exchange, so use it only for a runtime constructed paused.
+        if (paused !== undefined && (paused || current.paused)) await runtime.pause(paused)
         await stage('Starting file exchange', () => runtime.start())
         assertActive()
         unbindStarting()
