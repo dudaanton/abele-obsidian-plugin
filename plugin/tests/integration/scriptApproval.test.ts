@@ -57,6 +57,63 @@ async function managed(facet: 'personal' | 'scoped' = 'personal', principal = 's
 }
 
 describe('exact-byte local script approval', () => {
+  it.each([false, true])(
+    'requires displayed managed consent when optional checking is off (accept=%s)',
+    async (accept) => {
+      const config = configureAbele()
+      const previousAi = config.ai
+      try {
+        config.ai = { ...DEFAULT_AI_SETTINGS, confirmForeignScripts: false }
+        ScriptTrust.reset()
+        await managed()
+        const service = ScriptService.getInstance()
+        const snapshot = {
+          path,
+          hash: await sha256(new TextEncoder().encode(bytes)),
+          source: bytes,
+          code: 'return "approved"',
+          commandId: '',
+          meta: { name: 'Sample', description: '', params: [] },
+        }
+        const optionalReview = vi.spyOn(reviewDialogs, 'reviewScript')
+        expect(service.verdict(snapshot)).toBe('confirmed')
+        await expect(scriptForExecution(app as unknown as App, path)).rejects.toThrow(/approval/)
+        let settled = false
+        const reviewing = service.review(snapshot).then(
+          () => {
+            settled = true
+            return true
+          },
+          () => {
+            settled = true
+            return false
+          }
+        )
+        await vi.waitFor(() => expect(settled || !!scriptApprovalDialog.value).toBe(true))
+        const shown = scriptApprovalDialog.value
+        // Settle even the broken implementation, so failure cannot leave a pending dialog.
+        shown?.answer(accept)
+        const result = await reviewing
+        expect(optionalReview).not.toHaveBeenCalled()
+        expect(shown).not.toBeNull()
+        expect(shown!.source).toBe(bytes)
+        expect(shown!.sha).toBe(snapshot.hash)
+        expect(result).toBe(accept)
+        if (accept) {
+          await expect(scriptForExecution(app as unknown as App, path)).resolves.toMatchObject({
+            code: snapshot.code,
+          })
+          await expect(service.review(snapshot)).resolves.toBe(true)
+          expect(scriptApprovalDialog.value).toBeNull()
+        } else {
+          await expect(scriptForExecution(app as unknown as App, path)).rejects.toThrow(/approval/)
+        }
+      } finally {
+        config.ai = previousAi
+      }
+    }
+  )
+
   it('reviews managed agent bytes once and keeps a diff baseline with foreign checking off', async () => {
     const config = configureAbele()
     const previousAi = config.ai

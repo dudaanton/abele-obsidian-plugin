@@ -432,7 +432,13 @@ export class ScriptService {
 
   /** Shows a script from elsewhere for review; true once this version is confirmed. */
   async review(script: ParsedScript, signal?: AbortSignal): Promise<boolean> {
-    if (!(await reviewOne(this, script, signal))) return false
+    let acceptedReview = false
+    if (
+      !(await reviewOne(this, script, signal, () => {
+        acceptedReview = true
+      }))
+    )
+      return false
     // Review also covers the managed gate, without executing a linter/interceptor/startup
     // script as a side effect. This is the recovery exit for an older connection or store.
     let reviewed = script
@@ -441,9 +447,10 @@ export class ScriptService {
       script.path,
       async (request) => {
         signal?.throwIfAborted()
-        // The owner just reviewed this exact snapshot. The managed gate still validates its
-        // identity, connection and current disk bytes before recording approval.
-        if (request.sha === script.hash && request.source === script.source) return true
+        // A policy verdict alone is not consent. Reuse only an accepted content review;
+        // the managed gate still validates identity, connection and current disk bytes.
+        if (acceptedReview && request.sha === script.hash && request.source === script.source)
+          return true
         const accepted = await showScriptApproval(
           {
             ...request,

@@ -47,7 +47,9 @@ function deferNotice(script: ParsedScript) {
 export async function reviewOne(
   service: ScriptService,
   script: ParsedScript,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  /** Accepted dialog consent only; the already-confirmed shortcut does not call this. */
+  onReviewed?: () => void
 ): Promise<boolean> {
   signal?.throwIfAborted()
   const verdict = service.verdict(script)
@@ -70,6 +72,7 @@ export async function reviewOne(
   }
   if (verdict === 'refused') return false
   service.confirm(script)
+  onReviewed?.()
   return true
 }
 
