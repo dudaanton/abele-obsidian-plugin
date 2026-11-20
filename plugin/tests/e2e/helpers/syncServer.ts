@@ -54,6 +54,9 @@ export interface SyncServer {
   url: string
   /** Provisioned locally with user create; never logged. */
   rootToken: string
+  /** Server-side content arrivals survive replacement of a client's WebView. */
+  contentGets(): number
+  contentFiles(): string[]
   suspend(): void
   resume(): void
   /** Reject in-flight requests without thawing them during graceful shutdown. */
@@ -120,11 +123,22 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
   // the server's own words in the failure.
   const said: string[] = []
   const requests: { event: string; method?: string; route: string; status?: number }[] = []
+  let contentGets = 0
+  const contentFiles: string[] = []
   child.stdout?.on('data', (chunk: Buffer) => said.push(chunk.toString()))
   if (child.stdout)
     createInterface({ input: child.stdout }).on('line', (line) => {
       if (line.startsWith('[sync-fixture-http] ')) {
-        requests.push(JSON.parse(line.slice('[sync-fixture-http] '.length)))
+        const row = JSON.parse(line.slice('[sync-fixture-http] '.length))
+        requests.push(row)
+        if (
+          row.event === 'arrival' &&
+          row.method === 'GET' &&
+          row.route === '/v2/files/:id/content'
+        ) {
+          contentGets++
+          contentFiles.push(row.contentKey)
+        }
         console.debug(line)
       }
     })
@@ -181,6 +195,8 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
       await kill()
     },
     rootToken,
+    contentGets: () => contentGets,
+    contentFiles: () => [...contentFiles],
     suspend: () => {
       writeFileSync(frozen, '')
       child.kill('SIGSTOP')

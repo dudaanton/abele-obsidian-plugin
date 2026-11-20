@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { expect, it } from 'vitest'
 import { createServer, request, Agent } from 'node:http'
+import { createHash } from 'node:crypto'
 import { installFixtureHttpTrace } from '../e2e/helpers/syncFixtureHttpTrace.mjs'
 
 it('attributes fixture upgrades without recording headers, tokens or query strings', async () => {
@@ -117,6 +118,11 @@ it('identifies hydration and ranged content routes without recording file identi
       '/v2/changes',
     ])
     expect(JSON.stringify(entries)).not.toContain('private-id')
+    expect(
+      entries.find((one) => one.event === 'arrival' && one.route === '/v2/files/:id/content')
+    ).toMatchObject({
+      contentKey: createHash('sha256').update('private-id').digest('hex'),
+    })
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()))
     restore()

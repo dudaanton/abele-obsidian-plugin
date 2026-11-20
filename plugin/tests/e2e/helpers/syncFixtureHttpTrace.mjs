@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { Server } from 'node:http'
 import { syncBuiltinESMExports } from 'node:module'
+import { createHash } from 'node:crypto'
 
 /**
  * Test-only freeze: while `file` exists, the server blocks before handling any request. A test
@@ -82,6 +83,9 @@ export function installFixtureHttpTrace(write, closeConnections = false) {
         method: request.method,
         route,
         startedAt,
+        ...(route === '/v2/files/:id/content'
+          ? { contentKey: createHash('sha256').update(path.split('/')[3]).digest('hex') }
+          : {}),
       }
       // Do not start body flow before Fastify installs its parser.
       const declaredBytes = Number(request.headers['content-length']) || 0
