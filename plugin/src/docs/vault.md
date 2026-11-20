@@ -3825,6 +3825,10 @@ the stamp and cached immutable rows without decoding the maps again. Aborted wri
 publish neither a new stamp nor a new in-memory snapshot. Concurrent handles must run
 the same stamped writer protocol; older-format writers are supported before reopening,
 not concurrently with a cached reader. Existing record layouts remain readable.
+Composer edits and new send identities update the extra record manifest without rewriting
+retained receipt revisions. Existing rows keep their original manifest placement. Settled-history
+retention runs when receipts, manager operations or delegation tasks change, rather than on
+every composer edit; approval and uncertain-outcome evidence remain protected.
 Startup removes orphaned registration caches belonging to this vault installation, while
 preserving current registrations and caches whose ownership cannot be established (including
 other installations and legacy paired caches).

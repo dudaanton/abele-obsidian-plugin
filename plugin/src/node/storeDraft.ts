@@ -42,10 +42,12 @@ export function plain<T>(value: T): T {
 
 export function storeDraft<T extends object>(base: T, parentChanged: () => void = () => {}) {
   let copy: T | undefined
+  let revision = 0
+  const editedKeys = new Set<PropertyKey>()
   const children = new Map<PropertyKey, ReturnType<typeof storeDraft>>()
   const mark = () => {
-    if (copy) return
-    copy = (Array.isArray(base) ? base.slice() : { ...base }) as T
+    ++revision
+    if (!copy) copy = (Array.isArray(base) ? base.slice() : { ...base }) as T
     parentChanged()
   }
   const source = () => copy ?? base
@@ -55,13 +57,17 @@ export function storeDraft<T extends object>(base: T, parentChanged: () => void 
       if (!item || typeof item !== 'object') return item
       let child = children.get(key)
       if (!child) {
-        child = storeDraft(item, mark)
+        child = storeDraft(item, () => {
+          editedKeys.add(key)
+          mark()
+        })
         children.set(key, child)
       }
       return child.value
     },
     set(_target, key, next) {
       if (Object.is(Reflect.get(source(), key), next)) return true
+      editedKeys.add(key)
       mark()
       children.delete(key)
       Reflect.set(copy!, key, next)
@@ -69,6 +75,7 @@ export function storeDraft<T extends object>(base: T, parentChanged: () => void 
     },
     deleteProperty(_target, key) {
       if (!Object.hasOwn(source(), key)) return true
+      editedKeys.add(key)
       mark()
       children.delete(key)
       return Reflect.deleteProperty(copy!, key)
@@ -104,5 +111,11 @@ export function storeDraft<T extends object>(base: T, parentChanged: () => void 
     return frozen(result)
   }
   drafts.set(value, { finish })
-  return { value, finish, changed: () => copy !== undefined }
+  return {
+    value,
+    finish,
+    changed: () => copy !== undefined,
+    revision: () => revision,
+    editedKeys: () => editedKeys,
+  }
 }

@@ -411,7 +411,15 @@ export class NodeClientStore implements ClientStore {
               }
               delete state.turnDrafts?.[id]
             }
-            if (records.edited() && records.changed()) pruneSettledRecords(state)
+            // Drafts and new outbox requests cannot add settled history. In particular,
+            // typing and sending must not walk every retained approval receipt.
+            if (
+              (['results', 'managerOperations', 'delegationTasks'] as const).some((field) =>
+                records.edited(field)
+              ) &&
+              records.changed()
+            )
+              pruneSettledRecords(state)
             // An awaited callback may finish in a timer/network task, where IndexedDB is
             // inactive even with pending requests. Commit in the next count success handler.
             finish = () => {

@@ -37,6 +37,7 @@ export class ClientRecords {
     stamp: string | undefined
     manifest: Record<string, string>
     keys: string[]
+    buckets: Record<string, Record<string, string>>
   }
   constructor(private readonly validate: (field: Field, value: unknown) => void) {}
 
@@ -49,16 +50,16 @@ export class ClientRecords {
     // Every new handle imports the persisted maps, including unstamped legacy data.
     // Once open, all writers must use this protocol; record writes and their stamp
     // commit together under the IndexedDB transaction lock.
-    let manifest: Record<string, string> =
-      cachedManifest?.manifest ??
-      Object.assign(
-        {},
-        ...(await Promise.all([
-          manifestOf('record-revisions'),
-          manifestOf('delegation-revisions'),
-          manifestOf('extra-record-revisions'),
-        ]))
+    let buckets: Record<string, Record<string, string>> = cachedManifest?.buckets ??
+    Object.fromEntries(
+      await Promise.all(
+        ['record-revisions', 'delegation-revisions', 'extra-record-revisions'].map(
+          async (key) => [key, await manifestOf(key)] as const
+        )
       )
+    )
+    let manifest: Record<string, string> =
+      cachedManifest?.manifest ?? Object.assign({}, ...Object.values(buckets))
     let keys = cachedManifest?.keys ?? Object.keys(manifest)
     const previousSnapshots = this.snapshots
     let snapshots = previousSnapshots
@@ -198,6 +199,8 @@ export class ClientRecords {
           },
     })
     const savedFields = new Set<Field>()
+    type Change = { key: string; value?: unknown; deleted?: boolean }
+    const checked = new Map<Field, { source: unknown; revision: number; changes: Change[] }>()
     const changes = () =>
       collections.flatMap((collection) => {
         const { prefix, records, draft } = collection
@@ -207,27 +210,35 @@ export class ClientRecords {
           (source === records || (source === draft.value && !draft.changed()))
         )
           return []
-        const current = plain(source)
-        const changes: { key: string; value?: unknown; deleted?: boolean }[] = []
-        for (const key of snapshots.keys()) {
-          if (key.startsWith(prefix) && !Object.hasOwn(current, key.slice(prefix.length)))
-            changes.push({ key, deleted: true })
-        }
-        for (const id of Object.keys(current)) {
+        const revision = draft.revision()
+        const sparse = !collection.legacy && source === draft.value
+        const before = checked.get(collection.field)
+        if (sparse && before?.source === source && before.revision === revision)
+          return before.changes
+        const changes: Change[] = []
+        const current = sparse ? source : plain(source)
+        const ids = sparse
+          ? [...draft.editedKeys()].map(String)
+          : [...new Set([...Object.keys(records), ...Object.keys(current)])]
+        for (const id of ids) {
           const key = prefix + id,
-            value = current[id]
-          if (!snapshots.has(key) || !sameStoredValue(value, snapshots.get(key).value))
+            value = plain(current[id])
+          if (!Object.hasOwn(current, id)) {
+            if (snapshots.has(key)) changes.push({ key, deleted: true })
+          } else if (!snapshots.has(key) || !sameStoredValue(value, snapshots.get(key).value))
             changes.push({ key, value })
         }
+        checked.set(collection.field, { source, revision, changes })
         return changes
       })
     return {
-      edited: () =>
+      edited: (field?: Field) =>
         collections.some(
           (collection) =>
-            collection.draft.changed() ||
-            (collection.current() !== collection.records &&
-              collection.current() !== collection.draft.value)
+            (!field || collection.field === field) &&
+            (collection.draft.changed() ||
+              (collection.current() !== collection.records &&
+                collection.current() !== collection.draft.value))
         ),
       changed: (field?: Field) =>
         changes().some((change) => !field || change.key.startsWith(`record:${field}:`)),
@@ -245,9 +256,33 @@ export class ClientRecords {
         }
         // An aborted transaction must not mutate the last committed cache.
         manifest = { ...manifest }
+        const previousBuckets = buckets
+        buckets = { ...buckets }
+        const changedBuckets = new Set<string>()
+        const bucketOf = (key: string, value?: unknown) => {
+          // Preserve the placement of legacy rows, including their deletion. New
+          // send identities belong with drafts, away from retained approval history.
+          const existing = Object.keys(previousBuckets).find((bucket) =>
+            Object.hasOwn(previousBuckets[bucket], key)
+          )
+          if (existing) return existing
+          const field = key.split(':')[1]
+          const request = value as { method?: string } | undefined
+          return ['results', 'managerOperations'].includes(field) ||
+            (field === 'operationRequests' && request?.method !== 'session.send')
+            ? 'record-revisions'
+            : field === 'delegationTasks'
+              ? 'delegation-revisions'
+              : 'extra-record-revisions'
+        }
         for (const update of updates) savedFields.add(update.key.split(':')[1] as Field)
         return (async () => {
           for (const [index, update] of updates.entries()) {
+            const bucket = bucketOf(update.key, update.value)
+            if (!changedBuckets.has(bucket)) {
+              buckets[bucket] = { ...buckets[bucket] }
+              changedBuckets.add(bucket)
+            }
             // Large legacy image migrations remain one atomic transaction, but each
             // small batch yields through IndexedDB before cloning the next payloads.
             if (index && index % 4 === 0) await read(store.count('state'))
@@ -255,11 +290,13 @@ export class ClientRecords {
               store.delete(update.key)
               editSnapshots().delete(update.key)
               delete manifest[update.key]
+              delete buckets[bucket][update.key]
             } else {
               const field = RECORD_FIELDS.find((field) => update.key.startsWith(`record:${field}:`))
               this.validate(field, update.value)
               const revision = crypto.randomUUID()
               manifest[update.key] = revision
+              buckets[bucket][update.key] = revision
               let stored = update.value
               let cachedValue = update.value
               let reference: string | undefined
@@ -299,36 +336,7 @@ export class ClientRecords {
                 store.delete(reference)
                 tools.delete(reference)
               }
-            // Older clients reject unknown collections in their shared manifest.
-            store.put(
-              Object.fromEntries(
-                Object.entries(manifest).filter(([key]) =>
-                  ['results', 'operationRequests', 'managerOperations'].some((field) =>
-                    key.startsWith(`record:${field}:`)
-                  )
-                )
-              ),
-              'record-revisions'
-            )
-            store.put(
-              Object.fromEntries(
-                Object.entries(manifest).filter(([key]) =>
-                  key.startsWith('record:delegationTasks:')
-                )
-              ),
-              'delegation-revisions'
-            )
-            store.put(
-              Object.fromEntries(
-                Object.entries(manifest).filter(
-                  ([key]) =>
-                    !['results', 'operationRequests', 'managerOperations', 'delegationTasks'].some(
-                      (field) => key.startsWith(`record:${field}:`)
-                    )
-                )
-              ),
-              'extra-record-revisions'
-            )
+            for (const bucket of changedBuckets) store.put(buckets[bucket], bucket)
             keys = Object.keys(manifest)
             stamp = crypto.randomUUID()
             store.put(stamp, 'records-stamp')
@@ -336,11 +344,12 @@ export class ClientRecords {
         })()
       },
       committed: () => {
-        this.manifestCache = { stamp, manifest, keys }
+        this.manifestCache = { stamp, manifest, keys, buckets }
         this.snapshots = snapshots
         this.toolSnapshots = tools
         for (const collection of collections) {
-          if (savedFields.has(collection.field)) this.collections.delete(collection.field)
+          if (savedFields.has(collection.field))
+            this.collections.set(collection.field, frozen(plain(collection.current())))
           else this.collections.set(collection.field, collection.records)
           this.collectionLegacy.set(collection.field, collection.legacySnapshot)
         }
