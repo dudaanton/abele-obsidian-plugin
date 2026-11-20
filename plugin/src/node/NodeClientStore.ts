@@ -482,7 +482,13 @@ export class NodeClientStore implements ClientStore {
                   .catch((error: unknown) => {
                     failure = error
                     pending = false
-                    tx.abort()
+                    // A failed request may have already aborted the transaction.
+                    // Its abort handler still rejects the operation with failure.
+                    try {
+                      tx.abort()
+                    } catch {
+                      // Already inactive; do not create an unhandled rejection.
+                    }
                   })
             }
           } catch (error) {

@@ -3828,7 +3828,11 @@ further behind rebuilds from current live rows. New-format deletes remove their 
 Rows still named by legacy manifests retain a tombstone identifying the retired manifest
 revision and a rollback-readable payload. A later legacy revision is imported on reopening;
 unversioned tombstones cannot suppress recovery evidence. Referenced tool schemas remain
-on disk while current views exclude the retired rows. Warm replay preserves insertion order
+on disk while current views exclude the retired rows. The next write after recovering a
+legacy revision removes its stale tombstone and publishes a recovery epoch atomically.
+Warm handles check that small epoch alongside the revision version and rebuild once when
+it changes, so an unrelated save cannot conceal recovered evidence behind a newer log.
+Warm replay preserves insertion order
 when a deleted row is recreated, so retention selects the same oldest rows on every handle.
 Cached record collections share immutable paths, so saving one row does not copy
 the collection.

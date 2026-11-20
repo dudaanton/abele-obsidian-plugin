@@ -35,55 +35,91 @@ it('keeps recreated receipts newest on a warm reader and prunes the oldest recei
   }
 })
 
-it('imports newer legacy revisions after retiring a legacy receipt', async () => {
-  const factory = new IDBFactory()
-  const namespace = 'sample-legacy-rewrite'
-  const key = 'record:results:sample-recovery'
-  const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const open = factory.open('abele-node-' + namespace, 3)
-    open.onupgradeneeded = () => {
-      const client = open.result.createObjectStore('client')
-      open.result.createObjectStore('journal')
-      client.put({ cursors: {}, events: {}, outbox: [], results: {} }, 'state')
-      client.put({ result: 'old' }, key)
-      client.put({ [key]: 'sample-before' }, 'record-revisions')
-    }
-    open.onsuccess = () => resolve(open.result)
-    open.onerror = () => reject(open.error)
-  })
-  const writer = new NodeClientStore(namespace, factory)
-  try {
-    await writer.transaction((s) => {
-      delete s.results['sample-recovery']
+it.each([false, true])(
+  'imports newer legacy revisions after retirement, aborted save: %s',
+  async (abortFirst) => {
+    const factory = new IDBFactory()
+    const namespace = 'sample-legacy-rewrite'
+    const key = 'record:results:sample-recovery'
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const open = factory.open('abele-node-' + namespace, 3)
+      open.onupgradeneeded = () => {
+        const client = open.result.createObjectStore('client')
+        open.result.createObjectStore('journal')
+        client.put({ cursors: {}, events: {}, outbox: [], results: {} }, 'state')
+        client.put({ result: 'old' }, key)
+        client.put({ [key]: 'sample-before' }, 'record-revisions')
+      }
+      open.onsuccess = () => resolve(open.result)
+      open.onerror = () => reject(open.error)
     })
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction('client', 'readwrite')
-      const client = tx.objectStore('client')
-      client.put({ error: 'outcome_unknown' }, key)
-      client.put({ [key]: 'sample-after' }, 'record-revisions')
-      client.put('sample-older-writer-stamp', 'records-stamp')
-      tx.oncomplete = () => resolve()
-      tx.onabort = () => reject(tx.error)
-    })
-    const reader = new NodeClientStore(namespace, factory)
+    const writer = new NodeClientStore(namespace, factory)
+    const warm = new NodeClientStore(namespace, factory)
     try {
-      expect(await reader.read((s) => s.results['sample-recovery'])).toEqual({
-        error: 'outcome_unknown',
+      await writer.transaction((s) => {
+        delete s.results['sample-recovery']
       })
-      await reader.transaction((s) => {
-        s.chatDrafts!['sample-session'] = { text: 'draft', notice: '' }
+      expect(await warm.read((s) => s.results['sample-recovery'])).toBeUndefined()
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('client', 'readwrite')
+        const client = tx.objectStore('client')
+        client.put({ error: 'outcome_unknown' }, key)
+        client.put({ [key]: 'sample-after' }, 'record-revisions')
+        client.put('sample-older-writer-stamp', 'records-stamp')
+        tx.oncomplete = () => resolve()
+        tx.onabort = () => reject(tx.error)
       })
-      expect(await reader.read((s) => s.results['sample-recovery'])).toEqual({
-        error: 'outcome_unknown',
-      })
+      const reader = new NodeClientStore(namespace, factory)
+      try {
+        expect(await reader.read((s) => s.results['sample-recovery'])).toEqual({
+          error: 'outcome_unknown',
+        })
+        if (abortFirst) {
+          const put = IDBObjectStore.prototype.put
+          const abort = vi
+            .spyOn(IDBObjectStore.prototype, 'put')
+            .mockImplementation(function (value, key) {
+              const request = put.call(this, value, key)
+              if (key === 'records-recovery-epoch') this.transaction.abort()
+              return request
+            })
+          try {
+            await expect(
+              reader.transaction((s) => {
+                s.chatDrafts!['sample-session'] = { text: 'aborted', notice: '' }
+              })
+            ).rejects.toThrow()
+          } finally {
+            abort.mockRestore()
+          }
+          const persisted = await new Promise<unknown>((resolve) => {
+            const request = db
+              .transaction('client')
+              .objectStore('client')
+              .get('record-deleted:' + key)
+            request.onsuccess = () => resolve(request.result)
+          })
+          expect(persisted).toEqual({ revision: 'sample-before' })
+        }
+        await reader.transaction((s) => {
+          s.chatDrafts!['sample-session'] = { text: 'draft', notice: '' }
+        })
+        expect(await warm.read((s) => s.results['sample-recovery'])).toEqual({
+          error: 'outcome_unknown',
+        })
+        expect(await reader.read((s) => s.results['sample-recovery'])).toEqual({
+          error: 'outcome_unknown',
+        })
+      } finally {
+        reader.close()
+      }
     } finally {
-      reader.close()
+      writer.close()
+      warm.close()
+      db.close()
     }
-  } finally {
-    writer.close()
-    db.close()
   }
-})
+)
 
 it('keeps legacy manifest rows and tool payloads readable for rollback without reviving retired rows', async () => {
   const factory = new IDBFactory()

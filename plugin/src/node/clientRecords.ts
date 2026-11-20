@@ -63,6 +63,8 @@ export class ClientRecords {
   private legacyPresent = new Map<Field, boolean>()
   private stamp?: string
   private version?: number
+  private recoveryEpoch?: string
+  private recoveredLegacy = new Set<string>()
   private legacyKeys = new Set<string>()
   private legacyRevisions = new Map<string, string>()
   private deletedLegacy = new Set<string>()
@@ -72,21 +74,25 @@ export class ClientRecords {
 
   async load(tx: IDBTransaction, state: NodeClientState, readonly = false) {
     const store = tx.objectStore('client')
-    const [rawStamp, rawVersion, rawOrder] = await Promise.all([
+    const [rawStamp, rawVersion, rawOrder, rawRecoveryEpoch] = await Promise.all([
       read(store.get('records-stamp')),
       read(store.get('records-version')),
       read(store.get('records-order')),
+      read(store.get('records-recovery-epoch')),
     ])
     let stamp = rawStamp as string | undefined
     let version = (rawVersion ?? 0) as number
     let order = (rawOrder ?? 0) as number
+    let recoveryEpoch = rawRecoveryEpoch as string | undefined
     // Readers outside the bounded log rebuild once from live rows and legacy maps.
     const cold =
       this.version === undefined ||
+      this.recoveryEpoch !== recoveryEpoch ||
       version - this.version > RECORD_LOG_WINDOW ||
       (this.stamp !== stamp && version <= this.version)
     const legacyKeys = cold ? new Set<string>() : this.legacyKeys
     const legacyRevisions = cold ? new Map<string, string>() : this.legacyRevisions
+    const recoveredLegacy = cold ? new Set<string>() : this.recoveredLegacy
     const deletedLegacy = cold ? new Set<string>() : this.deletedLegacy
     const markers = new Map<string, boolean>()
     const isDeleted = (key: string) =>
@@ -183,8 +189,10 @@ export class ClientRecords {
             | undefined
           // A tombstone retires one legacy revision, never a later writer's evidence.
           // Unversioned markers cannot establish which payload was retired.
-          if (!marker?.revision || marker.revision !== legacyRevisions.get(key))
+          if (!marker?.revision || marker.revision !== legacyRevisions.get(key)) {
             deletedLegacy.delete(key)
+            recoveredLegacy.add(key)
+          }
         })
       )
     } else if (this.stamp !== stamp) {
@@ -386,6 +394,14 @@ export class ClientRecords {
       delegationSnapshot: () => frozen(plain({ tasks: state.delegation.tasks })),
       save: () => {
         saved = true
+        if (recoveredLegacy.size) {
+          // Recovery can precede this write in a read-only transaction. Publish its
+          // invalidation with the next write, before a newer log version can mask
+          // the older writer's stamp from handles that still cache the retirement.
+          for (const key of recoveredLegacy) store.delete(RECORD_DELETED + key)
+          recoveryEpoch = crypto.randomUUID()
+          store.put(recoveryEpoch, 'records-recovery-epoch')
+        }
         for (const key of missingLegacy) store.put({}, key)
         const pending = changes()
         savedChanges.push(...pending)
@@ -513,6 +529,8 @@ export class ClientRecords {
         }
         this.stamp = stamp
         this.version = version
+        this.recoveryEpoch = recoveryEpoch
+        this.recoveredLegacy = saved ? new Set<string>() : recoveredLegacy
         for (const c of collections) {
           let table = tableOf(c.records)!
           // Only saved rows change the cached immutable collection. Reads retain even
