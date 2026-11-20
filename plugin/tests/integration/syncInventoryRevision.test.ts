@@ -12,6 +12,26 @@ import { scanSnapshot } from '../../node_modules/@abele/sync-sdk/dist/internal/c
 
 const revisionKey = Symbol.for('abele.sync.local-scan-revision-v1')
 
+it('does not certify deferred cold discovery as an unchanged inventory', async () => {
+  const s = await fixture()
+  const path = 'cold-sample.md'
+  await s.fs.writeAtomic(path, new TextEncoder().encode('cold sample'), 1)
+  let defer = true
+  Object.assign(s.fs, {
+    deferNewLocalFile: async (info: { path: string }) => defer && info.path === path,
+  })
+  try {
+    s.engine.start()
+    await Reflect.get(s.engine, 'running')
+    expect(s.commits.some((op) => op.op === 'create' && op.path === path)).toBe(false)
+    defer = false
+    await s.engine.sync()
+    expect(s.commits).toContainEqual(expect.objectContaining({ op: 'create', path }))
+  } finally {
+    await s.engine.stop()
+  }
+})
+
 async function fixture() {
   const fs = new MemoryFileSystem()
   const state = new MemoryStateStore()

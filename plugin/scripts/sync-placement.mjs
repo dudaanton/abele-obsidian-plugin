@@ -423,7 +423,12 @@ export function syncPlacementPlugin() {
           '        return {\n            pull: before,',
           `        // A directory commit can advance the consumed feed beyond the file batch head.
         this.ctx.set({ headSeq: Math.max(this.ctx.status().headSeq ?? 0, (secondPull ?? before).cursor) });
-        if (localRevision !== undefined && localRevision === fs[Symbol.for('abele.sync.local-scan-revision-v1')]?.() &&
+        // A stable inventory clock says nothing about cold files deferred by a
+        // bounded scan. Policy holds have their own retries; unread content must
+        // remain discoverable on the next ordinary pass.
+        if (!found[Symbol.for('abele.sync.discovery-pending-v1')] &&
+            !inspection.found[Symbol.for('abele.sync.discovery-pending-v1')] &&
+            localRevision !== undefined && localRevision === fs[Symbol.for('abele.sync.local-scan-revision-v1')]?.() &&
             this.ctx.watch.noticed.size === 0 && this.ctx.watch.reported.size === 0 &&
             !client[Symbol.for('abele.sync.deferred-directory-deletes-v1')]?.()) {
           this.settledDirectoryRevision = await state.getMeta?.('v2-directories');
