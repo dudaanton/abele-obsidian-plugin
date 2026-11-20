@@ -687,15 +687,16 @@ export class ObsidianFileSystem implements FileSystem {
       (await this.native?.fileContentRevision?.(entry.target)) === saved.contentRevision
     await remove()
     if (
-      saved &&
+      saved?.contentRevision &&
       verified &&
       host?.scanFingerprintRevision(key) === revision &&
       this.watchPathRevision(key) === watched &&
       (await this.fileIdentity?.(entry.target)) === saved.identity
     )
-      await this.rememberInstalled([
-        { path: entry.target, size: saved.size, mtime: stamp(saved.mtime), sha: saved.sha },
-      ])
+      await this.rememberInstalled(
+        [{ path: entry.target, size: saved.size, mtime: stamp(saved.mtime), sha: saved.sha }],
+        new Map([[entry.target, saved.contentRevision]])
+      )
   }
   readonly fileIdentity?: (path: string) => Promise<string | null>
   private readonly diagnostic?: ObsidianFileSystemOptions['diagnostic']
@@ -2059,10 +2060,16 @@ export class ObsidianFileSystem implements FileSystem {
         saved.contentRevision &&
         saved.contentRevision === (await this.native?.fileContentRevision?.(item.path))
       if (!(await this.writer.discardReceipt(receipt))) await this.conditional.discard(receipt)
-      // Removing the private hard-link alias advances the inode change clock.
-      // Capture the final public identity after that acknowledged cleanup too.
-      else if (item && unchanged && key && host?.scanInstallation(key) === saved)
-        await this.rememberInstalled([item])
+      // Alias cleanup can advance the inode clock. Never attach the downloaded
+      // hash to that new clock: a fresh fingerprint must prove those bytes.
+      else if (
+        item &&
+        unchanged &&
+        key &&
+        saved?.contentRevision &&
+        host?.scanInstallation(key) === saved
+      )
+        await this.rememberInstalled([item], new Map([[item.path, saved.contentRevision]]))
     }
     try {
       for (;;) {
