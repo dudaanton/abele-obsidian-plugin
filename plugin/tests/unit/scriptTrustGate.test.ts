@@ -119,8 +119,8 @@ describe('scripts from elsewhere', () => {
       { script: { source: string }; previous?: string },
     ]
     expect(request.script.source).toContain('changed')
-    // The diff is against the version last confirmed here.
-    expect(request.previous).toBe(SCRIPT('One'))
+    // The startup policy baseline was never reviewed, so it cannot be a reviewed diff source.
+    expect(request.previous).toBeUndefined()
     expect(result).toBe('changed')
     // Confirmed now: an automation runs it without asking.
     expect(await service.execute(one().path, {}, { source: 'automation' })).toBe('changed')

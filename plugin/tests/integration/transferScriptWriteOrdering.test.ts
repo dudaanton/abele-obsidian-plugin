@@ -42,7 +42,11 @@ describe('explicitly selected script file transfers', () => {
       failed: [],
     })
     expect(digest).toHaveBeenCalledExactlyOnceWith('SHA-256', new TextEncoder().encode(source))
-    expect(localScriptVersions(app as never)).toContainEqual({ path: target, sha: hash })
+    expect(localScriptVersions(app as never)).toContainEqual({
+      path: target,
+      sha: hash,
+      explicit: true,
+    })
   })
 
   it.each([false, true])(
@@ -74,7 +78,11 @@ describe('explicitly selected script file transfers', () => {
       }
       expect(await applying).toEqual({ written: 1, failed: [] })
       expect(ScriptTrust.getInstance().verdict(target, hash)).toBe('confirmed')
-      expect(localScriptVersions(app as never)).toContainEqual({ path: target, sha: hash })
+      expect(localScriptVersions(app as never)).toContainEqual({
+        path: target,
+        sha: hash,
+        explicit: true,
+      })
       const other = '// @name Other import\nreturn "unapproved"'
       const otherHash = await sha256(other)
       if (armed) expect(ScriptTrust.getInstance().verdict(target, otherHash)).toBe('waiting')

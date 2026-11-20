@@ -121,7 +121,8 @@ describe('selection trust review cancellation', () => {
       button.click()
       await new Promise((resolve) => setTimeout(resolve, 0))
       expect(confirmed).not.toHaveBeenCalled()
-      expect(ScriptTrust.getInstance().lastConfirmed(path)).toBe('// @name Sample\nreturn 1')
+      // Arming supplied a policy baseline, not an accepted review. Cancellation adds none.
+      expect(ScriptTrust.getInstance().lastConfirmed(path)).toBeUndefined()
       expect(opened).toHaveBeenCalledOnce()
       expect(form).not.toHaveBeenCalled()
       expect(prepare).not.toHaveBeenCalled()
