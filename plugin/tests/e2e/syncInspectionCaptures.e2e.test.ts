@@ -88,7 +88,7 @@ describe.skipIf(!available)('sync inspection desktop captures', () => {
                 const edge=box.right-borderRight-scrollbarWidth
                 const right=target.getBoundingClientRect().right
                 const label=target.querySelector('.abele-obsidian-button__label')
-                clearance.push({kind,scroller:scroller.className,right,edge,gap:edge-right,unclipped:!label||label.scrollWidth<=label.clientWidth+1})
+                clearance.push({kind,scroller:scroller.className,paddingRight:style.paddingRight,marginRight:getComputedStyle(target).marginRight,scrollbarWidth,right,edge,gap:edge-right,unclipped:!label||label.scrollWidth<=label.clientWidth+1})
               }
             }
           }
@@ -123,6 +123,9 @@ describe.skipIf(!available)('sync inspection desktop captures', () => {
           clearance: {
             kind: string
             scroller: string
+            paddingRight: string
+            marginRight: string
+            scrollbarWidth: number
             right: number
             edge: number
             gap: number

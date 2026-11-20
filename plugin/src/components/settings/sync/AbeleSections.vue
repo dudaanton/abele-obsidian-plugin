@@ -345,9 +345,11 @@ async function restore(id: SectionId): Promise<void> {
   }
 }
 
-.abele-sections .abele-sections__all {
+.abele-sections .abele-obsidian-button.abele-sections__all {
   flex: none;
   font-size: var(--font-ui-small);
+  // The quiet button's end overhang would spend 6px of the reserved scrollbar clearance.
+  margin-right: 0;
 }
 
 .abele-sections__tree {

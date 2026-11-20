@@ -1,6 +1,8 @@
 import { expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { shallowRef } from 'vue'
+import { readFileSync } from 'node:fs'
+import { compileString } from 'sass-embedded'
 import AbeleSections from '@/components/settings/sync/AbeleSections.vue'
 import ChoiceModal from '@/components/obsidian/ChoiceModal.vue'
 import VaultCheckBlock from '@/components/sync/VaultCheckBlock.vue'
@@ -9,6 +11,30 @@ import VersionHistoryModal from '@/components/sync/VersionHistoryModal.vue'
 import Button from '@/components/obsidian/Button.vue'
 import type { AbeleSectionsSource } from '@/sync/abeleSections'
 import type { VaultCheckSource, VaultCheckState } from '@/sync/vaultCheck'
+
+it('keeps the quiet sections action inside the reserved scrollbar space', () => {
+  const style = document.createElement('style')
+  // Load the shared button last as well: its negative margin must not win by import order.
+  style.textContent =
+    ':root { --size-2-3: 6px; --size-2-1: 2px; }' +
+    ['settings/sync/AbeleSections', 'obsidian/Button']
+      .map((component) => {
+        const source = readFileSync(`src/components/${component}.vue`, 'utf8')
+        return compileString(source.match(/<style lang="scss">([\s\S]*?)<\/style>/)![1]).css
+      })
+      .join('\n')
+  document.head.append(style)
+  const view = mount(AbeleSections, {
+    props: { source: sections(), pluginSettings: true },
+    attachTo: document.body,
+  })
+  try {
+    expect(getComputedStyle(view.get('.abele-sections__all').element).marginRight).toBe('0px')
+  } finally {
+    view.unmount()
+    style.remove()
+  }
+})
 
 it('captures the pinned connection footer and connection status with the inspection content', () => {
   const view = mount(SyncInspectionFixture, {
