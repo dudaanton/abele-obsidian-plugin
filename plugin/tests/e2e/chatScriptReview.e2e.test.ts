@@ -88,7 +88,42 @@ for (const mobile of [false, true]) {
             const scroller = modal.querySelector('.cm-scroller')
             scroller.scrollTop = scroller.scrollHeight
             await new Promise(resolve => requestAnimationFrame(resolve))
-            if (!(scroller.scrollTop > 0)) throw new Error('Long review code does not scroll')
+            if (!(scroller.scrollTop > 0)) {
+              const ancestors = []
+              for (let element = scroller; element; element = element.parentElement) {
+                const style = getComputedStyle(element)
+                ancestors.push({
+                  class: element.className,
+                  clientHeight: element.clientHeight,
+                  scrollHeight: element.scrollHeight,
+                  offsetHeight: element.offsetHeight,
+                  scrollTop: element.scrollTop,
+                  height: style.height,
+                  maxHeight: style.maxHeight,
+                  minHeight: style.minHeight,
+                  overflow: style.overflow,
+                  overflowY: style.overflowY,
+                  display: style.display,
+                  flex: style.flex,
+                  position: style.position,
+                  top: style.top,
+                  bottom: style.bottom,
+                })
+                if (element === modal) break
+              }
+              const content = modal.querySelector('.cm-content')
+              const view = content?.cmView?.rootView?.view
+              throw new Error('Long review code does not scroll: ' + JSON.stringify({
+                ancestors,
+                modalHeight: modal.getBoundingClientRect().height,
+                viewportHeight: innerHeight,
+                visualViewportHeight: visualViewport?.height,
+                documentLineCount: view?.state.doc.lines ?? null,
+                renderedLineCount: content?.querySelectorAll('.cm-line').length,
+                indexedLineCount: scripts.get(folder + '/sample.js')?.source.split('\n').length,
+                reviewedPath: modal.querySelector('.abele-script-review__path')?.textContent,
+              }))
+            }
             if (!modal.querySelector('.cm-content').textContent.includes('return 4')) throw new Error('Latest revision missing at end of code')
             const button = modal.querySelector('.abele-modal__footer button.mod-cta').getBoundingClientRect()
             if (button.bottom > innerHeight || button.top < 0) throw new Error('Review action out of reach')
