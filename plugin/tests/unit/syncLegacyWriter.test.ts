@@ -2,6 +2,39 @@ import { expect, it, vi } from 'vitest'
 import { VaultWriter, WriteJournal } from '@/sync/vaultWrites'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+it.each([false, true])(
+  'never replays a consumed portable receipt after deletion (lost acknowledgement=%s)',
+  async (lost) => {
+    const app = buildFakeVault([])
+    const operation = {
+      path: 'sample.md',
+      expected: null,
+      effect: {
+        kind: 'write' as const,
+        bytes: new Uint8Array([1]),
+        mtime: 1000,
+        receipt: 'sample-deleted',
+      },
+    }
+    const rename = app.vault.adapter.rename.bind(app.vault.adapter)
+    let loseAcknowledgement = lost
+    if (lost)
+      app.vault.adapter.rename = async (from, to) => {
+        await rename(from, to)
+        if (loseAcknowledgement && to === operation.path)
+          throw new Error('sample acknowledgement lost')
+      }
+    const first = new ObsidianFileSystem(app as never)
+    if (lost) await expect(first.conditionalFile(operation)).rejects.toThrow('acknowledgement lost')
+    else expect(await first.conditionalFile(operation)).toBe(true)
+    await app.vault.adapter.remove(operation.path)
+    loseAcknowledgement = false
+    app.vault.adapter.rename = rename
+    const restarted = new ObsidianFileSystem(app as never)
+    expect(await restarted.conditionalFile(operation)).toBe(false)
+    expect(await app.vault.adapter.exists(operation.path)).toBe(false)
+  }
+)
 
 it('does not archive an unproven public retained-backup locator', async () => {
   const app = buildFakeVault([]),
@@ -25,7 +58,7 @@ it('does not archive an unproven public retained-backup locator', async () => {
   expect((await journal.currentRecovered())[0].backup).toBe('sample.md')
 })
 
-it('uses two durable journal mutations and one payload write for an absent publication', async () => {
+it('persists intent, publication boundary and retirement with one payload write', async () => {
   const app = buildFakeVault([])
   const diagnostic = vi.fn()
   const disk = new ObsidianFileSystem(app as never, { diagnostic })
@@ -40,7 +73,7 @@ it('uses two durable journal mutations and one payload write for an absent publi
   expect(write).toHaveBeenCalledTimes(1)
   await disk.discardInstallation('sample-receipt')
   expect(diagnostic.mock.calls.filter(([operation]) => operation === 'journal save')).toHaveLength(
-    2
+    3
   )
   expect(await app.vault.adapter.exists('sample.md')).toBe(true)
 })

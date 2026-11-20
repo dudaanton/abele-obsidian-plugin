@@ -3922,6 +3922,11 @@ pointer retirement. Completed history is not walked during startup recovery.
 Native publication receipts verify the retained inode and current content. A mobile adapter
 without stable object identity conservatively refuses to certify installation after restart;
 content equality or a sealed stage alone is never publication evidence.
+Portable absent-file write intents also retain whether publication may have begun.
+That flag is flushed after staging and before rename. After an interruption, a verified
+private stage permits retry, but a missing stage after publication began never permits
+recreating a missing public file. Older intents without the flag keep the same conservative
+rule when no private stage remains.
 
 AI provider settings optionally retain `apiMode` (`chat-completions` or `responses`).
 An absent value keeps Chat Completions. Settings transfer carries this with the whole provider;

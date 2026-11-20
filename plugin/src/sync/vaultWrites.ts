@@ -76,7 +76,13 @@ export function isDroppableTemp(path: string): boolean {
 
 /** What `VaultWriter` is handed by the file system that owns it. */
 export interface WriterDeps {
-  createAbsent?(path: string, bytes: Uint8Array, mtime: number, temp: string): Promise<void>
+  createAbsent?(
+    path: string,
+    bytes: Uint8Array,
+    mtime: number,
+    temp: string,
+    beforePublish: () => Promise<void>
+  ): Promise<void>
   conditionalFile(operation: ConditionalFileOperation): Promise<boolean>
   retainInstalled?: boolean
   published?(entry: JournalEntry): void
@@ -146,8 +152,9 @@ export class VaultWriter {
           // because a portable host cannot prove a hard-link identity.
           const staged = await this.there(temp)
           const proof = staged ? await this.deps.fingerprint?.(temp) : undefined
-          resumePortable =
-            !staged || (proof?.sha === entry.replacementSha && proof.size === bytes.length)
+          resumePortable = staged
+            ? proof?.sha === entry.replacementSha && proof.size === bytes.length
+            : previous.portablePublishing === false
         }
         if (!resumePortable)
           return (await this.installedReceipt(id, path, entry.replacementSha)) ?? false
@@ -156,10 +163,20 @@ export class VaultWriter {
         throw new EngineError('conflict', 'Installation path contains retained evidence')
       await this.deps.makeParents(path)
       await this.deps.makeParents(temp)
-      if (!previous) await this.deps.journal.persist(() => this.deps.journal.add(entry))
+      if (!previous) {
+        if (!this.deps.native && this.deps.createAbsent) entry.portablePublishing = false
+        await this.deps.journal.persist(() => this.deps.journal.add(entry))
+      }
       if (!this.deps.native && this.deps.createAbsent) {
         try {
-          await this.deps.createAbsent(path, bytes, mtime, temp)
+          await this.deps.createAbsent(path, bytes, mtime, temp, async () => {
+            // Persist before the source can disappear, including a lost rename ACK.
+            // An old receipt with no phase is uncertain too; only an extant stage proves retry.
+            const current = previous ?? entry
+            await this.deps.journal.persist(() =>
+              this.deps.journal.replace(current, { ...current, portablePublishing: true })
+            )
+          })
         } catch (error) {
           if (
             (error as { code?: string })?.code === 'EEXIST' ||

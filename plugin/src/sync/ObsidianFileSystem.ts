@@ -1613,7 +1613,13 @@ export class ObsidianFileSystem implements FileSystem {
     this.writer = new VaultWriter({
       ...(!this.native
         ? {
-            createAbsent: async (path: string, bytes: Uint8Array, mtime: number, temp: string) => {
+            createAbsent: async (
+              path: string,
+              bytes: Uint8Array,
+              mtime: number,
+              temp: string,
+              beforePublish: () => Promise<void>
+            ) => {
               if (bytes.length > MOBILE_WHOLE_READ_MAX)
                 throw new EngineError('io', 'mobile write exceeds the whole-file limit')
               if (
@@ -1630,6 +1636,8 @@ export class ObsidianFileSystem implements FileSystem {
               const release = await checked.acquire([path])
               try {
                 this.runtimeFence?.assertReady()
+                release.check()
+                await beforePublish()
                 release.check()
                 await release.wait(this.mutationAdapter(() => release.check()).rename(temp, path))
                 release.check()
