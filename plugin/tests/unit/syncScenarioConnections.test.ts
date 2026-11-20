@@ -697,6 +697,98 @@ it('55 preserves a relocated folder tree while removing only its former shared c
   }
 })
 
+it('B8 keeps a quota-blocked conflicting edit visible and recoverable across restart while other files arrive', async () => {
+  const wire = await server('Notes/sample.md', 'base line\n')
+  const fs = new MemoryFileSystem(),
+    state = new MemoryStateStore()
+  const local = new TextEncoder().encode('local conflicting line\n')
+  const remote = new TextEncoder().encode('remote conflicting line\n')
+  const ordinary = new TextEncoder().encode('unrelated incoming content')
+  const remoteItem = {
+    ...wire.item,
+    version_id: 'remote-version',
+    sha: await sha256(remote),
+    size: remote.length,
+    mtime: 3000,
+  }
+  const other = {
+    ...wire.item,
+    file_id: 'other-file',
+    version_id: 'other-version',
+    path: 'Notes/received.md',
+    sha: await sha256(ordinary),
+    size: ordinary.length,
+  }
+  const send = wire.fetch.getMockImplementation()!
+  let changed = false
+  wire.fetch.mockImplementation(async (input, init) => {
+    const url = new URL(String(input))
+    if (!changed) return send(input, init)
+    if (url.pathname === '/v2/manifest')
+      return Response.json({ items: [remoteItem, other], cursor: 3, next: null })
+    if (url.pathname === '/v2/changes')
+      return Response.json({
+        cursor: 3,
+        next: null,
+        items: [remoteItem, other]
+          .map((item, index) => ({
+            type: 'content',
+            item,
+            file_id: item.file_id,
+            path: item.path,
+            cursor: index + 2,
+            prev_path: null,
+            at: '2025-01-01T00:00:00Z',
+          }))
+          .filter((event) => event.cursor > Number(url.searchParams.get('since'))),
+      })
+    if (url.pathname.endsWith('/content'))
+      return new Response(url.pathname.includes('/other-file/') ? ordinary : remote)
+    if (url.pathname === '/v2/commit') {
+      const { ops } = JSON.parse(String(init?.body))
+      expect(ops).toEqual([expect.objectContaining({ sha: await sha256(local) })])
+      return Response.json({
+        cursor: 3,
+        results: ops.map(() => ({
+          status: 'rejected',
+          code: 'quota_exceeded',
+          message: 'no room for conflict copy',
+        })),
+      })
+    }
+    return send(input, init)
+  })
+  let one = runtime(wire, fs, state)
+  const verify = async () => {
+    const waiting = (await one.runtime.notSynced()).filter((item) => item.kind === 'waiting')
+    expect(waiting).toEqual([
+      expect.objectContaining({
+        direction: 'out',
+        fact: wire.item.path + ': no room for conflict copy',
+      }),
+    ])
+    expect(await fs.read(waiting[0].path)).toEqual(local)
+    expect(await fs.read(other.path)).toEqual(ordinary)
+    expect((await state.get(other.path))?.sha).toBe(other.sha)
+    expect(one.runtime.pushRefusalRows()).toEqual([
+      expect.objectContaining({ code: 'quota_exceeded' }),
+    ])
+  }
+  try {
+    await one.runtime.sync()
+    await fs.writeAtomic(wire.item.path, local, 2000)
+    changed = true
+    await one.runtime.sync()
+    await verify()
+    await one.runtime.close()
+    one = runtime(wire, fs, state)
+    await one.runtime.sync()
+    await verify()
+  } finally {
+    await one.runtime.close()
+  }
+})
+
 async function boundaryMove(extension: string) {
   const from = `Shared/sample.${extension}`,
     to = `Private/sample.${extension}`

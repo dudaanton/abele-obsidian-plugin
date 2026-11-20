@@ -166,7 +166,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 | B5 | Group access includes nested subgroups. | `abele-sync/packages/core/tests/acceptance/groupsV2.test.ts: 014/041/057–068 production group engines create nested members, preserve foreign groups, converge two servers, remove departures and preserve unavailable files` | covered | Production group-engine assertions cover nested membership. |
 | B6 | Three distinct same-line variants produce one original and two conflict files. | `abele-sync/packages/core/tests/scenario/adversarialConflicts.test.ts: ${kind}, arrival ${order.join('')}: convergence and recoverable originals` | covered | The same-line parameterization checks all six arrival orders and exactly three complete variants. |
 | B7 | Conflict copies are adjacent, named with device/time, and the first accepted original stays. | `abele-sync/packages/core/tests/acceptance/conflictsV2.test.ts: ${number} preserves both variants, forwards one copy and becomes idle` | partly | Variants and forwarding are asserted; independent two-server winner ordering is not guaranteed. |
-| B8 | Quota refusal of a conflict preserves local pending bytes and explains the wait. | `plugin/tests/unit/tokenEngines.test.ts: surfaces a server size refusal by path and reason, keeps bytes pending and avoids repeated rejected uploads` | partly | Size refusal UI is asserted; conflict-specific quota visibility needs a direct plugin test. |
+| B8 | Quota refusal of a conflict preserves local pending bytes and explains the wait. | `plugin/tests/unit/syncScenarioConnections.test.ts: B8 keeps a quota-blocked conflicting edit visible and recoverable across restart while other files arrive` | covered | A local/remote line conflict receives a quota rejection for its publication. The production runtime exposes the exact path-qualified reason in a waiting row, keeps that row pointing to recoverable local bytes after restart, and continues receiving an unrelated file. General quota-release convergence is covered under S105. |
 | B9 | Private attachment consent binds one file and connection, including future edits. | `plugin/tests/unit/tokenAttachmentConsent.test.ts: never grants consent on arrival or indexing; only an explicit note-open creates a question` | covered | Persisted file-identity consent survives rename; another connection still needs a decision. |
 | B10 | Every authorized group participant can edit group attachments. | `abele-sync/packages/server/tests/integration/v2Groups.test.ts: 074–082 private link/SHA/path is never publication; explicit upload publishes only the chosen asset and all participants may edit it` | covered | Distinct group participants modify the explicitly published asset. |
 | B11 | All incoming executable changes, including rename and delete, require approval. | `plugin/tests/unit/tokenExecutableReview.test.ts: reviews moves out of executable folders and directory deletes; rejects only the selected version` | covered | Endpoint classification and staged rename/delete candidates are asserted in this file. |
@@ -181,7 +181,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 
 ## Totals
 
-154 requirements: 124 covered, 30 partly, 0 missing.
+154 requirements: 125 covered, 29 partly, 0 missing.
 
 Zero entirely missing rows does **not** close the coverage gate: every partly covered
 row still has an unproved facet. The matrix records assertions present in source;
@@ -232,9 +232,9 @@ excused as hardware-only work:
    keep exchanging after the other connection disconnects.
 5. S131 and S132 are resolved in the focused tier: hidden-folder exclusion is pinned,
    and omitted ordinary files are found through bounded periodic verification.
-6. S40/B8: exact first-contact obstacle visibility and conflict-specific quota refusal
-   with a visible pending reason and later recovery. S67 now verifies unavailable-group
-   reopening, retained members, local edits, a reported scope error and no exchange.
+6. S40: exact first-contact obstacle visibility remains unproved. B8 now verifies a
+   quota-blocked conflicting edit, the visible path and reason, restart preservation and
+   unrelated incoming work. S67 verifies unavailable-group reopening and no exchange.
 7. S15/S54/S56/B2: reconcile scenario wording with existing read-only token support,
    explicit shared-root following and held root deletions. Current tests assert those
    behaviors; removing their safeguards is not a coverage fix.
