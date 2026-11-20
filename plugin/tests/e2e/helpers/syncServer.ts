@@ -49,6 +49,7 @@ const READY_MS = 30_000
 const ADMIN_MS = 45_000
 
 export interface SyncServer {
+  httpTrace?(): { event: string; method?: string; route: string; status?: number }[]
   /** Advertised endpoint; LAN reachable in the phone tier. */
   url: string
   /** Provisioned locally with user create; never logged. */
@@ -118,10 +119,14 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
   // Held rather than printed: a suite that passes says nothing, and one that does not gets
   // the server's own words in the failure.
   const said: string[] = []
+  const requests: { event: string; method?: string; route: string; status?: number }[] = []
   child.stdout?.on('data', (chunk: Buffer) => said.push(chunk.toString()))
   if (child.stdout)
     createInterface({ input: child.stdout }).on('line', (line) => {
-      if (line.startsWith('[sync-fixture-http] ')) console.debug(line)
+      if (line.startsWith('[sync-fixture-http] ')) {
+        requests.push(JSON.parse(line.slice('[sync-fixture-http] '.length)))
+        console.debug(line)
+      }
     })
   child.stderr?.on('data', (chunk: Buffer) => said.push(chunk.toString()))
 
@@ -167,6 +172,7 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
     throw new Error('Token provisioning returned no valid token')
   }
   return {
+    httpTrace: () => requests.slice(),
     url,
     kill,
     crash: async () => {
