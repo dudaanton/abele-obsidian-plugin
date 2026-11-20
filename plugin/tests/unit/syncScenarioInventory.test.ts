@@ -73,12 +73,20 @@ it('131 discovers a changed unindexed configuration file after restart', async (
   await changedHiddenFile('.obsidian/app.json')
 })
 
-// BUG: non-config hidden paths are excluded by both inventory and the production filter,
-// despite the scenario requiring hidden-folder edits to participate in synchronization.
-it.fails(
-  '131 discovers a changed tracked file in a nested hidden folder after restart',
-  async () => {
-    await changedHiddenFile('Notes/.hidden/sample.json')
+it.each([true, false])(
+  '131 excludes nested hidden files without inferring deletion, present=%s',
+  async (present) => {
+    const path = 'Notes/.hidden/sample.json'
+    const app = buildFakeVault(present ? [{ path, content: 'local saved bytes', mtime: 2000 }] : [])
+    const state = await tracked(path)
+    const ignore = ignoreFor('.obsidian', null)
+    expect(ignore.ignores(path)).toBe(true)
+    const fs = new ObsidianFileSystem(app as never, { ledger: state })
+    const found = await scan(fs, state, { excluded: (path) => ignore.ignores(path) })
+    expect(found.ops).toEqual([])
+    expect((await state.get(path))?.versionId).toBe('sample-version')
+    if (present) expect(await app.vault.adapter.read(path)).toBe('local saved bytes')
+    else expect(await app.vault.adapter.exists(path)).toBe(false)
   }
 )
 

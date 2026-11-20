@@ -155,7 +155,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 | S128 | An equal-size equal-mtime replacement may be missed because settled indexed metadata is trusted. | `plugin/tests/unit/syncScenarioInventory.test.ts: 128 trusts an equal-size equal-mtime indexed replacement without reading content` | covered | Exact replacement and zero content reads are asserted with a settled fake host index. |
 | S129 | Edits during indexing survive and are not sent twice. | `plugin/tests/unit/syncScenarioInventory.test.ts: 126/129 discards a partial rebuild inventory and sends only the latest indexed edit` | partly | A single latest-content modification and no false delete are asserted; exactly-once committed versions during real host reindex remain unproved. |
 | S130 | A slow index is awaited without disk fallback or app stalls; status explains the wait. | `plugin/tests/unit/syncConnectionLine.test.ts: shows the host-index wait in the connection and status bar` | partly | Wait/cancellation and status are automated; long host indexing responsiveness needs device profiling. |
-| S131 | Hidden and configuration files remain discoverable without host index membership. | `plugin/tests/unit/syncScenarioInventory.test.ts: 131 discovers a changed unindexed configuration file after restart`<br>`plugin/tests/unit/syncScenarioInventory.test.ts: 131 discovers a changed tracked file in a nested hidden folder after restart` | partly | Configuration edits pass. The nested-hidden-folder regression is it.fails: both inventory and the production filter exclude non-config hidden paths. |
+| S131 | Configuration files remain discoverable without host index membership. Non-config dot-folders are excluded by design. | `plugin/tests/unit/syncScenarioInventory.test.ts: 131 discovers a changed unindexed configuration file after restart`<br>`plugin/tests/unit/syncScenarioInventory.test.ts: 131 excludes nested hidden files without inferring deletion, present=%s` | covered | Approved scope: configuration only. Hidden-file presence or absence generates no upload or delete and preserves the ledger. |
 | S132 | Host exclusion visibility does not replace the sync filter. | `plugin/tests/unit/syncScenarioInventory.test.ts: 132 keeps a tracked host-excluded file eligible under the sync filter`<br>`plugin/tests/unit/syncScenarioInventory.test.ts: 132 discovers a new host-excluded file without a prior ledger entry` | partly | Tracked exclusions pass. The new-file-without-ledger regression is it.fails: a host-excluded file has no candidate for discovery. |
 | S133 | An interrupted index restarts from retained progress without false deletion or redundant transfer. | `plugin/tests/unit/syncScenarioInventory.test.ts: 133 cancels an incomplete index without publishing absence and retries from the same ledger` | partly | Cancellation and restart scan are simulated; real process crash and content-GET counts need device evidence. |
 | S134 | A phone evicted from memory rebuilds its index and resumes from durable progress. | `plugin/tests/integration/syncShutdownRecovery.test.ts: closes during %s and reopens the ledger without lost or duplicated work` | partly | JavaScript shutdown is simulated; actual mobile process eviction/IndexedDB durability requires a real phone. |
@@ -181,7 +181,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 
 ## Totals
 
-154 requirements: 115 covered, 39 partly, 0 missing.
+154 requirements: 116 covered, 38 partly, 0 missing.
 
 Zero entirely missing rows does **not** close the coverage gate: every partly covered
 row still has an unproved facet. The matrix records assertions present in source;
@@ -198,11 +198,10 @@ it does not claim those suites passed on this candidate.
 - A previously tracked ordinary file omitted from the host index remains eligible.
 - A rebuild that exposes an empty partial index is discarded; an edit made while
   waiting produces exactly one current-content modification rather than a delete.
-- Two remaining guarantees have executable `it.fails` regressions, with `BUG:` comments:
-  nested non-config hidden-folder edits (S131), and discovering a new ordinary file
-  omitted by the host index with no previous ledger entry (S132). Neither is counted
-  as covered. The production filter prevents hidden absence from becoming deletion;
-  this is a participation gap, not evidence of production data loss.
+- S131 pins the approved exclusion of non-config dot-folders, including tracked-file
+  absence: neither presence nor absence generates an upload or deletion.
+- S132 retains an executable expected failure for a new ordinary file omitted by the
+  host index with no previous ledger entry; it is not counted as covered.
 
 `plugin/tests/unit/syncCoverageMatrix.test.ts` checks all 154 unique identifiers,
 explicit verdicts, existing plugin test titles, and prevents a skipped or expected-failure
@@ -224,8 +223,8 @@ excused as hardware-only work:
    claiming a globally first original.
 4. S33: overlap two scopes over the same physical path; exchange and restart both ledgers,
    then close one connection and assert a single copy and a live surviving connection.
-5. S131/S132: resolve the two retained expected failures without changing publication
-   boundaries accidentally. The hidden-path scenario currently contradicts deliberate filtering.
+5. S132: discover new ordinary files omitted by the host index without a startup-wide
+   disk traversal. S131 is resolved: non-config dot-folders remain excluded by design.
 6. S40/S67/B8: exact first-contact obstacle visibility, unavailable group restart, and
    conflict-specific quota refusal with a visible pending reason and later recovery.
 7. S15/S54/S56/B2: reconcile scenario wording with existing read-only token support,
