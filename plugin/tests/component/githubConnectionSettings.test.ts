@@ -10,6 +10,10 @@ import { useVault } from '../helpers/testEnv'
 import Setting from '@/components/obsidian/Setting.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 import StatusDot from '@/components/obsidian/StatusDot.vue'
+import { connectionClient } from '@/github/GithubService'
+
+const request = vi.hoisted(() => vi.fn())
+vi.mock('@/github/transport', () => ({ singleHopRequest: request }))
 
 import { Menu } from 'obsidian'
 let openedMenu: Menu
@@ -40,6 +44,60 @@ beforeEach(() => {
 })
 
 describe('connection settings list', () => {
+  it.each(['token', 'footer'])(
+    'replaces an existing token through the %s save control',
+    async (control) => {
+      const app = useVault([])
+      const config = AbeleConfig.getInstance()
+      config.github = githubSettingsFrom({
+        enabled: true,
+        connections: [
+          {
+            id: 'sample',
+            name: 'Sample',
+            server: '',
+            keyId: 'sample-slot',
+            owners: [],
+            isDefault: true,
+          },
+        ],
+      })
+      app.secretStorage.setSecret('sample-slot', 'invented-old-token')
+      const view = mount(GithubSettings)
+      try {
+        view
+          .findAllComponents(Icon)
+          .find((i) => i.props('tooltip') === 'Edit connection')!
+          .vm.$emit('click')
+        await flushPromises()
+        const input = document.body.querySelector<HTMLInputElement>('input[type="password"]')!
+        input.value = 'invented-new-token'
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        await flushPromises()
+        const save =
+          control === 'token'
+            ? document.body.querySelector<HTMLElement>(
+                '[aria-label="Use this token when saving the connection"]'
+              )!
+            : document.body.querySelector<HTMLElement>('.abele-modal__footer button.mod-cta')!
+        expect(save).not.toBeNull()
+        save.click()
+        await flushPromises()
+        expect(app.secretStorage.getSecret('sample-slot')).toBe('invented-new-token')
+        expect(view.findComponent(Editor).exists()).toBe(false)
+        expect(config.saveSettings).toHaveBeenCalled()
+        request.mockResolvedValue({ status: 200, headers: {}, json: { login: 'sample-user' } })
+        await connectionClient('sample').get('/user')
+        expect(request).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            headers: expect.objectContaining({ Authorization: 'Bearer invented-new-token' }),
+          })
+        )
+      } finally {
+        view.unmount()
+      }
+    }
+  )
   it('uses the approved compact dot, pencil and action menu instead of stacked row buttons', () => {
     AbeleConfig.getInstance().github = githubSettingsFrom({
       enabled: true,

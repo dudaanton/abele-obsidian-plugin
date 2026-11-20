@@ -73,7 +73,7 @@
         :replace-placeholder="t('settings.GithubConnectionEditor.new_token.564f08bc')"
         :save-tooltip="t('settings.GithubConnectionEditor.use_this_token_when_saving.7cc96882')"
         :what="t('settings.GithubConnectionEditor.the_token.d22bffce')"
-        @save="token = token.trim()"
+        @save="save"
       >
         <template #actions>
           <Icon

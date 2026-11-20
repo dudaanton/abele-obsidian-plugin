@@ -34,6 +34,47 @@ describe.skipIf(!available)(
       closeDialogs()
     })
 
+    it('saves a replacement token with the token field control', () => {
+      const result = evalAsync<{ saved: boolean; closed: boolean }>(`(async () => {
+        ${PRELUDE}
+        const api = window.__abeleTest, config = api.AbeleConfig.getInstance()
+        const previous = config.github, persist = config.saveSettings
+        const store = api.secrets(), get = store.get, set = store.set
+        let credential = 'invented-connection-one'
+        try {
+          store.get = id => id === 'sample-replacement-slot' ? credential : get.call(store, id)
+          store.set = (id, value) => {
+            if (id !== 'sample-replacement-slot') throw Error('Unexpected credential slot')
+            credential = value
+          }
+          config.saveSettings = async () => {}
+          config.github = {...previous, enabled:true, connections:[{
+            id:'sample-replacement', name:'Sample connection', server:${JSON.stringify(server.origin)},
+            keyId:'sample-replacement-slot', owners:[], isDefault:true
+          }]}
+          config.version.value++
+          api.openDialog('github-connections')
+          const edit = await until(() => document.querySelector('[aria-label="Edit connection"]'))
+          if (!edit) throw Error('Edit control missing')
+          edit.click()
+          const input = await until(() => document.querySelector('input[type="password"]'))
+          if (!input) throw Error('Token input missing')
+          const modal = input.closest('.modal')
+          input.value = 'invented-connection-two'
+          input.dispatchEvent(new Event('input', {bubbles:true}))
+          const save = await until(() => modal.querySelector('[aria-label="Use this token when saving the connection"]'))
+          if (!save) throw Error('Token save control missing')
+          save.click()
+          await until(() => !modal.isConnected)
+          return {saved:credential === 'invented-connection-two', closed:!modal.isConnected}
+        } finally {
+          store.get = get; store.set = set
+          config.saveSettings = persist; config.github = previous; config.version.value++
+        }
+      })()`)
+      expect(result).toEqual({ saved: true, closed: true })
+    })
+
     it('keeps imported provider rows quiet and removable beside working GitHub controls', () => {
       const result = evalAsync<{
         unavailable: boolean
