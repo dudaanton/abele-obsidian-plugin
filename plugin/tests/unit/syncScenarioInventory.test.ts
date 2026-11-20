@@ -11,9 +11,8 @@ it('132 defers ordinary verification until the first sync settles', async () => 
   Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
   vi.spyOn(app.vault, 'getFiles').mockReturnValue([])
   const listing = vi.spyOn(app.vault.adapter, 'list')
-  let settled = false
   const fs = new ObsidianFileSystem(app as never, {
-    verificationReady: () => settled,
+    deferOrdinaryVerification: true,
   })
   const changed = vi.fn()
   const stop = fs.watch(changed)
@@ -22,10 +21,72 @@ it('132 defers ordinary verification until the first sync settles', async () => 
     await inspect()
     expect(listing).not.toHaveBeenCalledWith('Outside')
     expect(changed).not.toHaveBeenCalled()
-    settled = true
+    fs.completeInitialExchange()
     await inspect()
     expect(listing).toHaveBeenCalledWith('Outside')
     expect(changed.mock.calls.flatMap(([paths]) => paths)).toContain('Outside/new.md')
+  } finally {
+    stop()
+  }
+})
+
+it('132 discovers and uploads an omitted file while later exchanges span every poll', async () => {
+  const path = 'Outside/new.md'
+  const app = buildFakeVault([])
+  await app.vault.adapter.mkdir('Outside')
+  Object.assign(app.workspace, { layoutReady: true })
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
+  vi.spyOn(app.vault, 'getFiles').mockReturnValue([])
+  const state = new MemoryStateStore()
+  const fs = new ObsidianFileSystem(app as never, {
+    ledger: state,
+    deferOrdinaryVerification: true,
+  })
+  const changed = vi.fn()
+  const stop = fs.watch(changed)
+  const inspect = () => Reflect.get(fs, Symbol.for('abele.sync.inspect-polled-v1')).call(fs)
+  try {
+    await inspect()
+    expect(changed).not.toHaveBeenCalled()
+    await app.vault.adapter.writeBinary(path, new TextEncoder().encode('saved externally').buffer)
+    await inspect()
+    expect(changed).not.toHaveBeenCalled()
+    fs.completeInitialExchange()
+    // The next exchanges are busy across every poll; successful startup is durable.
+    for (let tick = 0; tick < 3; tick++) await inspect()
+    expect(changed.mock.calls.flatMap(([paths]) => paths)).toContain(path)
+    const found = await scan(fs, state, { excluded: () => false })
+    expect(found.ops).toEqual([expect.objectContaining({ op: 'create', path })])
+    const uploaded: Uint8Array[] = []
+    await push(
+      {
+        hasBlob: async () => false,
+        putBlob: async (_sha: string, bytes: Uint8Array) => {
+          uploaded.push(bytes)
+        },
+        commitRaw: async (ops: CommitOp[]) => ({
+          replayed: false,
+          body: {
+            head_seq: 1,
+            results: ops.map((op) => ({
+              status: 'applied',
+              seq: 1,
+              file_id: 'sample-file',
+              version_id: 'sample-version',
+              path: 'path' in op ? op.path : path,
+              sha: 'sha' in op ? op.sha : null,
+              size: 'size' in op ? op.size : 0,
+              mtime: 'mtime' in op ? op.mtime : 0,
+            })),
+          },
+        }),
+      } as never,
+      fs,
+      state,
+      found,
+      { expected: new ExpectedWrites() }
+    )
+    expect(uploaded).toEqual([new TextEncoder().encode('saved externally')])
   } finally {
     stop()
   }

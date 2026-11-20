@@ -957,8 +957,7 @@ export class TokenEngines {
         ledger: physicalLedger,
         preserveEmptyDirectories: true,
         pollMs: pollMsOf(this.deps),
-        verificationReady: () =>
-          runtime?.engine.status.state === 'idle' && !!runtime.engine.status.lastSyncAt,
+        deferOrdinaryVerification: true,
         onEngineWrite: (path) => {
           own.noteWrite(path)
           runtime?.written(path)
@@ -1393,7 +1392,10 @@ export class TokenEngines {
             if (runtime) this.progressChanged(record.id, runtime.statusWithQuiet())
           },
           changed: (status, report) => {
-            if (report) own.settle()
+            if (report) {
+              ordinary.completeInitialExchange()
+              own.settle()
+            }
             this.progressChanged(record.id, status, report)
           },
           failed: (error) => {

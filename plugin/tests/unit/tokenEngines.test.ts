@@ -1829,6 +1829,20 @@ function inspectionFixture(
   }
 }
 
+it('enables ordinary verification from the first successful exchange report', async () => {
+  const f = inspectionFixture()
+  const completed = vi.spyOn(ObsidianFileSystem.prototype, 'completeInitialExchange')
+  try {
+    f.release()
+    await f.ui.connect(f.encoded)
+    await f.ui.sync(f.registry.records()[0].id)
+    expect(completed).toHaveBeenCalled()
+  } finally {
+    completed.mockRestore()
+    await f.host.close()
+  }
+})
+
 it('stops a locally renamed folder connection before any further exchange', async () => {
   const { app, registry, ui, host, transport, release, encoded, makeHost } = inspectionFixture(
     false,
