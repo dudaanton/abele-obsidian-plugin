@@ -57,7 +57,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 | S30 | A fast server reply never erases an edit still owed to a slow connection. | `plugin/tests/unit/tokenEngineRuntime.test.ts: 30 preserves an edit owed to a slow connection while a fast reply replaces the shared file (%s response)` | covered | Two production runtimes share one filesystem and coordinator. Delayed and lost commit replies preserve both successive digests at the slow server, replay once after reopening both ledgers, and leave no journals. |
 | S31 | Two servers + two devices forwarding one edit in a loop: exchange stops, no new versions/copies. | `abele-sync/packages/core/tests/acceptance/engineV2.test.ts: 012/027/028/031 production engines converge three devices through two servers and remain quiescent after restart` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S32 | Nested/overlapping shares: content is creatable and editable; overlap does not block writes. | `abele-sync/packages/server/tests/integration/v2Sync.test.ts: 032/054/055/056 stable shared folder follows owner rename, moves descendants atomically, deleting affects no sibling` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
-| S33 | One file reachable through several connections to one server → one local file, no copies from re-delivery. | `plugin/tests/unit/connectionSets.test.ts: elects one uploader using live coverage and stable order, excluding paused and detached items` | partly | Uploader election is tested; no overlapping-connection device round trip asserts one local copy. |
+| S33 | Overlapping connections to one server keep a single local file and avoid duplicate publication. | `plugin/tests/unit/tokenEngineRuntime.test.ts: 33 overlapping tokens reuse one file and one publication across restart and disconnect` | covered | Distinct root/folder tokens use two production runtimes, one shared filesystem and coordinator. The test asserts one content download, one publication per edit, both ledger reopenings, one physical path, and continued editing after the overlapping connection disconnects. |
 | S34 | Closing one of overlapping connections keeps access via the others and the local file. | `plugin/tests/e2e/syncDevices.e2e.test.ts: disconnect is local and leaves other connections and files intact` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S35 | Empty local vault + filled server → files arrive at the server's paths. | `plugin/tests/integration/syncShutdownRecovery.test.ts: closes during %s and reopens the ledger without lost or duplicated work`<br>`plugin/tests/e2e/sync.e2e.test.ts: edits renames moves deletes and empty folders travel both ways`<br>`plugin/tests/integration/syncJoin.test.ts: filled server reaches the empty vault and a restart sends no deletes before indexing` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S36 | Filled local vault + empty "/" → ordinary local files are uploaded with their paths. | `plugin/tests/unit/tokenEngines.test.ts: resumes a folder upload after a multipart interruption with already acknowledged siblings`<br>`plugin/tests/e2e/syncFirstFolder.e2e.test.ts: first folder connection pulls a multi-page notes folder into a large vault and keeps exchanging`<br>`plugin/tests/e2e/syncPhoneFirstPull.e2e.test.ts: first-pulls a folder of 1000 small notes on the phone within three minutes`<br>`plugin/tests/integration/syncJoin.test.ts: filled local vault uploads ordinary files and keeps their paths on an empty root` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
@@ -181,7 +181,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 
 ## Totals
 
-154 requirements: 121 covered, 33 partly, 0 missing.
+154 requirements: 122 covered, 32 partly, 0 missing.
 
 Zero entirely missing rows does **not** close the coverage gate: every partly covered
 row still has an unproved facet. The matrix records assertions present in source;
@@ -227,8 +227,9 @@ excused as hardware-only work:
 3. S29/S97/B7: independently resolve concurrent changes at both servers before bridging;
    assert recoverable variants and bounded copies. Ordering policy must be explicit before
    claiming a globally first original.
-4. S33: overlap two scopes over the same physical path; exchange and restart both ledgers,
-   then close one connection and assert a single copy and a live surviving connection.
+4. S33 is resolved in the focused tier: distinct overlapping tokens share one physical
+   file, transfer existing bytes once, publish each edit once, reopen both ledgers and
+   keep exchanging after the other connection disconnects.
 5. S131 and S132 are resolved in the focused tier: hidden-folder exclusion is pinned,
    and omitted ordinary files are found through bounded periodic verification.
 6. S40/S67/B8: exact first-contact obstacle visibility, unavailable group restart, and

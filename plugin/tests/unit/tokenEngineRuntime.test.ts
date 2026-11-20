@@ -3992,6 +3992,116 @@ it.each(['bin', 'canvas'])(
   }
 )
 
+it('33 overlapping tokens reuse one file and one publication across restart and disconnect', async () => {
+  const path = 'Shared/sample.md'
+  const first = await server(path, 'base bytes')
+  const overlapScope = { ...scope, id: 'shared-root', path: 'Shared' }
+  const second = await server(path, 'base bytes', first.address, overlapScope)
+  const fs = new MemoryFileSystem()
+  Object.assign(fs, { watch: () => () => {} })
+  const locks = new PathCoordinator(),
+    firstState = new MemoryStateStore(),
+    secondState = new MemoryStateStore()
+  let current = first.item,
+    bytes = first.bytes,
+    cursor = 1,
+    downloads = 0
+  const commits: object[] = []
+  for (const wire of [first, second]) {
+    const send = wire.fetch.getMockImplementation()!
+    wire.fetch.mockImplementation(async (input, init) => {
+      const url = new URL(String(input))
+      if (wire === second && url.pathname === '/v2/connection') {
+        const response = await send(input, init)
+        return Response.json({ ...(await response.json()), token_id: 'sample-overlapping-token' })
+      }
+      if (url.pathname === '/v2/manifest')
+        return Response.json({ items: [current], cursor, next: null })
+      if (url.pathname === '/v2/changes')
+        return Response.json({
+          cursor,
+          next: null,
+          items:
+            Number(url.searchParams.get('since')) < cursor
+              ? [
+                  {
+                    type: 'content',
+                    item: current,
+                    file_id: current.file_id,
+                    path,
+                    cursor,
+                    prev_path: null,
+                    at: '2025-01-01T00:00:00Z',
+                  },
+                ]
+              : [],
+        })
+      if (url.pathname.endsWith('/content')) {
+        downloads++
+        return new Response(bytes)
+      }
+      if (url.pathname === '/v2/commit') {
+        const { ops } = JSON.parse(String(init?.body))
+        expect(ops).toEqual([expect.objectContaining({ op: 'modify', file_id: current.file_id })])
+        commits.push(...ops)
+        const op = ops[0]
+        current = {
+          ...current,
+          sha: op.sha,
+          size: op.size,
+          mtime: op.mtime,
+          version_id: `version-${++cursor}`,
+        }
+        return Response.json({ cursor, results: [{ status: 'applied', seq: cursor, ...current }] })
+      }
+      return send(input, init)
+    })
+  }
+  const firstOptions = { id: 'sample-root-connection' }
+  const secondOptions = {
+    id: 'sample-overlapping-connection',
+    encoded: encodeAccessToken({
+      v: 1,
+      address: second.address,
+      key: 'b'.repeat(43),
+      scope: overlapScope,
+    }),
+  }
+  let a = runtime(first, fs, firstState, locks, null, firstOptions)
+  let b = runtime(second, fs, secondState, locks, null, secondOptions)
+  try {
+    await a.runtime.sync()
+    await b.runtime.sync()
+    expect(downloads).toBe(1)
+    expect([...fs.snapshot().keys()]).toEqual([path])
+    bytes = new TextEncoder().encode('new shared edit')
+    await fs.writeAtomic(path, bytes, 2000)
+    await a.runtime.sync()
+    await b.runtime.sync()
+    expect(commits).toHaveLength(1)
+    expect((await firstState.get(path))?.sha).toBe(await sha256(bytes))
+    expect((await secondState.get(path))?.sha).toBe(await sha256(bytes))
+    await a.runtime.close()
+    await b.runtime.close()
+    a = runtime(first, fs, firstState, locks, null, firstOptions)
+    b = runtime(second, fs, secondState, locks, null, secondOptions)
+    await a.runtime.sync()
+    await b.runtime.sync()
+    await b.runtime.disconnect()
+    bytes = new TextEncoder().encode('surviving connection edit')
+    await fs.writeAtomic(path, bytes, 3000)
+    await a.runtime.sync()
+    expect(commits).toHaveLength(2)
+    expect(downloads).toBe(1)
+    expect([...fs.snapshot().keys()]).toEqual([path])
+    expect(await fs.read(path)).toEqual(bytes)
+    expect((await firstState.get(path))?.sha).toBe(await sha256(bytes))
+  } finally {
+    await a.runtime.close()
+    await b.runtime.close()
+  }
+})
+
 async function boundaryMove(extension: string) {
   const from = `Shared/sample.${extension}`,
     to = `Private/sample.${extension}`
