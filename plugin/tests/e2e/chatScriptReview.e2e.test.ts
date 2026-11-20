@@ -53,7 +53,7 @@ for (const mobile of [false, true]) {
         const context = { session, scope: session.scopeResolver, app }
         for (let revision = 2; revision <= 4; revision++) {
           await tools.find(t => t.name === 'read').execute('sample-read', { path: folder + '/sample.js' }, undefined, context)
-          await tools.find(t => t.name === 'write').execute('sample-write', { path: folder + '/sample.js', content: '// @name Sample script with a descriptive name\n' + Array.from({ length: 180 }, (_, i) => '// Synthetic line ' + i).join('\n') + '\nreturn ' + revision }, undefined, context)
+          await tools.find(t => t.name === 'write').execute('sample-write', { path: folder + '/sample.js', content: '// @name Sample script with a descriptive name\n' + Array.from({ length: 200 }, (_, i) => 'const sample' + i + ' = ' + i).join('\n') + '\nreturn ' + revision }, undefined, context)
         }
         if (!(await until(() => document.querySelector('.abele-chat-script-review'), 12000))) throw new Error('Review line missing: ' + JSON.stringify({ chat: session.scriptReviewChatId, active: service.activeSession.value?.scriptReviewChatId, waiting: T.ScriptService.getInstance().waitingScripts().map(s => [s.path, s.hash]), stored: app.loadLocalStorage('abele-agent-script-writes'), roots: document.querySelectorAll('.abele-chat').length }))
         const line = document.querySelector('.abele-chat-script-review')
@@ -113,15 +113,19 @@ for (const mobile of [false, true]) {
               }
               const content = modal.querySelector('.cm-content')
               const view = content?.cmView?.rootView?.view
+              const sizer = modal.querySelector('.cm-sizer')
               throw new Error('Long review code does not scroll: ' + JSON.stringify({
+                doc: view?.state.doc.lines ?? null,
+                content: content ? [content.offsetHeight, content.scrollHeight] : null,
+                sizer: sizer ? [sizer.offsetHeight, getComputedStyle(sizer).height] : null,
+                scroller: [scroller.clientHeight, scroller.scrollHeight, scroller.scrollTop],
+                rendered: content?.querySelectorAll('.cm-line').length,
+                indexed: scripts.get(folder + '/sample.js')?.source.split('\n').length,
+                path: modal.querySelector('.abele-script-review__path')?.textContent,
                 ancestors,
                 modalHeight: modal.getBoundingClientRect().height,
                 viewportHeight: innerHeight,
                 visualViewportHeight: visualViewport?.height,
-                documentLineCount: view?.state.doc.lines ?? null,
-                renderedLineCount: content?.querySelectorAll('.cm-line').length,
-                indexedLineCount: scripts.get(folder + '/sample.js')?.source.split('\n').length,
-                reviewedPath: modal.querySelector('.abele-script-review__path')?.textContent,
               }))
             }
             if (!modal.querySelector('.cm-content').textContent.includes('return 4')) throw new Error('Latest revision missing at end of code')
