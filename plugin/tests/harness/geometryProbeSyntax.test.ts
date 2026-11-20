@@ -15,6 +15,7 @@ import { layoutFixtureScript } from '../e2e/helpers/layoutFixtureScript'
 it.each([
   ['dialogRings', 'script'],
   ['phoneLayout', 'probeScript'],
+  ['syncInspectionCaptures', ''],
 ])('parses the emitted %s browser geometry script', (file, variable) => {
   const source = readFileSync(`tests/e2e/${file}.e2e.test.ts`, 'utf8')
   const tree = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true)
@@ -22,6 +23,8 @@ it.each([
   const visit = (node: ts.Node) => {
     if (ts.isVariableDeclaration(node) && node.name.getText(tree) === variable)
       template = node.initializer!.getText(tree)
+    if (!variable && ts.isCallExpression(node) && node.expression.getText(tree) === 'evalLong')
+      template = node.arguments[0].getText(tree)
     ts.forEachChild(node, visit)
   }
   visit(tree)

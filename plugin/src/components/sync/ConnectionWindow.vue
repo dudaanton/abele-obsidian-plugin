@@ -426,8 +426,10 @@ function showRules(): void {
   overflow-wrap: anywhere;
 }
 
-.modal.abele-sync-connection .abele-modal__body {
+.modal.abele-modal.abele-sync-connection .abele-modal__body {
   scrollbar-gutter: stable;
+  // Overlay scrollbars do not reserve a gutter. Keep their track beyond the row's 8px gap.
+  padding-right: calc(var(--size-4-2) + var(--size-4-3));
 }
 .abele-sync-window {
   .abele-section:first-of-type {

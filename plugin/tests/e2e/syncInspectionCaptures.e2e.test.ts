@@ -66,7 +66,32 @@ describe.skipIf(!available)('sync inspection desktop captures', () => {
           const body=sheet?.querySelector('.abele-modal__body')
           const buttons=[...footer.querySelectorAll('button')].map(button=>button.getBoundingClientRect())
           const separated=buttons.length===3&&buttons[1].left-buttons[0].right>32
-          const gutter=body&&getComputedStyle(body).scrollbarGutter==='stable'
+          const clearance=[]
+          if(name==='sync-sections-2') {
+            const groups=[
+              ['clear','.abele-sections__all'],
+              ['count','.abele-sections__tree .tree-item-flair'],
+              ['key','.abele-sections__tree [data-keys]'],
+            ]
+            for(const [kind,selector] of groups) {
+              const targets=[...sheet.querySelectorAll(selector)].filter(el=>el.getBoundingClientRect().width>0)
+              if(!targets.length) throw new Error('Missing clearance targets: '+kind)
+              for(const target of targets) {
+                let scroller=target.parentElement
+                while(scroller&&!( /auto|scroll/.test(getComputedStyle(scroller).overflowY)&&scroller.scrollHeight>scroller.clientHeight+1)) scroller=scroller.parentElement
+                if(!scroller) throw new Error('No overflowing scroller for '+kind)
+                const style=getComputedStyle(scroller), box=scroller.getBoundingClientRect()
+                const borderLeft=parseFloat(style.borderLeftWidth)||0, borderRight=parseFloat(style.borderRightWidth)||0
+                const nativeWidth=Math.max(0,scroller.offsetWidth-scroller.clientWidth-borderLeft-borderRight)
+                // Overlay scrollbars occupy no layout width, but still cover the row's end.
+                const scrollbarWidth=nativeWidth||12
+                const edge=box.right-borderRight-scrollbarWidth
+                const right=target.getBoundingClientRect().right
+                const label=target.querySelector('.abele-obsidian-button__label')
+                clearance.push({kind,scroller:scroller.className,right,edge,gap:edge-right,unclipped:!label||label.scrollWidth<=label.clientWidth+1})
+              }
+            }
+          }
           const pinned = bounds && bounds.height>0 && bounds.bottom<=innerHeight+1 && bounds.top>=0
           if(body) body.scrollTop=body.scrollHeight
           await wait(50)
@@ -83,7 +108,7 @@ describe.skipIf(!available)('sync inspection desktop captures', () => {
           const png=image.resize({width:1200,height:900}).toPNG({scaleFactor:1})
           const output={width:png.readUInt32BE(16),height:png.readUInt32BE(20)}
           fs.writeFileSync(dir+'/dialog-'+name+'.png',png)
-          report.push({name,width:innerWidth,height:innerHeight,imageWidth:output.width,imageHeight:output.height,mobile:!!app.isMobile,phoneClasses:phoneClasses()||['is-mobile','is-phone','is-tablet'].some(c=>modal.classList.contains(c)),centered,pinned:!!pinned,stays,separated,gutter:!!gutter,compactHistory})
+          report.push({name,width:innerWidth,height:innerHeight,imageWidth:output.width,imageHeight:output.height,mobile:!!app.isMobile,phoneClasses:phoneClasses()||['is-mobile','is-phone','is-tablet'].some(c=>modal.classList.contains(c)),centered,pinned:!!pinned,stays,separated,clearance,compactHistory})
         }
       } finally { await close() }
       return JSON.stringify(report)
@@ -95,7 +120,14 @@ describe.skipIf(!available)('sync inspection desktop captures', () => {
           pinned: boolean
           stays: boolean
           separated: boolean
-          gutter: boolean
+          clearance: {
+            kind: string
+            scroller: string
+            right: number
+            edge: number
+            gap: number
+            unclipped: boolean
+          }[]
           compactHistory: boolean
         })[]
         expect(report).toHaveLength(19)
@@ -104,7 +136,15 @@ describe.skipIf(!available)('sync inspection desktop captures', () => {
           expect(capture.pinned, capture.name).toBe(true)
           expect(capture.stays, capture.name).toBe(true)
           expect(capture.separated, capture.name).toBe(true)
-          expect(capture.gutter, capture.name).toBe(true)
+          if (capture.name === 'sync-sections-2') {
+            expect(new Set(capture.clearance.map((item) => item.kind))).toEqual(
+              new Set(['clear', 'count', 'key'])
+            )
+            for (const item of capture.clearance) {
+              expect(item.gap, JSON.stringify(item)).toBeGreaterThanOrEqual(8)
+              expect(item.unclipped, JSON.stringify(item)).toBe(true)
+            }
+          }
           expect(capture.compactHistory, capture.name).toBe(true)
         }
       }
