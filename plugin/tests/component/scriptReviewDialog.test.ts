@@ -4,6 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EditorView } from '@codemirror/view'
+import { readFileSync } from 'node:fs'
 import { closeComponentDialogs } from '@/modal/componentDialog'
 import { ShellModal } from '@/modal/ShellModal'
 import { reviewScript, type ReviewRequest } from '@/scripting/reviewScript'
@@ -40,6 +41,30 @@ const ask = (request: ReviewRequest, signal?: AbortSignal) =>
   reviewScript(app as never, request, signal)
 
 describe('reviewScript', () => {
+  it('bounds the editor independently of its content so its own scroller can overflow', async () => {
+    const style = document.createElement('style')
+    style.textContent = readFileSync('src/styles.css', 'utf8')
+    document.body.append(style)
+    const answer = ask({
+      script: {
+        ...script,
+        source: Array.from({ length: 180 }, (_, i) => `// Line ${i}`).join('\n'),
+      },
+    })
+    const code = dialog()!.querySelector<HTMLElement>('.abele-script-review__code')!
+    const editor = code.querySelector<HTMLElement>('.cm-editor')!
+    const scroller = code.querySelector<HTMLElement>('.cm-scroller')!
+    // A percentage height in an auto-sized flex item can resolve to the code's full
+    // height. Keep the editor out of intrinsic sizing and bound it to the review area.
+    expect(getComputedStyle(code).position).toBe('relative')
+    expect(getComputedStyle(editor).position).toBe('absolute')
+    expect(getComputedStyle(editor).getPropertyValue('inset')).toBe('0')
+    expect(getComputedStyle(scroller).minHeight).toBe('0')
+    expect(getComputedStyle(scroller).overflow).toBe('auto')
+    press('Not now')
+    await answer
+  })
+
   it('supersedes intermediate reviews without approving their bytes', async () => {
     const first = ask({ script })
     const second = ask({ script: { ...script, hash: 'second', source: 'return 2' } })

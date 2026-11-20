@@ -323,7 +323,8 @@ body.is-mobile .abele-footnote-ref-link {
 
 /* The code of a script waiting to be confirmed (`reviewScript.ts`), read-only, in the theme's own font. */
 .abele-script-review__code {
-  flex: 1 1 auto;
+  position: relative;
+  flex: 1 1 0;
   min-height: 0;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
@@ -333,10 +334,15 @@ body.is-mobile .abele-footnote-ref-link {
 }
 
 .abele-script-review__code .cm-editor {
-  height: 100%;
+  /* Bound the editor without a percentage height in an intrinsically sized flex item.
+     CodeMirror's base theme sets position: relative !important. */
+  position: absolute !important;
+  inset: 0;
 }
 
 .abele-script-review__code .cm-scroller {
+  flex: 1 1 0;
+  min-height: 0;
   overflow: auto;
 }
 
