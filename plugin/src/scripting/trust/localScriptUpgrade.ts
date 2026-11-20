@@ -2,16 +2,17 @@ import type { App } from 'obsidian'
 import { sha256 } from '@abele/sync-sdk/core'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { TRUST_KEY } from '../ScriptTrust'
-import { trustStateFrom, verdictOf } from '../trustState'
+import { trustStateFrom, hasExplicitReceipt } from '../trustState'
 import { assertNoScriptContextHold, SCRIPT_CONTEXT_HOLD_FILE } from './scriptContextHold'
 import { SCRIPT_SENTINEL, SCRIPT_TRUST_KEY } from './scriptTrustStorage'
 import { agentScriptWaiting } from './agentScriptWrites'
 
-/** Exact versions already allowed here before the first managed sync. Never a vault file. */
+/** Explicit local receipts before the first managed sync. Never a vault file. */
 export const LOCAL_SCRIPT_UPGRADE_KEY = 'abele-script-local-upgrade'
 export interface LocalScriptVersion {
   path: string
   sha: string
+  explicit: true
 }
 
 export function localScriptVersions(app: App): LocalScriptVersion[] {
@@ -19,15 +20,19 @@ export function localScriptVersions(app: App): LocalScriptVersion[] {
   if (!Array.isArray(raw)) return []
   return raw.filter(
     (v): v is LocalScriptVersion =>
-      !!v && typeof v.path === 'string' && typeof v.sha === 'string' && /^[a-f0-9]{64}$/.test(v.sha)
+      !!v &&
+      v.explicit === true &&
+      typeof v.path === 'string' &&
+      typeof v.sha === 'string' &&
+      /^[a-f0-9]{64}$/.test(v.sha)
   )
 }
 
-/** Exact versions explicitly authored here or allowed as positively unmanaged offline code. */
+/** Exact versions explicitly authored/reviewed here, or already approved in a local managed store. */
 export function rememberLocalScriptVersion(app: App, path: string, sha: string): void {
   const current = localScriptVersions(app)
   if (current.some((v) => v.path === path && v.sha === sha)) return
-  const versions = [...current.filter((v) => v.path !== path), { path, sha }]
+  const versions = [...current.filter((v) => v.path !== path), { path, sha, explicit: true }]
   app.saveLocalStorage(LOCAL_SCRIPT_UPGRADE_KEY, versions)
   if (JSON.stringify(app.loadLocalStorage(LOCAL_SCRIPT_UPGRADE_KEY)) !== JSON.stringify(versions))
     throw new Error('Local script approval was not persisted')
@@ -52,10 +57,9 @@ export async function preserveLocalScriptVersions(app: App): Promise<void> {
     for (const file of listing.files) {
       if (!file.endsWith('.js')) continue
       const sha = await sha256(new Uint8Array(await app.vault.adapter.readBinary(file)))
-      // When checking was off these local versions were executable already. When on,
-      // only the exact approved 1.x versions survive; unknown bytes are not grandfathered.
-      if (verdictOf(state, file, sha) === 'confirmed' && !agentScriptWaiting(app, file, sha))
-        versions.push({ path: file, sha })
+      // Being executable under optional policy is not proof of explicit consent.
+      if (hasExplicitReceipt(state, sha) && !agentScriptWaiting(app, file, sha))
+        versions.push({ path: file, sha, explicit: true })
     }
   }
   if (folder && (await app.vault.adapter.exists(folder))) await visit(folder)

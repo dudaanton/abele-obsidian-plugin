@@ -34,6 +34,8 @@ export interface TrustState {
   declined: boolean
   /** The last version vouched for, by path. */
   scripts: Record<string, TrustRecord>
+  /** Exact full-content hashes explicitly reviewed or authored here, never automatic baselines. */
+  explicitHashes?: string[]
   /** All explicitly confirmed template versions; script trust does not use this history. */
   templateHashes?: string[]
   /** Versions a source refused outright; see `ScriptSourcePolicy`. */
@@ -75,6 +77,7 @@ export function trustStateFrom(stored: unknown): TrustState {
     armed?: unknown
     declined?: unknown
     scripts?: unknown
+    explicitHashes?: unknown
     templateHashes?: unknown
     refused?: unknown
   }
@@ -98,6 +101,13 @@ export function trustStateFrom(stored: unknown): TrustState {
     declined: !armed && raw.declined === true,
     scripts,
     refused,
+    ...(Array.isArray(raw.explicitHashes)
+      ? {
+          explicitHashes: raw.explicitHashes.filter(
+            (h): h is string => typeof h === 'string' && !!h
+          ),
+        }
+      : {}),
     ...(Array.isArray(raw.templateHashes)
       ? {
           templateHashes: raw.templateHashes.filter(
@@ -115,6 +125,11 @@ function vouched(state: TrustState, hash: string): boolean {
   return Object.values(state.scripts).some((r) => r.hash === hash)
 }
 
+/** Policy baselines and unmarked older records do not prove an owner decision. */
+export function hasExplicitReceipt(state: TrustState, hash: string): boolean {
+  return !!state.explicitHashes?.includes(hash) && !state.refused.includes(hash)
+}
+
 /** Whether the version `hash` of the script at `path` may run on this device. */
 export function verdictOf(state: TrustState, path: string, hash: string | undefined): TrustVerdict {
   if (!state.armed) return 'confirmed'
@@ -128,7 +143,7 @@ export function verdictOf(state: TrustState, path: string, hash: string | undefi
 export function armedWith(state: TrustState, files: TrustedFile[]): TrustState {
   const scripts = { ...state.scripts }
   for (const file of files) scripts[file.path] = record(file.hash, file.text)
-  return { armed: true, declined: false, scripts, refused: state.refused }
+  return { ...state, armed: true, declined: false, scripts, refused: state.refused }
 }
 
 /**
@@ -149,12 +164,14 @@ export function withConfirmed(
   state: TrustState,
   path: string,
   hash: string,
-  text: string
+  text: string,
+  explicit = true
 ): TrustState {
   if (!state.armed) return state
   return {
     ...state,
     scripts: { ...state.scripts, [path]: record(hash, text) },
+    ...(explicit ? { explicitHashes: [...new Set([...(state.explicitHashes ?? []), hash])] } : {}),
     refused: state.refused.filter((h) => h !== hash),
   }
 }
@@ -168,7 +185,8 @@ export function withArrival(
   policy: ScriptSourcePolicy
 ): TrustState {
   if (!state.armed) return state
-  if (policy === 'accept') return withConfirmed(state, path, hash, text)
+  // A source policy is not an explicit review or local authoring receipt.
+  if (policy === 'accept') return withConfirmed(state, path, hash, text, false)
   if (policy === 'refuse') {
     if (state.refused.includes(hash)) return state
     return { ...state, refused: [...state.refused, hash].slice(-MAX_REFUSED) }

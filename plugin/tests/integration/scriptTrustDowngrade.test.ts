@@ -10,7 +10,7 @@ import {
   preserveLocalScriptVersions,
   LOCAL_SCRIPT_UPGRADE_KEY,
 } from '@/scripting/trust/localScriptUpgrade'
-import { TRUST_KEY } from '@/scripting/ScriptTrust'
+import { ScriptTrust, TRUST_KEY } from '@/scripting/ScriptTrust'
 import { CONNECTION_KEY, emptyConnection } from '@/sync/connection'
 import { SCOPED_CONNECTION_KEY } from '@/sync/scoped/scopedJoin'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -29,6 +29,7 @@ let app: App
 let factory: IDBFactory
 beforeEach(async () => {
   app = useVault([{ path, content: source }]) as unknown as App
+  ScriptTrust.reset()
   factory = new IDBFactory()
   vi.stubGlobal('indexedDB', factory)
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, scriptsFolder: 'Scripts' }
@@ -41,12 +42,13 @@ beforeEach(async () => {
   app.saveLocalStorage(TRUST_KEY, { armed: false, declined: true, scripts: {}, refused: [] })
 })
 afterEach(() => {
+  ScriptTrust.reset()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
 describe('returning from a managed release to a disconnected local runtime', () => {
-  it('runs a local untracked script under the retained older checking-off policy, without a review dialog', async () => {
+  it('runs untracked offline code without promoting its policy to reconnect approval', async () => {
     await preserveLocalScriptVersions(app)
     expect(app.loadLocalStorage(LOCAL_SCRIPT_UPGRADE_KEY)).toBeNull()
     const confirm = vi.fn(async () => true)
@@ -55,7 +57,7 @@ describe('returning from a managed release to a disconnected local runtime', () 
     const trust = await scriptTrustFor(app, factory)
     expect(await trust!.provenance.hasSourceEvidence(path)).toBe(false)
     trust!.store.close()
-    // The exact version that already ran locally keeps that decision on a later reconnect.
+    // A local policy verdict is not explicit consent for managed execution after reconnect.
     setScriptConnection(app, { ...binding, principal: 'sample-reconnected-device' })
     const next = await activateScriptProvenance(
       app,
@@ -64,6 +66,9 @@ describe('returning from a managed release to a disconnected local runtime', () 
     )
     await next.provenance.record(path, 'sample-new-file')
     next.store.close()
+    await expect(scriptForExecution(app, path)).rejects.toThrow(/approval/)
+    await expect(scriptForExecution(app, path, confirm)).resolves.toMatchObject({ path })
+    expect(confirm).toHaveBeenCalledOnce()
     await expect(scriptForExecution(app, path)).resolves.toMatchObject({ path })
   })
   it('honors an exact older approval when checking is on', async () => {
@@ -84,6 +89,7 @@ describe('returning from a managed release to a disconnected local runtime', () 
       armed: true,
       declined: false,
       scripts: { [path]: { hash, text: source } },
+      explicitHashes: [hash],
       refused: [],
     })
     const trust = await scriptTrustFor(app, factory)

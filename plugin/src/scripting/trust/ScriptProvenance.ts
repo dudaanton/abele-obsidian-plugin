@@ -147,13 +147,13 @@ export class ScriptProvenance {
       if (previous?.retiredIds?.includes(fileId) || (await this.retired(path)).includes(fileId))
         return
       await this.save(path, { binding: this.binding, fileId })
-      const sha = await this.meta.getMeta(`script-pre-sync:${encodeURIComponent(path)}`)
+      const sha = await this.meta.getMeta(`script-pre-sync-explicit:${encodeURIComponent(path)}`)
       if (
         typeof sha === 'string' &&
         /^[a-f0-9]{64}$/.test(sha) &&
         this.binding.facet === 'personal'
       ) {
-        // A pre-sync LOCAL version is already an execution decision on this device.
+        // Only an explicit pre-sync receipt is an execution decision on this device.
         // Carry only those exact bytes into the newly enrolled identity, never its latest bytes.
         const key = this.approvalKey({ binding: this.binding, fileId }, sha)
         await this.meta.setMeta(key, 'approved')
@@ -163,10 +163,10 @@ export class ScriptProvenance {
     })
   }
 
-  /** Bootstrap data comes only from the device-local snapshot taken before the first sync. */
+  /** Bootstrap data comes only from explicit device-local authoring/review receipts. */
   async preserveLocalVersion(path: string, sha: string): Promise<void> {
     if (this.binding.facet !== 'personal' || !/^[a-f0-9]{64}$/.test(sha)) return
-    const key = `script-pre-sync:${encodeURIComponent(path)}`
+    const key = `script-pre-sync-explicit:${encodeURIComponent(path)}`
     await this.meta.setMeta(key, sha)
     if ((await this.meta.getMeta(key)) !== sha)
       throw new Error('Local script upgrade approval was not persisted')

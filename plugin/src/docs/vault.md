@@ -526,9 +526,18 @@ operation; disabling foreign-script checking does not clear these holds.
 
 Explicit reviews retain the last approved source in the existing `abele-script-trust` path
 record even when foreign-script checking is off, so later reviews can show the full change
-since that decision. The record keeps its unarmed policy flag and is not a managed approval
-receipt. A review supplies consent to the managed gate only for the same full hash and source;
-the gate still checks disk bytes, identity and connection before persisting approval.
+since that decision. `explicitHashes` in this device-local state records only full-content
+hashes accepted in review or authored through an explicit local editor/script API. It survives
+optional checking being switched off. Automatic arming and source acceptance policies never
+add these receipts, and automatic baselines are not shown as previously reviewed source.
+Unmarked older records remain optional policy baselines; they cannot bootstrap managed
+approval. Existing managed approvals remain valid. Otherwise the exact bytes require one
+explicit review. The pre-sync `abele-script-local-upgrade` entries likewise require
+`explicit: true`; running untracked code under optional local policy does not create one.
+Provenance stores these hints under `script-pre-sync-explicit:`; older unmarked
+`script-pre-sync:` hints cannot approve a newly received file identity.
+An explicit receipt or accepted review supplies consent only for the same full content hash;
+the managed gate still checks disk bytes, identity and connection before persisting approval.
 
 ## Selection-script menu settings
 

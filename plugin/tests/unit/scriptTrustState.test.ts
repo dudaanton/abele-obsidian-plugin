@@ -14,11 +14,38 @@ import {
   verdictOf,
   withArrival,
   withConfirmed,
+  hasExplicitReceipt,
 } from '@/scripting/trustState'
 
 const file = (path: string, hash: string, text = `text of ${hash}`) => ({ path, hash, text })
 
 describe('script trust state', () => {
+  it('distinguishes automatic and source-policy baselines from explicit receipts', () => {
+    let state = armedWith(emptyTrust(), [file('S/a.js', 'baseline')])
+    expect(hasExplicitReceipt(state, 'baseline')).toBe(false)
+    state = withArrival(state, 'S/a.js', 'accepted-source', 'source', 'accept')
+    expect(hasExplicitReceipt(state, 'accepted-source')).toBe(false)
+    state = withConfirmed(state, 'S/a.js', 'reviewed', 'reviewed source')
+    expect(hasExplicitReceipt(state, 'reviewed')).toBe(true)
+    // Refreshing or renaming the index must not turn baselines into receipts or lose reviews.
+    state = armedWith(reconciled(state, []), [file('S/copy.js', 'baseline')])
+    state = trustStateFrom(JSON.parse(JSON.stringify(state)))
+    expect(hasExplicitReceipt(state, 'baseline')).toBe(false)
+    expect(hasExplicitReceipt(state, 'reviewed')).toBe(true)
+    state = withArrival(state, 'S/copy.js', 'reviewed', 'reviewed source', 'refuse')
+    expect(hasExplicitReceipt(state, 'reviewed')).toBe(false)
+  })
+
+  it('does not infer explicit receipts from unmarked legacy records', () => {
+    const state = trustStateFrom({
+      armed: true,
+      scripts: { 'S/a.js': { hash: 'old', text: 'old source' } },
+      refused: [],
+    })
+    expect(verdictOf(state, 'S/a.js', 'old')).toBe('confirmed')
+    expect(hasExplicitReceipt(state, 'old')).toBe(false)
+  })
+
   it('lets everything run while checking is off', () => {
     expect(verdictOf(emptyTrust(), 'S/a.js', 'h1')).toBe('confirmed')
     expect(verdictOf(emptyTrust(), 'S/a.js', undefined)).toBe('confirmed')

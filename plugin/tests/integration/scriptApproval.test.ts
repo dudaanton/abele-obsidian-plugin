@@ -4,7 +4,7 @@ import type { App } from 'obsidian'
 import { sha256 } from '@abele/sync-sdk/core'
 import { useVault, configureAbele } from '../helpers/testEnv'
 import { ScriptService } from '@/scripting/ScriptService'
-import { ScriptTrust } from '@/scripting/ScriptTrust'
+import { ScriptTrust, TRUST_KEY, noteLocalScriptWrite } from '@/scripting/ScriptTrust'
 import * as reviewDialogs from '@/scripting/reviewScript'
 import { noteAgentScriptWrite } from '@/scripting/trust/agentScriptWrites'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
@@ -57,6 +57,118 @@ async function managed(facet: 'personal' | 'scoped' = 'personal', principal = 's
 }
 
 describe('exact-byte local script approval', () => {
+  it.each(['review', 'author'] as const)(
+    'preserves an explicit %s receipt across restart and optional toggles',
+    async (origin) => {
+      const config = configureAbele()
+      const previousAi = config.ai
+      try {
+        config.ai = {
+          ...DEFAULT_AI_SETTINGS,
+          scriptsFolder: 'Scripts',
+          confirmForeignScripts: false,
+        }
+        const hash = await sha256(new TextEncoder().encode(bytes))
+        if (origin === 'review') ScriptTrust.getInstance().confirm({ path, hash, text: bytes })
+        else await noteLocalScriptWrite(path, bytes)
+        ScriptTrust.getInstance().disarm()
+        ScriptTrust.getInstance().allowArming()
+        ScriptTrust.reset()
+        await managed()
+        const confirm = vi.fn(async () => true)
+        await expect(
+          scriptForExecution(app as unknown as App, path, confirm)
+        ).resolves.toMatchObject({ path })
+        expect(confirm).not.toHaveBeenCalled()
+        await app.vault.adapter.write(path, bytes + '\n// unreviewed replacement')
+        await expect(scriptForExecution(app as unknown as App, path)).rejects.toThrow(/approval/)
+      } finally {
+        config.ai = previousAi
+      }
+    }
+  )
+
+  it('keeps existing managed approval when legacy records have no explicit marker', async () => {
+    await managed()
+    await scriptForExecution(app as unknown as App, path, async () => true)
+    const hash = await sha256(new TextEncoder().encode(bytes))
+    app.saveLocalStorage(TRUST_KEY, {
+      armed: true,
+      scripts: { [path]: { hash, text: bytes } },
+      refused: [],
+    })
+    ScriptTrust.reset()
+    const confirm = vi.fn(async () => true)
+    await expect(scriptForExecution(app as unknown as App, path, confirm)).resolves.toMatchObject({
+      path,
+    })
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it.each(['run', 'shield'] as const)(
+    'does not promote a synced automatic baseline after restart through %s',
+    async (entry) => {
+      const config = configureAbele()
+      const previousAi = config.ai
+      const pluginConfig = config as unknown as { plugin: unknown }
+      const previousPlugin = pluginConfig.plugin
+      try {
+        // The script and this enabled setting arrived together on a new device.
+        config.ai = {
+          ...DEFAULT_AI_SETTINGS,
+          scriptsFolder: 'Scripts',
+          confirmForeignScripts: true,
+        }
+        pluginConfig.plugin = { addCommand: vi.fn(), removeCommand: vi.fn() }
+        expect(app.loadLocalStorage(TRUST_KEY)).toBeNull()
+        await managed()
+        const service = ScriptService.getInstance()
+        await service.discover()
+        const snapshot = service.get(path)!
+        expect(service.verdict(snapshot)).toBe('confirmed')
+        expect(ScriptTrust.getInstance().lastConfirmed(path)).toBeUndefined()
+        // Recreate the runtime against the persisted device-local state and IndexedDB.
+        ScriptService.destroy()
+        ScriptTrust.reset()
+        const restarted = ScriptService.getInstance()
+        if (entry === 'run') {
+          await expect(scriptForExecution(app as unknown as App, path)).rejects.toThrow(/approval/)
+          const confirm = vi.fn(async (request) => {
+            expect(request.source).toBe(bytes)
+            expect(request.sha).toBe(snapshot.hash)
+            return true
+          })
+          await scriptForExecution(app as unknown as App, path, confirm)
+          expect(confirm).toHaveBeenCalledOnce()
+        } else {
+          let settled = false
+          const reviewing = restarted.review(snapshot).finally(() => {
+            settled = true
+          })
+          await vi.waitFor(() => expect(settled || !!scriptApprovalDialog.value).toBe(true))
+          const shown = scriptApprovalDialog.value
+          shown?.answer(true)
+          await reviewing
+          expect(shown).not.toBeNull()
+          expect(shown!.source).toBe(bytes)
+          expect(shown!.sha).toBe(snapshot.hash)
+          expect(shown!.previousSource).toBeUndefined()
+        }
+        ScriptService.destroy()
+        ScriptTrust.reset()
+        const again = vi.fn(async () => true)
+        await expect(scriptForExecution(app as unknown as App, path, again)).resolves.toMatchObject(
+          { path }
+        )
+        expect(again).not.toHaveBeenCalled()
+      } finally {
+        ScriptService.destroy()
+        config.ai = previousAi
+        pluginConfig.plugin = previousPlugin
+      }
+    }
+  )
+
   it.each([false, true])(
     'requires displayed managed consent when optional checking is off (accept=%s)',
     async (accept) => {

@@ -6,7 +6,7 @@ import { useVault } from '../helpers/testEnv'
 import { setScriptConnection } from '../helpers/scriptConnection'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
-import { TRUST_KEY, noteLocalScriptWrite } from '@/scripting/ScriptTrust'
+import { ScriptTrust, TRUST_KEY, noteLocalScriptWrite } from '@/scripting/ScriptTrust'
 import {
   preserveLocalScriptVersions,
   LOCAL_SCRIPT_UPGRADE_KEY,
@@ -36,11 +36,13 @@ let app: App
 let factory: IDBFactory
 beforeEach(() => {
   app = useVault([{ path, content: source }]) as unknown as App
+  ScriptTrust.reset()
   factory = new IDBFactory()
   vi.stubGlobal('indexedDB', factory)
   AbeleConfig.getInstance().ai = { ...DEFAULT_AI_SETTINGS, scriptsFolder: 'Scripts' }
 })
 afterEach(() => {
+  ScriptTrust.reset()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
@@ -53,14 +55,29 @@ async function connect(principal = binding.principal) {
 }
 
 describe('device-local script upgrade continuity', () => {
+  it('does not promote an old persisted pre-sync policy hint into a new identity', async () => {
+    await connect()
+    const hash = await sha256(new TextEncoder().encode(source))
+    const trust = await scriptTrustFor(app, factory)
+    await trust!.store.setMeta(`script-pre-sync:${encodeURIComponent(path)}`, hash)
+    await trust!.provenance.record(path, 'sample-replacement-file')
+    trust!.store.close()
+    await expect(scriptForExecution(app, path)).rejects.toThrow(/approval/)
+    const confirm = vi.fn(async () => true)
+    await scriptForExecution(app, path, confirm)
+    await scriptForExecution(app, path, confirm)
+    expect(confirm).toHaveBeenCalledOnce()
+  })
+
   it.each([false, true])(
-    'keeps pre-sync local versions with 1.x checking armed=%s',
+    'keeps explicitly reviewed pre-sync local versions with checking armed=%s',
     async (armed) => {
       const hash = await sha256(new TextEncoder().encode(source))
       app.saveLocalStorage(TRUST_KEY, {
         armed,
         declined: false,
         scripts: { [path]: { hash, text: source } },
+        explicitHashes: [hash],
         refused: [],
       })
       await preserveLocalScriptVersions(app)
@@ -73,13 +90,37 @@ describe('device-local script upgrade continuity', () => {
       await expect(scriptForExecution(app, path)).resolves.toMatchObject({ path })
     }
   )
-  it('keeps a pre-sync script executable before its first ledger receipt', async () => {
+  it('reviews policy-only pre-sync code once before creating its first managed receipt', async () => {
     await preserveLocalScriptVersions(app)
     setScriptConnection(app, binding)
     const trust = await activateScriptProvenance(app, binding, factory)
     trust.store.close()
+    await expect(scriptForExecution(app, path)).rejects.toThrow(/unknown/)
+    const confirm = vi.fn(async () => true)
+    await expect(scriptForExecution(app, path, confirm)).resolves.toMatchObject({ path })
+    expect(confirm).toHaveBeenCalledOnce()
     await expect(scriptForExecution(app, path)).resolves.toMatchObject({ path })
   })
+  it.each([false, true])(
+    'does not upgrade an unmarked legacy policy or snapshot (armed=%s)',
+    async (armed) => {
+      const hash = await sha256(new TextEncoder().encode(source))
+      app.saveLocalStorage(TRUST_KEY, {
+        armed,
+        scripts: { [path]: { hash, text: source } },
+        refused: [],
+      })
+      app.saveLocalStorage(LOCAL_SCRIPT_UPGRADE_KEY, [{ path, sha: hash }])
+      await connect()
+      await expect(scriptForExecution(app, path)).rejects.toThrow(/approval/)
+      const confirm = vi.fn(async () => true)
+      await scriptForExecution(app, path, confirm)
+      expect(confirm).toHaveBeenCalledOnce()
+      ScriptTrust.reset()
+      await scriptForExecution(app, path, confirm)
+      expect(confirm).toHaveBeenCalledOnce()
+    }
+  )
   it('does not grandfather unapproved or newly received bytes', async () => {
     app.saveLocalStorage(TRUST_KEY, { armed: true, scripts: {}, refused: [] })
     await preserveLocalScriptVersions(app)

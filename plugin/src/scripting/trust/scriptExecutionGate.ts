@@ -240,8 +240,8 @@ async function checkedScriptForExecution(
         )
       if (trust.provenance.binding.facet === 'scoped')
         throw new Error('Shared and agent connections refuse script execution')
-      // The older device-local EXACT approval remains a decision even when a managed
-      // descriptor already existed before the newer upgrade snapshot was introduced.
+      // Only an explicit receipt can be promoted; automatic optional-policy baselines
+      // (including unmarked older records) do not prove reviewed or locally authored bytes.
       if (!localFallback && legacy.exact) {
         await trust.provenance.approve(path, identity, sha)
       }
@@ -357,10 +357,15 @@ async function checkedScriptForExecution(
       confirmAgentScript(app, fullHash)
     }
     assertScriptContext(app, script)
-    if (versionToRemember !== null) {
+    if (
+      (versionToRemember !== null || (!trust && acceptedHash === fullHash)) &&
+      (acceptedHash === fullHash ||
+        !!permission?.fileId ||
+        legacyScriptPolicy(app, path, fullHash).exact)
+    ) {
       // Persist only AFTER the final synchronous context fence, never from an invalidated
       // approval or a scoped transition during the awaited IDB checks.
-      rememberLocalScriptVersion(app, path, versionToRemember)
+      rememberLocalScriptVersion(app, path, versionToRemember ?? fullHash)
       assertScriptContext(app, script)
     }
     return script

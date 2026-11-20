@@ -1,6 +1,6 @@
 import type { App } from 'obsidian'
 import { TRUST_KEY } from '../ScriptTrust'
-import { trustStateFrom, verdictOf } from '../trustState'
+import { trustStateFrom, verdictOf, hasExplicitReceipt } from '../trustState'
 
 /** Read only device-local 1.x policy. A checking-off verdict is NOT a receipt or an exact
  * approval of managed bytes; it applies only to positively unmanaged offline paths. */
@@ -11,6 +11,6 @@ export function legacyScriptPolicy(app: App, path: string, sha: string) {
   return {
     key: JSON.stringify(raw) ?? 'null',
     verdict,
-    exact: state.armed && verdict === 'confirmed',
+    exact: hasExplicitReceipt(state, sha),
   }
 }

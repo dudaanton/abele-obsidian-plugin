@@ -29,6 +29,7 @@ import {
   verdictOf,
   withArrival,
   withConfirmed,
+  hasExplicitReceipt,
   type ScriptSourcePolicy,
   type TrustState,
   type TrustVerdict,
@@ -137,7 +138,9 @@ export class ScriptTrust {
     this.state = next
     localStore().save(
       this.key,
-      next.armed || next.declined || Object.keys(next.scripts).length ? next : null
+      next.armed || next.declined || Object.keys(next.scripts).length || next.explicitHashes?.length
+        ? next
+        : null
     )
     this.version.value++
   }
@@ -178,9 +181,12 @@ export class ScriptTrust {
     if (this.current.declined) this.put({ ...this.current, declined: false })
   }
 
-  /** The switch in the settings, turned off here: checking stops, and the record is forgotten. */
+  /** Optional baselines are forgotten; explicit receipts remain independent of this switch. */
   disarm(): void {
-    this.put(disarmed())
+    this.put({
+      ...disarmed(),
+      ...(this.current.explicitHashes ? { explicitHashes: this.current.explicitHashes } : {}),
+    })
   }
 
   /** After the index was read again: arm if asked, then follow renames and drop what is gone. */
@@ -203,7 +209,9 @@ export class ScriptTrust {
 
   /** The text of the last version confirmed at `path`, for the diff; none when not kept. */
   lastConfirmed(path: string): string | undefined {
-    return this.current.scripts[path]?.text
+    const record = this.current.scripts[path]
+    if (this.key === TEMPLATE_TRUST_KEY) return record?.text
+    return record && hasExplicitReceipt(this.current, record.hash) ? record.text : undefined
   }
 
   /** The person looked at this version here and said yes. */
@@ -224,11 +232,11 @@ export class ScriptTrust {
 
   /**
    * The owner or an authorized script is writing `text` to `path` on this device.
-   * Anything that is not a script, or written while checking is off, is not recorded.
+   * Explicit authoring receipts are retained even while optional checking is off.
    */
   async noteLocalWrite(path: string, text: string, hash?: string): Promise<void> {
-    if (!this.current.armed || !isScriptPath(path)) return
-    this.put(withConfirmed(this.current, path, hash ?? (await sha256(text)), text))
+    if (!isScriptPath(path)) return
+    this.confirm({ path, hash: hash ?? (await sha256(text)), text })
   }
 
   /** A source that knows itself brought `text` to `path`, and says what should happen to it. */
