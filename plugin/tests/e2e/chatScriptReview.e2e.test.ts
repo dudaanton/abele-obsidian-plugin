@@ -3,6 +3,7 @@ import { shotDir } from './helpers/shots'
 import { vaultCli } from './helpers/obsidianCli'
 import { showAs, windowSize } from './helpers/phoneWindow'
 import { probePrelude, type Screen } from './helpers/layoutProbe'
+import { settledGeometry } from '../helpers/settledGeometry'
 
 const shots = shotDir('abele-chat-script-review')
 let vault: ReturnType<typeof vaultCli>
@@ -143,6 +144,19 @@ for (const mobile of [false, true]) {
                 lastLine: view?.state.doc.line(view.state.doc.lines).text,
                 scroller: [scroller.clientHeight, scroller.scrollHeight, scroller.scrollTop],
               }))
+            }
+            // The editor can finish measuring while the native phone sheet is still
+            // sliding into view. Require a stable, reachable footer before capturing it.
+            try {
+              await (${settledGeometry.toString()})(() => {
+                const button = modal.querySelector('.abele-modal__footer button.mod-cta').getBoundingClientRect()
+                const sheet = modal.getBoundingClientRect()
+                return { top: button.top, bottom: button.bottom, height: button.height, sheetTop: sheet.top, sheetBottom: sheet.bottom, viewport: innerHeight }
+              }, () => wait(50), () => Date.now(), 3000, 400,
+              sample => sample.height > 0 && sample.top >= 0 && sample.bottom <= sample.viewport)
+            } catch (error) {
+              await shoot(${JSON.stringify(mobile ? 'chat-script-review-phone-unreachable' : 'chat-script-review-desktop-unreachable')})
+              throw new Error('Review action out of reach: ' + error.message)
             }
             const button = modal.querySelector('.abele-modal__footer button.mod-cta').getBoundingClientRect()
             if (button.bottom > innerHeight || button.top < 0) throw new Error('Review action out of reach')

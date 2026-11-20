@@ -41,6 +41,29 @@ const ask = (request: ReviewRequest, signal?: AbortSignal) =>
   reviewScript(app as never, request, signal)
 
 describe('reviewScript', () => {
+  it('reserves a separate non-shrinking footer below the shrinkable phone review body', async () => {
+    const style = document.createElement('style')
+    style.textContent =
+      readFileSync('src/modal/shell.css', 'utf8') + readFileSync('src/styles.css', 'utf8')
+    document.body.append(style)
+    document.body.classList.add('is-phone')
+    try {
+      const answer = ask({ script })
+      const content = dialog()!.querySelector<HTMLElement>('.modal-content')!
+      const body = content.querySelector<HTMLElement>('.abele-modal__body')!
+      const footer = content.querySelector<HTMLElement>('.abele-modal__footer')!
+      expect(body.contains(footer)).toBe(false)
+      expect(footer.parentElement).toBe(content)
+      expect(getComputedStyle(footer).flexShrink).toBe('0')
+      expect(getComputedStyle(content).minHeight).toBe('0')
+      expect(getComputedStyle(body).minHeight).toBe('0')
+      press('Not now')
+      await answer
+    } finally {
+      document.body.classList.remove('is-phone')
+    }
+  })
+
   it('bounds the editor independently of its content so its own scroller can overflow', async () => {
     const style = document.createElement('style')
     style.textContent = readFileSync('src/styles.css', 'utf8')

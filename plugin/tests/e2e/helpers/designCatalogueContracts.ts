@@ -27,11 +27,18 @@ async function dismissalAndStateCues(): Promise<void> {
     try {
       const dismiss=[];
       for(const page of ['waiting','comment','confirm','icon-picker']) {
-        window.__abeleTest.openDesignCatalogue(page);await new Promise(r=>setTimeout(r,500));
-        const modal=document.querySelector('.modal');
-        dismiss.push([...modal.querySelectorAll('.modal-close-button,.modal-header-button.mod-raised,button')].filter(el=>{
-          const b=el.getBoundingClientRect();return b.width&&b.height&&(el.matches('.modal-close-button,.modal-header-button.mod-raised')||['Cancel','Close'].includes(el.textContent.trim()));
-        }).length);
+        window.__abeleTest.openDesignCatalogue(page);
+        // A closing phone sheet stays in the DOM after Vue removes its content.
+        // Measure the new sheet only once that transition and its opening motion settle.
+        const sample=await (${settledGeometry.toString()})(()=>{
+          const modals=[...document.querySelectorAll('.modal')],modal=modals[modals.length-1];
+          if(!modal)return {count:0,height:0,dismiss:0,boxes:[]};
+          const sheet=modal.getBoundingClientRect();
+          const controls=[...modal.querySelectorAll('.modal-close-button,.modal-header-button.mod-raised,button')].filter(el=>el.matches('.modal-close-button,.modal-header-button.mod-raised')||['Cancel','Close'].includes(el.textContent.trim()));
+          const boxes=controls.map(el=>{const b=el.getBoundingClientRect();return [b.top,b.bottom,b.width,b.height]});
+          return {count:modals.length,height:sheet.height,top:sheet.top,dismiss:boxes.filter(b=>b[2]&&b[3]).length,boxes};
+        },()=>new Promise(r=>setTimeout(r,50)),()=>Date.now(),5000,400,s=>s.count===1&&s.height>0);
+        dismiss.push(sample.dismiss);
       }
       window.__abeleTest.openDesignCatalogue('waiting');await new Promise(r=>setTimeout(r,300));
       const row=document.querySelector('.abele-list-row'),title=row.querySelector('.abele-list-row__main');
