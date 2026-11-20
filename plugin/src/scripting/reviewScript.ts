@@ -28,14 +28,25 @@ export type ReviewRequest = (
   refused?: boolean
 }
 
+const pending = new WeakMap<App, Map<string, AbortController>>()
+
 /** Resolves true only when Confirm was pressed; any other way of closing it is a no. */
 export function reviewScript(
-  _app: App,
+  app: App,
   request: ReviewRequest,
   signal?: AbortSignal
 ): Promise<boolean> {
   signal?.throwIfAborted()
   const { script, template, previous, refused } = request
+  const key = `${template ? 'template' : 'script'}\0${template?.path ?? script.path}`
+  const reviews = pending.get(app) ?? new Map<string, AbortController>()
+  pending.set(app, reviews)
+  // Superseding is a refusal of the old snapshot, never approval of its bytes.
+  reviews.get(key)?.abort()
+  const controller = new AbortController()
+  reviews.set(key, controller)
+  const abort = () => controller.abort()
+  signal?.addEventListener('abort', abort, { once: true })
   return openDialog<boolean>(
     ScriptReviewDialog,
     {
@@ -46,6 +57,11 @@ export function reviewScript(
       previous,
       refused,
     },
-    { signal }
-  ).then((answer) => answer === true && !signal?.aborted)
+    { signal: controller.signal }
+  )
+    .then((answer) => answer === true && !controller.signal.aborted)
+    .finally(() => {
+      signal?.removeEventListener('abort', abort)
+      if (reviews.get(key) === controller) reviews.delete(key)
+    })
 }

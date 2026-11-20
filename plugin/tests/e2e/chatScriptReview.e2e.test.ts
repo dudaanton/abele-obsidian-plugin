@@ -24,6 +24,7 @@ for (const mobile of [false, true]) {
       single: Screen
       two: Screen
       deferred: Screen
+      lifecycle: { approved: boolean; stale: boolean; nextWaits: boolean; previous: string }
     }>(String.raw`(async () => {
       ${probePrelude(shots)}
       const T = window.__abeleTest
@@ -48,6 +49,12 @@ for (const mobile of [false, true]) {
         if (!session) throw new Error('Chat did not open')
         const tool = T.createAgentTools({ session }).find(t => t.name === 'create')
         await tool.execute('sample-create', { path: folder + '/sample.js', content: '// @name Sample script with a descriptive name\nreturn 1' }, undefined, { session, scope: session.scopeResolver, app })
+        const tools = T.createAgentTools({ session })
+        const context = { session, scope: session.scopeResolver, app }
+        for (let revision = 2; revision <= 4; revision++) {
+          await tools.find(t => t.name === 'read').execute('sample-read', { path: folder + '/sample.js' }, undefined, context)
+          await tools.find(t => t.name === 'write').execute('sample-write', { path: folder + '/sample.js', content: '// @name Sample script with a descriptive name\n' + Array.from({ length: 180 }, (_, i) => '// Synthetic line ' + i).join('\n') + '\nreturn ' + revision }, undefined, context)
+        }
         if (!(await until(() => document.querySelector('.abele-chat-script-review'), 12000))) throw new Error('Review line missing: ' + JSON.stringify({ chat: session.scriptReviewChatId, active: service.activeSession.value?.scriptReviewChatId, waiting: T.ScriptService.getInstance().waitingScripts().map(s => [s.path, s.hash]), stored: app.loadLocalStorage('abele-agent-script-writes'), roots: document.querySelectorAll('.abele-chat').length }))
         const line = document.querySelector('.abele-chat-script-review')
         const root = line.closest('.abele-ai-chat')
@@ -70,19 +77,46 @@ for (const mobile of [false, true]) {
         report.extra = { ...layout(), text: line.textContent.trim(), visible: r.width > 0 && r.left >= 0 && r.right <= innerWidth + 1 && b.right <= innerWidth + 1 && r.bottom <= innerHeight, notice: [...document.querySelectorAll('.notice')].some(n => n.textContent.includes('Sample script with a descriptive name')) }
         await tool.execute('second-create', { path: folder + '/second.js', content: '// @name Second sample script\nreturn 2' }, undefined, { session, scope: session.scopeResolver, app })
         const scripts = T.ScriptService.getInstance()
-        if (!(await until(() => scripts.waitingScripts().filter(s => s.path.startsWith(folder + '/')).length === 2 && document.querySelector('.abele-chat-script-review')?.textContent.includes('2'), 12000))) throw new Error('Two-script review line missing')
+        if (!(await until(() => scripts.get(folder + '/sample.js')?.source.endsWith('return 4') && scripts.waitingScripts().filter(s => s.path.startsWith(folder + '/')).length === 2 && document.querySelector('.abele-chat-script-review')?.textContent.includes('2'), 12000))) throw new Error('Two-script review line missing')
         const two = await screen(${JSON.stringify(mobile ? 'chat-script-review-phone-two' : 'chat-script-review-desktop-two')}, root, root)
         two.extra = { ...layout(), text: document.querySelector('.abele-chat-script-review').textContent.trim() }
         document.querySelector('.abele-chat-script-review button').click()
         for (let i = 0; i < 2; i++) {
           if (!(await until(() => document.querySelector('.abele-script-review .abele-modal__footer button:not(.mod-cta)'), 5000))) throw new Error('Review dialog missing for script ' + i)
+          if (i === 0) {
+            const modal = document.querySelector('.abele-script-review')
+            const scroller = modal.querySelector('.cm-scroller')
+            scroller.scrollTop = scroller.scrollHeight
+            await new Promise(resolve => requestAnimationFrame(resolve))
+            if (!(scroller.scrollTop > 0)) throw new Error('Long review code does not scroll')
+            if (!modal.querySelector('.cm-content').textContent.includes('return 4')) throw new Error('Latest revision missing at end of code')
+            const button = modal.querySelector('.abele-modal__footer button.mod-cta').getBoundingClientRect()
+            if (button.bottom > innerHeight || button.top < 0) throw new Error('Review action out of reach')
+            await shoot(${JSON.stringify(mobile ? 'chat-script-review-phone-code' : 'chat-script-review-desktop-code')})
+          }
           document.querySelector('.abele-script-review .abele-modal__footer button:not(.mod-cta)').click()
           if (!(await until(() => (app.loadLocalStorage('abele-script-notice-dismissed') || []).filter(k => k.startsWith(folder + '/')).length === i + 1, 5000))) throw new Error('Defer was not persisted')
         }
         if (!(await until(() => !document.querySelector('.abele-chat-script-review') && !document.querySelector('.abele-script-review'), 5000))) throw new Error('Deferred scripts still shown')
         const deferred = await screen(${JSON.stringify(mobile ? 'chat-script-review-phone-deferred' : 'chat-script-review-desktop-deferred')}, root, root)
         deferred.extra = { waiting: scripts.waitingScripts().filter(s => s.path.startsWith(folder + '/')).length, line: !!document.querySelector('.abele-chat-script-review'), notice: [...document.querySelectorAll('.notice')].some(n => n.textContent.includes('sample script') || n.textContent.includes('Sample script')) }
-        return { single: report, two, deferred }
+        for (let revision = 5; revision <= 7; revision++) {
+          await tools.find(t => t.name === 'read').execute('sample-read', { path: folder + '/sample.js' }, undefined, context)
+          await tools.find(t => t.name === 'write').execute('sample-write', { path: folder + '/sample.js', content: '// @name Sample script with a descriptive name\nreturn ' + revision }, undefined, context)
+        }
+        if (!(await until(() => scripts.get(folder + '/sample.js')?.source.endsWith('return 7') && document.querySelector('.abele-chat-script-review button'), 12000))) throw new Error('Latest pending revision missing')
+        document.querySelector('.abele-chat-script-review button').click()
+        if (!(await until(() => document.querySelector('.abele-script-review .cm-content')?.textContent.includes('return 7'), 5000))) throw new Error('Review does not show latest bytes')
+        document.querySelector('.abele-script-review .abele-modal__footer button.mod-cta').click()
+        if (!(await until(() => !document.querySelector('.abele-script-review') && !document.querySelector('.abele-chat-script-review'), 5000))) throw new Error('Stale review remains after approval')
+        const approved = scripts.verdict(scripts.get(folder + '/sample.js')) === 'confirmed'
+        const previous = T.ScriptTrust.getInstance().lastConfirmed(folder + '/sample.js')
+        const stale = scripts.waitingScripts().some(s => s.path === folder + '/sample.js')
+        await tools.find(t => t.name === 'read').execute('sample-read', { path: folder + '/sample.js' }, undefined, context)
+        await tools.find(t => t.name === 'write').execute('sample-write', { path: folder + '/sample.js', content: '// @name Sample script with a descriptive name\nreturn 8' }, undefined, context)
+        if (!(await until(() => scripts.get(folder + '/sample.js')?.source.endsWith('return 8') && document.querySelector('.abele-chat-script-review button'), 12000))) throw new Error('Edit after approval did not request review')
+        const nextWaits = scripts.verdict(scripts.get(folder + '/sample.js')) === 'waiting'
+        return { single: report, two, deferred, lifecycle: { approved, stale, nextWaits, previous } }
       } finally {
         cfg.scriptsFolder = oldScripts
         if (chat) {
@@ -117,5 +151,11 @@ for (const mobile of [false, true]) {
     expect(report.single.extra.text).toContain('Sample script with a descriptive name')
     expect(report.two.extra.text).toContain('2')
     expect(report.deferred.extra).toEqual({ waiting: 2, line: false, notice: false })
+    expect(report.lifecycle).toEqual({
+      approved: true,
+      stale: false,
+      nextWaits: true,
+      previous: '// @name Sample script with a descriptive name\nreturn 7',
+    })
   })
 }

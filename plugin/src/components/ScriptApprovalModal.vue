@@ -1,5 +1,10 @@
 <template>
-  <ObsidianModal :title="t('streamC.400b02e9b4d285f6')" size="tall" @close="request.answer(false)">
+  <ObsidianModal
+    :title="t('streamC.400b02e9b4d285f6')"
+    size="tall"
+    modal-class="abele-script-approval-modal"
+    @close="request.answer(false)"
+  >
     <div class="abele-script-approval">
       <div class="abele-script-approval__review">
         <p class="abele-script-approval__lead">{{ t('streamC.8e7ae99648a7f988') }}</p>
@@ -100,12 +105,16 @@ const fenced = computed(() => {
 </script>
 
 <style lang="scss">
+.modal.abele-script-approval-modal .abele-modal__body {
+  overflow: hidden;
+}
 .abele-script-approval {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-2);
   min-height: 0;
   flex: 1 1 auto;
+  overflow: hidden;
 }
 .abele-script-approval__lead {
   margin-block: 0 var(--size-4-3);

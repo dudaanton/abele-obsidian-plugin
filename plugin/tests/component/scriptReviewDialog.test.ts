@@ -40,6 +40,21 @@ const ask = (request: ReviewRequest, signal?: AbortSignal) =>
   reviewScript(app as never, request, signal)
 
 describe('reviewScript', () => {
+  it('supersedes intermediate reviews without approving their bytes', async () => {
+    const first = ask({ script })
+    const second = ask({ script: { ...script, hash: 'second', source: 'return 2' } })
+    const latest = ask({
+      script: { ...script, hash: 'latest', source: 'return 3' },
+      previous: 'return 0',
+    })
+    expect(document.querySelectorAll('.modal.abele-script-review')).toHaveLength(1)
+    expect(dialog()!.querySelector('.cm-content')!.textContent).toContain('return 3')
+    press('Confirm')
+    await expect(first).resolves.toBe(false)
+    await expect(second).resolves.toBe(false)
+    await expect(latest).resolves.toBe(true)
+  })
+
   it('shows a new script: title, why, path, the code and Not now before Confirm', async () => {
     const answer = ask({ script })
     expect(dialog()).not.toBeNull()

@@ -41,7 +41,11 @@ const measure = (label: string) => String.raw`(async () => {
     const root = document.querySelector('.abele-script-approval').closest('.modal')
     const report = await screen(${JSON.stringify(label)}, root, root.querySelector('.abele-modal__body'))
     const buttons = [...root.querySelectorAll('.abele-modal__footer button')]
+    const review = root.querySelector('.abele-script-approval__review')
+    review.scrollTop = review.scrollHeight
+    await new Promise(resolve => requestAnimationFrame(resolve))
     report.extra = {
+      scrollable: review.scrollHeight > review.clientHeight && review.scrollTop > 0,
       buttons: buttons.map(b => b.textContent.trim()),
       visible: buttons.every(b => { const r = b.getBoundingClientRect(); return r.width > 0 && r.left >= 0 && r.right <= innerWidth + 1 && r.top >= 0 && r.bottom <= innerHeight + 1 }),
       codeHeight: root.querySelector('pre').getBoundingClientRect().height,
@@ -67,6 +71,33 @@ describe('script approval with existing dialog geometry checks', () => {
     expect(screen.clipped).toEqual([])
     expect(screen.extra.buttons).toEqual(['Stop', 'Approve and run', 'Cancel'])
     expect(screen.extra.visible).toBe(true)
+    expect(screen.extra.scrollable).toBe(true)
+  })
+  it('shows only the latest pending version and never accepts superseded bytes', () => {
+    const result = vault.evalAwait<any>(`(async () => {
+      const api = window.__abeleTest.scriptTrust
+      const request = { path: 'Scripts/sample.js', sha: 'a'.repeat(64), source: 'return 1',
+        previousSource: 'return 0',
+        identity: { fileId: 'sample-file', binding: { localVault: 'sample-local', endpoint: 'local:', vaultId: 'local', principal: 'local', facet: 'personal', grantId: null } } }
+      const decisions = [api.confirm(request)]
+      decisions.push(api.confirm({ ...request, sha: 'b'.repeat(64), source: 'return 2' }))
+      decisions.push(api.confirm({ ...request, sha: 'c'.repeat(64), source: 'return 3' }))
+      try {
+        await new Promise(r => setTimeout(r, 100))
+        const latest = api.dialog.value
+        const result = { source: latest.source, previous: latest.previousSource }
+        latest.answer(true)
+        // Always settle leftovers so a failing assertion cannot leave a live dialog behind.
+        while (api.dialog.value) api.dialog.value.answer(false)
+        return { ...result, decisions: await Promise.all(decisions), remaining: !!api.dialog.value }
+      } finally { while (api.dialog.value) api.dialog.value.answer(false) }
+    })()`)
+    expect(result).toEqual({
+      source: 'return 3',
+      previous: 'return 0',
+      decisions: [false, false, true],
+      remaining: false,
+    })
   })
   it('persists an exact-byte approval through the real native dialog and IndexedDB', () => {
     const result = vault.evalAwait<any>(`(async () => {
@@ -143,6 +174,7 @@ describe('script approval with existing dialog geometry checks', () => {
     expect(screen.extra.buttons).toEqual(['Stop', 'Approve and run', 'Cancel'])
     expect(screen.extra.codeHeight).toBeGreaterThan(80)
     expect(screen.extra.reviewHeight).toBeGreaterThan(300)
+    expect(screen.extra.scrollable).toBe(true)
     expect(screen.fill).toBeGreaterThan(0.8)
   })
 })

@@ -524,6 +524,12 @@ saves and explicit review approve exact contents. Pending versions are excluded 
 pre-sync local-script upgrade snapshot. Missing storage writes and damaged records stop the
 operation; disabling foreign-script checking does not clear these holds.
 
+Explicit reviews retain the last approved source in the existing `abele-script-trust` path
+record even when foreign-script checking is off, so later reviews can show the full change
+since that decision. The record keeps its unarmed policy flag and is not a managed approval
+receipt. A review supplies consent to the managed gate only for the same full hash and source;
+the gate still checks disk bytes, identity and connection before persisting approval.
+
 ## Selection-script menu settings
 
 Plugin `data.json` stores independent ordered lists at `reader.selectionScripts` (books) and

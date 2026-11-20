@@ -313,6 +313,12 @@ export class ScriptService {
     return this.discovering
   }
 
+  /** A manual review needs current bytes, including a rebuild queued during the first read. */
+  async refreshForReview(): Promise<void> {
+    await this.discover()
+    while (this.discovering) await this.discovering
+  }
+
   private async rebuild(): Promise<void> {
     const config = AbeleConfig.getInstance()
     const folder = config.ai.scriptsFolder
@@ -429,9 +435,28 @@ export class ScriptService {
     if (!(await reviewOne(this, script, signal))) return false
     // Review also covers the managed gate, without executing a linter/interceptor/startup
     // script as a side effect. This is the recovery exit for an older connection or store.
-    await scriptForExecution(GlobalStore.getInstance().app, script.path, (request) =>
-      showScriptApproval({ ...request, reviewOnly: true }, signal)
+    let reviewed = script
+    const checked = await scriptForExecution(
+      GlobalStore.getInstance().app,
+      script.path,
+      async (request) => {
+        signal?.throwIfAborted()
+        // The owner just reviewed this exact snapshot. The managed gate still validates its
+        // identity, connection and current disk bytes before recording approval.
+        if (request.sha === script.hash && request.source === script.source) return true
+        const accepted = await showScriptApproval(
+          {
+            ...request,
+            previousSource: ScriptTrust.getInstance().lastConfirmed(script.path),
+            reviewOnly: true,
+          },
+          signal
+        )
+        if (accepted) reviewed = { ...script, hash: request.sha, source: request.source }
+        return accepted
+      }
     )
+    if (reviewed !== script && reviewed.hash === checked.hash) this.confirm(reviewed)
     return true
   }
 

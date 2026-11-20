@@ -323,11 +323,26 @@ body.is-mobile .abele-footnote-ref-link {
 
 /* The code of a script waiting to be confirmed (`reviewScript.ts`), read-only, in the theme's own font. */
 .abele-script-review__code {
+  flex: 1 1 auto;
+  min-height: 0;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
   font-family: var(--font-monospace);
   font-size: var(--font-smaller);
   overflow: hidden;
+}
+
+.abele-script-review__code .cm-editor {
+  height: 100%;
+}
+
+.abele-script-review__code .cm-scroller {
+  overflow: auto;
+}
+
+.abele-script-review__why,
+.abele-script-review__path {
+  flex-shrink: 0;
 }
 
 .abele-script-review__path {

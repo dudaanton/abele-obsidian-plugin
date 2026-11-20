@@ -2,7 +2,12 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import type { App } from 'obsidian'
 import { sha256 } from '@abele/sync-sdk/core'
-import { useVault } from '../helpers/testEnv'
+import { useVault, configureAbele } from '../helpers/testEnv'
+import { ScriptService } from '@/scripting/ScriptService'
+import { ScriptTrust } from '@/scripting/ScriptTrust'
+import * as reviewDialogs from '@/scripting/reviewScript'
+import { noteAgentScriptWrite } from '@/scripting/trust/agentScriptWrites'
+import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { activateScriptProvenance, scriptTrustFor } from '@/scripting/trust/scriptTrustStorage'
 import { scriptForExecution, assertScriptContext } from '@/scripting/trust/scriptExecutionGate'
 import { CONNECTION_KEY } from '@/sync/connection'
@@ -22,6 +27,8 @@ beforeEach(() => {
 })
 afterEach(() => {
   cancelScriptApprovals()
+  ScriptService.destroy()
+  ScriptTrust.reset()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
@@ -50,6 +57,50 @@ async function managed(facet: 'personal' | 'scoped' = 'personal', principal = 's
 }
 
 describe('exact-byte local script approval', () => {
+  it('reviews managed agent bytes once and keeps a diff baseline with foreign checking off', async () => {
+    const config = configureAbele()
+    const previousAi = config.ai
+    try {
+      config.ai = { ...DEFAULT_AI_SETTINGS, scriptsFolder: 'Scripts', confirmForeignScripts: false }
+      ScriptTrust.reset()
+      ScriptService.destroy()
+      await noteAgentScriptWrite(app as unknown as App, path, bytes, 'sample-chat')
+      await managed()
+      const service = ScriptService.getInstance()
+      vi.spyOn(reviewDialogs, 'reviewScript').mockResolvedValue(true)
+      let settled = false
+      const reviewing = service
+        .review({
+          path,
+          hash: await sha256(new TextEncoder().encode(bytes)),
+          source: bytes,
+          code: 'return "approved"',
+          commandId: '',
+          meta: { name: 'Sample', description: '', params: [] },
+        })
+        .then(
+          () => (settled = true),
+          () => (settled = true)
+        )
+      await vi.waitFor(() => expect(settled || !!scriptApprovalDialog.value).toBe(true))
+      const extraReview = !!scriptApprovalDialog.value
+      scriptApprovalDialog.value?.answer(false)
+      await reviewing
+      expect(extraReview).toBe(false)
+      ScriptTrust.reset()
+      expect(ScriptTrust.getInstance().lastConfirmed(path)).toBe(bytes)
+      await expect(scriptForExecution(app as unknown as App, path)).resolves.toMatchObject({
+        code: 'return "approved"',
+      })
+      const changed = bytes + '\n// later edit'
+      await noteAgentScriptWrite(app as unknown as App, path, changed, 'sample-chat')
+      await app.vault.adapter.write(path, changed)
+      await expect(scriptForExecution(app as unknown as App, path)).rejects.toThrow(/approval/)
+    } finally {
+      config.ai = previousAi
+    }
+  })
+
   it('stops the owning execution before settling its approval and never starts its script', async () => {
     await managed()
     let signal: AbortSignal | undefined

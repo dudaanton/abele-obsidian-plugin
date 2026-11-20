@@ -135,7 +135,10 @@ export class ScriptTrust {
   private put(next: TrustState): void {
     if (sameTrust(next, this.current)) return
     this.state = next
-    localStore().save(this.key, next.armed || next.declined ? next : null)
+    localStore().save(
+      this.key,
+      next.armed || next.declined || Object.keys(next.scripts).length ? next : null
+    )
     this.version.value++
   }
 
@@ -205,7 +208,12 @@ export class ScriptTrust {
 
   /** The person looked at this version here and said yes. */
   confirm(file: TrustedFile): void {
-    const next = withConfirmed(this.current, file.path, file.hash, file.text)
+    // Explicit reviews also retain a diff baseline while optional checking is off.
+    // The armed flag still controls policy; a stored baseline does not turn checking on.
+    const next = {
+      ...withConfirmed({ ...this.current, armed: true }, file.path, file.hash, file.text),
+      armed: this.current.armed,
+    }
     if (this.key === TEMPLATE_TRUST_KEY) {
       // Approval belongs to exact content, not whichever version was reviewed last at a path.
       // Copies already share the same hash; confirming another version must not revoke them.

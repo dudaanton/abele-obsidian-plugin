@@ -1,6 +1,7 @@
 import { shallowRef } from 'vue'
 import { openComponentDialog, type ComponentDialog } from '@/modal/componentDialog'
 import type { ScriptApprovalRequest } from './scriptExecutionGate'
+import { sameBinding } from './ScriptProvenance'
 
 export interface ScriptApprovalDialog extends ScriptApprovalRequest {
   id: number
@@ -25,13 +26,22 @@ function present(dialog: ScriptApprovalDialog): void {
   void view.ready.catch(() => {})
 }
 
-/** Explicit manual requests only; concurrent dialogs are queued, never overwritten. */
+/** Explicit manual requests only; newer snapshots supersede matching pending reviews. */
 export function showScriptApproval(
   request: ScriptApprovalRequest,
   signal?: AbortSignal,
   onStop?: () => void
 ): Promise<boolean> {
   if (signal?.aborted) return Promise.resolve(false)
+  const pending = [...waiting, ...(scriptApprovalDialog.value ? [scriptApprovalDialog.value] : [])]
+  for (const older of pending) {
+    if (
+      older.path === request.path &&
+      older.identity.fileId === request.identity.fileId &&
+      sameBinding(older.identity.binding, request.identity.binding)
+    )
+      older.answer(false)
+  }
   return new Promise((resolve) => {
     let settled = false
     const abort = () => dialog.answer(false)

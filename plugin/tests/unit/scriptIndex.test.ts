@@ -57,6 +57,25 @@ function slowReads(count = 2) {
 }
 
 describe('rebuilding the index', () => {
+  it('refreshes for review only after the queued rebuild has published', async () => {
+    const gates = slowReads(4)
+    void service.discover()
+    let refreshed = false
+    const refresh = service.refreshForReview().then(() => (refreshed = true))
+    for (const gate of gates.slice(0, 2)) {
+      await gate.entered
+      gate.release()
+    }
+    await gates[2].entered
+    expect(refreshed).toBe(false)
+    for (const gate of gates.slice(2)) {
+      await gate.entered
+      gate.release()
+    }
+    await refresh
+    expect(refreshed).toBe(true)
+  })
+
   it('keeps the old scripts in place until the new ones have all been read', async () => {
     const [first, second] = slowReads()
 

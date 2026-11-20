@@ -48,6 +48,24 @@ it('pins decisions outside the tall review body and uses document code styling',
   wrapper.unmount()
 })
 describe('script approval UI', () => {
+  it('supersedes older requests without accepting stale bytes', async () => {
+    const first = showScriptApproval(request)
+    const stale = scriptApprovalDialog.value!
+    const second = showScriptApproval({ ...request, sha: 'b'.repeat(64), source: 'return 2' })
+    const latest = showScriptApproval({ ...request, sha: 'c'.repeat(64), source: 'return 3' })
+    expect(scriptApprovalDialog.value!.source).toBe('return 3')
+    stale.answer(true)
+    scriptApprovalDialog.value!.answer(true)
+    await expect(first).resolves.toBe(false)
+    await expect(second).resolves.toBe(false)
+    await expect(latest).resolves.toBe(true)
+    expect(scriptApprovalDialog.value).toBeNull()
+    const after = showScriptApproval({ ...request, sha: 'd'.repeat(64) })
+    expect(scriptApprovalDialog.value!.sha).toBe('d'.repeat(64))
+    cancelScriptApprovals()
+    await expect(after).resolves.toBe(false)
+  })
+
   it('shows exact identity/hash and inert source and makes acceptance explicit', async () => {
     const answer = vi.fn()
     const wrapper = mount(ScriptApprovalModal, {

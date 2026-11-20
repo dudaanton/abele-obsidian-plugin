@@ -32,7 +32,10 @@ const reviewing = ref(false)
 async function review() {
   if (reviewing.value) return
   reviewing.value = true
+  const chatId = props.chatId
   try {
+    await service.refreshForReview()
+    if (props.chatId !== chatId) return
     for (const script of [...waiting.value]) {
       // A changed or removed version must not be substituted by a newer, unrelated one.
       if (waiting.value.some((s) => s.path === script.path && s.hash === script.hash))

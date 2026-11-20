@@ -19,6 +19,8 @@ let app: ReturnType<typeof useVault>
 const waiting = ref<ParsedScript[]>([])
 const service = {
   waitingScripts: () => waiting.value,
+  discover: vi.fn(async () => {}),
+  refreshForReview: async () => service.discover(),
   review: vi.fn(async (_script: ParsedScript) => true),
 }
 let view: ReturnType<typeof mount> | undefined
@@ -26,6 +28,7 @@ beforeEach(async () => {
   app = useVault([])
   configureAbele()
   service.review.mockClear()
+  service.discover.mockReset().mockResolvedValue(undefined)
   vi.spyOn(ScriptService, 'getInstance').mockReturnValue(service as never)
   waiting.value = [
     {
@@ -66,6 +69,22 @@ it('keeps the full name in a tooltip and groups the separator with the review ac
   expect(view.get('.abele-chat-script-review__action').get('[aria-hidden="true"]').text()).toBe('·')
   expect(view.get('.abele-chat-script-review__action button').text()).toBe('Review')
   expect(view.get('button').attributes('type')).toBe('button')
+})
+
+it('refreshes a delayed index before selecting the latest chat-owned version', async () => {
+  const first = waiting.value[0]
+  const latestText = '// @name Sample\nreturn 3'
+  const latest = { ...first, hash: await sha256(new TextEncoder().encode(latestText)) }
+  await noteAgentScriptWrite(app as never, first.path, text, 'sample-chat')
+  await noteAgentScriptWrite(app as never, first.path, latestText, 'sample-chat')
+  service.discover.mockImplementationOnce(async () => {
+    waiting.value = [latest]
+  })
+  view = mount(ChatScriptReview, { props: { chatId: 'sample-chat' } })
+  await view.get('button').trigger('click')
+  await nextTick()
+  expect(service.discover).toHaveBeenCalledOnce()
+  expect(service.review).toHaveBeenCalledExactlyOnceWith(latest)
 })
 
 it('keeps other sources in the existing notice, not in a chat footer', () => {
