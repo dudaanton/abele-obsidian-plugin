@@ -188,39 +188,51 @@ it('132 discovers a new host-excluded file without a prior ledger entry', async 
   }
 })
 
-it('132 bounds each verification poll and eventually discovers files beyond its first directory batch', async () => {
-  const specs = Array.from({ length: 40 }, (_, i) => ({
-    path: `Folder-${i}/sample.md`,
-    content: 'saved',
-    mtime: 1000,
-  }))
-  const app = buildFakeVault(specs)
-  Object.assign(app.workspace, { layoutReady: true })
-  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
-  vi.spyOn(app.vault, 'getFiles').mockReturnValue([])
-  const fs = new ObsidianFileSystem(app as never, {
-    ledger: new MemoryStateStore(),
-    prepareStartupInventory: async () => {},
-  })
-  const list = vi.spyOn(app.vault.adapter, 'list')
-  const read = vi.spyOn(app.vault.adapter, 'readBinary')
-  expect(await Array.fromAsync(fs.list())).toEqual([])
-  expect(list.mock.calls.filter(([path]) => !path.startsWith('.obsidian'))).toEqual([])
-  const stop = fs.watch(() => {})
-  try {
-    for (let i = 0; i < 6; i++) {
-      const before = list.mock.calls.filter(([path]) => !path.startsWith('.obsidian')).length
-      await Reflect.get(fs, Symbol.for('abele.sync.inspect-polled-v1')).call(fs)
-      const after = list.mock.calls.filter(([path]) => !path.startsWith('.obsidian')).length
-      expect(after - before).toBeLessThanOrEqual(8)
+it.each(['.obsidian', 'Settings'])(
+  '132 bounds each verification poll and eventually discovers files beyond its first directory batch (%s configuration)',
+  async (configDir) => {
+    const specs = Array.from({ length: 40 }, (_, i) => ({
+      path: `Folder-${i}/sample.md`,
+      content: 'saved',
+      mtime: 1000,
+    }))
+    const app = buildFakeVault([...specs, { path: configDir + '/app.json', content: '{}' }])
+    app.vault.configDir = configDir
+    Object.assign(app.workspace, { layoutReady: true })
+    Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
+    vi.spyOn(app.vault, 'getFiles').mockReturnValue([])
+    const fs = new ObsidianFileSystem(app as never, {
+      ledger: new MemoryStateStore(),
+      prepareStartupInventory: async () => {},
+    })
+    const list = vi.spyOn(app.vault.adapter, 'list')
+    const read = vi.spyOn(app.vault.adapter, 'readBinary')
+    expect((await Array.fromAsync(fs.list())).map((file) => file.path)).toEqual([
+      configDir + '/app.json',
+    ])
+    expect(list.mock.calls.filter(([path]) => !path.startsWith(configDir))).toEqual([])
+    const stop = fs.watch(() => {})
+    try {
+      for (let i = 0; i < 6; i++) {
+        const before = list.mock.calls.filter(([path]) => !path.startsWith(configDir)).length
+        const configBefore = list.mock.calls.filter(([path]) => path === configDir).length
+        await Reflect.get(fs, Symbol.for('abele.sync.inspect-polled-v1')).call(fs)
+        const after = list.mock.calls.filter(([path]) => !path.startsWith(configDir)).length
+        expect(after - before).toBeLessThanOrEqual(8)
+        // The existing settings snapshot owns this tree. Ordinary verification must
+        // not add a second configuration traversal in the same poll.
+        expect(list.mock.calls.filter(([path]) => path === configDir).length - configBefore).toBe(1)
+      }
+      expect(read).not.toHaveBeenCalled()
+      const paths = (await Array.fromAsync(fs.list())).map((file) => file.path)
+      expect(paths.sort()).toEqual(
+        [...specs.map((file) => file.path), configDir + '/app.json'].sort()
+      )
+    } finally {
+      stop()
     }
-    expect(read).not.toHaveBeenCalled()
-    const paths = (await Array.fromAsync(fs.list())).map((file) => file.path)
-    expect(paths.sort()).toEqual(specs.map((file) => file.path).sort())
-  } finally {
-    stop()
   }
-})
+)
 
 it('132 confines verification to a folder connection and leaves hidden neighbors alone', async () => {
   const app = buildFakeVault([

@@ -4927,6 +4927,13 @@ export class ObsidianFileSystem implements FileSystem {
       this.unindexedFiles.clear()
     }
     if (!roots.length) return
+    // Configuration already has its own snapshot, including renamed config roots.
+    const ordinary = (path: string) =>
+      path !== this.configDir &&
+      !path.startsWith(this.configDir + '/') &&
+      !isHidden(path, '') &&
+      this.inventoryVisible(path) &&
+      this.withinFileScope(path)
     if (this.verificationPosition >= this.verificationDirectories.length) {
       this.verificationDirectories = [...roots]
       this.verificationPosition = 0
@@ -4953,11 +4960,7 @@ export class ObsidianFileSystem implements FileSystem {
       if (!check()) return
       if (!this.indexReady()) return
       const parent = this.verificationDirectories[this.verificationPosition]
-      if (
-        (parent && !this.inventoryVisible(parent)) ||
-        !this.withinFileScope(parent) ||
-        (await crossesSymlink(parent, (path) => this.isSymlink(path)))
-      ) {
+      if (!ordinary(parent) || (await crossesSymlink(parent, (path) => this.isSymlink(path)))) {
         this.verificationPosition++
         continue
       }
@@ -4978,11 +4981,7 @@ export class ObsidianFileSystem implements FileSystem {
       for (const path of listing.folders) {
         const pause = budget.metadataRow()
         if (pause !== undefined) await pause
-        if (
-          this.inventoryVisible(path) &&
-          this.withinFileScope(path) &&
-          !this.verificationVisited.has(path)
-        ) {
+        if (ordinary(path) && !this.verificationVisited.has(path)) {
           this.verificationVisited.add(path)
           this.verificationDirectories.push(path)
         }
@@ -4993,8 +4992,7 @@ export class ObsidianFileSystem implements FileSystem {
         if (pause !== undefined) await pause
         if (
           indexed.has(path) ||
-          !this.inventoryVisible(path) ||
-          !this.withinFileScope(path) ||
+          !ordinary(path) ||
           (this.discovery && !this.discovery.includes(path)) ||
           (await this.isSymlink(path))
         )
