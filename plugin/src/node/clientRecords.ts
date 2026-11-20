@@ -376,6 +376,7 @@ export class ClientRecords {
         }
         return (async () => {
           const log: IndexRow[] = []
+          const verifiedTools = new Set<string>()
           ++version
           for (const [i, update] of pending.entries()) {
             if (i && i % 4 === 0) await read(store.count('state'))
@@ -410,9 +411,16 @@ export class ClientRecords {
                 toolsRef =
                   'delegation-tools:' +
                   bytesToHex(sha256(new TextEncoder().encode(JSON.stringify(snapshot))))
-                if (!tools.has(toolsRef) && !this.toolSnapshots.has(toolsRef)) {
-                  store.put(snapshot, toolsRef)
-                  tools.set(toolsRef, frozen(snapshot))
+                if (!verifiedTools.has(toolsRef)) {
+                  // Another handle may have deleted the last disk reference while
+                  // this handle still caches its immutable value. Verify existence
+                  // under the write transaction's lock before publishing a new row.
+                  if (!(await read(store.count(toolsRef)))) store.put(snapshot, toolsRef)
+                  verifiedTools.add(toolsRef)
+                  tools.set(
+                    toolsRef,
+                    tools.get(toolsRef) ?? this.toolSnapshots.get(toolsRef) ?? frozen(snapshot)
+                  )
                 }
                 const { obsidian_tools: _tools, ...request } = task.request
                 stored = { ...task, request, toolsRef }
