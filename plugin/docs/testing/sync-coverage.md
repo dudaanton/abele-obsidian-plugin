@@ -79,7 +79,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 | S52 | A confirmed remote deletion reaches the second server and its other participants. | `plugin/tests/unit/syncScenarioConnections.test.ts: 52 forwards a confirmed remote delete through another connection without resurrection (%s receipt)` | covered | Production runtimes share a vault; the second server and another device receive the deletion. Delivered and lost receipts, journal recovery, peer restart, one delete effect and no resurrection are asserted. Existing deletion confirmations remain in force. |
 | S53 | A folder tree with files arrives with the same structure and content. | `plugin/tests/e2e/sync.e2e.test.ts: edits renames moves deletes and empty folders travel both ways`<br>`abele-sync/packages/core/tests/acceptance/directoriesV2.test.ts: 053/054/056 empty directory identities, moves, and deletions converge through the production engine` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S54 | Renaming/moving a shared folder changes all paths for others without losing content. | `plugin/tests/e2e/sync.e2e.test.ts: edits renames moves deletes and empty folders travel both ways`<br>`plugin/tests/e2e/syncDeletes.e2e.test.ts: moved folder root stops sync until Follow moved folder resumes it`<br>`abele-sync/packages/server/tests/integration/v2Sync.test.ts: 032/054/055/056 stable shared folder follows owner rename, moves descendants atomically, deleting affects no sibling` | partly | Subfolder moves are automatic; a shared-root move requires explicit Follow, contrary to unconditional following. |
-| S55 | Moving a folder out of the share: local folder stays, its shared content is removed for others. | `abele-sync/packages/server/tests/integration/v2Sync.test.ts: 032/054/055/056 stable shared folder follows owner rename, moves descendants atomically, deleting affects no sibling` | partly | Server folder departure is tested; device-local preservation plus remote removal is not asserted together. |
+| S55 | Relocating a folder tree outside a share preserves its private destination and removes only former shared contents on peers. | `plugin/tests/unit/syncScenarioConnections.test.ts: 55 preserves a relocated folder tree while removing only its former shared contents on peers` | covered | Four production runtimes cover two nested files with distinct latest bytes, both recipients, a shared neighbor, both ledger reopenings, exact source/destination effects, private-path confinement and retained recovery victims. External tree relocation is modeled on a flat memory disk; directory identities are covered separately by directoriesV2. |
 | S56 | Deleting a shared folder tree deletes it for others; neighbours untouched. | `plugin/tests/e2e/syncDialogs.e2e.test.ts: held paths and trash date controls fit every supported width`<br>`plugin/tests/e2e/sync.e2e.test.ts: edits renames moves deletes and empty folders travel both ways` | partly | Recursive deletion safety is tested; deleting a shared root stops for a decision instead of unconditional propagation. |
 | S57 | Creating a note with a shared group, or adding the group, makes it available to group members. | `plugin/tests/e2e/syncDevices.e2e.test.ts: folder and group tokens from Share connect the second pool vault` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S58 | Connecting a group in a filled vault: matching local notes join; neighbours are not sent. | `plugin/tests/e2e/syncDevices.e2e.test.ts: folder and group tokens from Share connect the second pool vault`<br>`plugin/tests/unit/tokenEngineRuntime.test.ts: synchronizes a group token without reading excluded vault notes for group eligibility` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
@@ -181,7 +181,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 
 ## Totals
 
-154 requirements: 123 covered, 31 partly, 0 missing.
+154 requirements: 124 covered, 30 partly, 0 missing.
 
 Zero entirely missing rows does **not** close the coverage gate: every partly covered
 row still has an unproved facet. The matrix records assertions present in source;
@@ -220,9 +220,9 @@ excused as hardware-only work:
 1. S30 is resolved in the focused tier: shared-vault production runtimes preserve an
    owed edit through delayed/lost commit replies, the faster incoming replacement, and
    reopening both ledgers; assertions require exact digests, two receipts and no journals.
-2. S55: folder-tree moves across scope boundaries still need joint outcome assertions.
-   S50 and S72 now cover note, binary and canvas moves through two servers with both
-   recipients, private-path confinement and ledger reopenings. S52 covers confirmed deletion bridging,
+2. S50/S55/S72 now cover note, nested tree, binary and canvas moves through two servers
+   with both recipients, private-path confinement and ledger reopenings. S55 also pins
+   untouched shared neighbors and retained recoverable victims on the receiving peer. S52 covers confirmed deletion bridging,
    lost receipts, journal recovery, peer restart and no duplicate delete or resurrection.
 3. S29/S97/B7: independently resolve concurrent changes at both servers before bridging;
    assert recoverable variants and bounded copies. Ordering policy must be explicit before

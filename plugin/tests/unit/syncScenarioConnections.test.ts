@@ -498,6 +498,205 @@ it('67 reopens a deleted group connection without deleting received members or p
   }
 })
 
+it('55 preserves a relocated folder tree while removing only its former shared contents on peers', async () => {
+  const first = await server('Shared/Bundle/one.md', 'baseline', 'https://first.example', {
+    ...scope,
+    id: 'shared-root',
+    path: 'Shared',
+  })
+  const second = await server('Private/Bundle/one.md', '', 'https://second.example', {
+    ...scope,
+    id: 'private-root',
+    path: 'Private',
+  })
+  const entries = await Promise.all(
+    ['one.md', 'Nested/two.md'].map(async (name, i) => {
+      const bytes = new TextEncoder().encode(`latest saved ${name}`)
+      return {
+        bytes,
+        initial: {
+          ...first.item,
+          file_id: `source-${i}`,
+          version_id: `source-version-${i}`,
+          path: `Shared/Bundle/${name}`,
+        },
+        target: {
+          ...second.item,
+          file_id: `destination-${i}`,
+          version_id: `destination-version-${i}`,
+          path: `Private/Bundle/${name}`,
+          sha: await sha256(bytes),
+          size: bytes.length,
+          mtime: 2000,
+        },
+      }
+    })
+  )
+  const neighbor = {
+    ...first.item,
+    file_id: 'neighbor-file',
+    version_id: 'neighbor-version',
+    path: 'Shared/Neighbor/keep.md',
+  }
+  const sourceEvents: object[] = [],
+    sourceOps: object[] = [],
+    destinationOps: object[] = []
+  const removed = new Set<string>(),
+    published = new Set<string>()
+  let sourceCursor = 3,
+    destinationCursor = 1
+  const firstSend = first.fetch.getMockImplementation()!
+  first.fetch.mockImplementation(async (input, init) => {
+    const url = new URL(String(input))
+    if (url.pathname === '/v2/manifest')
+      return Response.json({
+        items: [
+          ...entries.map((entry) => entry.initial).filter((item) => !removed.has(item.file_id)),
+          neighbor,
+        ],
+        cursor: sourceCursor,
+        next: null,
+      })
+    if (url.pathname === '/v2/changes')
+      return Response.json({
+        items: sourceEvents.filter(
+          (event) => Reflect.get(event, 'cursor') > Number(url.searchParams.get('since'))
+        ),
+        cursor: sourceCursor,
+        next: null,
+      })
+    if (url.pathname === '/v2/commit') {
+      const { ops } = JSON.parse(String(init?.body))
+      const results = ops.map((op: { op: string; file_id: string; base_version_id: string }) => {
+        const entry = entries.find((one) => one.initial.file_id === op.file_id)!
+        expect(op).toEqual({
+          op: 'delete',
+          file_id: entry.initial.file_id,
+          base_version_id: entry.initial.version_id,
+        })
+        sourceOps.push(op)
+        removed.add(op.file_id)
+        const event = {
+          type: 'delete',
+          file_id: op.file_id,
+          version_id: `deleted-${op.file_id}`,
+          path: entry.initial.path,
+          cursor: ++sourceCursor,
+          at: '2025-01-01T00:00:00Z',
+        }
+        sourceEvents.push(event)
+        return {
+          status: 'applied',
+          seq: event.cursor,
+          file_id: op.file_id,
+          version_id: event.version_id,
+          path: event.path,
+          sha: null,
+          size: 0,
+          mtime: 0,
+        }
+      })
+      return Response.json({ cursor: sourceCursor, results })
+    }
+    return firstSend(input, init)
+  })
+  const secondSend = second.fetch.getMockImplementation()!
+  second.fetch.mockImplementation(async (input, init) => {
+    const url = new URL(String(input))
+    if (url.pathname === '/v2/manifest')
+      return Response.json({
+        items: entries
+          .filter((entry) => published.has(entry.target.path))
+          .map((entry) => entry.target),
+        cursor: destinationCursor,
+        next: null,
+      })
+    if (url.pathname === '/v2/changes')
+      return Response.json({ items: [], cursor: destinationCursor, next: null })
+    if (url.pathname.endsWith('/content'))
+      return new Response(
+        entries.find((entry) => url.pathname.includes('/' + entry.target.file_id + '/'))!.bytes
+      )
+    if (url.pathname === '/v2/commit') {
+      const { ops } = JSON.parse(String(init?.body))
+      const results = ops.map((op: { op: string; path: string; sha: string }) => {
+        const entry = entries.find((one) => one.target.path === op.path)!
+        expect(op).toMatchObject({ op: 'create', path: entry.target.path, sha: entry.target.sha })
+        destinationOps.push(op)
+        published.add(op.path)
+        return { status: 'applied', seq: ++destinationCursor, ...entry.target }
+      })
+      return Response.json({ cursor: destinationCursor, results })
+    }
+    return secondSend(input, init)
+  })
+  const fs = new MemoryFileSystem(),
+    peerFs = new MemoryFileSystem(),
+    targetFs = new MemoryFileSystem()
+  Object.assign(fs, { watch: () => () => {} })
+  const locks = new PathCoordinator(),
+    sourceState = new MemoryStateStore(),
+    targetState = new MemoryStateStore()
+  let a = runtime(first, fs, sourceState, locks),
+    b = runtime(second, fs, targetState, locks)
+  const peer = runtime(first, peerFs),
+    targetPeer = runtime(second, targetFs)
+  const confirm = async (one: ReturnType<typeof runtime>) => {
+    const held = await one.runtime.heldDeletes()
+    if (held.length)
+      await one.runtime.decideDeletes(
+        'confirm',
+        held.map((item) => item.fileId)
+      )
+  }
+  try {
+    await a.runtime.sync()
+    await peer.runtime.sync()
+    // Model an external folder relocation on a flat memory disk. No engine runs
+    // between its per-file effects; directory identity is covered separately.
+    for (const entry of entries) {
+      await fs.writeAtomic(entry.initial.path, entry.bytes, 2000)
+      await fs.move(entry.initial.path, entry.target.path)
+    }
+    await a.runtime.sync()
+    await confirm(a)
+    await b.runtime.sync()
+    await peer.runtime.sync()
+    await confirm(peer)
+    await targetPeer.runtime.sync()
+    await a.runtime.close()
+    await b.runtime.close()
+    a = runtime(first, fs, sourceState, locks)
+    b = runtime(second, fs, targetState, locks)
+    await a.runtime.sync()
+    await b.runtime.sync()
+    for (const entry of entries) {
+      expect(await fs.stat(entry.initial.path)).toBeNull()
+      expect(await peerFs.stat(entry.initial.path)).toBeNull()
+      expect(await fs.read(entry.target.path)).toEqual(entry.bytes)
+      expect(await targetFs.read(entry.target.path)).toEqual(entry.bytes)
+      expect((await targetState.get(entry.target.path))?.sha).toBe(entry.target.sha)
+    }
+    expect((await Array.fromAsync(peerFs.list())).map((file) => file.path)).toEqual([neighbor.path])
+    const retained = [...peerFs.snapshot()].filter(
+      ([path]) => path.startsWith('.abele-sync/') && path.endsWith('/victim')
+    )
+    expect(retained.map(([, bytes]) => bytes)).toEqual([first.bytes, first.bytes])
+    expect(new TextDecoder().decode(await fs.read(neighbor.path))).toBe('baseline')
+    expect(new TextDecoder().decode(await peerFs.read(neighbor.path))).toBe('baseline')
+    expect(sourceOps).toHaveLength(2)
+    expect(destinationOps).toHaveLength(2)
+    expect(JSON.stringify(sourceOps)).not.toContain('Private/')
+    expect(await sourceState.getJournal()).toBeNull()
+    expect(await targetState.getJournal()).toBeNull()
+  } finally {
+    await a.runtime.close()
+    await b.runtime.close()
+    await peer.runtime.close()
+    await targetPeer.runtime.close()
+  }
+})
+
 async function boundaryMove(extension: string) {
   const from = `Shared/sample.${extension}`,
     to = `Private/sample.${extension}`
