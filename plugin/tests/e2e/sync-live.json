@@ -3,6 +3,7 @@
   "files": [
     "tests/e2e/i18nSync.e2e.test.ts",
     "tests/e2e/syncExternalFiles.e2e.test.ts",
+    "tests/e2e/syncReindex.e2e.test.ts",
     "tests/e2e/syncServerDelete.e2e.test.ts"
   ]
 }
