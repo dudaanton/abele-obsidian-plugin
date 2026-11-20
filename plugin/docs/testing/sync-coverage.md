@@ -54,7 +54,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 | S27 | An edit to a file visible to several connections goes to all of them. | `plugin/tests/e2e/syncDevices.e2e.test.ts: two servers share one vault and an unavailable server does not stop the other`<br>`abele-sync/packages/core/tests/acceptance/engineV2.test.ts: 012/027/028/031 production engines converge three devices through two servers and remain quiescent after restart` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S28 | An edit received from one server is an ordinary local edit for the other connections. | `plugin/tests/e2e/syncDevices.e2e.test.ts: two servers share one vault and an unavailable server does not stop the other`<br>`plugin/tests/integration/tokenEngineServer.test.ts: exchanges files through two production token engines, forwards an edit and resumes after restart` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S29 | Simultaneous edits from two servers: none lost; normal merge/conflict rules. | `abele-sync/packages/core/tests/acceptance/conflictsV2.test.ts: ${number} preserves both variants, forwards one copy and becomes idle (number=97)` | partly | Conflict forwarding is tested; independent simultaneous resolution on two servers is not globally ordered. |
-| S30 | A fast server's answer never erases an edit still owed to a slow server. | `abele-sync/packages/core/tests/acceptance/network.test.ts: holds a real response at a deterministic barrier without blocking the other server` | partly | Only the raw transport barrier is tested; no shared-vault two-ledger test proves the slow server receives its owed edit. |
+| S30 | A fast server reply never erases an edit still owed to a slow connection. | `plugin/tests/unit/tokenEngineRuntime.test.ts: 30 preserves an edit owed to a slow connection while a fast reply replaces the shared file (%s response)` | covered | Two production runtimes share one filesystem and coordinator. Delayed and lost commit replies preserve both successive digests at the slow server, replay once after reopening both ledgers, and leave no journals. |
 | S31 | Two servers + two devices forwarding one edit in a loop: exchange stops, no new versions/copies. | `abele-sync/packages/core/tests/acceptance/engineV2.test.ts: 012/027/028/031 production engines converge three devices through two servers and remain quiescent after restart` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S32 | Nested/overlapping shares: content is creatable and editable; overlap does not block writes. | `abele-sync/packages/server/tests/integration/v2Sync.test.ts: 032/054/055/056 stable shared folder follows owner rename, moves descendants atomically, deleting affects no sibling` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S33 | One file reachable through several connections to one server → one local file, no copies from re-delivery. | `plugin/tests/unit/connectionSets.test.ts: elects one uploader using live coverage and stable order, excluding paused and detached items` | partly | Uploader election is tested; no overlapping-connection device round trip asserts one local copy. |
@@ -181,7 +181,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 
 ## Totals
 
-154 requirements: 117 covered, 37 partly, 0 missing.
+154 requirements: 118 covered, 36 partly, 0 missing.
 
 Zero entirely missing rows does **not** close the coverage gate: every partly covered
 row still has an unproved facet. The matrix records assertions present in source;
@@ -217,9 +217,9 @@ recorded git revision; validating them requires that source revision, not the st
 These gaps can be exercised with synthetic unit/integration/live tests; they are not
 excused as hardware-only work:
 
-1. S30: delay one connection after it has observed a local edit, apply the other server's
-   reply through the same vault, release the delayed connection, restart both ledgers,
-   and assert both exact variants remain recoverable and exchange becomes quiescent.
+1. S30 is resolved in the focused tier: shared-vault production runtimes preserve an
+   owed edit through delayed/lost commit replies, the faster incoming replacement, and
+   reopening both ledgers; assertions require exact digests, two receipts and no journals.
 2. S50/S52/S55/S72: move/delete across two connections and private scope boundaries;
    compare both remote manifests, receiving devices and the preserved private destination.
 3. S29/S97/B7: independently resolve concurrent changes at both servers before bridging;

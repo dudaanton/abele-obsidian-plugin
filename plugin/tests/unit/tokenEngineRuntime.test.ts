@@ -3678,6 +3678,150 @@ it('a shadowed short link cannot send a newly resolved private file using persis
     await engine.disconnect()
   }
 })
+it.each(['delayed', 'lost'] as const)(
+  '30 preserves an edit owed to a slow connection while a fast reply replaces the shared file (%s response)',
+  async (response) => {
+    const path = 'Notes/sample.md'
+    const fs = new MemoryFileSystem()
+    Object.assign(fs, { watch: () => () => {} })
+    const locks = new PathCoordinator()
+    const slow = await server(path, 'base\n')
+    const fast = await server(path, 'base\n', 'https://second.example')
+    const owed = new TextEncoder().encode('owed local edit\n')
+    const incoming = new TextEncoder().encode('later remote edit\n')
+    const owedSha = await sha256(owed),
+      incomingSha = await sha256(incoming)
+    const slowState = new MemoryStateStore(),
+      fastState = new MemoryStateStore()
+    const entered = deferred(),
+      release = deferred()
+    const receipts = new Map<string, object>()
+    const committed: string[] = []
+    let slowCursor = 1,
+      fastCursor = 1,
+      remoteChanged = false
+    let fastItem = fast.item
+    const slowSend = slow.fetch.getMockImplementation()!
+    slow.fetch.mockImplementation(async (input, init) => {
+      const route = new URL(String(input)).pathname
+      if (route === '/v2/changes')
+        return Response.json({ items: [], cursor: slowCursor, next: null })
+      if (route !== '/v2/commit') return slowSend(input, init)
+      const key = new Headers(init?.headers).get('idempotency-key')!
+      const existing = receipts.get(key)
+      if (existing) return Response.json(existing)
+      const { ops } = JSON.parse(String(init?.body))
+      const results = ops.map((op: { sha: string; size: number; mtime: number }) => {
+        committed.push(op.sha)
+        return {
+          status: 'applied',
+          seq: ++slowCursor,
+          ...slow.item,
+          version_id: `slow-${slowCursor}`,
+          sha: op.sha,
+          size: op.size,
+          mtime: op.mtime,
+        }
+      })
+      const body = { cursor: slowCursor, results }
+      receipts.set(key, body)
+      if (receipts.size === 1) {
+        entered.resolve()
+        await release.promise
+        if (response === 'lost') throw new Error('sample response lost after commit')
+      }
+      return Response.json(body)
+    })
+    const fastSend = fast.fetch.getMockImplementation()!
+    fast.fetch.mockImplementation(async (input, init) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/v2/changes')
+        return Response.json({
+          items:
+            remoteChanged && Number(url.searchParams.get('since')) < fastCursor
+              ? [
+                  {
+                    type: 'content',
+                    item: fastItem,
+                    file_id: fastItem.file_id,
+                    path,
+                    cursor: fastCursor,
+                    prev_path: null,
+                    at: '2025-01-01T00:00:00Z',
+                  },
+                ]
+              : [],
+          cursor: fastCursor,
+          next: null,
+        })
+      if (url.pathname.endsWith('/content') && remoteChanged) return new Response(incoming)
+      if (url.pathname === '/v2/commit') {
+        const { ops } = JSON.parse(String(init?.body))
+        return Response.json({
+          cursor: ++fastCursor,
+          results: ops.map((op: { sha: string; size: number; mtime: number }) => {
+            fastItem = {
+              ...fastItem,
+              version_id: `fast-${fastCursor}`,
+              sha: op.sha,
+              size: op.size,
+              mtime: op.mtime,
+            }
+            return { status: 'applied', seq: fastCursor, ...fastItem }
+          }),
+        })
+      }
+      return fastSend(input, init)
+    })
+    let one = runtime(slow, fs, slowState, locks),
+      other = runtime(fast, fs, fastState, locks)
+    let pending = Promise.resolve()
+    try {
+      await one.runtime.sync()
+      await other.runtime.sync()
+      await fs.writeAtomic(path, owed, 2000)
+      await other.runtime.sync()
+      expect((await fastState.get(path))?.sha).toBe(owedSha)
+      pending = one.runtime.sync().catch((error: unknown) => {
+        if (response !== 'lost') throw error
+      })
+      await entered.promise
+      remoteChanged = true
+      fastCursor++
+      fastItem = {
+        ...fastItem,
+        version_id: 'fast-remote',
+        sha: incomingSha,
+        size: incoming.length,
+        mtime: 3000,
+      }
+      await other.runtime.sync()
+      expect(await fs.read(path)).toEqual(incoming)
+      expect((await slowState.get(path))?.sha).not.toBe(owedSha)
+      release.resolve()
+      await pending
+      await one.runtime.close()
+      await other.runtime.close()
+      one = runtime(slow, fs, slowState, locks)
+      other = runtime(fast, fs, fastState, locks)
+      await one.runtime.sync()
+      await other.runtime.sync()
+      expect(committed).toEqual([owedSha, incomingSha])
+      expect(receipts.size).toBe(2)
+      expect((await slowState.get(path))?.sha).toBe(incomingSha)
+      expect((await fastState.get(path))?.sha).toBe(incomingSha)
+      expect(await fs.read(path)).toEqual(incoming)
+      expect(await slowState.getJournal()).toBeNull()
+      expect(await fastState.getJournal()).toBeNull()
+    } finally {
+      release.resolve()
+      await pending.catch(() => {})
+      await one.runtime.close()
+      await other.runtime.close()
+    }
+  }
+)
+
 async function server(
   path: string,
   text: string,
