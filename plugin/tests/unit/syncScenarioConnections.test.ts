@@ -434,6 +434,70 @@ it('33 overlapping tokens reuse one file and one publication across restart and 
   }
 })
 
+it('67 reopens a deleted group connection without deleting received members or publishing local edits', async () => {
+  const group = { kind: 'group' as const, id: 'sample-group', path: 'Groups/sample.md' }
+  const wire = await server(
+    group.path,
+    'group root',
+    'https://group.example',
+    group as typeof scope
+  )
+  wire.item.file_id = group.id
+  const bytes = new TextEncoder().encode('---\ngroups: ["[[Groups/sample]]"]\n---\nsaved member')
+  const member = {
+    ...wire.item,
+    file_id: 'member-file',
+    version_id: 'member-version',
+    path: 'Notes/member.md',
+    sha: await sha256(bytes),
+    size: bytes.length,
+  }
+  const send = wire.fetch.getMockImplementation()!
+  wire.fetch.mockImplementation(async (input, init) => {
+    const url = new URL(String(input))
+    if (url.pathname === '/v2/manifest')
+      return Response.json({ items: [wire.item, member], cursor: 1, next: null })
+    if (url.pathname === '/v2/files/member-file/content') return new Response(bytes)
+    return send(input, init)
+  })
+  const fs = new MemoryFileSystem(),
+    state = new MemoryStateStore()
+  const failed = vi.fn()
+  let one = runtime(wire, fs, state, undefined, null, { failed })
+  try {
+    await one.runtime.sync()
+    expect(await fs.read(member.path)).toEqual(bytes)
+    await one.runtime.close()
+    const local = new TextEncoder().encode('saved local edit after access was closed')
+    await fs.writeAtomic(member.path, local, 2000)
+    const before = fs.snapshot()
+    wire.fetch.mockClear()
+    wire.fetch.mockImplementation(async () =>
+      Response.json(
+        {
+          error: { code: 'scope_deleted', message: 'Group no longer available' },
+        },
+        { status: 401 }
+      )
+    )
+    one = runtime(wire, fs, state, undefined, null, { failed })
+    await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'scope_deleted' })
+    expect(failed).toHaveBeenCalledWith(expect.objectContaining({ code: 'scope_deleted' }))
+    expect(one.runtime.acceptsLocal(member.path, local.length)).toBe(false)
+    await one.runtime.close()
+    one = runtime(wire, fs, state, undefined, null, { failed })
+    await expect(one.runtime.sync()).rejects.toMatchObject({ code: 'scope_deleted' })
+    expect(fs.snapshot()).toEqual(before)
+    expect((await state.get(member.path))?.sha).toBe(member.sha)
+    expect(wire.fetch.mock.calls.map(([input]) => new URL(String(input)).pathname)).toEqual([
+      '/v2/connection',
+      '/v2/connection',
+    ])
+  } finally {
+    await one.runtime.close()
+  }
+})
+
 async function boundaryMove(extension: string) {
   const from = `Shared/sample.${extension}`,
     to = `Private/sample.${extension}`

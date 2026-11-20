@@ -91,7 +91,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 | S64 | Removing one group: recipients who had the note only through it lose it (like leaving a folder); others keep it. | `abele-sync/packages/core/tests/acceptance/groupsV2.test.ts: 014/041/057–068 production group engines create nested members, preserve foreign groups, converge two servers, remove departures and preserve unavailable files` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S65 | Restoring the group re-delivers the note with current content. | `abele-sync/packages/server/tests/integration/v2Groups.test.ts: 014/057/059–065 nested groups, cycles and foreign links are inert; departures do not expose private history` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S66 | Renaming the group-defining note: access follows the group; no substitution. | `abele-sync/packages/core/tests/acceptance/groupsV2.test.ts: 066 local root rename is a move, not scope deletion, across two servers and restart; NFD local member paths remain eligible`<br>`abele-sync/packages/server/tests/integration/v2Groups.test.ts: 066–068 stable root follows rename and remains unavailable after replacement; descendants remain valid after issuer revocation` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
-| S67 | Deleting the group-defining note: loss of access is visible; received notes are not deleted. | `plugin/tests/unit/tokenEngineRuntime.test.ts: stops on scope_deleted without applying local deletes or uploading retained files` | partly | Unavailable scope preservation exists; group deletion followed by plugin restart needs direct device evidence. |
+| S67 | Losing a deleted group connection is visible and never deletes received files or sends later local edits. | `plugin/tests/unit/syncScenarioConnections.test.ts: 67 reopens a deleted group connection without deleting received members or publishing local edits` | covered | The test receives a real group member through the production runtime, closes access, edits locally, reopens twice and asserts the reported scope error, preserved bytes and ledger, and connection-only requests with no upload or deletion. |
 | S68 | A new group created at the old path is not silently shared by the old connection. | `abele-sync/packages/server/tests/integration/v2Groups.test.ts: 066–068 stable root follows rename and remains unavailable after replacement; descendants remain valid after issuer revocation` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S69 | A picture/document/canvas/other file in a shared folder arrives whole, even unreferenced. | `plugin/tests/e2e/sync.e2e.test.ts: binary bytes and original modification time arrive intact` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S70 | Editing someone else's attachment/canvas in the share is accepted. | `plugin/tests/e2e/sync.e2e.test.ts: binary bytes and original modification time arrive intact`<br>`abele-sync/packages/server/tests/integration/v2Sync.test.ts: 070/071/072/073 any participant can modify/move/delete opaque files regardless of author` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
@@ -181,7 +181,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 
 ## Totals
 
-154 requirements: 122 covered, 32 partly, 0 missing.
+154 requirements: 123 covered, 31 partly, 0 missing.
 
 Zero entirely missing rows does **not** close the coverage gate: every partly covered
 row still has an unproved facet. The matrix records assertions present in source;
@@ -232,8 +232,9 @@ excused as hardware-only work:
    keep exchanging after the other connection disconnects.
 5. S131 and S132 are resolved in the focused tier: hidden-folder exclusion is pinned,
    and omitted ordinary files are found through bounded periodic verification.
-6. S40/S67/B8: exact first-contact obstacle visibility, unavailable group restart, and
-   conflict-specific quota refusal with a visible pending reason and later recovery.
+6. S40/B8: exact first-contact obstacle visibility and conflict-specific quota refusal
+   with a visible pending reason and later recovery. S67 now verifies unavailable-group
+   reopening, retained members, local edits, a reported scope error and no exchange.
 7. S15/S54/S56/B2: reconcile scenario wording with existing read-only token support,
    explicit shared-root following and held root deletions. Current tests assert those
    behaviors; removing their safeguards is not a coverage fix.
