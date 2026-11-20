@@ -2,8 +2,69 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { cachedResourceRanges, readCacheNamespace } from '@/sync/mobileCachedRanges'
 import { mobileRangeCacheFixture } from '../helpers/mobileRangeCacheFixture'
 import { deferred } from '../helpers/deferred'
+import { NATIVE_READ_DEADLINE_MS } from '@/sync/nativeReadDeadline'
 afterEach(() => vi.unstubAllGlobals())
 const anchor = '.abele-sync-work'
+it('bounds a cache copy without a caller signal and cleans its late result', async () => {
+  const f = mobileRangeCacheFixture()
+  const files = Reflect.get(window, 'Capacitor').Plugins.Filesystem
+  const original = files.copy
+  const entered = deferred(),
+    release = deferred()
+  files.copy = async (...args: unknown[]) => {
+    entered.resolve()
+    await release.promise
+    await original(...args)
+  }
+  vi.useFakeTimers()
+  const pending = cachedResourceRanges(f.adapter, f.fetcher, anchor)!.response('sample.bin', f.size)
+  const rejected = expect(pending).rejects.toMatchObject({ retryable: true })
+  try {
+    await entered.promise
+    await vi.advanceTimersByTimeAsync(NATIVE_READ_DEADLINE_MS)
+    await rejected
+    expect(f.native.ranges).toBe(0)
+    release.resolve()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(f.cache.size).toBe(0)
+  } finally {
+    release.resolve()
+    await pending.catch(() => {})
+    vi.useRealTimers()
+  }
+})
+it('releases an aborted copy waiter before native acknowledgement and cleans a late copy', async () => {
+  const f = mobileRangeCacheFixture()
+  const files = Reflect.get(window, 'Capacitor').Plugins.Filesystem
+  const original = files.copy
+  const entered = deferred(),
+    release = deferred()
+  files.copy = async (...args: unknown[]) => {
+    entered.resolve()
+    await release.promise
+    await original(...args)
+  }
+  const cancellation = new AbortController()
+  const pending = cachedResourceRanges(f.adapter, f.fetcher, anchor)!.response(
+    'sample.bin',
+    f.size,
+    cancellation.signal
+  )
+  let settled = false
+  const observed = pending.catch(() => {
+    settled = true
+  })
+  await entered.promise
+  cancellation.abort(new Error('sample stop'))
+  try {
+    await vi.waitFor(() => expect(settled).toBe(true), { timeout: 200 })
+  } finally {
+    release.resolve()
+    await observed
+  }
+  await vi.waitFor(() => expect(f.cache.size).toBe(0))
+  expect(f.native.ranges).toBe(0)
+})
 it('cleans inactive read aliases only in its namespace and preserves another active reader', async () => {
   const f = mobileRangeCacheFixture(8 * 1024 * 1024)
   const namespace = readCacheNamespace(f.adapter, anchor)

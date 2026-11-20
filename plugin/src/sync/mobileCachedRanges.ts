@@ -7,6 +7,7 @@ import { bytesToHex } from '@noble/hashes/utils'
 import type { DataAdapter } from 'obsidian'
 import { resourceUrl } from './mobileResourceRanges'
 import { mobileReadMeter } from './mobileReadDiagnostics'
+import { boundedNativeRead } from './nativeReadDeadline'
 
 interface CacheFiles {
   mkdir(options: { path: string; directory: 'CACHE'; recursive: boolean }): Promise<unknown>
@@ -104,6 +105,8 @@ export function cachedResourceRanges(adapter: DataAdapter, fetcher: typeof fetch
       const abort = () => controller.abort(signal?.reason)
       signal?.addEventListener('abort', abort, { once: true })
       let flight: Promise<void> = Promise.resolve()
+      let copyPending = false
+      let abandoned = false
       try {
         signal?.throwIfAborted()
         // Only a host-provided local URI reaches the native copy API.
@@ -112,16 +115,24 @@ export function cachedResourceRanges(adapter: DataAdapter, fetcher: typeof fetch
         const meter = mobileReadMeter()
         let copied = false
         meter.copyStarted()
-        try {
-          await files.copy({
-            from: new URL(nativePath, 'file://').href,
-            to: alias,
-            toDirectory: 'CACHE',
-          })
-          copied = true
-        } finally {
-          meter.copyFinished(copied ? size : 0)
-        }
+        copyPending = true
+        const copying = Promise.resolve().then(async () => {
+          try {
+            await files.copy({
+              from: new URL(nativePath, 'file://').href,
+              to: alias,
+              toDirectory: 'CACHE',
+            })
+            copied = true
+          } finally {
+            copyPending = false
+            meter.copyFinished(copied ? size : 0)
+          }
+        })
+        // This copy owns only a disposable cache alias. Release its reader on
+        // cancellation/deadline, but retain alias ownership until native I/O ends.
+        void copying.then(cleanupIfAbandoned, cleanupIfAbandoned)
+        await boundedNativeRead(waitForSyncRead(copying, signal ?? undefined), 'mobile cache copy')
         signal?.throwIfAborted()
         if (
           (
@@ -207,8 +218,12 @@ export function cachedResourceRanges(adapter: DataAdapter, fetcher: typeof fetch
       } catch (error) {
         controller.abort()
         signal?.removeEventListener('abort', abort)
-        await cleanup()
+        abandoned = true
+        if (!copyPending) await cleanup()
         throw error
+      }
+      function cleanupIfAbandoned() {
+        if (abandoned) void cleanup()
       }
     },
   }
