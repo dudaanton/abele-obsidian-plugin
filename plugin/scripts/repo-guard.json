@@ -29,6 +29,7 @@
       ".test.env.example",
       "build_and_copy_plugin_prod.sh",
       "build_and_copy_plugin_test.sh",
+      "docs",
       "eslint.config.mjs",
       "eslint.review.mjs",
       "package-lock.json",
@@ -51,6 +52,12 @@
       "vitest.size.config.ts",
       "watch.sh",
       "vendor"
+    ],
+    "plugin/docs": [
+      "testing"
+    ],
+    "plugin/docs/testing": [
+      "sync-coverage.md"
     ]
   },
   "maxBytes": 1048576,
