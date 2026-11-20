@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest'
-import { MemoryStateStore, scan, sha256 } from '@abele/sync-sdk/core'
+import { ExpectedWrites, MemoryStateStore, push, scan, sha256 } from '@abele/sync-sdk/core'
+import type { CommitOp } from '@abele/sync-sdk/protocol'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { ignoreFor } from '@/sync/scope'
@@ -133,9 +134,7 @@ it('132 keeps a tracked host-excluded file eligible under the sync filter', asyn
   expect((await state.get(path))?.versionId).toBe('sample-version')
 })
 
-// BUG: a new ordinary file omitted by the host index has no ledger candidate, so
-// the inventory cannot discover it even though the sync filter permits it.
-it.fails('132 discovers a new host-excluded file without a prior ledger entry', async () => {
+it('132 discovers a new host-excluded file without a prior ledger entry', async () => {
   const path = 'Excluded/sample.md'
   const app = buildFakeVault([{ path, content: 'new saved content', mtime: 1000 }])
   Object.assign(app.workspace, { layoutReady: true })
@@ -148,8 +147,103 @@ it.fails('132 discovers a new host-excluded file without a prior ledger entry', 
     ledger: state,
     prepareStartupInventory: async () => {},
   })
-  const found = await scan(fs, state, { excluded: (path) => ignore.ignores(path) })
-  expect(found.ops).toEqual([expect.objectContaining({ op: 'create', path })])
+  const changed = vi.fn()
+  const stop = fs.watch(changed)
+  try {
+    // Startup remains index-only. The next verification poll must discover the
+    // ordinary disk file even though no index event or ledger entry names it.
+    await Reflect.get(fs, Symbol.for('abele.sync.inspect-polled-v1')).call(fs)
+    const found = await scan(fs, state, { excluded: (path) => ignore.ignores(path) })
+    expect(found.ops).toEqual([expect.objectContaining({ op: 'create', path })])
+    expect(changed.mock.calls.flatMap(([paths]) => paths)).toContain(path)
+    const uploaded: Uint8Array[] = []
+    const client = {
+      hasBlob: async () => false,
+      putBlob: async (_sha: string, bytes: Uint8Array) => {
+        uploaded.push(bytes)
+      },
+      commitRaw: async (ops: CommitOp[]) => ({
+        replayed: false,
+        body: {
+          head_seq: 1,
+          results: ops.map((op) => ({
+            status: 'applied',
+            seq: 1,
+            file_id: 'sample-file',
+            version_id: 'sample-version',
+            path: 'path' in op ? op.path : path,
+            sha: 'sha' in op ? op.sha : null,
+            size: 'size' in op ? op.size : 0,
+            mtime: 'mtime' in op ? op.mtime : 0,
+          })),
+        },
+      }),
+    }
+    await push(client as never, fs, state, found, { expected: new ExpectedWrites() })
+    expect(uploaded).toEqual([new TextEncoder().encode('new saved content')])
+    expect((await state.get(path))?.versionId).toBe('sample-version')
+    expect((await scan(fs, state, { excluded: (path) => ignore.ignores(path) })).ops).toEqual([])
+  } finally {
+    stop()
+  }
+})
+
+it('132 bounds each verification poll and eventually discovers files beyond its first directory batch', async () => {
+  const specs = Array.from({ length: 40 }, (_, i) => ({
+    path: `Folder-${i}/sample.md`,
+    content: 'saved',
+    mtime: 1000,
+  }))
+  const app = buildFakeVault(specs)
+  Object.assign(app.workspace, { layoutReady: true })
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
+  vi.spyOn(app.vault, 'getFiles').mockReturnValue([])
+  const fs = new ObsidianFileSystem(app as never, {
+    ledger: new MemoryStateStore(),
+    prepareStartupInventory: async () => {},
+  })
+  const list = vi.spyOn(app.vault.adapter, 'list')
+  const read = vi.spyOn(app.vault.adapter, 'readBinary')
+  expect(await Array.fromAsync(fs.list())).toEqual([])
+  expect(list.mock.calls.filter(([path]) => !path.startsWith('.obsidian'))).toEqual([])
+  const stop = fs.watch(() => {})
+  try {
+    for (let i = 0; i < 6; i++) {
+      const before = list.mock.calls.filter(([path]) => !path.startsWith('.obsidian')).length
+      await Reflect.get(fs, Symbol.for('abele.sync.inspect-polled-v1')).call(fs)
+      const after = list.mock.calls.filter(([path]) => !path.startsWith('.obsidian')).length
+      expect(after - before).toBeLessThanOrEqual(8)
+    }
+    expect(read).not.toHaveBeenCalled()
+    const paths = (await Array.fromAsync(fs.list())).map((file) => file.path)
+    expect(paths.sort()).toEqual(specs.map((file) => file.path).sort())
+  } finally {
+    stop()
+  }
+})
+
+it('132 confines verification to a folder connection and leaves hidden neighbors alone', async () => {
+  const app = buildFakeVault([
+    { path: 'Shared/sample.md', content: 'saved' },
+    { path: 'Shared/.private/sample.md', content: 'hidden' },
+    { path: 'Private/sample.md', content: 'private' },
+  ])
+  Object.assign(app.workspace, { layoutReady: true })
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
+  const fs = new ObsidianFileSystem(app as never, {
+    fileScope: 'Shared',
+    prepareStartupInventory: async () => {},
+  })
+  const list = vi.spyOn(app.vault.adapter, 'list')
+  const globalIndex = vi.spyOn(app.vault, 'getFiles')
+  const stop = fs.watch(() => {})
+  try {
+    await Reflect.get(fs, Symbol.for('abele.sync.inspect-polled-v1')).call(fs)
+    expect(list.mock.calls.map(([path]) => path)).toEqual(['Shared'])
+    expect(globalIndex).not.toHaveBeenCalled()
+  } finally {
+    stop()
+  }
 })
 
 it('126/129 discards a partial rebuild inventory and sends only the latest indexed edit', async () => {

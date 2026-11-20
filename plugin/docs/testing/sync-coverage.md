@@ -156,7 +156,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 | S129 | Edits during indexing survive and are not sent twice. | `plugin/tests/unit/syncScenarioInventory.test.ts: 126/129 discards a partial rebuild inventory and sends only the latest indexed edit` | partly | A single latest-content modification and no false delete are asserted; exactly-once committed versions during real host reindex remain unproved. |
 | S130 | A slow index is awaited without disk fallback or app stalls; status explains the wait. | `plugin/tests/unit/syncConnectionLine.test.ts: shows the host-index wait in the connection and status bar` | partly | Wait/cancellation and status are automated; long host indexing responsiveness needs device profiling. |
 | S131 | Configuration files remain discoverable without host index membership. Non-config dot-folders are excluded by design. | `plugin/tests/unit/syncScenarioInventory.test.ts: 131 discovers a changed unindexed configuration file after restart`<br>`plugin/tests/unit/syncScenarioInventory.test.ts: 131 excludes nested hidden files without inferring deletion, present=%s` | covered | Approved scope: configuration only. Hidden-file presence or absence generates no upload or delete and preserves the ledger. |
-| S132 | Host exclusion visibility does not replace the sync filter. | `plugin/tests/unit/syncScenarioInventory.test.ts: 132 keeps a tracked host-excluded file eligible under the sync filter`<br>`plugin/tests/unit/syncScenarioInventory.test.ts: 132 discovers a new host-excluded file without a prior ledger entry` | partly | Tracked exclusions pass. The new-file-without-ledger regression is it.fails: a host-excluded file has no candidate for discovery. |
+| S132 | Host exclusion visibility does not replace the sync filter. | `plugin/tests/unit/syncScenarioInventory.test.ts: 132 keeps a tracked host-excluded file eligible under the sync filter`<br>`plugin/tests/unit/syncScenarioInventory.test.ts: 132 discovers a new host-excluded file without a prior ledger entry`<br>`plugin/tests/unit/syncScenarioInventory.test.ts: 132 bounds each verification poll and eventually discovers files beyond its first directory batch`<br>`plugin/tests/unit/syncScenarioInventory.test.ts: 132 confines verification to a folder connection and leaves hidden neighbors alone` | covered | Startup remains index-only. Later polls verify at most eight ordinary directories, notify the engine, upload exact omitted bytes and settle without duplicate operations. |
 | S133 | An interrupted index restarts from retained progress without false deletion or redundant transfer. | `plugin/tests/unit/syncScenarioInventory.test.ts: 133 cancels an incomplete index without publishing absence and retries from the same ledger` | partly | Cancellation and restart scan are simulated; real process crash and content-GET counts need device evidence. |
 | S134 | A phone evicted from memory rebuilds its index and resumes from durable progress. | `plugin/tests/integration/syncShutdownRecovery.test.ts: closes during %s and reopens the ledger without lost or duplicated work` | partly | JavaScript shutdown is simulated; actual mobile process eviction/IndexedDB durability requires a real phone. |
 | B1 | Empty directories synchronize. | `abele-sync/packages/core/tests/acceptance/directoriesV2.test.ts: 053/054/056 empty directory identities, moves, and deletions converge through the production engine` | covered | Production directory engines assert empty directory identity and convergence. |
@@ -181,7 +181,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 
 ## Totals
 
-154 requirements: 116 covered, 38 partly, 0 missing.
+154 requirements: 117 covered, 37 partly, 0 missing.
 
 Zero entirely missing rows does **not** close the coverage gate: every partly covered
 row still has an unproved facet. The matrix records assertions present in source;
@@ -189,7 +189,7 @@ it does not claim those suites passed on this candidate.
 
 ## New focused checks
 
-`plugin/tests/unit/syncScenarioInventory.test.ts` adds seven cases:
+`plugin/tests/unit/syncScenarioInventory.test.ts` covers the following cases:
 
 - Interrupted index waiting preserves the ledger, does no fallback disk walk or content
   read, then restarts without deletion or a content modification.
@@ -200,8 +200,12 @@ it does not claim those suites passed on this candidate.
   waiting produces exactly one current-content modification rather than a delete.
 - S131 pins the approved exclusion of non-config dot-folders, including tracked-file
   absence: neither presence nor absence generates an upload or deletion.
-- S132 retains an executable expected failure for a new ordinary file omitted by the
-  host index with no previous ledger entry; it is not counted as covered.
+- S132 discovers new ordinary files through bounded periodic verification, signals their
+  paths and uploads exact content. Tests pin zero ordinary directory listings on the
+  initial scan, eight directories per verification poll, eventual traversal beyond the
+  first batch, and confinement to the connection root without hidden-folder discovery.
+  The watcher uses its existing polling interval; discovery latency depends on folder
+  count and position in the rotation, without delaying startup for a whole disk walk.
 
 `plugin/tests/unit/syncCoverageMatrix.test.ts` checks all 154 unique identifiers,
 explicit verdicts, existing plugin test titles, and prevents a skipped or expected-failure
@@ -223,8 +227,8 @@ excused as hardware-only work:
    claiming a globally first original.
 4. S33: overlap two scopes over the same physical path; exchange and restart both ledgers,
    then close one connection and assert a single copy and a live surviving connection.
-5. S132: discover new ordinary files omitted by the host index without a startup-wide
-   disk traversal. S131 is resolved: non-config dot-folders remain excluded by design.
+5. S131 and S132 are resolved in the focused tier: hidden-folder exclusion is pinned,
+   and omitted ordinary files are found through bounded periodic verification.
 6. S40/S67/B8: exact first-contact obstacle visibility, unavailable group restart, and
    conflict-specific quota refusal with a visible pending reason and later recovery.
 7. S15/S54/S56/B2: reconcile scenario wording with existing read-only token support,

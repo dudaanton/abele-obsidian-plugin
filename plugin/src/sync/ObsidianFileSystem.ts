@@ -1341,6 +1341,12 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly ledger: ObsidianFileSystemOptions['ledger'] | null
   /** Pulls can finish before Obsidian's file index sees their adapter renames. */
   private readonly awaitingIndex = new Set<string>()
+  /** Ordinary files found by bounded verification before the host indexes them. */
+  private readonly unindexedFiles = new Set<string>()
+  private verificationRoot = ''
+  private verificationDirectories: string[] = []
+  private verificationPosition = 0
+  private readonly verificationVisited = new Set<string>()
   /** Set while `watch` is running: what `kick` reaches for, and nothing when nobody watches. */
   private pollNow: (() => void) | null = null
   private inspectPoll: (() => Promise<boolean>) | null = null
@@ -3207,7 +3213,7 @@ export class ObsidianFileSystem implements FileSystem {
     }
     // A pull can finish before the index sees its adapter renames, including across engine
     // rebuilds and app restarts. The ledger is authoritative about what might still be on disk.
-    const candidates = new Set(this.awaitingIndex)
+    const candidates = new Set([...this.awaitingIndex, ...this.unindexedFiles])
     this.listPhase('ledger candidates')
     if (this.ledger !== null) {
       for await (const entry of this.ledgerEntries()) {
@@ -3228,6 +3234,7 @@ export class ObsidianFileSystem implements FileSystem {
         path.startsWith(`${this.configDir}/`) ||
         indexed().has(this.pathKey(path))
       ) {
+        if (indexedExact.has(path)) this.unindexedFiles.delete(path)
         continue
       }
       // stat alone on a case-folding disk would keep a phantom Report.md after a rename to
@@ -4871,6 +4878,7 @@ export class ObsidianFileSystem implements FileSystem {
    * the config folder, so no vault event reports an external edit to it.
    */
   private async configSnapshot(): Promise<Map<string, string>> {
+    const verifyOrdinary = this.configPolled
     if (this.configPolled) {
       this.operationStats?.cache.clear()
       invalidateInspectedAbsence(this.startupInventory?.())
@@ -4883,6 +4891,7 @@ export class ObsidianFileSystem implements FileSystem {
       this.configPolled = true
       const ignore = await this.fileSnapshot(IGNORE_FILE)
       if (ignore !== null) taken.set(IGNORE_FILE, ignore)
+      if (verifyOrdinary) await this.verifyUnindexedFiles(taken)
       return taken
     }
     if (!this.configPolled && this.configInventory === null && !this.inventoryConsumed) {
@@ -4899,7 +4908,111 @@ export class ObsidianFileSystem implements FileSystem {
     }
     const ignore = await this.fileSnapshot(IGNORE_FILE)
     if (ignore !== null) taken.set(IGNORE_FILE, ignore)
+    if (verifyOrdinary) await this.verifyUnindexedFiles(taken)
     return taken
+  }
+
+  /** Startup uses the host index. Later polls rotate through at most eight directories,
+   * examining metadata only for files the index omitted. No absence here authorizes a
+   * deletion: candidates still pass the ordinary scanner and its fresh disk safeguards. */
+  private async verifyUnindexedFiles(taken: Map<string, string>): Promise<void> {
+    if (!this.indexReady()) return
+    const scope = this.scopedRoot()
+    const roots = this.discovery?.roots ?? [scope ?? '']
+    const key = JSON.stringify(roots)
+    if (this.verificationRoot !== key) {
+      this.verificationRoot = key
+      this.verificationDirectories = []
+      this.verificationVisited.clear()
+      this.unindexedFiles.clear()
+    }
+    if (!roots.length) return
+    if (this.verificationPosition >= this.verificationDirectories.length) {
+      this.verificationDirectories = [...roots]
+      this.verificationPosition = 0
+      this.verificationVisited.clear()
+    }
+    const budget = new SyncTaskBudget()
+    const check = () => {
+      this.runtimeFence?.assertReady()
+      this.indexWaitSignal?.()?.throwIfAborted()
+      return this.scanWatchers > 0
+    }
+    const indexed = new Set<string>()
+    for (const file of this.indexedFiles(scope)) {
+      if (!check()) return
+      const pause = budget.metadataRow()
+      if (pause !== undefined) await pause
+      indexed.add(file.path)
+    }
+    for (
+      let count = 0;
+      count < 8 && this.verificationPosition < this.verificationDirectories.length;
+      count++
+    ) {
+      if (!check()) return
+      if (!this.indexReady()) return
+      const parent = this.verificationDirectories[this.verificationPosition]
+      if (
+        (parent && !this.inventoryVisible(parent)) ||
+        !this.withinFileScope(parent) ||
+        (await crossesSymlink(parent, (path) => this.isSymlink(path)))
+      ) {
+        this.verificationPosition++
+        continue
+      }
+      // Advance only after success: a transient listing failure must not skip this
+      // directory until the next whole rotation, or clear its known candidates.
+      let listing: ListedFiles
+      try {
+        listing = await this.disk.list(parent)
+      } catch (error) {
+        if (!notFound(error) || (await this.rawStat(parent)) !== null) throw error
+        // A directory removed after it was queued must not starve its siblings.
+        this.verificationPosition++
+        continue
+      }
+      if (!check()) return
+      this.verificationPosition++
+      this.verificationVisited.add(parent)
+      for (const path of listing.folders) {
+        const pause = budget.metadataRow()
+        if (pause !== undefined) await pause
+        if (
+          this.inventoryVisible(path) &&
+          this.withinFileScope(path) &&
+          !this.verificationVisited.has(path)
+        ) {
+          this.verificationVisited.add(path)
+          this.verificationDirectories.push(path)
+        }
+      }
+      for (const path of listing.files) {
+        if (!check()) return
+        const pause = budget.metadataRow()
+        if (pause !== undefined) await pause
+        if (
+          indexed.has(path) ||
+          !this.inventoryVisible(path) ||
+          !this.withinFileScope(path) ||
+          (this.discovery && !this.discovery.includes(path)) ||
+          (await this.isSymlink(path))
+        )
+          continue
+        this.unindexedFiles.add(path)
+        this.awaitingIndex.add(path)
+      }
+    }
+    for (const path of this.unindexedFiles) {
+      if (!check()) return
+      if (indexed.has(path)) {
+        this.unindexedFiles.delete(path)
+        continue
+      }
+      const signature = await this.fileSnapshot(path)
+      if (signature !== null) taken.set(path, signature)
+      else this.unindexedFiles.delete(path)
+    }
   }
 
   /** Fresh facts, never index/listing hints or wire-rounded dates. Shared with config
