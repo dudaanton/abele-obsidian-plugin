@@ -176,12 +176,12 @@ Requirements are paraphrased; private notes and environments are not copied into
 | U4 | Offline status turns into a healthy state after connectivity returns. | `plugin/tests/unit/syncConnectionLine.test.ts: is orange for a pause, a missing server and a conflict copy, red when the person must act` | partly | Component/state coverage; full screen navigation and real phone visibility still require live evidence. |
 | U5 | A conflict is visible in the status and connection window; its copy opens. | `plugin/tests/component/tokenSyncUi.test.ts: shows every connection as one row and opens its window with progress, refusals and the conflict copy` | partly | Component/state coverage; full screen navigation and real phone visibility still require live evidence. |
 | U6 | Incoming executable content waits for review and acceptance or rejection. | `plugin/tests/component/tokenSyncUi.test.ts: rejects only the displayed executable candidate, leaving local code and a later candidate untouched` | partly | Component/state coverage; full screen navigation and real phone visibility still require live evidence. |
-| U7 | A phone warning cloud opens sync settings while offline. | `plugin/tests/unit/syncConnectionLine.test.ts: shows only when something is wrong` | partly | Component/state coverage; full screen navigation and real phone visibility still require live evidence. |
+| U7 | An offline warning in the note header opens sync settings and disappears after recovery. | `plugin/tests/unit/phoneSyncAction.test.ts: U7 opens sync from the offline header action and removes it after recovery` | covered | The production action is installed on a loaded note view, receives a click through the host action callback, opens sync exactly once, and is removed when healthy. Physical phone geometry and touch delivery still require the mobile execution tier. |
 | U8 | Disconnect confirmation preserves local files. | `plugin/tests/integration/syncService.test.ts: disconnect removes only this credential, keeps local files and retained ledger evidence` | partly | Component/state coverage; full screen navigation and real phone visibility still require live evidence. |
 
 ## Totals
 
-154 requirements: 125 covered, 29 partly, 0 missing.
+154 requirements: 126 covered, 28 partly, 0 missing.
 
 Zero entirely missing rows does **not** close the coverage gate: every partly covered
 row still has an unproved facet. The matrix records assertions present in source;
@@ -238,8 +238,9 @@ excused as hardware-only work:
 7. S15/S54/S56/B2: reconcile scenario wording with existing read-only token support,
    explicit shared-root following and held root deletions. Current tests assert those
    behaviors; removing their safeguards is not a coverage fix.
-8. U1–U8: finish assertions of the complete navigation flows where the matrix currently
-   has only component/state evidence. Screen tests need real desktop and phone runs.
+8. U1–U6/U8: finish the full navigation flow assertions beyond component/state
+   evidence. U7 now pins the offline action callback and removal after recovery; real
+   desktop and phone execution remains a separate evidence obligation.
 
 ## What only real devices can establish
 

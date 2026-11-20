@@ -1,16 +1,17 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Plugin } from 'obsidian'
 import { mountPhoneSyncAction } from '@/sync/phoneSyncAction'
 import { DISCONNECTED_STATUS } from '@/sync/status'
 
 /** A loaded note's view takes header actions; a tab not yet opened this session has no such API. */
 function loadedView() {
-  const actions: { icon: string; el: { removed: boolean } }[] = []
+  const actions: { icon: string; click: () => void; el: { removed: boolean } }[] = []
   return {
     actions,
-    addAction(icon: string) {
+    addAction(icon: string, _tooltip: string, click: () => void) {
       const one = {
         icon,
+        click,
         el: {
           removed: false,
           addClass() {},
@@ -46,6 +47,21 @@ function workspace(leaves: { view: unknown }[]) {
 }
 
 describe('the cloud in a phone note header', () => {
+  it('U7 opens sync from the offline header action and removes it after recovery', () => {
+    const loaded = loadedView()
+    const { plugin } = workspace([{ view: loaded }])
+    const openSync = vi.fn()
+    const paint = mountPhoneSyncAction(plugin, openSync)
+    paint({ ...DISCONNECTED_STATUS, state: 'offline' })
+    expect(loaded.actions.map((action) => action.icon)).toEqual(['cloud-off'])
+    expect(openSync).not.toHaveBeenCalled()
+    loaded.actions[0].click()
+    expect(openSync).toHaveBeenCalledOnce()
+    paint({ ...DISCONNECTED_STATUS, state: 'idle' })
+    expect(loaded.actions).toHaveLength(1)
+    expect(loaded.actions[0].el.removed).toBe(true)
+    expect(openSync).toHaveBeenCalledOnce()
+  })
   it('skips a note tab that is not loaded yet and still marks the loaded ones', () => {
     const loaded = loadedView()
     const deferred = { leaf: {} }
