@@ -4,6 +4,7 @@ import { PromptSchema, validateParams } from '@abele/node-protocol'
 import type { ClientState } from '@abele/node-client'
 import type { NodeClientState } from './NodeClientStore'
 import { snapshotOf } from './storeDraft'
+import { tableOf } from './recordTable'
 
 export interface PromptAnswerState {
   choice: 'allow' | 'deny'
@@ -41,7 +42,8 @@ export function promptAnswerStates(
   // An unchanged transaction draft has the same immutable backing collection.
   // Resolve it before indexing; proxy identities are replaced on every transaction.
   const results = snapshotOf(state.results)
-  let index = Object.isFrozen(results) ? answerIndexes.get(results) : undefined
+  const immutable = !!tableOf(results) || Object.isFrozen(results)
+  let index = immutable ? answerIndexes.get(results) : undefined
   if (!index) {
     index = new Map()
     for (const receipt of Object.values(results)) {
@@ -56,7 +58,7 @@ export function promptAnswerStates(
         ...(receipt.error ? { error: receipt.error } : {}),
       }
     }
-    if (Object.isFrozen(results)) answerIndexes.set(results, index)
+    if (immutable) answerIndexes.set(results, index)
   }
   const answers = Object.fromEntries(
     Object.entries(index.get(sessionId) ?? {}).map(([id, answer]) => [id, { ...answer }])

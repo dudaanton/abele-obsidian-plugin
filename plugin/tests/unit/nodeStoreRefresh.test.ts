@@ -56,7 +56,9 @@ it('observes a legacy writer clearing its metadata-only receipt collection', asy
   try {
     await write({ sample: { error: 'outcome_unknown' } })
     expect(await store.read((state) => state.results.sample?.error)).toBe('outcome_unknown')
+    expect(await store.read((state) => state.results.sample?.error)).toBe('outcome_unknown')
     await write({})
+    expect(await store.read((state) => state.results.sample)).toBeUndefined()
     expect(await store.read((state) => state.results.sample)).toBeUndefined()
   } finally {
     db.close()

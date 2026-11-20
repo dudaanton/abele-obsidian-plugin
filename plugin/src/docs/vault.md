@@ -3815,18 +3815,26 @@ Metadata is cached by a database revision; read-only consumers receive immutable
 and writes copy and validate changed branches. Delegation tasks use separate records, with
 their exact tool snapshots shared by content fingerprint and reconstructed for retries.
 The cache retains the latest 200 delivered terminal tasks, plus all unfinished or uncertain
-work, pending sends and owner stop fences. Older cache layouts migrate atomically without
-raising the version-3 database format. Delegation revisions have their own manifest, and
-writes retain an exact legacy-readable task snapshot for rollback. Reopening after an older
-client ran imports its task changes without discarding the retained retry bodies.
-Record rows and their revision maps commit with a small `records-stamp` value. Each
-new handle imports the persisted maps on first access; subsequent unchanged reads use
-the stamp and cached immutable rows without decoding the maps again. Aborted writes
+work, pending sends and owner stop fences. The version-3 database stores per-row ordering
+metadata and a bounded revision log alongside the existing payload records. Writes retain
+an exact legacy-readable task snapshot for rollback. Reopening after an older client ran
+imports its task changes without discarding
+the retained retry bodies.
+Record rows and their revision log commit with a small `records-stamp` value and a
+monotonic change version. Each new handle imports the index and any legacy revision maps
+on first access. Warm handles read only revisions newer than their cached version.
+The latest 1024 changed transactions retain their deleted-row identities; a handle that falls
+further behind rebuilds from current live rows. New-format deletes remove their row metadata.
+Rows still named by legacy manifests retain a tombstone and rollback-readable payload;
+their referenced tool schemas remain on disk while current views exclude the retired rows.
+Cached record collections share immutable paths, so saving one row does not copy
+the collection.
+Delegation tool references are counted only for changed rows. Aborted writes
 publish neither a new stamp nor a new in-memory snapshot. Concurrent handles must run
 the same stamped writer protocol; older-format writers are supported before reopening,
 not concurrently with a cached reader. Existing record layouts remain readable.
-Composer edits and new send identities update the extra record manifest without rewriting
-retained receipt revisions. Existing rows keep their original manifest placement. Settled-history
+Composer edits and new send identities write only their changed payload and revision rows.
+Legacy manifests remain import sources and are not rewritten by these saves. Settled-history
 retention runs when receipts, manager operations or delegation tasks change, rather than on
 every composer edit; approval and uncertain-outcome evidence remain protected.
 Startup removes orphaned registration caches belonging to this vault installation, while
