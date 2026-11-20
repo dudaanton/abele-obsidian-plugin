@@ -25,6 +25,8 @@ export interface WatchHost {
   configDir: string
   /** path → fresh metadata/object identity for the config folder and ignore file. */
   snapshot: () => Promise<Map<string, string>>
+  /** Additive ordinary-file discovery, independent of the settings snapshot. */
+  verify?: () => Promise<string[]>
 }
 
 /** A running watch: look at the config folder now, or stop. */
@@ -114,6 +116,15 @@ export function watchVault(host: WatchHost, cb: (paths: string[]) => void): Vaul
         if (changed.length > 0) {
           add(changed)
           fire()
+        }
+        try {
+          const discovered = await host.verify?.()
+          if (discovered?.length) {
+            add(discovered)
+            fire()
+          }
+        } catch (error) {
+          console.debug('[abele-sync] cannot verify ordinary files', error)
         }
       } while (again)
     } finally {

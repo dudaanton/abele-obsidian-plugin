@@ -4,6 +4,39 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import { deferred } from '../helpers/deferred'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 
+it('delivers settings before ordinary verification completes or fails', async () => {
+  const app = buildFakeVault([])
+  let value = 'original'
+  const gate = deferred<string[]>()
+  let blocked = false
+  const verify = vi.fn(async () => (blocked ? gate.promise : []))
+  const changed = vi.fn()
+  const watch = watchVault(
+    {
+      app: app as never,
+      now: Date.now,
+      pollMs: 60000,
+      configDir: '.obsidian',
+      snapshot: async () => new Map([['.obsidian/app.json', value]]),
+      onWatch: null,
+      verify,
+    },
+    changed
+  )
+  try {
+    await watch.inspect()
+    blocked = true
+    value = 'changed'
+    const inspected = watch.inspect()
+    await vi.waitFor(() => expect(changed).toHaveBeenCalledExactlyOnceWith(['.obsidian/app.json']))
+    gate.reject(new Error('ordinary metadata unavailable'))
+    expect(await inspected).toBe(true)
+    expect(changed).toHaveBeenCalledTimes(1)
+  } finally {
+    watch.stop()
+  }
+})
+
 it('awaits a fresh settings poll including a kick racing its baseline, and refuses failed coverage', async () => {
   const app = buildFakeVault([])
   let entries = new Map([['.obsidian/sample.json', 'first']])

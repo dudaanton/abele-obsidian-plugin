@@ -1347,6 +1347,9 @@ export class ObsidianFileSystem implements FileSystem {
   private verificationDirectories: string[] = []
   private verificationPosition = 0
   private readonly verificationVisited = new Set<string>()
+  private verificationListing: { listing: ListedFiles; folder: number; file: number } | null = null
+  private verificationCandidates: Iterator<string> | null = null
+  private readonly verificationSignatures = new Map<string, string>()
   /** Set while `watch` is running: what `kick` reaches for, and nothing when nobody watches. */
   private pollNow: (() => void) | null = null
   private inspectPoll: (() => Promise<boolean>) | null = null
@@ -4742,6 +4745,7 @@ export class ObsidianFileSystem implements FileSystem {
         pollMs: this.pollMs,
         configDir: this.configDir,
         snapshot: () => this.configSnapshot(),
+        verify: () => this.verifyUnindexedFiles(),
       },
       (paths) => {
         for (const path of paths)
@@ -4878,7 +4882,6 @@ export class ObsidianFileSystem implements FileSystem {
    * the config folder, so no vault event reports an external edit to it.
    */
   private async configSnapshot(): Promise<Map<string, string>> {
-    const verifyOrdinary = this.configPolled
     if (this.configPolled) {
       this.operationStats?.cache.clear()
       invalidateInspectedAbsence(this.startupInventory?.())
@@ -4891,7 +4894,6 @@ export class ObsidianFileSystem implements FileSystem {
       this.configPolled = true
       const ignore = await this.fileSnapshot(IGNORE_FILE)
       if (ignore !== null) taken.set(IGNORE_FILE, ignore)
-      if (verifyOrdinary) await this.verifyUnindexedFiles(taken)
       return taken
     }
     if (!this.configPolled && this.configInventory === null && !this.inventoryConsumed) {
@@ -4908,15 +4910,16 @@ export class ObsidianFileSystem implements FileSystem {
     }
     const ignore = await this.fileSnapshot(IGNORE_FILE)
     if (ignore !== null) taken.set(IGNORE_FILE, ignore)
-    if (verifyOrdinary) await this.verifyUnindexedFiles(taken)
     return taken
   }
 
   /** Startup uses the host index. Later polls rotate through at most eight directories,
-   * examining metadata only for files the index omitted. No absence here authorizes a
-   * deletion: candidates still pass the ordinary scanner and its fresh disk safeguards. */
-  private async verifyUnindexedFiles(taken: Map<string, string>): Promise<void> {
-    if (!this.indexReady()) return
+   * 256 listing rows and 128 uncommitted candidate snapshots, yielding between metadata
+   * rows. No absence here authorizes deletion: candidates still pass the ordinary scanner
+   * and its fresh disk safeguards. Ledgered paths remain the scanner's responsibility. */
+  private async verifyUnindexedFiles(): Promise<string[]> {
+    const changed: string[] = []
+    if (!this.indexReady()) return changed
     const scope = this.scopedRoot()
     const roots = this.discovery?.roots ?? [scope ?? '']
     const key = JSON.stringify(roots)
@@ -4925,8 +4928,11 @@ export class ObsidianFileSystem implements FileSystem {
       this.verificationDirectories = []
       this.verificationVisited.clear()
       this.unindexedFiles.clear()
+      this.verificationListing = null
+      this.verificationCandidates = null
+      this.verificationSignatures.clear()
     }
-    if (!roots.length) return
+    if (!roots.length) return changed
     // Configuration already has its own snapshot, including renamed config roots.
     const ordinary = (path: string) =>
       path !== this.configDir &&
@@ -4934,7 +4940,10 @@ export class ObsidianFileSystem implements FileSystem {
       !isHidden(path, '') &&
       this.inventoryVisible(path) &&
       this.withinFileScope(path)
-    if (this.verificationPosition >= this.verificationDirectories.length) {
+    if (
+      !this.verificationListing &&
+      this.verificationPosition >= this.verificationDirectories.length
+    ) {
       this.verificationDirectories = [...roots]
       this.verificationPosition = 0
       this.verificationVisited.clear()
@@ -4947,38 +4956,42 @@ export class ObsidianFileSystem implements FileSystem {
     }
     const indexed = new Set<string>()
     for (const file of this.indexedFiles(scope)) {
-      if (!check()) return
+      if (!check()) return changed
       const pause = budget.metadataRow()
       if (pause !== undefined) await pause
       indexed.add(file.path)
     }
-    for (
-      let count = 0;
-      count < 8 && this.verificationPosition < this.verificationDirectories.length;
-      count++
-    ) {
-      if (!check()) return
-      if (!this.indexReady()) return
-      const parent = this.verificationDirectories[this.verificationPosition]
-      if (!ordinary(parent) || (await crossesSymlink(parent, (path) => this.isSymlink(path)))) {
-        this.verificationPosition++
-        continue
+    let directories = 0
+    let rows = 0
+    while (rows < 256) {
+      if (!check() || !this.indexReady()) return changed
+      if (!this.verificationListing) {
+        if (directories >= 8 || this.verificationPosition >= this.verificationDirectories.length)
+          break
+        const parent = this.verificationDirectories[this.verificationPosition++]
+        directories++
+        try {
+          if (!ordinary(parent) || (await crossesSymlink(parent, (path) => this.isSymlink(path))))
+            continue
+          const listing = await this.disk.list(parent)
+          this.verificationVisited.add(parent)
+          this.verificationListing = { listing, folder: 0, file: 0 }
+        } catch (error) {
+          // Additive discovery never infers absence. Retry on the next rotation,
+          // retaining known candidates and allowing healthy siblings to proceed.
+          console.debug(
+            '[abele-sync] cannot verify ordinary directory; retrying next rotation',
+            parent,
+            error
+          )
+          continue
+        }
       }
-      // Advance only after success: a transient listing failure must not skip this
-      // directory until the next whole rotation, or clear its known candidates.
-      let listing: ListedFiles
-      try {
-        listing = await this.disk.list(parent)
-      } catch (error) {
-        if (!notFound(error) || (await this.rawStat(parent)) !== null) throw error
-        // A directory removed after it was queued must not starve its siblings.
-        this.verificationPosition++
-        continue
-      }
-      if (!check()) return
-      this.verificationPosition++
-      this.verificationVisited.add(parent)
-      for (const path of listing.folders) {
+      const cursor = this.verificationListing
+      const listing = cursor.listing
+      while (rows < 256 && cursor.folder < listing.folders.length) {
+        const path = listing.folders[cursor.folder++]
+        rows++
         const pause = budget.metadataRow()
         if (pause !== undefined) await pause
         if (ordinary(path) && !this.verificationVisited.has(path)) {
@@ -4986,31 +4999,56 @@ export class ObsidianFileSystem implements FileSystem {
           this.verificationDirectories.push(path)
         }
       }
-      for (const path of listing.files) {
-        if (!check()) return
+      while (rows < 256 && cursor.file < listing.files.length) {
+        if (!check()) return changed
+        const path = listing.files[cursor.file++]
+        rows++
         const pause = budget.metadataRow()
         if (pause !== undefined) await pause
         if (
           indexed.has(path) ||
           !ordinary(path) ||
           (this.discovery && !this.discovery.includes(path)) ||
+          (await this.ledger?.get(path)) ||
           (await this.isSymlink(path))
         )
           continue
         this.unindexedFiles.add(path)
         this.awaitingIndex.add(path)
       }
+      if (cursor.folder === listing.folders.length && cursor.file === listing.files.length)
+        this.verificationListing = null
     }
-    for (const path of this.unindexedFiles) {
-      if (!check()) return
-      if (indexed.has(path)) {
+    this.verificationCandidates ??= this.unindexedFiles.values()
+    for (let count = 0; count < 128; count++) {
+      if (!check()) return changed
+      const next = this.verificationCandidates.next()
+      if (next.done) {
+        this.verificationCandidates = null
+        break
+      }
+      const path = next.value
+      const pause = budget.metadataRow()
+      if (pause !== undefined) await pause
+      if (indexed.has(path) || (await this.ledger?.get(path))) {
         this.unindexedFiles.delete(path)
+        this.verificationSignatures.delete(path)
         continue
       }
-      const signature = await this.fileSnapshot(path)
-      if (signature !== null) taken.set(path, signature)
-      else this.unindexedFiles.delete(path)
+      try {
+        const signature = await this.fileSnapshot(path)
+        if (signature !== null) {
+          if (this.verificationSignatures.get(path) !== signature) changed.push(path)
+          this.verificationSignatures.set(path, signature)
+        } else {
+          this.unindexedFiles.delete(path)
+          if (this.verificationSignatures.delete(path)) changed.push(path)
+        }
+      } catch (error) {
+        console.debug('[abele-sync] cannot verify ordinary file; retaining candidate', path, error)
+      }
     }
+    return changed
   }
 
   /** Fresh facts, never index/listing hints or wire-rounded dates. Shared with config

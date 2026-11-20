@@ -5,6 +5,160 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { ignoreFor } from '@/sync/scope'
 
+it('132 skips unreadable directories without starving settings or later discoveries', async () => {
+  const app = buildFakeVault([
+    { path: '.obsidian/app.json', content: '{}' },
+    { path: 'Blocked/old.md', content: 'saved' },
+    { path: 'Later/new.md', content: 'new' },
+  ])
+  Object.assign(app.workspace, { layoutReady: true })
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
+  vi.spyOn(app.vault, 'getFiles').mockReturnValue([])
+  const original = app.vault.adapter.list.bind(app.vault.adapter)
+  let unreadable = true
+  vi.spyOn(app.vault.adapter, 'list').mockImplementation(async (path) => {
+    if (path === 'Blocked' && unreadable)
+      throw Object.assign(new Error('cannot list'), { code: 'EACCES' })
+    return original(path)
+  })
+  const state = await tracked('Blocked/old.md', 'saved')
+  const fs = new ObsidianFileSystem(app as never, { ledger: state })
+  const changed = vi.fn()
+  const stop = fs.watch(changed)
+  const inspect = () => Reflect.get(fs, Symbol.for('abele.sync.inspect-polled-v1')).call(fs)
+  try {
+    await inspect()
+    expect(changed.mock.calls.flatMap(([paths]) => paths)).toContain('Later/new.md')
+    changed.mockClear()
+    await app.vault.adapter.writeBinary(
+      '.obsidian/app.json',
+      new TextEncoder().encode('{"changed":true}').buffer
+    )
+    expect(await inspect()).toBe(true)
+    const paths = changed.mock.calls.flatMap(([paths]) => paths)
+    expect(paths).toContain('.obsidian/app.json')
+    // The ordinary scanner remains conservative about unreadable tracked files.
+    // Verification skipping a directory must not turn its ledger into absence.
+    await expect(scan(fs, state, { excluded: () => false })).rejects.toThrow('cannot list Blocked')
+    expect((await state.get('Blocked/old.md'))?.versionId).toBe('sample-version')
+    unreadable = false
+    expect((await Array.fromAsync(fs.list())).map((file) => file.path)).toContain('Later/new.md')
+    expect(
+      (await scan(fs, state, { excluded: () => false })).ops.some((op) => op.op === 'delete')
+    ).toBe(false)
+    expect(await inspect()).toBe(true)
+  } finally {
+    stop()
+  }
+})
+
+it('132 resumes a 33000-file directory in bounded rows without restatting committed files', async () => {
+  const app = buildFakeVault([{ path: 'file-32999.md', content: 'new', mtime: 1000 }])
+  Object.assign(app.workspace, { layoutReady: true })
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
+  vi.spyOn(app.vault, 'getFiles').mockReturnValue([])
+  const paths = Array.from({ length: 33000 }, (_, i) => `file-${i}.md`)
+  const original = app.vault.adapter.list.bind(app.vault.adapter)
+  vi.spyOn(app.vault.adapter, 'list').mockImplementation(async (path) =>
+    path === '' ? { files: paths, folders: [] } : original(path)
+  )
+  const state = new MemoryStateStore()
+  const lookup = vi.spyOn(state, 'get').mockImplementation(async (path) =>
+    path === 'file-32999.md'
+      ? null
+      : {
+          path,
+          wirePath: path,
+          fileId: 'sample',
+          versionId: 'saved',
+          sha: 'digest',
+          size: 1,
+          mtime: 1,
+        }
+  )
+  const stat = vi.spyOn(app.vault.adapter, 'stat')
+  const changed = vi.fn()
+  const fs = new ObsidianFileSystem(app as never, { ledger: state })
+  const stop = fs.watch(changed)
+  try {
+    for (let i = 0; i < 130; i++) {
+      lookup.mockClear()
+      stat.mockClear()
+      expect(await Reflect.get(fs, Symbol.for('abele.sync.inspect-polled-v1')).call(fs)).toBe(true)
+      expect(lookup.mock.calls.length).toBeLessThanOrEqual(384)
+      expect(
+        stat.mock.calls.filter(([path]) => path.startsWith('file-') && path !== 'file-32999.md')
+      ).toEqual([])
+    }
+    expect(changed.mock.calls.flatMap(([paths]) => paths)).toContain('file-32999.md')
+  } finally {
+    stop()
+  }
+})
+
+it('132 bounds metadata tasks and poll work with 33000 index-absent candidates and retires ledgered files', async () => {
+  const app = buildFakeVault([])
+  Object.assign(app.workspace, { layoutReady: true })
+  Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
+  const state = new MemoryStateStore()
+  const fs = new ObsidianFileSystem(app as never, { ledger: state })
+  const stop = fs.watch(() => {})
+  const inspect = () => Reflect.get(fs, Symbol.for('abele.sync.inspect-polled-v1')).call(fs)
+  try {
+    await inspect()
+    const candidates = Reflect.get(fs, 'unindexedFiles') as Set<string>
+    for (let i = 0; i < 33000; i++) candidates.add(`Omitted/file-${i}.md`)
+    let clock = 0
+    let boundary = 0
+    let longest = 0
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => clock)
+    const scheduler = {
+      yield: vi.fn(async () => {
+        longest = Math.max(longest, clock - boundary)
+        boundary = clock
+      }),
+    }
+    const previous = Object.getOwnPropertyDescriptor(window, 'scheduler')
+    Object.defineProperty(window, 'scheduler', { configurable: true, value: scheduler })
+    let stats = 0
+    const original = app.vault.adapter.stat.bind(app.vault.adapter)
+    const stat = vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async (path) => {
+      if (path.startsWith('Omitted/')) {
+        clock++
+        stats++
+        return { type: 'file', size: 1, mtime: 1, ctime: 1 }
+      }
+      return original(path)
+    })
+    try {
+      await inspect()
+      longest = Math.max(longest, clock - boundary)
+      expect(longest).toBeLessThan(50)
+      expect(stats).toBeLessThanOrEqual(384)
+      expect(scheduler.yield).toHaveBeenCalled()
+      vi.spyOn(state, 'get').mockImplementation(async (path) => ({
+        path,
+        wirePath: path,
+        fileId: 'sample',
+        versionId: 'saved',
+        sha: 'digest',
+        size: 1,
+        mtime: 1,
+      }))
+      stats = 0
+      await inspect()
+      expect(stats).toBe(0)
+    } finally {
+      stat.mockRestore()
+      now.mockRestore()
+      if (previous) Object.defineProperty(window, 'scheduler', previous)
+      else delete (window as Window & { scheduler?: unknown }).scheduler
+    }
+  } finally {
+    stop()
+  }
+})
+
 async function tracked(path: string, content = 'original') {
   const state = new MemoryStateStore()
   await state.put({
