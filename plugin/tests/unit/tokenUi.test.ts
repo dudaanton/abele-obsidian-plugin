@@ -36,6 +36,56 @@ it('saves the selected device scope before starting a newly connected engine', a
   expect(readDeviceScope(restored.storage(restored.records()[0].id))).toEqual(only)
 })
 
+it('counts held and waiting work in hidden shared members without counting it twice', async () => {
+  const { ui, registry } = setup()
+  await ui.connect(token)
+  await ui.connect(secondToken)
+  const [leader, member] = registry.records()
+  ui.itemSets.store.create(
+    leader.id,
+    'Sample set',
+    [
+      { id: 'first', kind: 'folder', scopeId: 'first', path: 'First' },
+      { id: 'second', kind: 'folder', scopeId: 'second', path: 'Second' },
+    ],
+    { first: leader.id, second: member.id }
+  )
+  registry.setStatus(leader.id, 'idle')
+  registry.setStatus(member.id, 'idle')
+  ui.publish(leader.id, {
+    pending: 1,
+    notSynced: [
+      { path: 'first.bin', kind: 'too-large', direction: 'out', since: '2026-01-01T00:00:00Z' },
+    ],
+  })
+  ui.publish(member.id, {
+    pending: 2,
+    heldDeletes: 1,
+    deferred: 1,
+    notSynced: [
+      { path: 'second.bin', kind: 'too-large', direction: 'out', since: '2026-01-01T00:00:00Z' },
+      { path: 'waiting.bin', kind: 'waiting', direction: 'out', since: '2026-01-01T00:00:00Z' },
+    ],
+  })
+  ui.refresh()
+  expect(ui.rows.value).toHaveLength(1)
+  expect(tokenStatus(ui)).toMatchObject({
+    notSynced: 2,
+    waits: 1,
+    pending: 3,
+    heldDeletes: 1,
+    deferred: 1,
+  })
+  ui.publish(member.id, { pending: 0, heldDeletes: 0, deferred: 0, notSynced: [] })
+  expect(tokenStatus(ui)).toMatchObject({
+    notSynced: 1,
+    waits: 0,
+    pending: 1,
+    heldDeletes: 0,
+    deferred: 0,
+  })
+})
+
 it('coalesces 1000 progress callbacks before reading or validating registry state', async () => {
   const { ui, registry } = setup()
   await ui.connect(token)

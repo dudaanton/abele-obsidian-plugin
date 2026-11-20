@@ -10,7 +10,7 @@ import { transferText } from './transferProgress'
 export function tokenStatus(
   ui:
     | (Pick<TokenUi, 'rows' | 'activity' | 'candidates' | 'questions'> &
-        Partial<Pick<TokenUi, 'connectionActivity'>>)
+        Partial<Pick<TokenUi, 'connectionActivity' | 'connectionActivities'>>)
     | null
     | undefined
 ): SyncStatus {
@@ -18,6 +18,7 @@ export function tokenStatus(
   const status: SyncStatus = { ...DISCONNECTED_STATUS }
   if (!rows.length || !ui) return status
   const activity = ui.activity.value
+  const work = rows.flatMap((one) => ui.connectionActivities?.(one.id) ?? [activity[one.id]])
   const isBusy = (one: (typeof rows)[number]) =>
     !safetyStopReason(activity[one.id]) &&
     !one.paused &&
@@ -42,17 +43,17 @@ export function tokenStatus(
         : rows.every((one) => one.paused)
           ? 'paused'
           : 'idle'
-  status.pending = rows.reduce((sum, one) => sum + (activity[one.id]?.pending ?? 0), 0)
-  status.heldDeletes = rows.reduce((sum, one) => sum + (activity[one.id]?.heldDeletes ?? 0), 0)
-  status.deferred = rows.reduce((sum, one) => sum + (activity[one.id]?.deferred ?? 0), 0)
-  status.conflicts = rows.reduce((sum, one) => sum + (activity[one.id]?.conflicts?.length ?? 0), 0)
+  status.pending = work.reduce((sum, one) => sum + (one?.pending ?? 0), 0)
+  status.heldDeletes = work.reduce((sum, one) => sum + (one?.heldDeletes ?? 0), 0)
+  status.deferred = work.reduce((sum, one) => sum + (one?.deferred ?? 0), 0)
+  status.conflicts = work.reduce((sum, one) => sum + (one?.conflicts?.length ?? 0), 0)
   // Counted as each connection's own line counts them: refusals the person has to deal with,
   // and apart from them the files that only wait for the server.
-  const counts = rows.map((one) => notSyncedCounts(activity[one.id]))
+  const counts = work.map((one) => notSyncedCounts(one))
   status.notSynced = counts.reduce((sum, one) => sum + one.notSynced, 0)
   status.waits = counts.reduce((sum, one) => sum + one.waiting, 0)
-  status.notSyncedError = rows.some((one) => activity[one.id]?.notSyncedError)
-  status.notSyncedLoading = rows.some((one) => activity[one.id]?.notSyncedLoading)
+  status.notSyncedError = work.some((one) => one?.notSyncedError)
+  status.notSyncedLoading = work.some((one) => one?.notSyncedLoading)
   status.review = ui.candidates.value.length + ui.questions.value.length
   status.lastError =
     rows

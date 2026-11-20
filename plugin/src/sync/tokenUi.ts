@@ -550,6 +550,12 @@ export class TokenUi {
     this.refresh()
   }
   /** A visible set can fail in a member while its leader's engine is idle. */
+  connectionActivities(id: string): ConnectionActivity[] {
+    const ids = new Set([id])
+    for (const item of this.itemSets.store.get(id)?.items ?? [])
+      if (!item.detached && item.recordId) ids.add(item.recordId)
+    return [...ids].flatMap((key) => (this.activity.value[key] ? [this.activity.value[key]] : []))
+  }
   connectionActivity(id: string): ConnectionActivity | undefined {
     const own = this.activity.value[id]
     if (own?.error) return own
