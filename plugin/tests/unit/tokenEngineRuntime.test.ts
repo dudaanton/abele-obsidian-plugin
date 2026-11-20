@@ -3981,6 +3981,170 @@ it.each(['delivered', 'lost'] as const)(
   }
 )
 
+it('50 moves a note between server shares without losing its private destination or reviving the source', async () => {
+  await boundaryMove('md')
+})
+
+async function boundaryMove(extension: string) {
+  const from = `Shared/sample.${extension}`,
+    to = `Private/sample.${extension}`
+  const bytes = new TextEncoder().encode('latest saved bytes')
+  const sha = await sha256(bytes)
+  const first = await server(from, 'original bytes', 'https://first.example', {
+    ...scope,
+    id: 'shared-root',
+    path: 'Shared',
+  })
+  const second = await server(to, '', 'https://second.example', {
+    ...scope,
+    id: 'private-root',
+    path: 'Private',
+  })
+  if (extension !== 'md') {
+    first.item.kind = 'attachment'
+    second.item.kind = 'attachment'
+  }
+  const fs = new MemoryFileSystem(),
+    sourcePeerFs = new MemoryFileSystem(),
+    destinationPeerFs = new MemoryFileSystem()
+  Object.assign(fs, { watch: () => () => {} })
+  const locks = new PathCoordinator()
+  const firstState = new MemoryStateStore(),
+    secondState = new MemoryStateStore()
+  const sourcePeerState = new MemoryStateStore()
+  let removed = false,
+    created = false
+  const sourceOps: Record<string, unknown>[] = [],
+    destinationOps: Record<string, unknown>[] = []
+  const sourceEvent = {
+    type: 'delete',
+    cursor: 2,
+    file_id: first.item.file_id,
+    version_id: 'source-deleted',
+    path: from,
+    at: '2025-01-01T00:00:00Z',
+  }
+  const targetItem = {
+    ...second.item,
+    file_id: 'destination-file',
+    version_id: 'destination-version',
+    sha,
+    size: bytes.length,
+    mtime: 2000,
+  }
+  const firstSend = first.fetch.getMockImplementation()!
+  first.fetch.mockImplementation(async (input, init) => {
+    const url = new URL(String(input))
+    if (url.pathname === '/v2/changes')
+      return Response.json({
+        cursor: removed ? 2 : 1,
+        next: null,
+        items: removed && Number(url.searchParams.get('since')) < 2 ? [sourceEvent] : [],
+      })
+    if (url.pathname === '/v2/manifest')
+      return Response.json({
+        items: removed ? [] : [first.item],
+        cursor: removed ? 2 : 1,
+        next: null,
+      })
+    if (url.pathname === '/v2/commit') {
+      const { ops } = JSON.parse(String(init?.body))
+      expect(ops).toEqual([
+        { op: 'delete', file_id: first.item.file_id, base_version_id: first.item.version_id },
+      ])
+      sourceOps.push(...ops)
+      removed = true
+      return Response.json({
+        cursor: 2,
+        results: [
+          {
+            status: 'applied',
+            seq: 2,
+            file_id: first.item.file_id,
+            version_id: 'source-deleted',
+            path: from,
+            sha: null,
+            size: 0,
+            mtime: 0,
+          },
+        ],
+      })
+    }
+    return firstSend(input, init)
+  })
+  const secondSend = second.fetch.getMockImplementation()!
+  second.fetch.mockImplementation(async (input, init) => {
+    const url = new URL(String(input))
+    if (url.pathname === '/v2/manifest')
+      return Response.json({
+        items: created ? [targetItem] : [],
+        cursor: created ? 2 : 1,
+        next: null,
+      })
+    if (url.pathname === '/v2/changes')
+      return Response.json({ items: [], cursor: created ? 2 : 1, next: null })
+    if (url.pathname.endsWith('/content')) return new Response(bytes)
+    if (url.pathname === '/v2/commit') {
+      const { ops } = JSON.parse(String(init?.body))
+      expect(ops).toEqual([
+        expect.objectContaining({ op: 'create', path: to, sha, size: bytes.length }),
+      ])
+      destinationOps.push(...ops)
+      created = true
+      return Response.json({ cursor: 2, results: [{ status: 'applied', seq: 2, ...targetItem }] })
+    }
+    return secondSend(input, init)
+  })
+  let a = runtime(first, fs, firstState, locks),
+    b = runtime(second, fs, secondState, locks)
+  const sourcePeer = runtime(first, sourcePeerFs, sourcePeerState)
+  const destinationPeer = runtime(second, destinationPeerFs)
+  const confirm = async (one: ReturnType<typeof runtime>) => {
+    const held = await one.runtime.heldDeletes()
+    if (held.length)
+      await one.runtime.decideDeletes(
+        'confirm',
+        held.map((item) => item.fileId)
+      )
+  }
+  try {
+    await a.runtime.sync()
+    await sourcePeer.runtime.sync()
+    await fs.writeAtomic(from, bytes, 2000)
+    await fs.writeAtomic('Unrelated/neighbor.md', new TextEncoder().encode('keep'), 1000)
+    await fs.move(from, to)
+    await a.runtime.sync()
+    await confirm(a)
+    await b.runtime.sync()
+    await sourcePeer.runtime.sync()
+    await confirm(sourcePeer)
+    await destinationPeer.runtime.sync()
+    expect(removed).toBe(true)
+    expect(created).toBe(true)
+    expect(await sourcePeerFs.stat(from)).toBeNull()
+    expect(await destinationPeerFs.read(to)).toEqual(bytes)
+    await a.runtime.close()
+    await b.runtime.close()
+    a = runtime(first, fs, firstState, locks)
+    b = runtime(second, fs, secondState, locks)
+    await a.runtime.sync()
+    await b.runtime.sync()
+    expect(await fs.stat(from)).toBeNull()
+    expect(await fs.read(to)).toEqual(bytes)
+    expect(new TextDecoder().decode(await fs.read('Unrelated/neighbor.md'))).toBe('keep')
+    expect(sourceOps).toHaveLength(1)
+    expect(JSON.stringify(sourceOps)).not.toContain('Private/')
+    expect(destinationOps).toHaveLength(1)
+    expect((await secondState.get(to))?.sha).toBe(sha)
+    expect(await firstState.get(from)).toBeNull()
+  } finally {
+    await a.runtime.close()
+    await b.runtime.close()
+    await sourcePeer.runtime.close()
+    await destinationPeer.runtime.close()
+  }
+}
+
 async function server(
   path: string,
   text: string,
