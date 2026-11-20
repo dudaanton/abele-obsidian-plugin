@@ -4914,9 +4914,9 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   /** Startup uses the host index. Later polls rotate through at most eight directories,
-   * 256 listing rows and 128 uncommitted candidate snapshots, yielding between metadata
+   * 256 listing rows and 128 index-absent candidate snapshots, yielding between metadata
    * rows. No absence here authorizes deletion: candidates still pass the ordinary scanner
-   * and its fresh disk safeguards. Ledgered paths remain the scanner's responsibility. */
+   * and its fresh disk safeguards. Ledger membership does not imply host watch coverage. */
   private async verifyUnindexedFiles(): Promise<string[]> {
     const changed: string[] = []
     if (!this.indexReady()) return changed
@@ -5009,7 +5009,6 @@ export class ObsidianFileSystem implements FileSystem {
           indexed.has(path) ||
           !ordinary(path) ||
           (this.discovery && !this.discovery.includes(path)) ||
-          (await this.ledger?.get(path)) ||
           (await this.isSymlink(path))
         )
           continue
@@ -5030,7 +5029,7 @@ export class ObsidianFileSystem implements FileSystem {
       const path = next.value
       const pause = budget.metadataRow()
       if (pause !== undefined) await pause
-      if (indexed.has(path) || (await this.ledger?.get(path))) {
+      if (indexed.has(path)) {
         this.unindexedFiles.delete(path)
         this.verificationSignatures.delete(path)
         continue

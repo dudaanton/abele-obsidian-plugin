@@ -52,7 +52,7 @@ it('132 skips unreadable directories without starving settings or later discover
   }
 })
 
-it('132 resumes a 33000-file directory in bounded rows without restatting committed files', async () => {
+it('132 resumes a 33000-file directory with bounded verification of committed files', async () => {
   const app = buildFakeVault([{ path: 'file-32999.md', content: 'new', mtime: 1000 }])
   Object.assign(app.workspace, { layoutReady: true })
   Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
@@ -63,7 +63,7 @@ it('132 resumes a 33000-file directory in bounded rows without restatting commit
     path === '' ? { files: paths, folders: [] } : original(path)
   )
   const state = new MemoryStateStore()
-  const lookup = vi.spyOn(state, 'get').mockImplementation(async (path) =>
+  vi.spyOn(state, 'get').mockImplementation(async (path) =>
     path === 'file-32999.md'
       ? null
       : {
@@ -76,27 +76,35 @@ it('132 resumes a 33000-file directory in bounded rows without restatting commit
           mtime: 1,
         }
   )
-  const stat = vi.spyOn(app.vault.adapter, 'stat')
+  const originalStat = app.vault.adapter.stat.bind(app.vault.adapter)
+  const stat = vi
+    .spyOn(app.vault.adapter, 'stat')
+    .mockImplementation(async (path) =>
+      path.startsWith('file-') ? { type: 'file', size: 1, mtime: 1, ctime: 1 } : originalStat(path)
+    )
   const changed = vi.fn()
   const fs = new ObsidianFileSystem(app as never, { ledger: state })
   const stop = fs.watch(changed)
   try {
-    for (let i = 0; i < 130; i++) {
-      lookup.mockClear()
+    for (let i = 0; i < 260; i++) {
+      const awaiting = Reflect.get(fs, 'awaitingIndex') as Set<string>
+      const before = awaiting.size
       stat.mockClear()
       expect(await Reflect.get(fs, Symbol.for('abele.sync.inspect-polled-v1')).call(fs)).toBe(true)
-      expect(lookup.mock.calls.length).toBeLessThanOrEqual(384)
+      expect(awaiting.size - before).toBeLessThanOrEqual(256)
       expect(
-        stat.mock.calls.filter(([path]) => path.startsWith('file-') && path !== 'file-32999.md')
-      ).toEqual([])
+        stat.mock.calls.filter(([path]) => path.startsWith('file-')).length
+      ).toBeLessThanOrEqual(384)
     }
     expect(changed.mock.calls.flatMap(([paths]) => paths)).toContain('file-32999.md')
   } finally {
     stop()
   }
-})
+  // Full 33k metadata coverage takes longer than discovery-only enumeration.
+  // Per-task timing remains enforced by the deterministic-clock regression.
+}, 30000)
 
-it('132 bounds metadata tasks and poll work with 33000 index-absent candidates and retires ledgered files', async () => {
+it('132 bounds metadata tasks and poll work with 33000 index-absent candidates including ledgered files', async () => {
   const app = buildFakeVault([])
   Object.assign(app.workspace, { layoutReady: true })
   Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
@@ -146,8 +154,13 @@ it('132 bounds metadata tasks and poll work with 33000 index-absent candidates a
         mtime: 1,
       }))
       stats = 0
+      boundary = clock
+      longest = 0
       await inspect()
-      expect(stats).toBe(0)
+      longest = Math.max(longest, clock - boundary)
+      expect(longest).toBeLessThan(50)
+      expect(stats).toBeGreaterThan(0)
+      expect(stats).toBeLessThanOrEqual(384)
     } finally {
       stat.mockRestore()
       now.mockRestore()
@@ -291,6 +304,7 @@ it('132 keeps a tracked host-excluded file eligible under the sync filter', asyn
 it('132 discovers a new host-excluded file without a prior ledger entry', async () => {
   const path = 'Excluded/sample.md'
   const app = buildFakeVault([{ path, content: 'new saved content', mtime: 1000 }])
+  const externalWrite = app.vault.adapter.writeBinary.bind(app.vault.adapter)
   Object.assign(app.workspace, { layoutReady: true })
   Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
   vi.spyOn(app.vault, 'getFiles').mockReturnValue([])
@@ -337,6 +351,23 @@ it('132 discovers a new host-excluded file without a prior ledger entry', async 
     expect(uploaded).toEqual([new TextEncoder().encode('new saved content')])
     expect((await state.get(path))?.versionId).toBe('sample-version')
     expect((await scan(fs, state, { excluded: (path) => ignore.ignores(path) })).ops).toEqual([])
+    // Run the post-upload poll that previously retired the discovery candidate.
+    await Reflect.get(fs, Symbol.for('abele.sync.inspect-polled-v1')).call(fs)
+    changed.mockClear()
+    // Mutate the raw backing disk: an external app emits neither a vault event
+    // nor an observed adapter write, and the host index still omits this file.
+    await externalWrite(path, new TextEncoder().encode('external edit after upload').buffer, {
+      mtime: 2000,
+    })
+    expect(changed).not.toHaveBeenCalled()
+    await Reflect.get(fs, Symbol.for('abele.sync.inspect-polled-v1')).call(fs)
+    expect(changed.mock.calls.flatMap(([paths]) => paths)).toContain(path)
+    expect((await scan(fs, state, { excluded: (path) => ignore.ignores(path) })).ops).toEqual([
+      expect.objectContaining({
+        op: 'modify',
+        sha: await sha256(new TextEncoder().encode('external edit after upload')),
+      }),
+    ])
   } finally {
     stop()
   }
