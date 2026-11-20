@@ -34,8 +34,10 @@ describe.skipIf(!available)(
       closeDialogs()
     })
 
-    it('saves a replacement token with the token field control', () => {
-      const result = evalAsync<{ saved: boolean; closed: boolean }>(`(async () => {
+    it.each(['footer', 'token'])(
+      'saves a replacement token with the %s save control',
+      (control) => {
+        const result = evalAsync<{ saved: boolean; closed: boolean }>(`(async () => {
         ${PRELUDE}
         const api = window.__abeleTest, config = api.AbeleConfig.getInstance()
         const previous = config.github, persist = config.saveSettings
@@ -48,22 +50,30 @@ describe.skipIf(!available)(
             credential = value
           }
           config.saveSettings = async () => {}
-          config.github = {...previous, enabled:true, connections:[{
+          api.openDialog('github-connections')
+          await until(() => document.querySelector('.abele-settings__github'))
+          config.github = {...config.github, enabled:true, connections:[{
             id:'sample-replacement', name:'Sample connection', server:${JSON.stringify(server.origin)},
             keyId:'sample-replacement-slot', owners:[], isDefault:true
           }]}
           config.version.value++
-          api.openDialog('github-connections')
-          const edit = await until(() => document.querySelector('[aria-label="Edit connection"]'))
+          const row = await until(() => [...document.querySelectorAll('.abele-settings__github .setting-item')].find(el => el.querySelector('.setting-item-name')?.textContent.trim().endsWith('Sample connection')))
+          const edit = row?.querySelector('[aria-label="Edit connection"]')
           if (!edit) throw Error('Edit control missing')
           edit.click()
-          const input = await until(() => document.querySelector('input[type="password"]'))
+          const modal = await until(() => [...document.querySelectorAll('.modal.abele-modal')].find(el => el.querySelector('.abele-modal__footer button.mod-cta') && el.querySelector('input[type="password"]')))
+          if (!modal) throw Error('Existing connection editor missing')
+          if (!modal.querySelector('.abele-secret-field__stored')) throw Error('Stored token was not rendered in the editor')
+          const footerSave = modal.querySelector('.abele-modal__footer button.mod-cta')
+          if (footerSave.textContent.trim() !== 'Save') throw Error('Editor footer Save button missing')
+          const input = modal.querySelector('.abele-secret-field input[type="password"]')
           if (!input) throw Error('Token input missing')
-          const modal = input.closest('.modal')
           input.value = 'invented-connection-two'
           input.dispatchEvent(new Event('input', {bubbles:true}))
-          const save = await until(() => modal.querySelector('[aria-label="Use this token when saving the connection"]'))
-          if (!save) throw Error('Token save control missing')
+          const selector = ${JSON.stringify(control)} === 'footer' ? '.abele-modal__footer button.mod-cta' : '[aria-label="Use this token when saving the connection"]'
+          const save = await until(() => modal.querySelector(selector))
+          if (!save) throw Error('Save control missing')
+          if (save.disabled) throw Error('Save control disabled')
           save.click()
           await until(() => !modal.isConnected)
           return {saved:credential === 'invented-connection-two', closed:!modal.isConnected}
@@ -72,8 +82,9 @@ describe.skipIf(!available)(
           config.saveSettings = persist; config.github = previous; config.version.value++
         }
       })()`)
-      expect(result).toEqual({ saved: true, closed: true })
-    })
+        expect(result).toEqual({ saved: true, closed: true })
+      }
+    )
 
     it('keeps imported provider rows quiet and removable beside working GitHub controls', () => {
       const result = evalAsync<{

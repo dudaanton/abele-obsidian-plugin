@@ -63,23 +63,28 @@ describe('connection settings list', () => {
         ],
       })
       app.secretStorage.setSecret('sample-slot', 'invented-old-token')
-      const view = mount(GithubSettings)
+      const view = mount(GithubSettings, { attachTo: document.body })
       try {
         view
           .findAllComponents(Icon)
           .find((i) => i.props('tooltip') === 'Edit connection')!
           .vm.$emit('click')
         await flushPromises()
-        const input = document.body.querySelector<HTMLInputElement>('input[type="password"]')!
+        const modal = [...document.body.querySelectorAll<HTMLElement>('.modal')].find((el) =>
+          el.querySelector('.abele-modal__footer button.mod-cta')
+        )!
+        const input = modal.querySelector<HTMLInputElement>(
+          '.abele-secret-field input[type="password"]'
+        )!
         input.value = 'invented-new-token'
         input.dispatchEvent(new Event('input', { bubbles: true }))
         await flushPromises()
         const save =
           control === 'token'
-            ? document.body.querySelector<HTMLElement>(
+            ? modal.querySelector<HTMLElement>(
                 '[aria-label="Use this token when saving the connection"]'
               )!
-            : document.body.querySelector<HTMLElement>('.abele-modal__footer button.mod-cta')!
+            : modal.querySelector<HTMLElement>('.abele-modal__footer button.mod-cta')!
         expect(save).not.toBeNull()
         save.click()
         await flushPromises()
