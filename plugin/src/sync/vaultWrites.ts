@@ -123,7 +123,7 @@ export class VaultWriter {
     if (inFlight.has(temp)) throw new EngineError('conflict', 'Installation receipt is active')
     inFlight.add(temp)
     try {
-      const entry: JournalEntry = {
+      let entry: JournalEntry = {
         target: path,
         temp,
         ...(receipt ? { conditionalReceipt: id } : {}),
@@ -173,9 +173,10 @@ export class VaultWriter {
             // Persist before the source can disappear, including a lost rename ACK.
             // An old receipt with no phase is uncertain too; only an extant stage proves retry.
             const current = previous ?? entry
-            await this.deps.journal.persist(() =>
-              this.deps.journal.replace(current, { ...current, portablePublishing: true })
-            )
+            const publishing = { ...current, portablePublishing: true }
+            await this.deps.journal.persist(() => this.deps.journal.replace(current, publishing))
+            // Settlement must use the exact phase that was durably committed.
+            entry = publishing
           })
         } catch (error) {
           if (

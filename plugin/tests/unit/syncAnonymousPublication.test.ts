@@ -11,6 +11,31 @@ import { buildFakeVault, type FakeApp } from '../helpers/fakeVault'
 
 const payload = new TextEncoder().encode('sample incoming bytes')
 const target = 'sample.bin'
+it.each([false, true])(
+  'settles a portable publication from its durable phase (retain installed=%s)',
+  async (retain) => {
+    const app = buildFakeVault([])
+    const host = await HostSyncStorage.open(new IDBFactory(), 'sample-portable-phase', app)
+    const port = new ObsidianFileSystem(
+      app as never,
+      retain ? { ledger: new MemoryStateStore() } : {}
+    )
+    try {
+      await port.writeAtomic(target, payload, 1000)
+      expect(new Uint8Array(await app.vault.adapter.readBinary(target))).toEqual(payload)
+      const entries = await new WriteJournal(app).currentEntries()
+      if (retain) {
+        expect(entries).toEqual([expect.objectContaining({ target, portablePublishing: true })])
+        await port.acknowledgeWrites([
+          { path: target, sha: await sha256(payload), size: payload.length, mtime: 1000 },
+        ])
+        expect(await new WriteJournal(app).currentEntries()).toEqual([])
+      } else expect(entries).toEqual([])
+    } finally {
+      host.close()
+    }
+  }
+)
 it('leaves SDK-owned installation receipts for explicit retirement after ledger acknowledgement', async () => {
   const app = buildFakeVault([]),
     storage = local(),
