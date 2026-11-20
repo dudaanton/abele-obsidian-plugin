@@ -3985,10 +3985,22 @@ it('50 moves a note between server shares without losing its private destination
   await boundaryMove('md')
 })
 
+it.each(['bin', 'canvas'])(
+  '72 moves a shared %s to a private destination without losing bytes or reviving the shared copy',
+  async (extension) => {
+    await boundaryMove(extension)
+  }
+)
+
 async function boundaryMove(extension: string) {
   const from = `Shared/sample.${extension}`,
     to = `Private/sample.${extension}`
-  const bytes = new TextEncoder().encode('latest saved bytes')
+  const bytes =
+    extension === 'bin'
+      ? new Uint8Array([0, 255, 128, 64])
+      : new TextEncoder().encode(
+          extension === 'canvas' ? '{"nodes":[],"edges":[]}' : 'latest saved bytes'
+        )
   const sha = await sha256(bytes)
   const first = await server(from, 'original bytes', 'https://first.example', {
     ...scope,

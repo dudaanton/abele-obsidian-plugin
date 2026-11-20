@@ -96,7 +96,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 | S69 | A picture/document/canvas/other file in a shared folder arrives whole, even unreferenced. | `plugin/tests/e2e/sync.e2e.test.ts: binary bytes and original modification time arrive intact` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S70 | Editing someone else's attachment/canvas in the share is accepted. | `plugin/tests/e2e/sync.e2e.test.ts: binary bytes and original modification time arrive intact`<br>`abele-sync/packages/server/tests/integration/v2Sync.test.ts: 070/071/072/073 any participant can modify/move/delete opaque files regardless of author` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S71 | Renaming/moving an attachment or canvas inside the share changes its path for others, content kept. | `plugin/tests/e2e/sync.e2e.test.ts: binary bytes and original modification time arrive intact` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
-| S72 | Moving an attachment/canvas from the share to a private folder: local file stays, shared copy disappears for others. | `abele-sync/packages/server/tests/integration/v2Sync.test.ts: 070/071/072/073 any participant can modify/move/delete opaque files regardless of author` | partly | Server attachment departure is tested; preservation of the private device destination needs a device test. |
+| S72 | Moving an attachment or canvas out of a share preserves the private destination and removes the former shared copy. | `plugin/tests/unit/tokenEngineRuntime.test.ts: 72 moves a shared %s to a private destination without losing bytes or reviving the shared copy` | covered | Binary and canvas cases use production runtimes and two authorized servers. Both recipient vaults, exact opaque bytes, source deletion, destination preservation, private-path non-disclosure, ledger reopenings and no resurrection are asserted. |
 | S73 | Deleting an attachment/canvas from the share deletes it for others. | `plugin/tests/e2e/sync.e2e.test.ts: binary bytes and original modification time arrive intact` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S74 | A group note's attachment available through the same connection arrives by itself. | `plugin/tests/e2e/syncDevices.e2e.test.ts: group note arrival and background indexing never publish a private attachment` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S75 | A link to an inaccessible file is kept; the closed content is not disclosed. | `abele-sync/packages/server/tests/integration/v2Groups.test.ts: 074–082 private link/SHA/path is never publication; explicit upload publishes only the chosen asset and all participants may edit it` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
@@ -181,7 +181,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 
 ## Totals
 
-154 requirements: 120 covered, 34 partly, 0 missing.
+154 requirements: 121 covered, 33 partly, 0 missing.
 
 Zero entirely missing rows does **not** close the coverage gate: every partly covered
 row still has an unproved facet. The matrix records assertions present in source;
@@ -220,9 +220,9 @@ excused as hardware-only work:
 1. S30 is resolved in the focused tier: shared-vault production runtimes preserve an
    owed edit through delayed/lost commit replies, the faster incoming replacement, and
    reopening both ledgers; assertions require exact digests, two receipts and no journals.
-2. S55/S72: folder and attachment moves across private scope boundaries still need
-   joint remote/local outcome assertions. S50 now covers note moves through two servers
-   with both recipients and ledger reopenings. S52 covers confirmed deletion bridging,
+2. S55: folder-tree moves across scope boundaries still need joint outcome assertions.
+   S50 and S72 now cover note, binary and canvas moves through two servers with both
+   recipients, private-path confinement and ledger reopenings. S52 covers confirmed deletion bridging,
    lost receipts, journal recovery, peer restart and no duplicate delete or resurrection.
 3. S29/S97/B7: independently resolve concurrent changes at both servers before bridging;
    assert recoverable variants and bounded copies. Ordering policy must be explicit before
