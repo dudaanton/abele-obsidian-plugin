@@ -12,6 +12,52 @@ import { scanSnapshot } from '../../node_modules/@abele/sync-sdk/dist/internal/c
 
 const revisionKey = Symbol.for('abele.sync.local-scan-revision-v1')
 
+it.each(['size mismatch', 'read error'])(
+  'retries a tracked edit skipped by a %s without an inventory change',
+  async (failure) => {
+    let now = 1000
+    const s = await fixture(() => now)
+    const old = new TextEncoder().encode('before')
+    await s.state.put({
+      path: 'sample.md',
+      wirePath: 'sample.md',
+      fileId: 'tracked',
+      versionId: 'v1',
+      sha: await sha256(old),
+      size: old.length,
+      mtime: 0,
+    })
+    let broken = true
+    const read = s.fs.read.bind(s.fs)
+    const reads = vi.spyOn(s.fs, 'read').mockImplementation(async (path) => {
+      if (broken) {
+        if (failure === 'read error') throw new Error('temporary sample read error')
+        return new Uint8Array(1)
+      }
+      return read(path)
+    })
+    try {
+      s.engine.start()
+      await Reflect.get(s.engine, 'running')
+      expect(s.commits).toEqual([])
+      expect(await s.state.metadataKeys('file-retry:')).toHaveLength(1)
+      expect(Reflect.get(s.engine, 'wake').files).not.toBeNull()
+      broken = false
+      // A retry deadline expires without any file inventory or watcher event.
+      now += 10000
+      reads.mockClear()
+      await s.engine.sync()
+      expect(reads).toHaveBeenCalled()
+      expect(s.commits).toContainEqual(
+        expect.objectContaining({ op: 'modify', file_id: 'tracked' })
+      )
+    } finally {
+      await s.engine.stop()
+      vi.restoreAllMocks()
+    }
+  }
+)
+
 it('does not certify deferred cold discovery as an unchanged inventory', async () => {
   const s = await fixture()
   const path = 'cold-sample.md'
@@ -32,7 +78,7 @@ it('does not certify deferred cold discovery as an unchanged inventory', async (
   }
 })
 
-async function fixture() {
+async function fixture(now?: () => number) {
   const fs = new MemoryFileSystem()
   const state = new MemoryStateStore()
   await state.setCursor(1)
@@ -87,6 +133,7 @@ async function fixture() {
     selective: selectiveDefaults(),
     deleteGuard: false,
     log: (line) => logs.push(line),
+    ...(now ? { now } : {}),
   })
   return { fs, state, client, engine, commits, logs, bump: () => ++revision }
 }
