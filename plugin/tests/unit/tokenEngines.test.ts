@@ -1843,6 +1843,54 @@ it('enables ordinary verification from the first successful exchange report', as
   }
 })
 
+it('discovers an index-omitted file while later exchanges span verification polls', async () => {
+  const f = inspectionFixture()
+  const original = f.transport.getMockImplementation()!
+  const resume = deferred<void>()
+  let hold = false
+  let entered = false
+  f.transport.mockImplementation(async (input, init) => {
+    const route = new URL(String(input)).pathname
+    if (hold && (route === '/v2/changes' || route === '/v2/manifest')) {
+      hold = false
+      entered = true
+      await resume.promise
+    }
+    return original(input, init)
+  })
+  try {
+    f.release()
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await f.ui.sync(id)
+    await f.app.vault.adapter.writeBinary(
+      'Notes/new.md',
+      new TextEncoder().encode('saved outside the host index').buffer
+    )
+    hold = true
+    const exchange = f.ui.sync(id)
+    await vi.waitFor(() => expect(entered).toBe(true))
+    const runtime = (Reflect.get(f.host, 'live') as Map<string, TokenEngineRuntime>).get(id)!
+    const fs = Reflect.get(runtime, 'options').fs
+    expect(runtime.engine.status.state).toBe('syncing')
+    for (let tick = 0; tick < 3; tick++)
+      expect(await Reflect.get(fs, Symbol.for('abele.sync.inspect-polled-v1')).call(fs)).toBe(true)
+    expect((await Array.fromAsync(fs.list())).map((file) => file.path)).toContain('Notes/new.md')
+    resume.resolve()
+    await exchange
+    await f.ui.sync(id)
+    const committed = f.transport.mock.calls
+      .filter(([input]) => new URL(String(input)).pathname === '/v2/commit')
+      .flatMap(
+        ([, init]) => (JSON.parse(String(init?.body)) as { ops: Array<{ path?: string }> }).ops
+      )
+    expect(committed).toContainEqual(expect.objectContaining({ path: 'Notes/new.md' }))
+  } finally {
+    resume.resolve()
+    await f.host.close()
+  }
+})
+
 it('stops a locally renamed folder connection before any further exchange', async () => {
   const { app, registry, ui, host, transport, release, encoded, makeHost } = inspectionFixture(
     false,
