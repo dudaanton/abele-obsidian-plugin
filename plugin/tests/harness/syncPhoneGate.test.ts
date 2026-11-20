@@ -3,11 +3,34 @@ import { expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { declaredTargets } from '../e2e/helpers/target'
 import ts from 'typescript'
+import { terminatePhone } from '../e2e/helpers/phoneProcess'
 import {
   assertPhoneGateInventory,
   assertFreshPhoneLoad,
   phoneGateChunk,
 } from '../e2e/helpers/syncPhoneGate'
+
+it('uses kill only when advertised and requires a confirmed stopped process', () => {
+  const calls: string[][] = []
+  const run = (args: string[]) => {
+    calls.push(args)
+    return args[0] === '--help' ? 'iphone kill BUNDLE' : '{"ok":true,"state":1}'
+  }
+  expect(terminatePhone(run)).toEqual({ killed: true, state: 1 })
+  expect(calls).toEqual([['--help'], ['kill', 'md.obsidian']])
+  expect(() => terminatePhone(() => 'iphone launch BUNDLE')).toThrow('kill capability')
+  expect(() =>
+    terminatePhone((args) =>
+      args[0] === '--help' ? 'iphone kill BUNDLE' : '{"ok":true,"state":4}'
+    )
+  ).toThrow('notRunning')
+  expect(() =>
+    terminatePhone((args) => {
+      if (args[0] === '--help') return 'iphone kill BUNDLE'
+      throw new Error('unknown path /terminate')
+    })
+  ).toThrow('device runner')
+})
 
 it('rejects missing, extra and corrupt files on each replica', () => {
   const expected = [{ path: 'fixture/sample.bin', sha: 'abc', size: 3 }]

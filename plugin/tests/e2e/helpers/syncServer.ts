@@ -57,6 +57,8 @@ export interface SyncServer {
   /** Server-side content arrivals survive replacement of a client's WebView. */
   contentGets(): number
   contentFiles(): string[]
+  holdTransfer(phase: 'upload' | 'pull'): void
+  transferHeld(): boolean
   suspend(): void
   resume(): void
   /** Reject in-flight requests without thawing them during graceful shutdown. */
@@ -112,6 +114,8 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
     ABELE_HOST: '127.0.0.1',
     ABELE_FIXTURE_HTTP_TRACE: '1',
     ABELE_FIXTURE_FREEZE_FILE: frozen,
+    ABELE_FIXTURE_TRANSFER_GATE: frozen + '.transfer',
+    ABELE_FIXTURE_TRANSFER_HELD: frozen + '.held',
   }
 
   const child = spawn(
@@ -150,6 +154,8 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
     if (!killed) {
       killed = true
       rmSync(frozen, { force: true })
+      rmSync(frozen + '.transfer', { force: true })
+      rmSync(frozen + '.held', { force: true })
       child.kill('SIGTERM')
       await ended(child)
       await tls?.close()
@@ -197,12 +203,19 @@ export async function spawnSyncServer(dir: string): Promise<SyncServer> {
     rootToken,
     contentGets: () => contentGets,
     contentFiles: () => [...contentFiles],
+    holdTransfer: (phase) => {
+      rmSync(frozen + '.held', { force: true })
+      writeFileSync(frozen + '.transfer', phase)
+    },
+    transferHeld: () => existsSync(frozen + '.held'),
     suspend: () => {
       writeFileSync(frozen, '')
       child.kill('SIGSTOP')
     },
     resume: () => {
       rmSync(frozen, { force: true })
+      rmSync(frozen + '.transfer', { force: true })
+      rmSync(frozen + '.held', { force: true })
       child.kill('SIGCONT')
     },
     issue: async (scope, label = 'Sample shared access') =>

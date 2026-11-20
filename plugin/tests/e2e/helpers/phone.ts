@@ -13,6 +13,8 @@
  * - `reverse PORT` — while it runs, 127.0.0.1:PORT on the phone reaches the same port here;
  * - `doctor` — one line per part, `OK`/`FAIL`, exit 0 when ready;
  * - `launch BUNDLE [--fresh]` — bring the app forward; `--fresh` starts a new process;
+ * - `kill BUNDLE` — advertised in `--help`; terminate and confirm `{ok:true,state:1}`;
+ *   `call /state {"bundle":"..."}` reads native foreground/background/process state;
  * - `press home` — send the foreground app to the real Home screen;
  * - `push-plugin DIR MANIFEST VAULT` — install a build into that vault on the phone.
  */

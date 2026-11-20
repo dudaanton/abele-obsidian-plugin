@@ -2,7 +2,54 @@
 import { expect, it } from 'vitest'
 import { createServer, request, Agent } from 'node:http'
 import { createHash } from 'node:crypto'
-import { installFixtureHttpTrace } from '../e2e/helpers/syncFixtureHttpTrace.mjs'
+import {
+  installFixtureHttpTrace,
+  installFixtureTransferGate,
+} from '../e2e/helpers/syncFixtureHttpTrace.mjs'
+import { mkdtempSync, writeFileSync, existsSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+it.each(['upload', 'pull'])(
+  'holds the next %s request before handling it, without blocking control requests',
+  async (phase) => {
+    const dir = mkdtempSync(join(tmpdir(), 'fixture-transfer-'))
+    const gate = join(dir, 'gate'),
+      held = join(dir, 'held')
+    const restore = installFixtureTransferGate(gate, held)
+    const handled: string[] = []
+    const server = createServer((incoming, outgoing) => {
+      handled.push(incoming.url!)
+      incoming.resume()
+      incoming.on('end', () => outgoing.end('ok'))
+    })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const base = `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}`
+    const path = phase === 'upload' ? '/v2/uploads/sample' : '/v2/files/sample/content'
+    let work: Promise<Response> | undefined
+    try {
+      writeFileSync(gate, phase)
+      work = globalThis.fetch(base + path, { method: phase === 'upload' ? 'PUT' : 'GET' })
+      const until = Date.now() + 2000
+      while (!existsSync(held) && Date.now() < until)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+      expect(existsSync(held)).toBe(true)
+      expect(handled).toEqual([])
+      expect(await (await globalThis.fetch(base + '/healthz')).text()).toBe('ok')
+      expect(handled).toEqual(['/healthz'])
+      rmSync(gate)
+      expect(await (await work).text()).toBe('ok')
+      expect(handled).toContain(path)
+    } finally {
+      rmSync(gate, { force: true })
+      await work?.catch(() => {})
+      server.closeAllConnections()
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+      restore()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+)
 
 it('attributes fixture upgrades without recording headers, tokens or query strings', async () => {
   const entries: Record<string, unknown>[] = []

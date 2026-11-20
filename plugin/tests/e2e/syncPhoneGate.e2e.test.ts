@@ -8,6 +8,8 @@ import { targets } from './helpers/target'
 import { liveCase, liveSuite } from './helpers/syncLiveCases'
 import { driver, phoneHome, beginPhoneCase, endPhoneCase, installPhoneHost } from './helpers/phone'
 import { fixtureFetch } from './helpers/syncServer'
+import { waitFor } from './helpers/syncVault'
+import { terminatePhone } from './helpers/phoneProcess'
 import { residentMemorySampler } from './helpers/residentMemory'
 import { allowFixtureAttachment } from './helpers/externalAttachmentFixture'
 import {
@@ -24,7 +26,7 @@ const largeSize = 16 * chunk
 
 liveCase(
   'syncPhoneGate',
-  'backgrounds and fresh-relaunches active uploads and pulls in a 3000-file phone vault',
+  'backgrounds and kills active uploads and pulls in a 3000-file phone vault',
   [],
   async () => {
     const s = fixture(),
@@ -82,35 +84,14 @@ liveCase(
       let beforeRelaunch = 0
       const pattern =
         phase === 'upload' ? '^(PUT|POST) /v2/uploads' : '^GET /v2/files/[^/]+/content$'
-      // Observe a real outstanding transport operation, never an idle connection or a timer.
-      await a.long(
-        'wait for active ' + phase,
-        `
-        void svc.pause(${JSON.stringify(id)},false).then(()=>svc.sync(${JSON.stringify(id)})).catch(error=>console.debug('gate interrupted sync',String(error)));
-        await poll(()=>host.live.get(${JSON.stringify(id)})?.trace.snapshot().active.some(one=>new RegExp(${JSON.stringify(pattern)}).test(one.operation)),60000,'active ${phase} request');return true`
-      )
-      s.server.suspend()
-      try {
-        const before = await a.long<number>(
-          'confirm interrupted ' + phase,
+      // Inventory only while paused. Hashing after the hold can let the native
+      // request expire before the kill, and obscures what was actually interrupted.
+      if (phase === 'pull') {
+        // A completed remote file is now local too. Resuming may finish a partial
+        // stage, but must not download any complete bytes the phone already holds.
+        heldKeys = await a.long<string[]>(
+          'inventory complete remote bytes before relaunch',
           `
-          await poll(()=>host.live.get(${JSON.stringify(id)})?.trace.snapshot().active.some(one=>new RegExp(${JSON.stringify(pattern)}).test(one.operation)),10000,'held ${phase} request');return performance.timeOrigin`
-        )
-        phoneHome()
-        driver(['launch', 'md.obsidian'])
-        expect(a.run<number>('return performance.timeOrigin')).toBe(before)
-        expect(
-          a.run<boolean>(
-            `return window.__abelePhoneLifecycle.snapshot().current.events.some(one=>one.kind==='visibilitychange'&&one.visibility==='hidden')`
-          )
-        ).toBe(true)
-        await stopMemory()
-        if (phase === 'pull') {
-          // A completed remote file is now local too. Resuming may finish a partial
-          // stage, but must not download any complete bytes the phone already holds.
-          heldKeys = await a.long<string[]>(
-            'inventory complete remote bytes before relaunch',
-            `
             const keys=[];
             for(const file of ${JSON.stringify(remoteHeads)}){
               if(!await app.vault.adapter.exists(file.path))continue;
@@ -119,30 +100,65 @@ liveCase(
               const digest=await crypto.subtle.digest('SHA-256',bytes),sha=Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
               if(sha===file.sha)keys.push(file.key);
             }return keys`
-          )
-        }
+        )
+      }
+      let phoneAway = false
+      s.server.holdTransfer(phase)
+      try {
+        a.run(
+          `void svc.pause(${JSON.stringify(id)},false).then(()=>svc.sync(${JSON.stringify(id)})).catch(error=>console.debug('gate interrupted sync',String(error)));return true`
+        )
+        await waitFor('server-held ' + phase + ' arrival', () => s.server.transferHeld(), 60_000)
+        const before = await a.long<number>(
+          'confirm interrupted ' + phase,
+          `await poll(()=>host.live.get(${JSON.stringify(id)})?.trace.snapshot().active.some(one=>new RegExp(${JSON.stringify(pattern)}).test(one.operation)),10000,'held ${phase} request');return performance.timeOrigin`
+        )
+        await stopMemory()
         beforeRelaunch = s.server.contentFiles().length
         expect(
           a.run<boolean>(
             `return host.live.get(${JSON.stringify(id)})?.trace.snapshot().active.some(one=>new RegExp(${JSON.stringify(pattern)}).test(one.operation))`
           ),
-          'transfer must still be outstanding immediately before fresh launch'
+          'transfer must still be outstanding immediately before background and kill'
         ).toBe(true)
         phoneHome()
-        // The driver contract offers fresh launch, not a separate process-kill command.
+        phoneAway = true
+        // Native state is authoritative even when the suspended page never
+        // receives visibilitychange. 2/3 are background/background-suspended.
+        await waitFor(
+          'native app background state',
+          () => {
+            const state = JSON.parse(
+              driver(['call', '/state', JSON.stringify({ bundle: 'md.obsidian' })], 10000)
+            ).state
+            return state === 2 || state === 3
+          },
+          10000
+        )
         endPhoneCase()
-        driver(['launch', 'md.obsidian', '--fresh'])
+        const kill = terminatePhone()
+        // The next launch must be cold. Let startup networking work immediately;
+        // a request held through cold startup only manufactures another timeout.
+        s.server.resume()
+        driver(['launch', 'md.obsidian'])
         installPhoneHost()
         beginPhoneCase()
+        phoneAway = false
         const after = await a.long<number>(
           'wait for replacement token host',
           'return performance.timeOrigin'
         )
         assertFreshPhoneLoad(before, after)
         await startMemory()
-        console.info('[phone gate interruption]', { phase, before, after, freshLaunch: true })
+        console.info('[phone gate interruption]', { phase, before, after, ...kill })
       } finally {
         s.server.resume()
+        if (phoneAway) {
+          endPhoneCase()
+          driver(['launch', 'md.obsidian'])
+          installPhoneHost()
+          beginPhoneCase()
+        }
       }
       await a.syncNow(id)
       expect(

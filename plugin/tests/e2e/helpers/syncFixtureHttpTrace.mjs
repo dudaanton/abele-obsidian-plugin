@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { Server } from 'node:http'
 import { syncBuiltinESMExports } from 'node:module'
 import { createHash } from 'node:crypto'
@@ -17,6 +17,44 @@ export function installFixtureFreeze(file) {
     return emit.call(this, event, ...args)
   }
   syncBuiltinESMExports()
+}
+
+/** Arm before starting a transfer. The server acknowledges a matching arrival
+ * before routing it, eliminating the observe-then-freeze race in the controller. */
+export function installFixtureTransferGate(file, held) {
+  const emit = Server.prototype.emit
+  const timers = new Set()
+  Server.prototype.emit = function (event, ...args) {
+    if (event !== 'request' || !existsSync(file)) return emit.call(this, event, ...args)
+    const phase = readFileSync(file, 'utf8')
+    const [request, response] = args
+    const path = (request.url ?? '').split('?')[0]
+    const matches =
+      phase === 'upload'
+        ? request.method === 'PUT' && path.startsWith('/v2/uploads/')
+        : phase === 'pull' && request.method === 'GET' && /^\/v2\/files\/[^/]+\/content$/.test(path)
+    if (!matches) return emit.call(this, event, ...args)
+    writeFileSync(held, phase)
+    const release = () => {
+      clearInterval(timer)
+      timers.delete(timer)
+    }
+    const timer = setInterval(() => {
+      if (existsSync(file) && readFileSync(file, 'utf8') === phase) return
+      release()
+      if (!request.destroyed && !response.destroyed) emit.call(this, event, ...args)
+    }, 10)
+    timers.add(timer)
+    response.once('close', release)
+    timer.unref()
+    return true
+  }
+  syncBuiltinESMExports()
+  return () => {
+    for (const timer of timers) clearInterval(timer)
+    Server.prototype.emit = emit
+    syncBuiltinESMExports()
+  }
 }
 
 /** Test-only observation at the actual fixture HTTP server, before Fastify routing. */
@@ -127,6 +165,11 @@ export function installFixtureHttpTrace(write, closeConnections = false) {
 
 if (process.env.ABELE_FIXTURE_FREEZE_FILE)
   installFixtureFreeze(process.env.ABELE_FIXTURE_FREEZE_FILE)
+if (process.env.ABELE_FIXTURE_TRANSFER_GATE)
+  installFixtureTransferGate(
+    process.env.ABELE_FIXTURE_TRANSFER_GATE,
+    process.env.ABELE_FIXTURE_TRANSFER_HELD
+  )
 if (process.env.ABELE_FIXTURE_HTTP_TRACE === '1') {
   installFixtureHttpTrace(
     (entry) => console.log('[sync-fixture-http] ' + JSON.stringify(entry)),
