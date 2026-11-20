@@ -130,7 +130,20 @@ for (const mobile of [false, true]) {
                 visualViewportHeight: visualViewport?.height,
               }))
             }
-            if (!modal.querySelector('.cm-content').textContent.includes('return 4')) throw new Error('Latest revision missing at end of code')
+            // Scrolling schedules CodeMirror's viewport measurement; on a phone the final
+            // lines may be rendered after the first animation frame.
+            if (!(await until(() => {
+              const view = T.codeView(modal)
+              return !!view && view.viewport.to === view.state.doc.length && modal.querySelector('.cm-content').textContent.includes('return 4')
+            }, 3000))) {
+              const view = T.codeView(modal)
+              throw new Error('Latest revision missing at end of code: ' + JSON.stringify({
+                viewport: view?.viewport,
+                documentLength: view?.state.doc.length,
+                lastLine: view?.state.doc.line(view.state.doc.lines).text,
+                scroller: [scroller.clientHeight, scroller.scrollHeight, scroller.scrollTop],
+              }))
+            }
             const button = modal.querySelector('.abele-modal__footer button.mod-cta').getBoundingClientRect()
             if (button.bottom > innerHeight || button.top < 0) throw new Error('Review action out of reach')
             await shoot(${JSON.stringify(mobile ? 'chat-script-review-phone-code' : 'chat-script-review-desktop-code')})
