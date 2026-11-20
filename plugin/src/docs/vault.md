@@ -3825,8 +3825,11 @@ monotonic change version. Each new handle imports the index and any legacy revis
 on first access. Warm handles read only revisions newer than their cached version.
 The latest 1024 changed transactions retain their deleted-row identities; a handle that falls
 further behind rebuilds from current live rows. New-format deletes remove their row metadata.
-Rows still named by legacy manifests retain a tombstone and rollback-readable payload;
-their referenced tool schemas remain on disk while current views exclude the retired rows.
+Rows still named by legacy manifests retain a tombstone identifying the retired manifest
+revision and a rollback-readable payload. A later legacy revision is imported on reopening;
+unversioned tombstones cannot suppress recovery evidence. Referenced tool schemas remain
+on disk while current views exclude the retired rows. Warm replay preserves insertion order
+when a deleted row is recreated, so retention selects the same oldest rows on every handle.
 Cached record collections share immutable paths, so saving one row does not copy
 the collection.
 Delegation tool references are counted only for changed rows. Aborted writes

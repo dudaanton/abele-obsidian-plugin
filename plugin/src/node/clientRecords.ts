@@ -64,6 +64,7 @@ export class ClientRecords {
   private stamp?: string
   private version?: number
   private legacyKeys = new Set<string>()
+  private legacyRevisions = new Map<string, string>()
   private deletedLegacy = new Set<string>()
   private orphanTools = new Map<string, string>()
   private orphanReferences = new Map<string, number>()
@@ -85,6 +86,7 @@ export class ClientRecords {
       version - this.version > RECORD_LOG_WINDOW ||
       (this.stamp !== stamp && version <= this.version)
     const legacyKeys = cold ? new Set<string>() : this.legacyKeys
+    const legacyRevisions = cold ? new Map<string, string>() : this.legacyRevisions
     const deletedLegacy = cold ? new Set<string>() : this.deletedLegacy
     const markers = new Map<string, boolean>()
     const isDeleted = (key: string) =>
@@ -170,9 +172,21 @@ export class ClientRecords {
       let legacyOrder = -Object.keys(legacy).length
       for (const key of Object.keys(legacy)) {
         legacyKeys.add(key)
+        legacyRevisions.set(key, legacy[key])
         if (!indexed.has(key)) rows.push({ key, order: legacyOrder })
         ++legacyOrder
       }
+      await Promise.all(
+        [...deletedLegacy].map(async (key) => {
+          const marker = (await read(store.get(RECORD_DELETED + key))) as
+            | { revision?: string }
+            | undefined
+          // A tombstone retires one legacy revision, never a later writer's evidence.
+          // Unversioned markers cannot establish which payload was retired.
+          if (!marker?.revision || marker.revision !== legacyRevisions.get(key))
+            deletedLegacy.delete(key)
+        })
+      )
     } else if (this.stamp !== stamp) {
       const logs = (await Promise.all(
         Array.from({ length: version - this.version! }, (_, i) =>
@@ -186,7 +200,8 @@ export class ClientRecords {
       }
       rows = [...changed.values()]
     }
-    if (cold) rows.sort((a, b) => a.order - b.order)
+    // Collapsing log entries can leave newly inserted rows in an older log position.
+    rows.sort((a, b) => a.order - b.order)
     const loaded = await Promise.all(
       rows.map(async (row): Promise<[string, Snapshot | undefined]> => {
         if (row.deleted && !legacyKeys.has(row.key)) return [row.key, undefined]
@@ -225,12 +240,19 @@ export class ClientRecords {
         return [row.key, { value: frozen(value), order: row.order, toolsRef }]
       })
     )
-    for (const [key, snapshot] of loaded) set(key, snapshot)
+    const reordered = new Set<string>()
+    for (const [key, snapshot] of loaded) {
+      const previous = base.get(key)
+      if (snapshot && previous && snapshot.order !== previous.order) reordered.add(key)
+      set(key, snapshot)
+    }
     const changedByField = new Map<Field, [string, Snapshot | undefined][]>()
     for (const [key, snapshot] of updates) {
       const field = fieldOf(key)
       const list = changedByField.get(field) ?? []
-      list.push([key.slice(('record:' + field + ':').length), snapshot])
+      const id = key.slice(('record:' + field + ':').length)
+      if (reordered.has(key)) list.push([id, undefined])
+      list.push([id, snapshot])
       changedByField.set(field, list)
     }
     const collections = RECORD_FIELDS.map((field) => {
@@ -386,7 +408,10 @@ export class ClientRecords {
                 // Older readers still resolve these immutable manifest entries. Keep
                 // their payloads on disk while current readers honor the tombstone.
                 markers.set(update.key, true)
-                store.put(0, RECORD_DELETED + update.key)
+                store.put(
+                  { revision: legacyRevisions.get(update.key) },
+                  RECORD_DELETED + update.key
+                )
                 orphan(update.key, previous?.toolsRef)
               } else store.delete(update.key)
               if (previous) store.delete(orderKey(update.key, previous.order))
@@ -464,6 +489,7 @@ export class ClientRecords {
           this.orphanReferences = new Map()
         }
         this.legacyKeys = legacyKeys
+        this.legacyRevisions = legacyRevisions
         this.deletedLegacy = deletedLegacy
         for (const [key, deleted] of markers)
           if (deleted) this.deletedLegacy.add(key)

@@ -3,6 +3,88 @@ import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
 import { NodeClientStore } from '@/node/NodeClientStore'
 import { RECORD_LOG_WINDOW } from '@/node/clientRecords'
 
+it('keeps recreated receipts newest on a warm reader and prunes the oldest receipt', async () => {
+  const factory = new IDBFactory()
+  const writer = new NodeClientStore('sample-recreated-order', factory)
+  const reader = new NodeClientStore('sample-recreated-order', factory)
+  const reopened = new NodeClientStore('sample-recreated-order', factory)
+  try {
+    await writer.transaction((s) => {
+      for (let i = 0; i < 1000; ++i) s.results['sample-' + i] = { result: i }
+    })
+    await reader.read((s) => Object.keys(s.results))
+    await writer.transaction((s) => {
+      delete s.results['sample-0']
+    })
+    await writer.transaction((s) => {
+      s.results['sample-0'] = { result: 'recreated' }
+    })
+    const expected = await writer.read((s) => Object.keys(s.results))
+    expect(expected.at(-1)).toBe('sample-0')
+    expect(await reopened.read((s) => Object.keys(s.results))).toEqual(expected)
+    expect(await reader.read((s) => Object.keys(s.results))).toEqual(expected)
+    await reader.transaction((s) => {
+      s.results['sample-new'] = { result: 'new' }
+    })
+    expect(await reader.read((s) => s.results['sample-0'])).toEqual({ result: 'recreated' })
+    expect(await reader.read((s) => s.results['sample-1'])).toBeUndefined()
+  } finally {
+    writer.close()
+    reader.close()
+    reopened.close()
+  }
+})
+
+it('imports newer legacy revisions after retiring a legacy receipt', async () => {
+  const factory = new IDBFactory()
+  const namespace = 'sample-legacy-rewrite'
+  const key = 'record:results:sample-recovery'
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const open = factory.open('abele-node-' + namespace, 3)
+    open.onupgradeneeded = () => {
+      const client = open.result.createObjectStore('client')
+      open.result.createObjectStore('journal')
+      client.put({ cursors: {}, events: {}, outbox: [], results: {} }, 'state')
+      client.put({ result: 'old' }, key)
+      client.put({ [key]: 'sample-before' }, 'record-revisions')
+    }
+    open.onsuccess = () => resolve(open.result)
+    open.onerror = () => reject(open.error)
+  })
+  const writer = new NodeClientStore(namespace, factory)
+  try {
+    await writer.transaction((s) => {
+      delete s.results['sample-recovery']
+    })
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('client', 'readwrite')
+      const client = tx.objectStore('client')
+      client.put({ error: 'outcome_unknown' }, key)
+      client.put({ [key]: 'sample-after' }, 'record-revisions')
+      client.put('sample-older-writer-stamp', 'records-stamp')
+      tx.oncomplete = () => resolve()
+      tx.onabort = () => reject(tx.error)
+    })
+    const reader = new NodeClientStore(namespace, factory)
+    try {
+      expect(await reader.read((s) => s.results['sample-recovery'])).toEqual({
+        error: 'outcome_unknown',
+      })
+      await reader.transaction((s) => {
+        s.chatDrafts!['sample-session'] = { text: 'draft', notice: '' }
+      })
+      expect(await reader.read((s) => s.results['sample-recovery'])).toEqual({
+        error: 'outcome_unknown',
+      })
+    } finally {
+      reader.close()
+    }
+  } finally {
+    writer.close()
+    db.close()
+  }
+})
+
 it('keeps legacy manifest rows and tool payloads readable for rollback without reviving retired rows', async () => {
   const factory = new IDBFactory()
   const namespace = 'sample-legacy-retirement'
