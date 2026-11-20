@@ -17,13 +17,27 @@ export async function waitForPhoneBackground(
     options.report ?? ((state) => console.info('[phone native background state]', { state }))
   const deadline = now() + 20000
   let previous: number | undefined
-  for (;;) {
-    const reply = JSON.parse(
-      run(
-        ['call', '/state', JSON.stringify({ bundle: 'md.obsidian' })],
-        Math.max(1, Math.min(5000, deadline - now()))
-      )
+  const timeout = (cause?: unknown) =>
+    new Error(
+      `Timed out after 20000ms waiting for native background state; last native app state=${previous ?? 'unobserved'}`,
+      { cause }
     )
+  for (;;) {
+    const remaining = deadline - now()
+    if (remaining <= 0) throw timeout()
+    let raw: string
+    try {
+      // A native query may wait behind the Home transition in the runner.
+      // Killing its client at five seconds discards otherwise valid replies.
+      raw = run(['call', '/state', JSON.stringify({ bundle: 'md.obsidian' })], Math.ceil(remaining))
+    } catch (error) {
+      if ((error as { code?: string })?.code !== 'ETIMEDOUT') throw error
+      if (now() >= deadline) throw timeout(error)
+      await pause(Math.min(250, deadline - now()))
+      continue
+    }
+    if (now() > deadline) throw timeout()
+    const reply = JSON.parse(raw)
     const state = reply?.state
     if (!Number.isInteger(state) || state < 0 || state > 4)
       throw new Error('Invalid native app state reply; expected /state {state:0..4}')
@@ -31,10 +45,7 @@ export async function waitForPhoneBackground(
     previous = state
     if (state === 2 || state === 3) return state
     if (state === 1) throw new Error('native app state is notRunning before the requested kill')
-    if (now() >= deadline)
-      throw new Error(
-        `Timed out after 20000ms waiting for native background state; last native app state=${state}`
-      )
+    if (now() >= deadline) throw timeout()
     await pause(Math.min(250, deadline - now()))
   }
 }

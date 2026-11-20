@@ -10,6 +10,94 @@ import {
   phoneGateChunk,
 } from '../e2e/helpers/syncPhoneGate'
 
+it('allows a slow native state reply to finish inside the overall background deadline', async () => {
+  let now = 0,
+    calls = 0
+  const state = await waitForPhoneBackground({
+    run: (_args, budget) => {
+      if (++calls === 1) return '{"state":4}'
+      now += Math.min(7000, budget!)
+      if (budget! < 7000)
+        throw Object.assign(new Error('spawnSync iphone ETIMEDOUT'), { code: 'ETIMEDOUT' })
+      return '{"state":2}'
+    },
+    now: () => now,
+    pause: async (ms) => {
+      now += ms
+    },
+    report: () => {},
+  })
+  expect(state).toBe(2)
+  expect(now).toBe(7250)
+  expect(calls).toBe(2)
+})
+
+it('reports the deadline and last native state when a state query times out', async () => {
+  let now = 0,
+    calls = 0
+  await expect(
+    waitForPhoneBackground({
+      run: (_args, budget) => {
+        if (++calls === 1) return '{"state":4}'
+        now += budget!
+        throw Object.assign(new Error('spawnSync iphone ETIMEDOUT'), { code: 'ETIMEDOUT' })
+      },
+      now: () => now,
+      pause: async (ms) => {
+        now += ms
+      },
+      report: () => {},
+    })
+  ).rejects.toThrow(/20000ms.*last native app state=4/)
+  expect(now).toBe(20000)
+})
+
+it('retries only a timed-out observation while time remains without repeating Home or launching', async () => {
+  let now = 0,
+    calls = 0
+  const state = await waitForPhoneBackground({
+    run: (args) => {
+      expect(args[0]).toBe('call')
+      expect(args[1]).toBe('/state')
+      if (++calls === 1) return '{"state":4}'
+      if (calls === 2) {
+        now += 6000
+        throw Object.assign(new Error('native state timeout'), { code: 'ETIMEDOUT' })
+      }
+      return '{"state":3}'
+    },
+    now: () => now,
+    pause: async (ms) => {
+      now += ms
+    },
+    report: () => {},
+  })
+  expect(state).toBe(3)
+  expect(calls).toBe(3)
+  expect(now).toBeLessThan(20000)
+})
+
+it('does not accept a background reply received after the deadline or hide transport errors', async () => {
+  let now = 0
+  await expect(
+    waitForPhoneBackground({
+      run: () => {
+        now = 21000
+        return '{"state":3}'
+      },
+      now: () => now,
+      report: () => {},
+    })
+  ).rejects.toThrow('20000ms')
+  await expect(
+    waitForPhoneBackground({
+      run: () => {
+        throw new Error('runner unavailable')
+      },
+    })
+  ).rejects.toThrow('runner unavailable')
+})
+
 it('waits for a delayed native background transition and reports the observed state', async () => {
   let now = 0
   const calls: string[][] = []
