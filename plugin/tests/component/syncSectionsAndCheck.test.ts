@@ -23,6 +23,7 @@ it('captures the pinned connection footer and connection status with the inspect
   })
   expect(view.get('footer').text()).toContain('Disconnect')
   expect(view.get('footer').findAll('button')).toHaveLength(3)
+  expect(view.get('footer button').attributes('style')).toContain('margin-inline-end: auto')
   expect(view.get('.abele-sync-window__status').text()).toContain('Synced')
   view.unmount()
 })

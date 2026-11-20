@@ -1,5 +1,5 @@
 <template>
-  <ObsidianModal :title="t('streamC.a6df11e706c514f1')" size="tall" @close="emit('close')">
+  <ObsidianModal :title="t('streamC.a6df11e706c514f1')" phone-sheet @close="emit('close')">
     <div ref="root" class="abele-version-history">
       <div class="abele-version-history__head">
         <p class="abele-version-history__path">{{ path }}</p>
@@ -43,7 +43,7 @@
                   />
                 </template>
                 <template #meta>
-                  <span v-for="(fact, i) in metaOf(version)" :key="i">{{ fact }}</span>
+                  <span>{{ metaOf(version).join(' · ') }}</span>
                   <span v-if="mergeLine(version, versions)" class="abele-version-history__merge">{{
                     mergeLine(version, versions)
                   }}</span>

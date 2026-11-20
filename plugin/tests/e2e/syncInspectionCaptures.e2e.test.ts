@@ -64,6 +64,9 @@ describe.skipIf(!available)('sync inspection desktop captures', () => {
           const sheet=[...document.querySelectorAll('.modal.abele-modal')].find(one=>one.querySelector('.abele-modal__footer'))
           const footer=sheet?.querySelector('.abele-modal__footer'), bounds=footer?.getBoundingClientRect()
           const body=sheet?.querySelector('.abele-modal__body')
+          const buttons=[...footer.querySelectorAll('button')].map(button=>button.getBoundingClientRect())
+          const separated=buttons.length===3&&buttons[1].left-buttons[0].right>32
+          const gutter=body&&getComputedStyle(body).scrollbarGutter==='stable'
           const pinned = bounds && bounds.height>0 && bounds.bottom<=innerHeight+1 && bounds.top>=0
           if(body) body.scrollTop=body.scrollHeight
           await wait(50)
@@ -72,6 +75,7 @@ describe.skipIf(!available)('sync inspection desktop captures', () => {
           if(body) body.scrollTop=0
           await wait(50)
           const box=modal.getBoundingClientRect()
+          const compactHistory=name!=='sync-check-6'||box.height<innerHeight*0.65
           const centered=box.left>0&&box.top>0&&box.right<innerWidth&&box.bottom<innerHeight&&Math.abs((box.left+box.right)/2-innerWidth/2)<5&&Math.abs((box.top+box.bottom)/2-innerHeight/2)<5
           const image=await contents.capturePage(), pixels=image.getSize()
           // Retina pixels may be 2x CSS pixels; a stale phone frame has a different aspect.
@@ -79,19 +83,29 @@ describe.skipIf(!available)('sync inspection desktop captures', () => {
           const png=image.resize({width:1200,height:900}).toPNG({scaleFactor:1})
           const output={width:png.readUInt32BE(16),height:png.readUInt32BE(20)}
           fs.writeFileSync(dir+'/dialog-'+name+'.png',png)
-          report.push({name,width:innerWidth,height:innerHeight,imageWidth:output.width,imageHeight:output.height,mobile:!!app.isMobile,phoneClasses:phoneClasses()||['is-mobile','is-phone','is-tablet'].some(c=>modal.classList.contains(c)),centered,pinned:!!pinned,stays})
+          report.push({name,width:innerWidth,height:innerHeight,imageWidth:output.width,imageHeight:output.height,mobile:!!app.isMobile,phoneClasses:phoneClasses()||['is-mobile','is-phone','is-tablet'].some(c=>modal.classList.contains(c)),centered,pinned:!!pinned,stays,separated,gutter:!!gutter,compactHistory})
         }
       } finally { await close() }
       return JSON.stringify(report)
     })()`,
             120000
           )
-        ) as (DesktopCapture & { name: string; pinned: boolean; stays: boolean })[]
+        ) as (DesktopCapture & {
+          name: string
+          pinned: boolean
+          stays: boolean
+          separated: boolean
+          gutter: boolean
+          compactHistory: boolean
+        })[]
         expect(report).toHaveLength(19)
         for (const capture of report) {
           expect(desktopCaptureErrors(capture), capture.name).toEqual([])
           expect(capture.pinned, capture.name).toBe(true)
           expect(capture.stays, capture.name).toBe(true)
+          expect(capture.separated, capture.name).toBe(true)
+          expect(capture.gutter, capture.name).toBe(true)
+          expect(capture.compactHistory, capture.name).toBe(true)
         }
       }
     )

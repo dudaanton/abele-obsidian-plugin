@@ -1,5 +1,10 @@
 <template>
-  <Modal title="sync.example" size="tall" @close="emit('close')">
+  <Modal
+    title="sync.example"
+    size="tall"
+    modal-class="abele-sync-connection"
+    @close="emit('close')"
+  >
     <div v-if="area === 'check'" class="abele-sync-window__status">
       <StatusDot tone="green" :label="status" />
       <span>{{ status }}</span>
@@ -14,6 +19,7 @@
     <VaultCheckBlock v-else :source="check" />
     <template #footer>
       <Button
+        style="margin-inline-end: auto"
         :text="t('sync.window.disconnect')"
         :tooltip="t('sync.window.disconnectTip')"
         warning

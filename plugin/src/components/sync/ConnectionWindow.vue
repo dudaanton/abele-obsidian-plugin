@@ -1,5 +1,11 @@
 <template>
-  <Modal :title="name" size="tall" phone-sheet @close="emit('close')">
+  <Modal
+    :title="name"
+    size="tall"
+    phone-sheet
+    modal-class="abele-sync-connection"
+    @close="emit('close')"
+  >
     <div ref="windowEl" class="abele-sync-window">
       <!-- What the connection is doing, as the row says it, and a bar while it runs. -->
       <div class="abele-sync-window__state">
@@ -418,6 +424,10 @@ function showRules(): void {
   font-family: var(--font-monospace);
   color: var(--text-muted);
   overflow-wrap: anywhere;
+}
+
+.modal.abele-sync-connection .abele-modal__body {
+  scrollbar-gutter: stable;
 }
 .abele-sync-window {
   .abele-section:first-of-type {

@@ -19,6 +19,7 @@ import { Notice } from 'obsidian'
 import type { CommitOpResult, VersionInfo } from '@abele/sync-sdk/protocol'
 import VersionHistoryModal from '@/components/sync/VersionHistoryModal.vue'
 import Button from '@/components/obsidian/Button.vue'
+import ObsidianModal from '@/components/obsidian/Modal.vue'
 import EmptyState from '@/components/obsidian/EmptyState.vue'
 import ConfirmModal from '@/components/obsidian/ConfirmModal.vue'
 import * as TokenHistory from '@/sync/tokenHistory'
@@ -27,6 +28,24 @@ import { useVault } from '../helpers/testEnv'
 
 /** The dialog itself is Obsidian's; unwrapping it puts the body where a query can reach it. */
 const STUBS = { ObsidianModal: { template: '<div><slot /></div>' } }
+
+it('sizes short history to its contents while keeping the native phone sheet', async () => {
+  const screen = open()
+  await flushPromises()
+  const modal = screen.findComponent(ObsidianModal)
+  expect(modal.attributes('size')).not.toBe('tall')
+  expect(modal.attributes('phone-sheet')).toBeDefined()
+  screen.unmount()
+})
+
+it('separates version facts with the same dots as comparison rows', async () => {
+  const screen = open()
+  await flushPromises()
+  expect(screen.find('.abele-entry-row__meta').text()).toMatch(
+    /\d{2}:\d{2} · Laptop · 1\.0 KB · #4/
+  )
+  screen.unmount()
+})
 
 const PATH = 'Notes/a.md'
 /** What the note holds on this device, which is the right-hand side of every preview. */
@@ -122,7 +141,7 @@ const cardFor = (screen: Screen, no: number) =>
 const metaOf = (screen: Screen, no: number): string[] =>
   cardFor(screen, no)
     ?.findAll('.abele-entry-row__meta > span')
-    .map((fact) => fact.text()) ?? []
+    .flatMap((fact) => fact.text().split(' · ')) ?? []
 
 /** Opens one version's row, where its single Restore is, and gives that button. */
 const restoreFor = async (screen: Screen, no: number) => {
