@@ -9,7 +9,7 @@ import { liveCase, liveSuite } from './helpers/syncLiveCases'
 import { driver, phoneHome, beginPhoneCase, endPhoneCase, installPhoneHost } from './helpers/phone'
 import { fixtureFetch } from './helpers/syncServer'
 import { waitFor } from './helpers/syncVault'
-import { terminatePhone } from './helpers/phoneProcess'
+import { terminatePhone, waitForPhoneBackground } from './helpers/phoneProcess'
 import { residentMemorySampler } from './helpers/residentMemory'
 import { allowFixtureAttachment } from './helpers/externalAttachmentFixture'
 import {
@@ -125,16 +125,7 @@ liveCase(
         phoneAway = true
         // Native state is authoritative even when the suspended page never
         // receives visibilitychange. 2/3 are background/background-suspended.
-        await waitFor(
-          'native app background state',
-          () => {
-            const state = JSON.parse(
-              driver(['call', '/state', JSON.stringify({ bundle: 'md.obsidian' })], 10000)
-            ).state
-            return state === 2 || state === 3
-          },
-          10000
-        )
+        const backgroundState = await waitForPhoneBackground()
         endPhoneCase()
         const kill = terminatePhone()
         // The next launch must be cold. Let startup networking work immediately;
@@ -150,7 +141,13 @@ liveCase(
         )
         assertFreshPhoneLoad(before, after)
         await startMemory()
-        console.info('[phone gate interruption]', { phase, before, after, ...kill })
+        console.info('[phone gate interruption]', {
+          phase,
+          before,
+          after,
+          backgroundState,
+          ...kill,
+        })
       } finally {
         s.server.resume()
         if (phoneAway) {

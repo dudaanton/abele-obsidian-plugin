@@ -3,12 +3,53 @@ import { expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { declaredTargets } from '../e2e/helpers/target'
 import ts from 'typescript'
-import { terminatePhone } from '../e2e/helpers/phoneProcess'
+import { terminatePhone, waitForPhoneBackground } from '../e2e/helpers/phoneProcess'
 import {
   assertPhoneGateInventory,
   assertFreshPhoneLoad,
   phoneGateChunk,
 } from '../e2e/helpers/syncPhoneGate'
+
+it('waits for a delayed native background transition and reports the observed state', async () => {
+  let now = 0
+  const calls: string[][] = []
+  const state = await waitForPhoneBackground({
+    run: (args) => {
+      calls.push(args)
+      return JSON.stringify({ state: now < 12000 ? 4 : 3 })
+    },
+    now: () => now,
+    pause: async (ms) => {
+      now += ms
+    },
+    report: () => {},
+  })
+  expect(state).toBe(3)
+  expect(now).toBe(12000)
+  expect(
+    calls.every(
+      (args) =>
+        args[0] === 'call' && args[1] === '/state' && JSON.parse(args[2]).bundle === 'md.obsidian'
+    )
+  ).toBe(true)
+})
+
+it('never mistakes foreground, stopped or malformed native state for background', async () => {
+  for (const reply of ['{"state":4}', '{"state":1}', '{}']) {
+    let now = 0
+    await expect(
+      waitForPhoneBackground({
+        run: () => reply,
+        now: () => now,
+        pause: async (ms) => {
+          now += ms
+        },
+        report: () => {},
+      })
+    ).rejects.toThrow(/native.*state/)
+    expect(now).toBeLessThanOrEqual(20000)
+  }
+})
 
 it('uses kill only when advertised and requires a confirmed stopped process', () => {
   const calls: string[][] = []
