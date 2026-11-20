@@ -636,7 +636,8 @@ export class TokenEngines {
       runtime: TokenEngineRuntime | undefined
     let closeStore: (() => void) | undefined,
       closeCopies: (() => void) | undefined,
-      unbind: (() => void) | undefined
+      unbind: (() => void) | undefined,
+      unbindStarting: (() => void) | undefined
     let stateHandle: IndexedDbStateStore | undefined
     let opening: Promise<IndexedDbStateStore> | undefined
     const credential = this.key(record.secretReference)
@@ -675,6 +676,7 @@ export class TokenEngines {
       active = false
       runtime?.invalidate()
       fence?.release()
+      unbindStarting?.()
       unbind?.()
       this.live.delete(record.id)
     }
@@ -1413,8 +1415,18 @@ export class TokenEngines {
         closeCopies = copies.close
         assertActive()
         this.live.set(record.id, runtime)
+        const controls = { pause: (paused: boolean) => runtime.pause(paused) }
+        this.ui.startingRuntimes.set(record.id, controls)
+        unbindStarting = () => {
+          if (this.ui.startingRuntimes.get(record.id) === controls)
+            this.ui.startingRuntimes.delete(record.id)
+        }
+        // Pause can arrive while start awaits, or while dependencies were opening.
+        if (this.ui.registry.records().find((one) => one.id === record.id)?.paused)
+          await runtime.pause(true)
         await stage('Starting file exchange', () => runtime.start())
         assertActive()
+        unbindStarting()
         this.pending.delete(record.id)
         unbind = this.ui.bind(record.id, {
           scanSnapshot: () => runtime.trace.snapshot(),
@@ -1476,6 +1488,7 @@ export class TokenEngines {
       closeStore = undefined
       closeCopies = undefined
       unbind = undefined
+      unbindStarting = undefined
       startup = new AbortController()
       this.startupCancels.set(record.id, cancel)
       this.ui.registry.setStatus(record.id, 'joining')

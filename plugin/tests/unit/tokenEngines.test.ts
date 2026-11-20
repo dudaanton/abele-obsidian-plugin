@@ -31,6 +31,53 @@ import { makeParents } from '@/sync/vaultFolders'
 import { connectionLine, connectionTone } from '@/sync/connectionLine'
 import { backgroundActivity } from '@/sync/backgroundActivity'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
+import { deferred } from '../helpers/deferred'
+
+it.each([false, true])(
+  'delivers pause while a live runtime is still starting (shared=%s)',
+  async (shared) => {
+    const f = inspectionFixture()
+    const entered = deferred(),
+      release = deferred()
+    const start = TokenEngineRuntime.prototype.start
+    const spy = vi
+      .spyOn(TokenEngineRuntime.prototype, 'start')
+      .mockImplementation(async function () {
+        entered.resolve()
+        await release.promise
+        await start.call(this)
+      })
+    f.release()
+    const connecting = f.ui.connect(f.encoded)
+    try {
+      await entered.promise
+      const id = f.registry.records()[0].id
+      if (shared)
+        f.ui.itemSets.store.create(
+          id,
+          'Sample set',
+          [{ id: 'first', kind: 'folder', scopeId: 'root', path: '/' }],
+          { first: id }
+        )
+      expect(f.ui.runtimes.has(id)).toBe(false)
+      await f.ui.pause(id, true)
+      const runtime = (Reflect.get(f.host, 'live') as Map<string, TokenEngineRuntime>).get(id)!
+      expect(runtime.engine.status.state).toBe('paused')
+      release.resolve()
+      await connecting
+      await hostSettled(f.host)
+      expect(f.ui.runtimes.has(id)).toBe(true)
+      expect(f.ui.startingRuntimes.size).toBe(0)
+      expect(runtime.engine.status.state).toBe('paused')
+    } finally {
+      release.resolve()
+      await connecting.catch(() => {})
+      spy.mockRestore()
+      await f.host.close()
+      expect(f.ui.startingRuntimes.size).toBe(0)
+    }
+  }
+)
 
 it.each(['retry', 'replacement', 'current failure'])(
   'keeps offline inventory failures owned by their %s observation',

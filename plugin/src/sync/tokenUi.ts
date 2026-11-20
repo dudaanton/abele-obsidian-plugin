@@ -432,6 +432,10 @@ export class TokenUi {
   readonly questions = shallowRef<AttachmentQuestion[]>([])
   readonly available = shallowRef(false)
   readonly runtimes = new Map<string, TokenUiRuntime>()
+  readonly startingRuntimes = new Map<string, Pick<TokenUiRuntime, 'pause'>>()
+  pausableRuntime(id: string): Pick<TokenUiRuntime, 'pause'> | undefined {
+    return this.runtimes.get(id) ?? this.startingRuntimes.get(id)
+  }
   readonly itemSets: TokenItemSets
   readonly deviceScopes: DeviceScopedConnections
   scopeInventory = () => scopeInventory([])
@@ -1562,7 +1566,7 @@ export class TokenUi {
       return
     }
     // Save intent before affecting the engine; status acknowledges durability.
-    const runtime = this.runtimes.get(id)
+    const runtime = this.pausableRuntime(id)
     this.registry.setPaused(id, paused, { settling: paused && !!runtime })
     await this.registry.flush()
     this.refresh()

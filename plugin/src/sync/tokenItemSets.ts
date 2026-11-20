@@ -697,10 +697,10 @@ export class TokenItemSets implements ShareSetSource {
     }
     const item = this.store.get(id)?.items.find((one) => one.id === itemId)
     if (!item?.recordId || item.detached) throw new Error('Item is no longer shared')
-    if (paused) await this.ui.runtimes.get(item.recordId)?.pause(true)
+    if (paused) await this.ui.pausableRuntime(item.recordId)?.pause(true)
     this.store.pause(id, itemId, paused)
     this.ui.registry.setPaused(item.recordId, paused)
-    if (!paused) await this.ui.runtimes.get(item.recordId)?.pause(false)
+    if (!paused) await this.ui.pausableRuntime(item.recordId)?.pause(false)
     if (!paused) await this.ui.resumeStartupStop(item.recordId)
     this.changed()
   }
