@@ -1,35 +1,86 @@
 import { driver } from './phone'
 
-/** Query the native runner directly. Page eval wakes the app and cannot witness
- * backgrounding. Bound this below the held transfer's native request deadline. */
+export interface PhoneBackgroundWitness {
+  witness: 'springboard-home-icon'
+  frame: number[]
+}
+
+/** /exists alone also matches text labels. Require a framed application icon in
+ * SpringBoard's accessibility tree, without activating either application. */
+function homeIcon(run: typeof driver, remaining: () => number): PhoneBackgroundWitness | null {
+  const budget = () => {
+    const value = remaining()
+    if (value <= 0) throw Object.assign(new Error('Home witness deadline'), { code: 'ETIMEDOUT' })
+    return Math.ceil(value)
+  }
+  const reply = JSON.parse(
+    run(
+      [
+        'call',
+        '/exists',
+        JSON.stringify({
+          bundle: 'com.apple.springboard',
+          label: 'Obsidian',
+          timeout: 0.25,
+        }),
+      ],
+      budget()
+    )
+  )
+  if (typeof reply?.exists !== 'boolean') throw new Error('Invalid native home icon reply')
+  if (!reply.exists) return null
+  const frame = reply.frame
+  if (
+    !Array.isArray(frame) ||
+    frame.length !== 4 ||
+    !frame.every(Number.isFinite) ||
+    frame[2] <= 0 ||
+    frame[3] <= 0
+  )
+    throw new Error('Invalid native home icon frame')
+  const source = run(
+    ['call', '/source', JSON.stringify({ bundle: 'com.apple.springboard' })],
+    budget()
+  )
+  if (!/^\s*Icon\b[^\n]*\blabel: 'Obsidian'(?:,|\s*$)/m.test(source)) return null
+  return { witness: 'springboard-home-icon', frame }
+}
+
+/** A negative control prevents an offscreen tree from certifying background. */
+export function assertPhoneHomeScreenHidden(run: typeof driver = driver): void {
+  const deadline = Date.now() + 20000
+  if (homeIcon(run, () => deadline - Date.now()))
+    throw new Error('Home icon is already exposed before Home; background witness is not usable')
+}
+
+/** Page eval wakes the app and app state can stay stale after Home. Observe the
+ * SpringBoard icon directly, below the held transfer's native request deadline. */
 export async function waitForPhoneBackground(
   options: {
     run?: typeof driver
     now?: () => number
     pause?: (ms: number) => Promise<void>
-    report?: (state: number) => void
+    report?: (visible: boolean) => void
   } = {}
-): Promise<2 | 3> {
+): Promise<PhoneBackgroundWitness> {
   const run = options.run ?? driver
   const now = options.now ?? Date.now
   const pause = options.pause ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
   const report =
-    options.report ?? ((state) => console.info('[phone native background state]', { state }))
+    options.report ?? ((visible) => console.info('[phone background home icon]', { visible }))
   const deadline = now() + 20000
-  let previous: number | undefined
+  let previous: boolean | undefined
   const timeout = (cause?: unknown) =>
     new Error(
-      `Timed out after 20000ms waiting for native background state; last native app state=${previous ?? 'unobserved'}`,
+      `Timed out after 20000ms waiting for native home icon; last home icon visible=${previous ?? 'unobserved'}`,
       { cause }
     )
   for (;;) {
     const remaining = deadline - now()
     if (remaining <= 0) throw timeout()
-    let raw: string
+    let witness: PhoneBackgroundWitness | null
     try {
-      // A native query may wait behind the Home transition in the runner.
-      // Killing its client at five seconds discards otherwise valid replies.
-      raw = run(['call', '/state', JSON.stringify({ bundle: 'md.obsidian' })], Math.ceil(remaining))
+      witness = homeIcon(run, () => deadline - now())
     } catch (error) {
       if ((error as { code?: string })?.code !== 'ETIMEDOUT') throw error
       if (now() >= deadline) throw timeout(error)
@@ -37,14 +88,10 @@ export async function waitForPhoneBackground(
       continue
     }
     if (now() > deadline) throw timeout()
-    const reply = JSON.parse(raw)
-    const state = reply?.state
-    if (!Number.isInteger(state) || state < 0 || state > 4)
-      throw new Error('Invalid native app state reply; expected /state {state:0..4}')
-    if (state !== previous) report(state)
-    previous = state
-    if (state === 2 || state === 3) return state
-    if (state === 1) throw new Error('native app state is notRunning before the requested kill')
+    const visible = witness !== null
+    if (visible !== previous) report(visible)
+    previous = visible
+    if (witness) return witness
     if (now() >= deadline) throw timeout()
     await pause(Math.min(250, deadline - now()))
   }

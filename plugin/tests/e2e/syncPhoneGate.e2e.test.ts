@@ -9,7 +9,11 @@ import { liveCase, liveSuite } from './helpers/syncLiveCases'
 import { driver, phoneHome, beginPhoneCase, endPhoneCase, installPhoneHost } from './helpers/phone'
 import { fixtureFetch } from './helpers/syncServer'
 import { waitFor } from './helpers/syncVault'
-import { terminatePhone, waitForPhoneBackground } from './helpers/phoneProcess'
+import {
+  assertPhoneHomeScreenHidden,
+  terminatePhone,
+  waitForPhoneBackground,
+} from './helpers/phoneProcess'
 import { residentMemorySampler } from './helpers/residentMemory'
 import { allowFixtureAttachment } from './helpers/externalAttachmentFixture'
 import {
@@ -103,6 +107,7 @@ liveCase(
         )
       }
       let phoneAway = false
+      assertPhoneHomeScreenHidden()
       s.server.holdTransfer(phase)
       try {
         a.run(
@@ -123,9 +128,8 @@ liveCase(
         ).toBe(true)
         phoneHome()
         phoneAway = true
-        // Native state is authoritative even when the suspended page never
-        // receives visibilitychange. 2/3 are background/background-suspended.
-        const backgroundState = await waitForPhoneBackground()
+        // The SpringBoard home icon witnesses that this app left the foreground.
+        const backgroundWitness = await waitForPhoneBackground()
         endPhoneCase()
         const kill = terminatePhone()
         // The next launch must be cold. Let startup networking work immediately;
@@ -145,7 +149,7 @@ liveCase(
           phase,
           before,
           after,
-          backgroundState,
+          backgroundWitness,
           ...kill,
         })
       } finally {
