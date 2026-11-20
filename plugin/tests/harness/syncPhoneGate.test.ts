@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { declaredTargets } from '../e2e/helpers/target'
 import ts from 'typescript'
 import {
-  assertPhoneHomeScreenHidden,
+  capturePhoneForegroundScene,
   terminatePhone,
   waitForPhoneBackground,
 } from '../e2e/helpers/phoneProcess'
@@ -14,63 +14,81 @@ import {
   phoneGateChunk,
 } from '../e2e/helpers/syncPhoneGate'
 
-const iconSource = "Icon, 0x1, {{10, 20}, {60, 60}}, label: 'Obsidian'"
-const iconReply = '{"exists":true,"frame":[10,20,60,60]}'
+const scene = {
+  screen: [393, 852] as [number, number],
+  frame: [0, 0, 393, 852] as [number, number, number, number],
+}
+const fullReply = '{"exists":true,"frame":[0,0,393,852]}'
+const zeroReply = '{"exists":true,"frame":[0,0,0,0]}'
 
-it('rejects an icon already exposed before Home instead of trusting an offscreen tree', () => {
-  expect(() =>
-    assertPhoneHomeScreenHidden((args) => (args[1] === '/source' ? iconSource : iconReply))
-  ).toThrow('already exposed')
-  expect(() => assertPhoneHomeScreenHidden(() => '{"exists":false,"frame":[]}')).not.toThrow()
-})
-
-it('rejects zero-size frames, non-icon labels, and stale app state as background evidence', async () => {
-  for (const reply of ['{"exists":true,"frame":[0,0,0,0]}', '{"state":4}'])
-    await expect(waitForPhoneBackground({ run: () => reply, report: () => {} })).rejects.toThrow(
-      'Invalid native home icon'
-    )
-  let now = 0
+it('accepts the measured full-screen scene becoming a zero-frame offscreen icon', async () => {
+  const foreground = capturePhoneForegroundScene((args) =>
+    args[1] === '/status' ? '{"screen":[393,852]}' : '{"exists":true,"frame":[0,0,393,852]}'
+  )
   await expect(
     waitForPhoneBackground({
-      run: (args) => (args[1] === '/source' ? "StaticText, label: 'Obsidian'" : iconReply),
-      now: () => now,
-      pause: async (ms) => {
-        now += ms
-      },
+      foreground,
+      run: () => '{"exists":true,"frame":[0,0,0,0]}',
       report: () => {},
     })
-  ).rejects.toThrow('20000ms')
+  ).resolves.toMatchObject({ frame: [0, 0, 0, 0] })
 })
 
-it('witnesses the SpringBoard app icon even when native app state stays foreground', async () => {
+it('requires a full-screen foreground scene before Home', () => {
+  expect(() =>
+    capturePhoneForegroundScene((args) =>
+      args[1] === '/status' ? '{"screen":[393,852]}' : zeroReply
+    )
+  ).toThrow(/not full-screen.*frame=\[0,0,0,0\]/)
+  expect(
+    capturePhoneForegroundScene((args) =>
+      args[1] === '/status' ? '{"screen":[393,852]}' : fullReply
+    )
+  ).toEqual(scene)
+})
+
+it('rejects invalid frames and stale app state as background evidence', async () => {
+  for (const reply of ['{"exists":true,"frame":[0,0,-1,0]}', '{"state":4}'])
+    await expect(
+      waitForPhoneBackground({ foreground: scene, run: () => reply, report: () => {} })
+    ).rejects.toThrow('Invalid native scene')
+  await expect(
+    waitForPhoneBackground({
+      foreground: { screen: scene.screen, frame: [0, 0, 0, 0] },
+      run: () => zeroReply,
+    })
+  ).rejects.toThrow('not full-screen before Home')
+})
+
+it('witnesses the SpringBoard scene transition even when native app state stays foreground', async () => {
   const calls: string[][] = []
   const witness = await waitForPhoneBackground({
+    foreground: scene,
     run: (args) => {
       calls.push(args)
-      if (args[1] === '/source') return "Icon, 0x1, {{10, 20}, {60, 60}}, label: 'Obsidian'"
-      return '{"exists":true,"frame":[10,20,60,60],"state":4}'
+      return '{"exists":true,"frame":[0,0,0,0],"state":4}'
     },
     report: () => {},
   })
-  expect(witness).toMatchObject({ witness: 'springboard-home-icon' })
-  expect(calls.map((args) => args[1])).toEqual(['/exists', '/source'])
+  expect(witness).toMatchObject({ witness: 'springboard-scene-frame', frame: [0, 0, 0, 0] })
+  expect(calls.map((args) => args[1])).toEqual(['/exists'])
   expect(JSON.parse(calls[0][2])).toMatchObject({
     bundle: 'com.apple.springboard',
     label: 'Obsidian',
   })
 })
 
-it('allows a slow home icon reply to finish inside the overall background deadline', async () => {
+it('allows a slow scene reply to finish inside the overall background deadline', async () => {
   let now = 0,
     calls = 0
   const state = await waitForPhoneBackground({
+    foreground: scene,
     run: (args, budget) => {
-      if (args[1] === '/source') return iconSource
-      if (++calls === 1) return '{"exists":false,"frame":[]}'
+      if (++calls === 1) return fullReply
       now += Math.min(7000, budget!)
       if (budget! < 7000)
         throw Object.assign(new Error('spawnSync iphone ETIMEDOUT'), { code: 'ETIMEDOUT' })
-      return iconReply
+      return zeroReply
     },
     now: () => now,
     pause: async (ms) => {
@@ -78,18 +96,19 @@ it('allows a slow home icon reply to finish inside the overall background deadli
     },
     report: () => {},
   })
-  expect(state.witness).toBe('springboard-home-icon')
+  expect(state.witness).toBe('springboard-scene-frame')
   expect(now).toBe(7250)
   expect(calls).toBe(2)
 })
 
-it('reports the deadline and last icon observation when a native query times out', async () => {
+it('reports the deadline and both scene frames when a native query times out', async () => {
   let now = 0,
     calls = 0
   await expect(
     waitForPhoneBackground({
+      foreground: scene,
       run: (_args, budget) => {
-        if (++calls === 1) return '{"exists":false,"frame":[]}'
+        if (++calls === 1) return fullReply
         now += budget!
         throw Object.assign(new Error('spawnSync iphone ETIMEDOUT'), { code: 'ETIMEDOUT' })
       },
@@ -99,7 +118,7 @@ it('reports the deadline and last icon observation when a native query times out
       },
       report: () => {},
     })
-  ).rejects.toThrow(/20000ms.*last home icon visible=false/)
+  ).rejects.toThrow(/20000ms.*foreground frame=\[0,0,393,852\].*last frame=\[0,0,393,852\]/)
   expect(now).toBe(20000)
 })
 
@@ -107,16 +126,16 @@ it('retries only a timed-out observation while time remains without repeating Ho
   let now = 0,
     calls = 0
   const state = await waitForPhoneBackground({
+    foreground: scene,
     run: (args) => {
       expect(args[0]).toBe('call')
-      expect(['/exists', '/source']).toContain(args[1])
-      if (args[1] === '/source') return iconSource
-      if (++calls === 1) return '{"exists":false,"frame":[]}'
+      expect(args[1]).toBe('/exists')
+      if (++calls === 1) return fullReply
       if (calls === 2) {
         now += 6000
         throw Object.assign(new Error('native state timeout'), { code: 'ETIMEDOUT' })
       }
-      return iconReply
+      return zeroReply
     },
     now: () => now,
     pause: async (ms) => {
@@ -124,7 +143,7 @@ it('retries only a timed-out observation while time remains without repeating Ho
     },
     report: () => {},
   })
-  expect(state.witness).toBe('springboard-home-icon')
+  expect(state.witness).toBe('springboard-scene-frame')
   expect(calls).toBe(3)
   expect(now).toBeLessThan(20000)
 })
@@ -133,9 +152,10 @@ it('does not accept a background reply received after the deadline or hide trans
   let now = 0
   await expect(
     waitForPhoneBackground({
+      foreground: scene,
       run: () => {
         now = 21000
-        return iconReply
+        return zeroReply
       },
       now: () => now,
       report: () => {},
@@ -143,6 +163,7 @@ it('does not accept a background reply received after the deadline or hide trans
   ).rejects.toThrow('20000ms')
   await expect(
     waitForPhoneBackground({
+      foreground: scene,
       run: () => {
         throw new Error('runner unavailable')
       },
@@ -150,14 +171,14 @@ it('does not accept a background reply received after the deadline or hide trans
   ).rejects.toThrow('runner unavailable')
 })
 
-it('waits for a delayed home icon and reports its visibility without querying app state', async () => {
+it('waits for a delayed scene transition and reports frames without querying app state', async () => {
   let now = 0
   const calls: string[][] = []
   const state = await waitForPhoneBackground({
+    foreground: scene,
     run: (args) => {
       calls.push(args)
-      if (args[1] === '/source') return iconSource
-      return now < 12000 ? '{"exists":false,"frame":[]}' : iconReply
+      return now < 12000 ? fullReply : zeroReply
     },
     now: () => now,
     pause: async (ms) => {
@@ -165,23 +186,24 @@ it('waits for a delayed home icon and reports its visibility without querying ap
     },
     report: () => {},
   })
-  expect(state.witness).toBe('springboard-home-icon')
+  expect(state.witness).toBe('springboard-scene-frame')
   expect(now).toBe(12000)
   expect(
     calls.every(
       (args) =>
         args[0] === 'call' &&
-        ['/exists', '/source'].includes(args[1]) &&
+        args[1] === '/exists' &&
         JSON.parse(args[2]).bundle === 'com.apple.springboard'
     )
   ).toBe(true)
 })
 
-it('never substitutes foreground, stopped or malformed state replies for a home icon', async () => {
+it('never substitutes foreground, stopped or malformed state replies for a scene frame', async () => {
   for (const reply of ['{"state":4}', '{"state":1}', '{}']) {
     let now = 0
     await expect(
       waitForPhoneBackground({
+        foreground: scene,
         run: () => reply,
         now: () => now,
         pause: async (ms) => {
@@ -189,7 +211,7 @@ it('never substitutes foreground, stopped or malformed state replies for a home 
         },
         report: () => {},
       })
-    ).rejects.toThrow(/native.*home icon/)
+    ).rejects.toThrow(/native scene/)
     expect(now).toBeLessThanOrEqual(20000)
   }
 })

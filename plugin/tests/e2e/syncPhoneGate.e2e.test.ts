@@ -10,7 +10,7 @@ import { driver, phoneHome, beginPhoneCase, endPhoneCase, installPhoneHost } fro
 import { fixtureFetch } from './helpers/syncServer'
 import { waitFor } from './helpers/syncVault'
 import {
-  assertPhoneHomeScreenHidden,
+  capturePhoneForegroundScene,
   terminatePhone,
   waitForPhoneBackground,
 } from './helpers/phoneProcess'
@@ -107,7 +107,7 @@ liveCase(
         )
       }
       let phoneAway = false
-      assertPhoneHomeScreenHidden()
+      const foreground = capturePhoneForegroundScene()
       s.server.holdTransfer(phase)
       try {
         a.run(
@@ -128,8 +128,8 @@ liveCase(
         ).toBe(true)
         phoneHome()
         phoneAway = true
-        // The SpringBoard home icon witnesses that this app left the foreground.
-        const backgroundWitness = await waitForPhoneBackground()
+        // The SpringBoard scene frame witnesses that this app left the foreground.
+        const backgroundWitness = await waitForPhoneBackground({ foreground })
         endPhoneCase()
         const kill = terminatePhone()
         // The next launch must be cold. Let startup networking work immediately;

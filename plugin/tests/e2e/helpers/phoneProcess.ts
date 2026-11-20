@@ -1,86 +1,105 @@
 import { driver } from './phone'
 
+type Frame = [number, number, number, number]
+export interface PhoneForegroundScene {
+  screen: [number, number]
+  frame: Frame
+}
 export interface PhoneBackgroundWitness {
-  witness: 'springboard-home-icon'
-  frame: number[]
+  witness: 'springboard-scene-frame'
+  foreground: PhoneForegroundScene
+  frame: Frame | null
 }
 
-/** /exists alone also matches text labels. Require a framed application icon in
- * SpringBoard's accessibility tree, without activating either application. */
-function homeIcon(run: typeof driver, remaining: () => number): PhoneBackgroundWitness | null {
-  const budget = () => {
-    const value = remaining()
-    if (value <= 0) throw Object.assign(new Error('Home witness deadline'), { code: 'ETIMEDOUT' })
-    return Math.ceil(value)
-  }
+function sceneFrame(run: typeof driver, remaining: () => number): Frame | null {
+  const value = remaining()
+  if (value <= 0) throw Object.assign(new Error('Scene witness deadline'), { code: 'ETIMEDOUT' })
   const reply = JSON.parse(
     run(
       [
         'call',
         '/exists',
-        JSON.stringify({
-          bundle: 'com.apple.springboard',
-          label: 'Obsidian',
-          timeout: 0.25,
-        }),
+        JSON.stringify({ bundle: 'com.apple.springboard', label: 'Obsidian', timeout: 0.25 }),
       ],
-      budget()
+      Math.ceil(value)
     )
   )
-  if (typeof reply?.exists !== 'boolean') throw new Error('Invalid native home icon reply')
+  if (typeof reply?.exists !== 'boolean') throw new Error('Invalid native scene reply')
   if (!reply.exists) return null
   const frame = reply.frame
   if (
     !Array.isArray(frame) ||
     frame.length !== 4 ||
-    !frame.every(Number.isFinite) ||
-    frame[2] <= 0 ||
-    frame[3] <= 0
+    !frame.every((part: unknown) => typeof part === 'number' && Number.isFinite(part)) ||
+    frame[2] < 0 ||
+    frame[3] < 0
   )
-    throw new Error('Invalid native home icon frame')
-  const source = run(
-    ['call', '/source', JSON.stringify({ bundle: 'com.apple.springboard' })],
-    budget()
-  )
-  if (!/^\s*Icon\b[^\n]*\blabel: 'Obsidian'(?:,|\s*$)/m.test(source)) return null
-  return { witness: 'springboard-home-icon', frame }
+    throw new Error('Invalid native scene frame')
+  return frame as Frame
 }
 
-/** A negative control prevents an offscreen tree from certifying background. */
-export function assertPhoneHomeScreenHidden(run: typeof driver = driver): void {
+function isFullScreen(frame: Frame | null, screen: [number, number]): boolean {
+  if (!frame) return false
+  const [x, y, width, height] = frame
+  const [screenWidth, screenHeight] = screen
+  return (
+    Math.abs(x) <= 4 &&
+    Math.abs(y) <= 4 &&
+    Math.abs(width - screenWidth) <= Math.max(4, screenWidth * 0.02) &&
+    Math.abs(height - screenHeight) <= Math.max(4, screenHeight * 0.02)
+  )
+}
+
+/** Record the full-screen SpringBoard scene before pressing Home. */
+export function capturePhoneForegroundScene(run: typeof driver = driver): PhoneForegroundScene {
   const deadline = Date.now() + 20000
-  if (homeIcon(run, () => deadline - Date.now()))
-    throw new Error('Home icon is already exposed before Home; background witness is not usable')
+  const status = JSON.parse(run(['call', '/status', '{}'], Math.max(1, deadline - Date.now())))
+  const screen = status?.screen
+  if (
+    !Array.isArray(screen) ||
+    screen.length !== 2 ||
+    !screen.every((part: unknown) => typeof part === 'number' && Number.isFinite(part) && part > 0)
+  )
+    throw new Error('Invalid native screen dimensions')
+  const frame = sceneFrame(run, () => deadline - Date.now())
+  if (!isFullScreen(frame, screen))
+    throw new Error(
+      `Phone foreground scene was not full-screen before Home; screen=${JSON.stringify(screen)}, frame=${JSON.stringify(frame)}`
+    )
+  return { screen: screen as [number, number], frame: frame! }
 }
 
-/** Page eval wakes the app and app state can stay stale after Home. Observe the
- * SpringBoard icon directly, below the held transfer's native request deadline. */
-export async function waitForPhoneBackground(
-  options: {
-    run?: typeof driver
-    now?: () => number
-    pause?: (ms: number) => Promise<void>
-    report?: (visible: boolean) => void
-  } = {}
-): Promise<PhoneBackgroundWitness> {
+/** Native app state remains stale on some devices; the scene frame gives a
+ * bounded, observable transition from foreground to background. */
+export async function waitForPhoneBackground(options: {
+  foreground: PhoneForegroundScene
+  run?: typeof driver
+  now?: () => number
+  pause?: (ms: number) => Promise<void>
+  report?: (frame: Frame | null) => void
+}): Promise<PhoneBackgroundWitness> {
+  const { foreground } = options
+  if (!isFullScreen(foreground.frame, foreground.screen))
+    throw new Error('Phone foreground scene was not full-screen before Home')
   const run = options.run ?? driver
   const now = options.now ?? Date.now
   const pause = options.pause ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
   const report =
-    options.report ?? ((visible) => console.info('[phone background home icon]', { visible }))
+    options.report ??
+    ((frame) =>
+      console.info('[phone background scene frame]', { screen: foreground.screen, frame }))
   const deadline = now() + 20000
-  let previous: boolean | undefined
+  let lastFrame: Frame | null | undefined
   const timeout = (cause?: unknown) =>
     new Error(
-      `Timed out after 20000ms waiting for native home icon; last home icon visible=${previous ?? 'unobserved'}`,
+      `Timed out after 20000ms waiting for native background scene; foreground frame=${JSON.stringify(foreground.frame)}, screen=${JSON.stringify(foreground.screen)}, last frame=${JSON.stringify(lastFrame === undefined ? 'unobserved' : lastFrame)}`,
       { cause }
     )
   for (;;) {
-    const remaining = deadline - now()
-    if (remaining <= 0) throw timeout()
-    let witness: PhoneBackgroundWitness | null
+    if (deadline - now() <= 0) throw timeout()
+    let frame: Frame | null
     try {
-      witness = homeIcon(run, () => deadline - now())
+      frame = sceneFrame(run, () => deadline - now())
     } catch (error) {
       if ((error as { code?: string })?.code !== 'ETIMEDOUT') throw error
       if (now() >= deadline) throw timeout(error)
@@ -88,17 +107,16 @@ export async function waitForPhoneBackground(
       continue
     }
     if (now() > deadline) throw timeout()
-    const visible = witness !== null
-    if (visible !== previous) report(visible)
-    previous = visible
-    if (witness) return witness
+    if (JSON.stringify(frame) !== JSON.stringify(lastFrame)) report(frame)
+    lastFrame = frame
+    if (!isFullScreen(frame, foreground.screen))
+      return { witness: 'springboard-scene-frame', foreground, frame }
     if (now() >= deadline) throw timeout()
     await pause(Math.min(250, deadline - now()))
   }
 }
 
-/** Check the client capability before invoking the device runner's terminate endpoint.
- * An old runner fails explicitly; a fresh launch is not evidence of process death. */
+/** An old runner fails explicitly; a fresh launch is not evidence of death. */
 export function terminatePhone(run: typeof driver = driver): { killed: true; state: 1 } {
   if (!/\biphone kill\s+BUNDLE\b/.test(run(['--help'], 10000)))
     throw new Error('Phone driver kill capability is unavailable; update the driver')
