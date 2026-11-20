@@ -3822,6 +3822,165 @@ it.each(['delayed', 'lost'] as const)(
   }
 )
 
+it.each(['delivered', 'lost'] as const)(
+  '52 forwards a confirmed remote delete through another connection without resurrection (%s receipt)',
+  async (receipt) => {
+    const path = 'Notes/sample.md'
+    const first = await server(path, 'saved bytes')
+    const second = await server(path, 'saved bytes', 'https://second.example')
+    const fs = new MemoryFileSystem(),
+      peerFs = new MemoryFileSystem()
+    Object.assign(fs, { watch: () => () => {} })
+    Object.assign(peerFs, { watch: () => () => {} })
+    const locks = new PathCoordinator()
+    const firstState = new MemoryStateStore(),
+      secondState = new MemoryStateStore(),
+      peerState = new MemoryStateStore()
+    let remoteDeleted = false,
+      secondDeleted = false
+    const receipts = new Map<string, object>()
+    const deletes: object[] = []
+    const event = {
+      type: 'delete',
+      cursor: 2,
+      file_id: first.item.file_id,
+      version_id: 'sample-deleted',
+      path,
+      at: '2025-01-01T00:00:00Z',
+    }
+    const firstSend = first.fetch.getMockImplementation()!
+    first.fetch.mockImplementation(async (input, init) => {
+      const url = new URL(String(input))
+      if (remoteDeleted && url.pathname === '/v2/changes')
+        return Response.json({
+          cursor: 2,
+          next: null,
+          items: Number(url.searchParams.get('since')) < 2 ? [event] : [],
+        })
+      if (remoteDeleted && url.pathname === '/v2/manifest')
+        return Response.json({ items: [], cursor: 2, next: null })
+      return firstSend(input, init)
+    })
+    const secondSend = second.fetch.getMockImplementation()!
+    second.fetch.mockImplementation(async (input, init) => {
+      const url = new URL(String(input))
+      if (url.pathname.endsWith('/history')) {
+        const base = {
+          ...second.item,
+          no: 1,
+          seq: 1,
+          op: 'create',
+          actor: { kind: 'key', id: 'sample-token', name: 'Sample' },
+          at: '2025-01-01T00:00:00Z',
+          merge: null,
+        }
+        return Response.json(
+          secondDeleted
+            ? [
+                {
+                  ...base,
+                  no: 2,
+                  seq: 2,
+                  op: 'delete',
+                  version_id: 'sample-deleted',
+                  sha: null,
+                  size: 0,
+                  mtime: 0,
+                },
+                base,
+              ]
+            : [base]
+        )
+      }
+      if (secondDeleted && url.pathname === '/v2/changes')
+        return Response.json({
+          cursor: 2,
+          next: null,
+          items: Number(url.searchParams.get('since')) < 2 ? [event] : [],
+        })
+      if (secondDeleted && url.pathname === '/v2/manifest')
+        return Response.json({ items: [], cursor: 2, next: null })
+      if (url.pathname !== '/v2/commit') return secondSend(input, init)
+      const key = new Headers(init?.headers).get('idempotency-key')!
+      if (receipts.has(key)) return Response.json(receipts.get(key))
+      const { ops } = JSON.parse(String(init?.body))
+      expect(ops).toEqual([
+        { op: 'delete', file_id: second.item.file_id, base_version_id: second.item.version_id },
+      ])
+      deletes.push(...ops)
+      secondDeleted = true
+      const body = {
+        cursor: 2,
+        results: [
+          {
+            status: 'applied',
+            seq: 2,
+            file_id: second.item.file_id,
+            version_id: 'sample-deleted',
+            path,
+            sha: null,
+            size: 0,
+            mtime: 0,
+          },
+        ],
+      }
+      receipts.set(key, body)
+      if (receipt === 'lost') throw new Error('sample delete receipt lost')
+      return Response.json(body)
+    })
+    const a = runtime(first, fs, firstState, locks)
+    let b = runtime(second, fs, secondState, locks)
+    let peer = runtime(second, peerFs, peerState)
+    const confirm = async (one: ReturnType<typeof runtime>) => {
+      const held = await one.runtime.heldDeletes()
+      if (held.length) {
+        expect(held).toEqual([{ fileId: first.item.file_id, path }])
+        await one.runtime.decideDeletes(
+          'confirm',
+          held.map((item) => item.fileId)
+        )
+      }
+    }
+    try {
+      await a.runtime.sync()
+      await b.runtime.sync()
+      await peer.runtime.sync()
+      remoteDeleted = true
+      await a.runtime.sync()
+      await confirm(a)
+      expect(await fs.stat(path)).toBeNull()
+      try {
+        await b.runtime.sync()
+        await confirm(b)
+      } catch (error) {
+        if (receipt !== 'lost' || !secondDeleted) throw error
+      }
+      await b.runtime.close()
+      b = runtime(second, fs, secondState, locks)
+      await b.runtime.sync()
+      await confirm(b)
+      await peer.runtime.sync()
+      await confirm(peer)
+      expect(await peerFs.stat(path)).toBeNull()
+      await peer.runtime.close()
+      peer = runtime(second, peerFs, peerState)
+      await b.runtime.sync()
+      await peer.runtime.sync()
+      expect(deletes).toHaveLength(1)
+      expect(receipts.size).toBe(1)
+      expect(await fs.stat(path)).toBeNull()
+      expect(await peerFs.stat(path)).toBeNull()
+      expect(await secondState.get(path)).toBeNull()
+      expect(await peerState.get(path)).toBeNull()
+      expect(await secondState.getJournal()).toBeNull()
+    } finally {
+      await a.runtime.close()
+      await b.runtime.close()
+      await peer.runtime.close()
+    }
+  }
+)
+
 async function server(
   path: string,
   text: string,

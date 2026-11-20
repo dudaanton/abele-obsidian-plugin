@@ -76,7 +76,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 | S49 | Moving it back re-syncs with current content; old content never replaces new. | `plugin/tests/e2e/syncDevices.e2e.test.ts: folder departure keeps the owner file and return delivers its current bytes` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S50 | Moving a note from server A's share into server B's share: gone from A's share, appears in B's. | `abele-sync/packages/core/tests/acceptance/scenarios.test.ts: ${title} [server facet; live evidence pending] (scenario=50)` | partly | Server departure is tested; no two-server device move asserts removal and arrival together. |
 | S51 | Deleting a shared note deletes it for participants who can see it. | `plugin/tests/e2e/syncDialogs.e2e.test.ts: held paths and trash date controls fit every supported width`<br>`plugin/tests/e2e/syncDevices.e2e.test.ts: folder departure keeps the owner file and return delivers its current bytes` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
-| S52 | A delete arriving from one server while the file is live on another reaches the second server and its participants. | `abele-sync/packages/core/tests/acceptance/scenarios.test.ts: ${title} [server facet; live evidence pending] (scenario=52)` | partly | Deletion propagation across a device bridging two servers lacks a dedicated outcome assertion. |
+| S52 | A confirmed remote deletion reaches the second server and its other participants. | `plugin/tests/unit/tokenEngineRuntime.test.ts: 52 forwards a confirmed remote delete through another connection without resurrection (%s receipt)` | covered | Production runtimes share a vault; the second server and another device receive the deletion. Delivered and lost receipts, journal recovery, peer restart, one delete effect and no resurrection are asserted. Existing deletion confirmations remain in force. |
 | S53 | A folder tree with files arrives with the same structure and content. | `plugin/tests/e2e/sync.e2e.test.ts: edits renames moves deletes and empty folders travel both ways`<br>`abele-sync/packages/core/tests/acceptance/directoriesV2.test.ts: 053/054/056 empty directory identities, moves, and deletions converge through the production engine` | covered | Behavioral assertions exist; this inventory does not certify a live run. |
 | S54 | Renaming/moving a shared folder changes all paths for others without losing content. | `plugin/tests/e2e/sync.e2e.test.ts: edits renames moves deletes and empty folders travel both ways`<br>`plugin/tests/e2e/syncDeletes.e2e.test.ts: moved folder root stops sync until Follow moved folder resumes it`<br>`abele-sync/packages/server/tests/integration/v2Sync.test.ts: 032/054/055/056 stable shared folder follows owner rename, moves descendants atomically, deleting affects no sibling` | partly | Subfolder moves are automatic; a shared-root move requires explicit Follow, contrary to unconditional following. |
 | S55 | Moving a folder out of the share: local folder stays, its shared content is removed for others. | `abele-sync/packages/server/tests/integration/v2Sync.test.ts: 032/054/055/056 stable shared folder follows owner rename, moves descendants atomically, deleting affects no sibling` | partly | Server folder departure is tested; device-local preservation plus remote removal is not asserted together. |
@@ -181,7 +181,7 @@ Requirements are paraphrased; private notes and environments are not copied into
 
 ## Totals
 
-154 requirements: 118 covered, 36 partly, 0 missing.
+154 requirements: 119 covered, 35 partly, 0 missing.
 
 Zero entirely missing rows does **not** close the coverage gate: every partly covered
 row still has an unproved facet. The matrix records assertions present in source;
@@ -220,8 +220,9 @@ excused as hardware-only work:
 1. S30 is resolved in the focused tier: shared-vault production runtimes preserve an
    owed edit through delayed/lost commit replies, the faster incoming replacement, and
    reopening both ledgers; assertions require exact digests, two receipts and no journals.
-2. S50/S52/S55/S72: move/delete across two connections and private scope boundaries;
-   compare both remote manifests, receiving devices and the preserved private destination.
+2. S50/S55/S72: moves across two connections and private scope boundaries still need
+   joint remote/local outcome assertions. S52 now covers confirmed deletion bridging,
+   lost receipts, journal recovery, peer restart and no duplicate delete or resurrection.
 3. S29/S97/B7: independently resolve concurrent changes at both servers before bridging;
    assert recoverable variants and bounded copies. Ordering policy must be explicit before
    claiming a globally first original.
