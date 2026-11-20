@@ -81,10 +81,13 @@ for (const mobile of [false, true]) {
         const two = await screen(${JSON.stringify(mobile ? 'chat-script-review-phone-two' : 'chat-script-review-desktop-two')}, root, root)
         two.extra = { ...layout(), text: document.querySelector('.abele-chat-script-review').textContent.trim() }
         document.querySelector('.abele-chat-script-review button').click()
+        let checkedLongReview = false
         for (let i = 0; i < 2; i++) {
           if (!(await until(() => document.querySelector('.abele-script-review .abele-modal__footer button:not(.mod-cta)'), 5000))) throw new Error('Review dialog missing for script ' + i)
-          if (i === 0) {
-            const modal = document.querySelector('.abele-script-review')
+          const modal = document.querySelector('.abele-script-review')
+          const reviewedPath = modal.querySelector('.abele-script-review__path').textContent.split(' — ')[0]
+          if (reviewedPath === folder + '/sample.js') {
+            checkedLongReview = true
             const scroller = modal.querySelector('.cm-scroller')
             scroller.scrollTop = scroller.scrollHeight
             await new Promise(resolve => requestAnimationFrame(resolve))
@@ -112,12 +115,11 @@ for (const mobile of [false, true]) {
                 if (element === modal) break
               }
               const content = modal.querySelector('.cm-content')
-              const view = content?.cmView?.rootView?.view
-              const sizer = modal.querySelector('.cm-sizer')
+              const view = T.codeView(modal)
               throw new Error('Long review code does not scroll: ' + JSON.stringify({
                 doc: view?.state.doc.lines ?? null,
                 content: content ? [content.offsetHeight, content.scrollHeight] : null,
-                sizer: sizer ? [sizer.offsetHeight, getComputedStyle(sizer).height] : null,
+                contentHeight: view?.contentHeight ?? null,
                 scroller: [scroller.clientHeight, scroller.scrollHeight, scroller.scrollTop],
                 rendered: content?.querySelectorAll('.cm-line').length,
                 indexed: scripts.get(folder + '/sample.js')?.source.split('\n').length,
@@ -136,6 +138,7 @@ for (const mobile of [false, true]) {
           document.querySelector('.abele-script-review .abele-modal__footer button:not(.mod-cta)').click()
           if (!(await until(() => (app.loadLocalStorage('abele-script-notice-dismissed') || []).filter(k => k.startsWith(folder + '/')).length === i + 1, 5000))) throw new Error('Defer was not persisted')
         }
+        if (!checkedLongReview) throw new Error('Long script review was not checked')
         if (!(await until(() => !document.querySelector('.abele-chat-script-review') && !document.querySelector('.abele-script-review'), 5000))) throw new Error('Deferred scripts still shown')
         const deferred = await screen(${JSON.stringify(mobile ? 'chat-script-review-phone-deferred' : 'chat-script-review-desktop-deferred')}, root, root)
         deferred.extra = { waiting: scripts.waitingScripts().filter(s => s.path.startsWith(folder + '/')).length, line: !!document.querySelector('.abele-chat-script-review'), notice: [...document.querySelectorAll('.notice')].some(n => n.textContent.includes('sample script') || n.textContent.includes('Sample script')) }
