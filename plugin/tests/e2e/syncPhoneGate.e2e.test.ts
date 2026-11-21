@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
-import { open, type SyncClient } from '@abele/sync-sdk'
 import { targets } from './helpers/target'
 import { liveCase, liveSuite } from './helpers/syncLiveCases'
 import { driver, phoneHome, beginPhoneCase, endPhoneCase, installPhoneHost } from './helpers/phone'
@@ -22,7 +21,7 @@ import {
   phoneGateChunk,
   type GateFile,
 } from './helpers/syncPhoneGate'
-import { assertDesktopReplicaReady } from './helpers/syncPhoneDesktop'
+import { assertDesktopReplicaReady, syncDesktopGateReplica } from './helpers/syncPhoneDesktop'
 
 targets('phone')
 const fixture = liveSuite(false)
@@ -40,7 +39,6 @@ liveCase(
     a.timeoutMs = 600_000
     const id = await s.connect()
     const desktopRoot = mkdtempSync(join(tmpdir(), 'sync-phone-gate-'))
-    let desktop: SyncClient | undefined
     const own: GateFile[] = [],
       remote: GateFile[] = []
     const files = Array.from({ length: 3000 }, (_, i) => ({
@@ -247,13 +245,17 @@ liveCase(
       assertPhoneGateInventory(expected, actual)
       // A real desktop SDK replica, separate disk and durable ledger; no phone CLI routing.
       mkdirSync(join(desktopRoot, 'files'))
-      desktop = await open({
-        key: s.server.rootToken,
+      const gateFolder = (await s.items()).find(
+        (row) => row.kind === 'directory' && row.path === s.root
+      )
+      if (!gateFolder) throw new Error('Gate folder is missing from the server manifest')
+      const desktopKey = await s.server.issue({ kind: 'folder', id: gateFolder.file_id })
+      await syncDesktopGateReplica({
+        key: desktopKey,
         dir: join(desktopRoot, 'files'),
         stateDir: join(desktopRoot, 'state'),
-        transport: { fetch: fixtureFetch },
+        fetch: fixtureFetch,
       })
-      await desktop.syncOnce()
       const desktopFiles: GateFile[] = []
       const walk = (dir: string) => {
         for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -305,11 +307,7 @@ liveCase(
           true
         )
       } finally {
-        try {
-          await desktop?.close()
-        } finally {
-          rmSync(desktopRoot, { recursive: true, force: true })
-        }
+        rmSync(desktopRoot, { recursive: true, force: true })
       }
     }
   },
