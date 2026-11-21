@@ -131,6 +131,7 @@ export class VaultWriter {
       }
       const previous = await this.deps.journal.currentEntry(temp)
       let resumePortable = false
+      let staged: boolean | undefined
       if (previous) {
         if (
           previous.conditionalReceipt !== id ||
@@ -150,7 +151,7 @@ export class VaultWriter {
           // A portable rename may have failed before publication. The durable
           // receipt still owns this exact source; do not strand it forever merely
           // because a portable host cannot prove a hard-link identity.
-          const staged = await this.there(temp)
+          staged = await this.there(temp)
           const proof = staged ? await this.deps.fingerprint?.(temp) : undefined
           resumePortable = staged
             ? proof?.sha === entry.replacementSha && proof.size === bytes.length
@@ -164,7 +165,7 @@ export class VaultWriter {
         receipt &&
         !this.deps.native &&
         this.deps.createAbsent &&
-        (await this.there(temp))
+        (staged ??= await this.there(temp))
       ) {
         // Staging can stop between chunks before the publication intent is committed.
         // A matching prefix is incoming data owned by this receipt, so the next
@@ -175,7 +176,7 @@ export class VaultWriter {
           proof.size <= bytes.length &&
           proof.sha === (await signature(bytes.subarray(0, proof.size)))
       }
-      if (!resumePortable && (await this.there(temp)))
+      if (!resumePortable && (staged ??= await this.there(temp)))
         throw new EngineError('conflict', 'Installation path contains retained evidence')
       await this.deps.makeParents(path)
       await this.deps.makeParents(temp)
@@ -204,6 +205,16 @@ export class VaultWriter {
             )
           )
             return false
+          // An anonymous legacy write has no SDK receipt to retry. If its
+          // private source survived the failed adapter call, retain ownership
+          // for recovery without charging successful publications an extra save.
+          if (
+            !receipt &&
+            !previous &&
+            !(await this.deps.journal.currentEntry(temp)) &&
+            (await this.there(temp))
+          )
+            await this.deps.journal.persist(() => this.deps.journal.add(entry))
           throw error
         }
         this.consumed.add(temp)

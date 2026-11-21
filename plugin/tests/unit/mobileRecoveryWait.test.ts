@@ -105,8 +105,10 @@ it('drains a blocked portable publication and resumes its exact receipt without 
   await vi.advanceTimersByTimeAsync(15000)
   expect(failure).toMatchObject({ code: 'offline', retryable: true })
   await placement
-  const [entry] = await new WriteJournal(app).currentEntries()
-  expect(await app.vault.adapter.read(entry.temp!)).toBe('incoming bytes')
+  // The portable source is private but unjournaled until the publication boundary.
+  expect(await new WriteJournal(app).currentEntries()).toEqual([])
+  const stage = `.obsidian/plugins/abele/sync-staging/.abele-receipt-${effect.receipt}.tmp`
+  expect(await app.vault.adapter.read(stage)).toBe('incoming bytes')
   expect(await app.vault.adapter.exists('Shared/sample.md')).toBe(false)
   hostQueue.resolve()
   Reflect.deleteProperty(app.vault.adapter, 'promise')
