@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
 import { EngineError, MemoryFileSystem, MemoryStateStore } from '@abele/sync-sdk/core'
-import { encodeAccessToken } from '@abele/sync-sdk/protocol'
+import { encodeAccessToken, type V2Change, type V2ManifestItem } from '@abele/sync-sdk/protocol'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { PreparedUploads } from '@/sync/preparedUploads'
 import { NotSyncedState } from '@/sync/notSyncedState'
@@ -124,8 +124,12 @@ it.each([2, 33000])(
     const metadata = new MemoryStateStore()
     let offline = true,
       puts = 0,
-      commits = 0
+      commits = 0,
+      cursor = 0,
+      recovered = false
     const present = new Set<string>()
+    const published = new Map<string, V2ManifestItem>()
+    const changes: V2Change[] = []
     const failed: string[] = []
     const runtime = new TokenEngineRuntime({
       id: 'sample-network-recovery',
@@ -148,7 +152,8 @@ it.each([2, 33000])(
       },
       covers: async () => false,
       fetch: async (input, init) => {
-        const route = new URL(String(input)).pathname
+        const url = new URL(String(input))
+        const route = url.pathname
         if (route === '/v2/connection')
           return Response.json({
             protocol: 2,
@@ -158,8 +163,18 @@ it.each([2, 33000])(
             status: 'active',
             limits: { max_file_bytes: 1000, quota_bytes: null },
           })
-        if (route === '/v2/manifest' || route === '/v2/changes')
-          return Response.json({ items: [], cursor: 0, next: null })
+        // Acknowledged publications remain in the server inventory. An empty manifest
+        // after a commit would instead authorize departure recovery before the first cursor.
+        if (route === '/v2/manifest')
+          return Response.json({ items: [...published.values()], cursor, next: null })
+        if (route === '/v2/changes')
+          return Response.json({
+            items: changes.filter(
+              (change) => change.cursor > Number(url.searchParams.get('since'))
+            ),
+            cursor,
+            next: null,
+          })
         if (route.startsWith('/v2/uploads/')) {
           const sha = route.split('/')[3]!
           if (init?.method === 'HEAD')
@@ -173,23 +188,41 @@ it.each([2, 33000])(
           const { ops } = JSON.parse(String(init?.body)) as {
             ops: { path: string; sha: string; size: number; mtime: number }[]
           }
-          if (commits++) throw new EngineError('offline', 'sample next batch boundary')
+          if (commits++ && !recovered)
+            throw new EngineError('offline', 'sample next batch boundary')
+          const results = ops.map((op, i) => {
+            if (i === 0 && !recovered)
+              return { status: 'rejected', code: 'too_large', message: 'sample route limit' }
+            const item = {
+              file_id: 'sample-file-' + op.path,
+              version_id: 'sample-version-' + ++cursor,
+              path: op.path,
+              sha: op.sha,
+              size: op.size,
+              mtime: op.mtime,
+              kind: 'attachment' as const,
+            }
+            published.set(op.path, item)
+            changes.push({
+              cursor,
+              type: 'content',
+              file_id: item.file_id,
+              path: item.path,
+              item,
+              prev_path: null,
+              at: new Date(0).toISOString(),
+            })
+            return {
+              status: 'applied',
+              ...op,
+              file_id: item.file_id,
+              version_id: item.version_id,
+              seq: cursor,
+            }
+          })
           return Response.json({
-            cursor: 1,
-            results: ops.map((op, i) =>
-              i === 0
-                ? { status: 'rejected', code: 'too_large', message: 'sample route limit' }
-                : {
-                    status: 'applied',
-                    file_id: 'sample-file-' + i,
-                    version_id: 'sample-version-' + i,
-                    seq: 1,
-                    path: op.path,
-                    sha: op.sha,
-                    size: op.size,
-                    mtime: op.mtime,
-                  }
-            ),
+            cursor,
+            results,
           })
         }
         throw new Error('Unexpected sample route: ' + route)
@@ -228,6 +261,19 @@ it.each([2, 33000])(
         'quota_waiting'
       )
       expect(failed.some((error) => error.includes('State changed during transaction'))).toBe(false)
+      if (count === 2) {
+        recovered = true
+        await runtime.retryNotSynced(paths)
+        await runtime.sync()
+        for (const [i, path] of paths.entries()) {
+          expect(await fs.read(path)).toEqual(new Uint8Array(i === 0 ? [1] : [2, 3]))
+          const entry = await state.get(path)
+          expect(entry).not.toBeNull()
+          expect(published.get(path)).toMatchObject({ sha: entry!.sha, size: entry!.size })
+        }
+        expect(await state.getJournal()).toBeNull()
+        expect(await receipt.pending()).toEqual([])
+      }
     } finally {
       await (Reflect.get(runtime, 'notSyncedState') as NotSyncedState).resolved(
         'sample-unrefused.bin'
