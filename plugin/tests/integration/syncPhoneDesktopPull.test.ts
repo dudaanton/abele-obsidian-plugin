@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { AccessClient, V2EngineClient } from '@abele/sync-sdk/core'
 import { fixtureFetch, spawnSyncServer } from '../e2e/helpers/syncServer'
-import { syncDesktopGateReplica } from '../e2e/helpers/syncPhoneDesktop'
+import { findServerFolderId, syncDesktopGateReplica } from '../e2e/helpers/syncPhoneDesktop'
 
 vi.mock('node:os', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:os')>()),
@@ -24,6 +24,7 @@ it('pulls files uploaded by another replica into a fresh desktop disk replica', 
     const folder = await owner.commitRaw([{ op: 'mkdir', path: 'Sample' }], randomUUID())
     const folderId = folder.body.results[0]?.file_id
     if (!folderId) throw new Error('Sample folder missing')
+    expect(await findServerFolderId(server.rootToken, 'Sample', fixtureFetch)).toBe(folderId)
     await owner.putBlob(sha, bytes)
     for (let batch = 0; batch < count / 100; batch++) {
       const result = await owner.commitRaw(
@@ -57,3 +58,32 @@ it('pulls files uploaded by another replica into a fresh desktop disk replica', 
     rmSync(root, { recursive: true, force: true })
   }
 }, 60_000)
+
+it('finds an explicit folder through the raw manifest after nested file upload', async () => {
+  mkdirSync('../.scratch', { recursive: true })
+  const root = mkdtempSync('../.scratch/phone-gate-folder-')
+  const server = await spawnSyncServer(root)
+  try {
+    const client = new V2EngineClient(server.rootToken, { fetch: fixtureFetch })
+    const bytes = new TextEncoder().encode('sample bytes')
+    const sha = createHash('sha256').update(bytes).digest('hex')
+    await client.putBlob(sha, bytes)
+    const result = await client.commitRaw(
+      [{ op: 'create', path: 'Sample/one.md', sha, size: bytes.length, mtime: 1000 }],
+      randomUUID()
+    )
+    expect(result.body.results[0]?.status).not.toBe('rejected')
+    const manifest = await client.manifest(null)
+    expect(manifest.items.some((row) => row.kind === 'directory' && row.path === 'Sample')).toBe(
+      false
+    )
+    const made = await client.commitRaw([{ op: 'mkdir', path: 'Sample' }], randomUUID())
+    expect(made.body.results[0]?.status).not.toBe('rejected')
+    expect(await findServerFolderId(server.rootToken, 'Sample', fixtureFetch)).toBe(
+      made.body.results[0]?.file_id
+    )
+  } finally {
+    await server.kill()
+    rmSync(root, { recursive: true, force: true })
+  }
+}, 30_000)

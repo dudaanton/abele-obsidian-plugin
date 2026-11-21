@@ -1,5 +1,7 @@
 import { createRequire } from 'node:module'
+import { AccessClient } from '@abele/sync-sdk/core'
 import { openReplica } from '../../../node_modules/@abele/sync-sdk/dist/node-replica.js'
+import { V2Client } from '../../../src/sync/v2/client'
 
 type Database = { close(): void }
 type DatabaseConstructor = new (path: string) => Database
@@ -17,6 +19,23 @@ export function assertDesktopReplicaReady(
       { cause }
     )
   }
+}
+
+/** The plugin's raw manifest includes folders; the engine-facing SDK list omits them. */
+export async function findServerFolderId(
+  key: string,
+  path: string,
+  transport: typeof fetch
+): Promise<string> {
+  const client = new V2Client(AccessClient.fromToken(key, { fetch: transport }).token, transport)
+  let next: string | null = null
+  do {
+    const page = await client.manifest(next)
+    const folder = page.items.find((row) => row.kind === 'directory' && row.path === path)
+    if (folder) return folder.file_id
+    next = page.next
+  } while (next !== null)
+  throw new Error('Gate folder is missing from the raw server manifest')
 }
 
 /** The large gate needs a lock lease long enough for the SDK's synchronous manifest work. */

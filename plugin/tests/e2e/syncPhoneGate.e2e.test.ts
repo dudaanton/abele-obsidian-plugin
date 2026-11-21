@@ -21,7 +21,11 @@ import {
   phoneGateChunk,
   type GateFile,
 } from './helpers/syncPhoneGate'
-import { assertDesktopReplicaReady, syncDesktopGateReplica } from './helpers/syncPhoneDesktop'
+import {
+  assertDesktopReplicaReady,
+  findServerFolderId,
+  syncDesktopGateReplica,
+} from './helpers/syncPhoneDesktop'
 
 targets('phone')
 const fixture = liveSuite(false)
@@ -172,6 +176,8 @@ liveCase(
     }
     try {
       await a.pause(id, true)
+      // A nested file path alone does not create a shareable directory item.
+      await s.commit([{ op: 'mkdir', path: s.root }])
       await startMemory()
       await a.long(
         'create synthetic large phone vault in bounded chunks',
@@ -245,11 +251,8 @@ liveCase(
       assertPhoneGateInventory(expected, actual)
       // A real desktop SDK replica, separate disk and durable ledger; no phone CLI routing.
       mkdirSync(join(desktopRoot, 'files'))
-      const gateFolder = (await s.items()).find(
-        (row) => row.kind === 'directory' && row.path === s.root
-      )
-      if (!gateFolder) throw new Error('Gate folder is missing from the server manifest')
-      const desktopKey = await s.server.issue({ kind: 'folder', id: gateFolder.file_id })
+      const folderId = await findServerFolderId(s.server.rootToken, s.root, fixtureFetch)
+      const desktopKey = await s.server.issue({ kind: 'folder', id: folderId })
       await syncDesktopGateReplica({
         key: desktopKey,
         dir: join(desktopRoot, 'files'),
