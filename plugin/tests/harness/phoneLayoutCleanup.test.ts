@@ -2,6 +2,29 @@ import { readFileSync } from 'node:fs'
 import { expect, it, vi } from 'vitest'
 import { transformSync } from 'esbuild'
 
+it('cannot open another command view after a nested fixture catches cancellation', () => {
+  const source = readFileSync('tests/e2e/phoneLayout.e2e.test.ts', 'utf8')
+  const guardStart = source.indexOf('  const assertActive =')
+  const guardEnd = source.indexOf('  const wait =', guardStart)
+  const commandStart = source.indexOf("    app.commands.executeCommandById('abele:open-changelog')")
+  const commandEnd = source.indexOf('\n', commandStart)
+  const script = new Function(
+    'fixtureId',
+    'return `' +
+      source.slice(guardStart, guardEnd) +
+      source.slice(source.lastIndexOf('    assertActive()', commandStart), commandEnd) +
+      '`'
+  )('sample-run')
+  const executeCommandById = vi.fn()
+  expect(() =>
+    new Function('window', 'app', script)(
+      { __abelePhoneLayoutCancelled: 'sample-run' },
+      { commands: { executeCommandById } }
+    )
+  ).toThrow('Phone layout capture was cancelled')
+  expect(executeCommandById).not.toHaveBeenCalled()
+})
+
 it('closes every owned leaf before leaving an interrupted phone capture', async () => {
   const source = readFileSync('tests/e2e/phoneLayout.e2e.test.ts', 'utf8')
   const start = source.indexOf('const leavePhone =')

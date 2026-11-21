@@ -302,6 +302,10 @@ const probeScript = layoutFixtureScript(
     window.__abelePhoneLayoutBaseline = { id: ${JSON.stringify(fixtureId)}, leaves }
   }
   let cleaning = false
+  const assertActive = () => {
+    if (window.__abelePhoneLayoutCancelled === ${JSON.stringify(fixtureId)})
+      throw Error('Phone layout capture was cancelled')
+  }
   const wait = async (ms) => {
     await new Promise((r) => setTimeout(r, ms))
     if (!cleaning && window.__abelePhoneLayoutCancelled === ${JSON.stringify(fixtureId)})
@@ -1788,6 +1792,7 @@ const probeScript = layoutFixtureScript(
       await closeDialog()
     } finally { await window.__abeleTest.closeNodeSessionFixture() }
 
+    assertActive()
     const timelineLeaf = app.workspace.getLeaf('tab')
     try {
       await timelineLeaf.setViewState({ type: 'abele-timeline-sidebar-view', active: true })
@@ -1815,6 +1820,7 @@ const probeScript = layoutFixtureScript(
         {id:'sample-reference',type:'file',file:reference.path,x:280,y:220,width:220,height:140}
       ],edges:[{id:'sample-flow',fromNode:'alpha',toNode:'beta',label:'Next'}]}))
       SEEDED.push(file.path, reference.path)
+      assertActive()
       const leaf = app.workspace.getLeaf('tab')
       const originalProcess=app.vault.process
       let failedWrites=0
@@ -1956,6 +1962,7 @@ const probeScript = layoutFixtureScript(
         await closeDialog();await wait(200)
         app.vault.process=originalProcess
         leaf.view.documentLease.document.discardDraft()
+        assertActive()
         app.commands.executeCommandById('abele:new-canvas')
         await until(()=>document.querySelector('.abele-canvas-input'),5000)
         const create=document.querySelector('.abele-canvas-input')
@@ -2028,6 +2035,7 @@ const probeScript = layoutFixtureScript(
 
     // A changelog is a tab, not a sheet; its Notice is transient, not a modal. The final
     // bullet and paging control must be scrollable above Obsidian's mobile navigation.
+    assertActive()
     app.commands.executeCommandById('abele:open-changelog')
     const changelogLeaf = () => app.workspace.getLeavesOfType('abele-changelog')[0]
     if (await until(() => changelogLeaf()?.view.contentEl.querySelector('.abele-changelog article'), 8000)) {
@@ -2064,6 +2072,7 @@ const probeScript = layoutFixtureScript(
     // The documentation, a tab rather than a dialog: its text keeps a note's margins, and the
     // end of a page and of the contents can be scrolled out from under the floating bottom bar.
     // The last screen is a search result just opened, taken while its place still flashes.
+    assertActive()
     app.commands.executeCommandById('abele:open-documentation')
     const docsLeaf = () => app.workspace.getLeavesOfType('abele-user-docs')[0]
     if (await until(() => docsLeaf() && docsLeaf().view.contentEl.querySelector('.abele-user-docs__page p'), 8000)) {
