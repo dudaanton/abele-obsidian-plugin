@@ -1873,6 +1873,10 @@ it('discovers an index-omitted file while later exchanges span verification poll
     const runtime = (Reflect.get(f.host, 'live') as Map<string, TokenEngineRuntime>).get(id)!
     const fs = Reflect.get(runtime, 'options').fs
     expect(runtime.engine.status.state).toBe('syncing')
+    // These explicit inspections stand in for ticks after the first normal
+    // verification interval, while the later exchange is still in flight.
+    const now = Date.now()
+    Reflect.set(fs, 'now', () => now + 31000)
     for (let tick = 0; tick < 3; tick++)
       expect(await Reflect.get(fs, Symbol.for('abele.sync.inspect-polled-v1')).call(fs)).toBe(true)
     expect((await Array.fromAsync(fs.list())).map((file) => file.path)).toContain('Notes/new.md')

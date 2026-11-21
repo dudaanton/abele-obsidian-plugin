@@ -23,6 +23,11 @@ it('132 defers ordinary verification until the first sync settles', async () => 
     expect(changed).not.toHaveBeenCalled()
     fs.completeInitialExchange()
     await inspect()
+    expect(listing).not.toHaveBeenCalledWith('Outside')
+    expect(changed).not.toHaveBeenCalled()
+    // The explicit inspection represents the first scheduled verification interval.
+    Reflect.set(fs, 'now', () => Reflect.get(fs, 'ordinaryVerificationReadyAt'))
+    await inspect()
     expect(listing).toHaveBeenCalledWith('Outside')
     expect(changed.mock.calls.flatMap(([paths]) => paths)).toContain('Outside/new.md')
   } finally {
@@ -53,6 +58,7 @@ it('132 discovers and uploads an omitted file while later exchanges span every p
     expect(changed).not.toHaveBeenCalled()
     fs.completeInitialExchange()
     // The next exchanges are busy across every poll; successful startup is durable.
+    Reflect.set(fs, 'now', () => Reflect.get(fs, 'ordinaryVerificationReadyAt'))
     for (let tick = 0; tick < 3; tick++) await inspect()
     expect(changed.mock.calls.flatMap(([paths]) => paths)).toContain(path)
     const found = await scan(fs, state, { excluded: () => false })

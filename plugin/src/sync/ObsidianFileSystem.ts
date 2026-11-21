@@ -1320,6 +1320,7 @@ export class ObsidianFileSystem implements FileSystem {
   private readonly preserveEmptyDirectories: boolean
   private readonly pollMs: number
   private ordinaryVerificationReady: boolean
+  private readonly ordinaryVerificationReadyAt: number
   private readonly now: () => number
   private readonly onWatch: ((paths: string[]) => void) | null
   private readonly onEngineWrite: ((path: string) => void) | null
@@ -1625,6 +1626,12 @@ export class ObsidianFileSystem implements FileSystem {
     this.ledger = options.ledger ?? null
     this.pollMs = options.pollMs ?? DEFAULT_POLL_MS
     this.now = options.now ?? ((): number => Date.now())
+    // Foreground inspection can follow the first exchange immediately. Keep
+    // additive directory discovery out of that startup path until its first
+    // ordinary verification interval has elapsed.
+    this.ordinaryVerificationReadyAt = options.deferOrdinaryVerification
+      ? this.now() + this.pollMs
+      : 0
     this.onWatch = options.onWatch ?? null
     this.onEngineWrite = options.onEngineWrite ?? null
     this.yieldsToServer = options.yieldsToServer ?? null
@@ -4923,7 +4930,8 @@ export class ObsidianFileSystem implements FileSystem {
    * and its fresh disk safeguards. Ledger membership does not imply host watch coverage. */
   private async verifyUnindexedFiles(): Promise<string[]> {
     const changed: string[] = []
-    if (!this.ordinaryVerificationReady) return changed
+    if (!this.ordinaryVerificationReady || this.now() < this.ordinaryVerificationReadyAt)
+      return changed
     if (!this.indexReady()) return changed
     const scope = this.scopedRoot()
     const roots = this.discovery?.roots ?? [scope ?? '']
