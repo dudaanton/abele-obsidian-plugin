@@ -22,6 +22,7 @@ export const serverTestFixtures = {
     'directoryDeletionExchange',
     'mobileConflictExchange',
     'nativeSyncedRestart',
+    'syncPhoneDesktopPull',
   ]
     .map((name) => `tests/integration/${name}.test.ts`)
     .concat('tests/unit/syncLiveServer.test.ts'),
