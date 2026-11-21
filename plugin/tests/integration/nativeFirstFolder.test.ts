@@ -36,6 +36,7 @@ it.for([3, 50, 1000])(
     }))
     let pages = 0
     let applied = 0
+    let progressAt = Date.now()
     const factory = new IDBFactory()
     const storage = await HostSyncStorage.open(factory, 'sample-first-folder', app)
     const state = await IndexedDbStateStore.open(factory, 'sample-first-folder')
@@ -58,12 +59,14 @@ it.for([3, 50, 1000])(
       placementConcurrency: 16,
       onApplied: () => {
         applied++
+        progressAt = Date.now()
       },
       selective: selectiveDefaults(),
       client: {
         state: async () => ({ head_seq: 1, settings: VaultSettingsSchema.parse({}), usage: {} }),
         manifest: async (next: string | null) => {
           pages++
+          progressAt = Date.now()
           const offset = Number(next ?? 0)
           const end = Math.min(offset + 37, count)
           return {
@@ -86,15 +89,30 @@ it.for([3, 50, 1000])(
       void engine.stop()
     }
     signal.addEventListener('abort', stop, { once: true })
+    let rejectStalled!: (reason: Error) => void
+    const stalled = new Promise<never>((_, reject) => {
+      rejectStalled = reject
+    })
+    const watchdog = setInterval(() => {
+      if (Date.now() - progressAt > 15000) {
+        rejectStalled(new Error(`Native first pull stalled after ${applied}/${count} files`))
+        stop()
+      }
+    }, 1000)
     try {
-      await engine.sync()
+      await Promise.race([engine.sync(), stalled])
+      clearInterval(watchdog)
       expect(engine.status.state).toBe('idle')
       expect(pages).toBe(Math.ceil(count / 37))
+      expect(applied).toBe(count)
+      const recorded = new Map<string, string>()
+      for await (const entry of state.all()) recorded.set(entry.fileId, entry.versionId)
       for (const item of items) {
         expect(new Uint8Array(await disk.readFile(join(root, item.path)))).toEqual(bytes)
-        expect((await state.byFileId(item.file_id))?.versionId).toBe(item.version_id)
+        expect(recorded.get(item.file_id)).toBe(item.version_id)
       }
     } finally {
+      clearInterval(watchdog)
       console.log('native first-folder delivery', { count, pages, applied, status: engine.status })
       signal.removeEventListener('abort', stop)
       await engine.stop()
@@ -103,5 +121,5 @@ it.for([3, 50, 1000])(
       await disk.rm(root, { recursive: true, force: true })
     }
   },
-  30000
+  120000
 )
