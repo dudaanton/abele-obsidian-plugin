@@ -76,6 +76,8 @@ import {
 } from '../helpers/keyDestinationLayout'
 import { recipientLayoutProbe } from '../helpers/keyDestinationLayoutProbe'
 import { layoutFixtureScript } from './helpers/layoutFixtureScript'
+import { phoneLayoutDialogs } from './helpers/phoneLayoutPhase'
+import { settledGeometry } from '../helpers/settledGeometry'
 import {
   PUBLICATION_SETUP,
   PUBLICATION_PRELUDE,
@@ -291,7 +293,20 @@ type RecipientScreen = Screen &
 const fixtureId = Date.now() + '-' + Math.random().toString(36).slice(2)
 const probeScript = layoutFixtureScript(
   `(async () => {
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms))
+  const syncOnly = false
+  const probeStarted = performance.now()
+  const trace = window.__abelePhoneLayoutTrace = { phase: syncOnly ? 'sync' : 'chat', states: [] }
+  if (window.__abelePhoneLayoutBaseline?.id !== ${JSON.stringify(fixtureId)}) {
+    const leaves = []
+    app.workspace.iterateRootLeaves(leaf => leaves.push(leaf.id))
+    window.__abelePhoneLayoutBaseline = { id: ${JSON.stringify(fixtureId)}, leaves }
+  }
+  let cleaning = false
+  const wait = async (ms) => {
+    await new Promise((r) => setTimeout(r, ms))
+    if (!cleaning && window.__abelePhoneLayoutCancelled === ${JSON.stringify(fixtureId)})
+      throw Error('Phone layout capture was cancelled')
+  }
   const until = (fn, ms) => (${waitForUiMatch.toString()})(fn, wait, ms)
 
   // On a real phone the harness's host takes the pictures (see phone.ts); there is no Electron.
@@ -392,11 +407,21 @@ const probeScript = layoutFixtureScript(
     return cut
   }
 
-  const shoot = async (label) => {
+  const settle = async (root) => {
     // A hidden or backgrounded window runs no animations: a dialog measured mid-slide-in reads
     // where it started from. Nothing here waits on one.
     for (const el of document.querySelectorAll('.modal, .modal-container')) el.style.transition = 'none'
-    await wait(400)
+    await (${settledGeometry.toString()})(() => {
+      const box = root.getBoundingClientRect()
+      return [box.x, box.y, box.width, box.height, root.scrollWidth, root.scrollHeight,
+        ...[...root.querySelectorAll('.modal, .modal-container')].flatMap(el => {
+          const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height]
+        })]
+    }, () => wait(25), () => performance.now(), 3000, 100)
+  }
+
+  const shoot = async (label, root = document.body) => {
+    await settle(root)
     const path = ${JSON.stringify(SHOTS)} + '/' + label.replace(/[^a-z0-9]+/gi, '-') + '.png'
     if (host) return host.shot(path)
     if (label.startsWith('dialog sync-')) {
@@ -421,10 +446,12 @@ const probeScript = layoutFixtureScript(
 
   const report = {}
   const screen = async (label, root, body) => {
+    const timing = { label, startedMs: Math.round(performance.now() - probeStarted) }
+    trace.states.push(timing)
     const entry = { over: [], scrollers: [], capped: [], stranded: [], clipped: [], fill: 0, shot: '', error: '' }
     try {
       if (!root) throw new Error('nothing to measure')
-      entry.shot = await shoot(label)
+      entry.shot = await shoot(label, root)
       Object.assign(entry, measure(root, body))
       entry.tabFocus = []
       for (const strip of root.querySelectorAll('.abele-tabs:not(.abele-tabs_vertical)')) {
@@ -459,7 +486,10 @@ const probeScript = layoutFixtureScript(
     } catch (e) {
       entry.error = String((e && (e.stack || e.message)) || e)
     }
+    timing.finishedMs = Math.round(performance.now() - probeStarted)
     report[label] = entry
+    if (!cleaning && window.__abelePhoneLayoutCancelled === ${JSON.stringify(fixtureId)})
+      throw Error('Phone layout capture was cancelled')
   }
 
   // Use the visible native dismissal when present. Pickers and menus may instead
@@ -659,8 +689,10 @@ const probeScript = layoutFixtureScript(
     }
   }
 
+  let nodeScreens, nodePanelScreens
   try {
     await closeDialog()
+    if (!syncOnly) {
     await seed()
     const probeChats = window.__abeleTest.ChatService.getInstance()
     await probeChats.openChatFile(app.vault.getAbstractFileByPath(SEEDED.find(path => path.endsWith('.abchat'))))
@@ -1040,7 +1072,7 @@ const probeScript = layoutFixtureScript(
 
     // Run after the existing settings inventory: native settings retain their active page.
     // Node presentation fixtures need no listener, token or execution to measure their layout.
-    const nodeScreens = async () => {
+    nodeScreens = async () => {
       const chats = window.__abeleTest.ChatService.getInstance()
       const nodes = window.__abeleTest.NodeService.getInstance()
       const active = chats.activeTabId.value
@@ -1181,7 +1213,7 @@ const probeScript = layoutFixtureScript(
     // The node panel in the drawer, on invented data with no node running: each screen is
     // pictured, measured like a dialog (nothing past the edge, one scroller, the whole of it on the
     // screen) and every field's ring checked.
-    const nodePanelScreens = async () => {
+    nodePanelScreens = async () => {
       ${NODE_PANEL_FIXTURE}
       const panelScreen = async (label, root) => {
         await screen(label, root, root)
@@ -1532,9 +1564,14 @@ const probeScript = layoutFixtureScript(
     // Every other dialog of the plugin, each in the dialog shell, opened by name: nothing past
     // the edge, the whole dialog on the screen below the notch, its buttons in sight without
     // scrolling, and no field's focus ring cut.
+    }
     report.__dialogs = window.__abeleTest.dialogNames()
-    for (const dialogName of report.__dialogs) {
+    for (const dialogName of (${phoneLayoutDialogs.toString()})(report.__dialogs, syncOnly)) {
+      if (window.__abelePhoneLayoutCancelled === ${JSON.stringify(fixtureId)})
+        throw Error('Phone layout capture was cancelled')
       const label = 'dialog ' + dialogName
+      const fixtureTiming = { label: 'fixture ' + dialogName, startedMs: Math.round(performance.now() - probeStarted) }
+      trace.states.push(fixtureTiming)
       const restoreRecipients = dialogName === 'key-destinations' ? recipientFixture() : null
       let fixtureCompletion, openingError
       try {
@@ -1548,8 +1585,8 @@ const probeScript = layoutFixtureScript(
         const opened = () => document.querySelector('.modal.abele-modal, .modal-container > .prompt[data-abele-fixture="' + dialogName + '"]')
         if (!(await until(() => openingError || opened(), 5000))) throw new Error('did not open')
         if (openingError) throw openingError
-        await wait(300)
         const modal = opened()
+        await settle(modal)
         if (dialogName === 'sync-scope-capture' && !(await until(() => modal.querySelector('.abele-device-scope .abele-share-picker input'), 5000)))
           throw new Error('Device scope picker did not finish preflight')
         if (dialogName === 'github-connections') {
@@ -1707,9 +1744,11 @@ const probeScript = layoutFixtureScript(
           // verification have settled; rejected cleanup is part of this entry's failure.
           await cleanupRecipientConsumer(entry, closeOwnedFixture, restoreRecipients, fixtureCompletion)
         } else await closeDialog()
+        fixtureTiming.finishedMs = Math.round(performance.now() - probeStarted)
       }
     }
 
+    if (!syncOnly) {
     // The timeline's calendar opens in a main tab too, not only the right sidebar. Obsidian's
     // native floating view header must be above its calendar, not painted over the first week.
     await nodeScreens()
@@ -2124,17 +2163,20 @@ const probeScript = layoutFixtureScript(
       wordLeaf.detach()
       if (app.vault.getAbstractFileByPath(wordPath) === wordFile) await app.vault.delete(wordFile)
     }
+    }
   } catch (e) {
     report['run'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && (e.stack || e.message)) || e) }
   } finally {
+    cleaning = true
     await closeDialog()
-    await unseed()
+    if (!syncOnly) await unseed()
   }
 
   return report
 })()`,
   fixtureId
 )
+const syncProbeScript = probeScript.replace('const syncOnly = false', 'const syncOnly = true')
 
 /** Closes anything standing over the note. */
 const closeDialog = (): void => {
@@ -2167,9 +2209,16 @@ const leavePhone = async (): Promise<void> => {
   await evalLong(
     `(async () => {
     window.__abelePhoneLayoutCancelled = ${JSON.stringify(fixtureId)}
+    const baseline = window.__abelePhoneLayoutBaseline
+    if (baseline?.id === ${JSON.stringify(fixtureId)}) {
+      const owned = []
+      app.workspace.iterateRootLeaves(leaf => {
+        if (!baseline.leaves.includes(leaf.id)) owned.push(leaf)
+      })
+      for (const leaf of owned) leaf.detach()
+      delete window.__abelePhoneLayoutBaseline
+    }
     const path = ${JSON.stringify('sample-word-layout-' + fixtureId + '.docx')}
-    for (const leaf of app.workspace.getLeavesOfType('abele-word'))
-      if (leaf.getViewState().state?.file === path) leaf.detach()
     const file = app.vault.getAbstractFileByPath(path)
     if (file) await app.vault.delete(file)
     await app.workspace.requestSaveLayout.run()
@@ -2300,7 +2349,18 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     closeDialog()
     await ensurePhone()
     // On a phone this probe runs longer than one call may block for: see `evalLong`.
-    report = JSON.parse(await evalLong(probeScript, 320_000)) as Report
+    try {
+      report = JSON.parse(await evalLong(probeScript, 320_000)) as Report
+    } finally {
+      try {
+        console.info(
+          'Phone chat capture timings',
+          evalJson('window.__abelePhoneLayoutTrace ?? null')
+        )
+      } catch (error) {
+        console.error('Phone capture timing read failed', error)
+      }
+    }
 
     const lines = Object.entries(report).map(
       ([label, s]) => `  ${label.padEnd(20)} ${s.shot || s.error}`
@@ -2308,6 +2368,23 @@ describe.skipIf(!available)('the chat dialogs on a phone', () => {
     console.info(`\n  vault ...................... ${activeVaultName()}\n${lines.join('\n')}\n`)
     console.info('recipient action measurements', JSON.stringify(report['dialog key-destinations']))
   }, 480_000)
+
+  // The inspection catalogue has a separate budget; it must not consume the chat capture's.
+  beforeAll(async () => {
+    try {
+      const sync = JSON.parse(await evalLong(syncProbeScript, 90_000)) as Report
+      Object.assign(report, sync)
+    } finally {
+      try {
+        console.info(
+          'Phone sync capture timings',
+          evalJson('window.__abelePhoneLayoutTrace ?? null')
+        )
+      } catch (error) {
+        console.error('Phone capture timing read failed', error)
+      }
+    }
+  }, 120_000)
 
   beforeEach((context) => {
     if (report.run?.error && context.task.name !== 'reaches every screen')

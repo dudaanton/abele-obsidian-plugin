@@ -2,20 +2,27 @@ import { readFileSync } from 'node:fs'
 import { expect, it, vi } from 'vitest'
 import { transformSync } from 'esbuild'
 
-it('closes only the owned word fixture before leaving an interrupted phone capture', async () => {
+it('closes every owned leaf before leaving an interrupted phone capture', async () => {
   const source = readFileSync('tests/e2e/phoneLayout.e2e.test.ts', 'utf8')
   const start = source.indexOf('const leavePhone =')
   const declaration = source.slice(start, source.indexOf('\n}', start) + 2)
   const owned = { path: 'sample-word-layout-sample-run.docx' }
   const other = { path: 'sample-unrelated.docx' }
-  const leaves = [owned, other].map((file) => ({
-    getViewState: () => ({ state: { file: file.path } }),
-    detach: vi.fn(),
-  }))
+  const leaves = [owned, { path: 'sample.canvas' }, { path: 'sample-changelog' }, other].map(
+    (file, id) => ({
+      id: String(id),
+      getViewState: () => ({ state: { file: file.path } }),
+      detach: vi.fn(),
+    })
+  )
   const remove = vi.fn()
   const save = vi.fn()
   const app = {
-    workspace: { getLeavesOfType: () => leaves, requestSaveLayout: { run: save } },
+    workspace: {
+      getLeavesOfType: () => leaves,
+      iterateRootLeaves: (visit: (leaf: (typeof leaves)[number]) => void) => leaves.forEach(visit),
+      requestSaveLayout: { run: save },
+    },
     vault: {
       getAbstractFileByPath: (path: string) => (path === owned.path ? owned : null),
       delete: remove,
@@ -23,7 +30,9 @@ it('closes only the owned word fixture before leaving an interrupted phone captu
   }
   const reload = vi.fn(() => {
     expect(leaves[0].detach).toHaveBeenCalledOnce()
-    expect(leaves[1].detach).not.toHaveBeenCalled()
+    expect(leaves[1].detach).toHaveBeenCalledOnce()
+    expect(leaves[2].detach).toHaveBeenCalledOnce()
+    expect(leaves[3].detach).not.toHaveBeenCalled()
     expect(remove).toHaveBeenCalledWith(owned)
     expect(save).toHaveBeenCalledOnce()
   })
@@ -38,7 +47,10 @@ it('closes only the owned word fixture before leaving an interrupted phone captu
     vi.fn(),
     () => true,
     reload,
-    async (script: string) => new Function('app', 'return ' + script)(app),
+    async (script: string) =>
+      new Function('app', 'window', 'return ' + script)(app, {
+        __abelePhoneLayoutBaseline: { id: 'sample-run', leaves: ['3'] },
+      }),
     'sample-run'
   )
   await leave()
@@ -47,8 +59,11 @@ it('closes only the owned word fixture before leaving an interrupted phone captu
 
 it('does not open a late word leaf when teardown interrupts fixture creation', async () => {
   const source = readFileSync('tests/e2e/phoneLayout.e2e.test.ts', 'utf8')
-  const start = source.indexOf('    if (window.__abelePhoneLayoutCancelled')
-  const end = source.indexOf('\n  } catch (e)', start)
+  const start = source.lastIndexOf(
+    '    if (window.__abelePhoneLayoutCancelled',
+    source.indexOf('    const wordPath =')
+  )
+  const end = source.indexOf('\n    }\n  } catch (e)', start)
   const template = '`' + source.slice(start, end) + '`'
   const script = new Function('fixtureId', 'WORD_SAMPLE', 'return ' + template)('sample-run', '')
   const file = { path: 'sample-word-layout.docx' }
