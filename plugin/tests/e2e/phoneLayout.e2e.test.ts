@@ -2101,19 +2101,27 @@ const probeScript = layoutFixtureScript(
       mapHandle?.destroy()
       mapRoot.remove()
     }
+    if (window.__abelePhoneLayoutCancelled === ${JSON.stringify(fixtureId)})
+      throw Error('Phone layout capture was cancelled')
     const wordPath = 'sample-word-layout.docx'
     const wordBytes = Uint8Array.from(atob(${JSON.stringify(WORD_SAMPLE)}), c => c.charCodeAt(0))
     const wordFile = await app.vault.createBinary(wordPath, wordBytes.buffer)
+    if (window.__abelePhoneLayoutCancelled === ${JSON.stringify(fixtureId)}) {
+      if (app.vault.getAbstractFileByPath(wordPath) === wordFile) await app.vault.delete(wordFile)
+      throw Error('Phone layout capture was cancelled')
+    }
     const wordLeaf = app.workspace.getLeaf('tab')
     try {
       await wordLeaf.setViewState({ type: 'abele-word', state: { file: wordPath }, active: true })
+      if (window.__abelePhoneLayoutCancelled === ${JSON.stringify(fixtureId)})
+        throw Error('Phone layout capture was cancelled')
       await app.workspace.revealLeaf(wordLeaf)
       await until(() => wordLeaf.view.contentEl.querySelector('iframe')?.contentDocument?.querySelector('section.docx'), 15000)
       await screen('word document', wordLeaf.view.contentEl)
       report['word document'].handEditing = !!wordLeaf.view.contentEl.querySelector('.abele-word-edit')
     } finally {
       wordLeaf.detach()
-      await app.vault.delete(wordFile)
+      if (app.vault.getAbstractFileByPath(wordPath) === wordFile) await app.vault.delete(wordFile)
     }
   } catch (e) {
     report['run'] = { over: [], scrollers: [], capped: [], clipped: [], fill: 0, shot: '', error: String((e && (e.stack || e.message)) || e) }
@@ -2153,6 +2161,21 @@ const ensurePhone = async (): Promise<void> => {
 /** Back to the desktop at the size it had (`enterPhone` recorded it). */
 const leavePhone = async (): Promise<void> => {
   closeDialog()
+  // evalLong timing out does not stop its browser script. Close this run's fixture while
+  // the phone layout is still active, before a reload discards the probe's finally block.
+  await evalLong(
+    `(async () => {
+    window.__abelePhoneLayoutCancelled = ${JSON.stringify(fixtureId)}
+    const path = ${JSON.stringify('sample-word-layout-' + fixtureId + '.docx')}
+    for (const leaf of app.workspace.getLeavesOfType('abele-word'))
+      if (leaf.getViewState().state?.file === path) leaf.detach()
+    const file = app.vault.getAbstractFileByPath(path)
+    if (file) await app.vault.delete(file)
+    await app.workspace.requestSaveLayout.run()
+    return 'saved'
+  })()`,
+    30_000
+  )
   if (isMobile()) await reloadApp('app.emulateMobile(false)')
 }
 

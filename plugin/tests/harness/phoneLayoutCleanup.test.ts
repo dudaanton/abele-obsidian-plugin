@@ -1,0 +1,74 @@
+import { readFileSync } from 'node:fs'
+import { expect, it, vi } from 'vitest'
+import { transformSync } from 'esbuild'
+
+it('closes only the owned word fixture before leaving an interrupted phone capture', async () => {
+  const source = readFileSync('tests/e2e/phoneLayout.e2e.test.ts', 'utf8')
+  const start = source.indexOf('const leavePhone =')
+  const declaration = source.slice(start, source.indexOf('\n}', start) + 2)
+  const owned = { path: 'sample-word-layout-sample-run.docx' }
+  const other = { path: 'sample-unrelated.docx' }
+  const leaves = [owned, other].map((file) => ({
+    getViewState: () => ({ state: { file: file.path } }),
+    detach: vi.fn(),
+  }))
+  const remove = vi.fn()
+  const save = vi.fn()
+  const app = {
+    workspace: { getLeavesOfType: () => leaves, requestSaveLayout: { run: save } },
+    vault: {
+      getAbstractFileByPath: (path: string) => (path === owned.path ? owned : null),
+      delete: remove,
+    },
+  }
+  const reload = vi.fn(() => {
+    expect(leaves[0].detach).toHaveBeenCalledOnce()
+    expect(leaves[1].detach).not.toHaveBeenCalled()
+    expect(remove).toHaveBeenCalledWith(owned)
+    expect(save).toHaveBeenCalledOnce()
+  })
+  const leave = new Function(
+    'closeDialog',
+    'isMobile',
+    'reloadApp',
+    'evalLong',
+    'fixtureId',
+    transformSync(declaration + ';return leavePhone', { loader: 'ts' }).code
+  )(
+    vi.fn(),
+    () => true,
+    reload,
+    async (script: string) => new Function('app', 'return ' + script)(app),
+    'sample-run'
+  )
+  await leave()
+  expect(reload).toHaveBeenCalledOnce()
+})
+
+it('does not open a late word leaf when teardown interrupts fixture creation', async () => {
+  const source = readFileSync('tests/e2e/phoneLayout.e2e.test.ts', 'utf8')
+  const start = source.indexOf('    if (window.__abelePhoneLayoutCancelled')
+  const end = source.indexOf('\n  } catch (e)', start)
+  const template = '`' + source.slice(start, end) + '`'
+  const script = new Function('fixtureId', 'WORD_SAMPLE', 'return ' + template)('sample-run', '')
+  const file = { path: 'sample-word-layout.docx' }
+  const window: { __abelePhoneLayoutCancelled?: string } = {}
+  const getLeaf = vi.fn()
+  const remove = vi.fn()
+  const app = {
+    vault: {
+      createBinary: async () => {
+        window.__abelePhoneLayoutCancelled = 'sample-run'
+        return file
+      },
+      getAbstractFileByPath: () => file,
+      delete: remove,
+    },
+    workspace: { getLeaf },
+  }
+  await expect(
+    new Function('app', 'window', 'return (async () => {' + script + '})()')(app, window)
+  ).rejects.toThrow('Phone layout capture was cancelled')
+  expect(getLeaf).not.toHaveBeenCalled()
+  expect(remove).toHaveBeenCalledWith(file)
+})
