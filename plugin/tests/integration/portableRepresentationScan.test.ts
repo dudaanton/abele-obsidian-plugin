@@ -237,6 +237,20 @@ it('uses metadata for a cold 12k inventory and continues new content on the next
     expect(read.mock.calls.every(([path]) => !completed.has(path))).toBe(true)
     expect(second.budget.pending).toBe(true)
     let head = 0
+    const published: Array<{
+      seq: number
+      file_id: string
+      version_id: string
+      op: 'create'
+      path: string
+      prev_path: null
+      sha: string
+      size: number
+      mtime: number
+      kind: 'note'
+      actor: { kind: 'system'; id: string; name: string }
+      at: string
+    }> = []
     const client = {
       prepare: async () => second.budget.begin(),
       state: async () => ({
@@ -248,19 +262,42 @@ it('uses metadata for a cold 12k inventory and continues new content on the next
           retention: { notes_days: 30, attachments_days: 30, settings_days: 30 },
         },
       }),
-      manifest: async () => ({ items: [], head_seq: head, next: null }),
-      changes: async () => ({ items: [], head_seq: head, next_since: head }),
+      manifest: async () => ({ items: published, head_seq: head, next: null }),
+      changes: async (since: number) => ({
+        items: published.filter((item) => item.seq > since),
+        head_seq: head,
+        next_since: head,
+      }),
       hasBlob: async () => true,
       commitRaw: async (ops: { path: string; sha: string; size: number; mtime: number }[]) => ({
         replayed: false,
         body: {
-          results: ops.map((op) => ({
-            ...op,
-            status: 'applied',
-            file_id: `sample-file-${++head}`,
-            version_id: `sample-version-${head}`,
-            seq: head,
-          })),
+          results: ops.map((op) => {
+            const result = {
+              ...op,
+              status: 'applied',
+              file_id: `sample-file-${++head}`,
+              version_id: `sample-version-${head}`,
+              seq: head,
+            }
+            // A committed row must appear in later server pages. Otherwise the
+            // second pull correctly sees a departure and retains the local bytes.
+            published.push({
+              seq: result.seq,
+              file_id: result.file_id,
+              version_id: result.version_id,
+              op: 'create',
+              path: op.path,
+              prev_path: null,
+              sha: op.sha,
+              size: op.size,
+              mtime: op.mtime,
+              kind: 'note',
+              actor: { kind: 'system', id: 'sample-actor', name: 'Sample' },
+              at: '',
+            })
+            return result
+          }),
           head_seq: head,
         },
       }),
