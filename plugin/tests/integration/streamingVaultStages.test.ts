@@ -29,6 +29,69 @@ const setup = async () => {
   const fs = () => new ObsidianFileSystem(app as unknown as App, { storage })
   return { app, fs, storage }
 }
+it('inventories a durable push cache after allocation and restart for reclamation', async () => {
+  const { app, fs, storage } = await setup()
+  const stage = await fs().beginAtomicWrite('sample-new.bin', 0, null, undefined, 'push-cache')
+  storage.saveLocalStorage(JOURNAL_KEY, null)
+  const restarted = fs()
+  const inventory = []
+  for await (const item of restarted.listStages()) inventory.push(item)
+  expect(inventory).toContainEqual({ id: stage.id, purpose: 'push-cache' })
+  await restarted.discardStage(stage.id)
+  await restarted.discardStage(stage.id)
+  expect(await app.vault.adapter.exists(stage.id)).toBe(false)
+})
+it('retains unpublished bytes and inventories unjournalled artifacts as unknown', async () => {
+  const { app, fs } = await setup()
+  const stage = await fs().beginAtomicWrite('sample-new.bin', 0, null)
+  await stage.append(0, bytes)
+  const unknown = stage.id.replace(/[^/]+$/, 'unidentified.tmp')
+  await app.vault.adapter.writeBinary(unknown, bytes.buffer)
+  const restarted = fs()
+  const list = vi.spyOn(app.vault.adapter, 'list')
+  const read = vi.spyOn(app.vault.adapter, 'readBinary')
+  const inventory = []
+  for await (const item of restarted.listStages()) inventory.push(item)
+  expect(inventory).toContainEqual({ id: stage.id, purpose: 'unknown' })
+  expect(inventory).toContainEqual({ id: unknown, purpose: 'unknown' })
+  expect(list).toHaveBeenCalledTimes(1)
+  expect(read).not.toHaveBeenCalled()
+  expect((await restarted.reopenStage(stage.id)).offset).toBe(bytes.length)
+})
+it.each(['backup', 'retiredGeneration', 'retainBase', 'retainedBackup'])(
+  'does not classify a marked cache with %s evidence as reclaimable',
+  async (evidence) => {
+    const { fs, storage } = await setup()
+    const stage = await fs().beginAtomicWrite('sample-new.bin', 0, null, undefined, 'push-cache')
+    const journal = new WriteJournal(storage)
+    const entry = await journal.currentEntry(stage.id)
+    const retained = structuredClone(entry!)
+    if (evidence === 'backup') retained.backup = 'sample-backup.bin'
+    if (evidence === 'retiredGeneration') retained.retiredGeneration = 'sample-generation'
+    if (evidence === 'retainBase') retained.streaming!.retainBase = true
+    if (evidence === 'retainedBackup') retained.streaming!.retainedBackup = 'sample-backup.bin'
+    await journal.persist(() => journal.replace(entry!, retained))
+    const inventory = []
+    for await (const item of fs().listStages()) inventory.push(item)
+    expect(inventory).toContainEqual({ id: stage.id, purpose: 'unknown' })
+  }
+)
+it('keeps cache artifacts unknown when their durable journal is corrupt', async () => {
+  const { app, fs, storage } = await setup()
+  const stage = await fs().beginAtomicWrite('sample-new.bin', 0, null, undefined, 'push-cache')
+  const journal = new WriteJournal(storage)
+  const entry = await journal.currentEntry(stage.id)
+  await journal.persist(() =>
+    journal.replace(entry!, {
+      ...entry!,
+      streaming: { mtime: -1, base: null, purpose: 'push-cache' },
+    })
+  )
+  const inventory = []
+  for await (const item of fs().listStages()) inventory.push(item)
+  expect(inventory).toContainEqual({ id: stage.id, purpose: 'unknown' })
+  expect(await app.vault.adapter.exists(stage.id)).toBe(true)
+})
 it('reopens a durable stage when the last localStorage update was lost at quit', async () => {
   const { fs, storage } = await setup()
   const stage = await fs().beginAtomicWrite('sample-new.bin', 0, null)

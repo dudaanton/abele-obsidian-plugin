@@ -258,6 +258,16 @@ export function scopedFileSystem(
           if (Array.isArray(preserve)) preserve.forEach(assertPath)
           return value.call(target, paths, work, preserve)
         }
+      if (key === 'listStages')
+        return async function* () {
+          for await (const stage of value.call(target)) {
+            // Unknown names inside this connection's storage are evidence too;
+            // inventory grants no permission to discard or reopen those names.
+            if (!privateRoot || !stage.id.startsWith(privateRoot + '/writes/'))
+              assertStage(stage.id)
+            yield stage
+          }
+        }
       if (key === 'discardStage')
         return async (id: string) => {
           assertStage(id)

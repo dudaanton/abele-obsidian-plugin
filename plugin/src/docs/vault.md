@@ -4002,6 +4002,13 @@ Cold indexed files use bounded concurrent reads with time-based cooperative yiel
 verified hash matching the current index needs no content read. Index metadata alone cannot
 supply a hash for previously unknown bytes. Private recovery archives are not live vault
 projections: their journal owners and explicit recovery paths retain the independent checks.
+
+Push-verdict cache stages carry a durable `push-cache` purpose in the private write journal
+before allocation. The host inventories that journal and the private staging directory for
+the SDK's serial recovery boundary. Only explicitly marked caches with no live pull-write
+or pull-cleanup owner may be reclaimed. Unknown artifacts, unreadable metadata and stages
+that may contain unpublished bytes remain intact for recovery.
+
 Pull cleanup owners and retained stage aliases commit with the exact ledger update;
 private bytes wait for durable acknowledgement. Cleanup retires owners in a final batch,
 and connection departure drains committed cleanup before dropping its authority.

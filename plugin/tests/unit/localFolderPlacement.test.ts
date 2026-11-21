@@ -12,6 +12,22 @@ const hostOnlySymbols = new Set([
   Symbol.for('abele.sync.parent-proof-v1'),
   Symbol.for('abele.sync.index-wait-signal-v1'),
 ])
+it('forwards private stage inventory without mapping opaque locators', async () => {
+  const row = { id: '.abele-sync-work/.abele-sync-abcd1234.tmp', purpose: 'push-cache' }
+  const disk = Object.assign(new MemoryFileSystem(), {
+    async *listStages() {
+      expect(this).toBe(disk)
+      yield row
+    },
+  })
+  const fs = coordinatedFileSystem(
+    new LocalFolderPlacement('Shared', 'Moved').fileSystem(disk),
+    new PathCoordinator()
+  )
+  const rows = []
+  for await (const stage of Reflect.get(fs, 'listStages')()) rows.push(stage)
+  expect(rows).toEqual([row])
+})
 it.each(
   Reflect.ownKeys(ObsidianFileSystem.prototype).filter(
     (key): key is symbol =>
@@ -287,7 +303,7 @@ it('assigns a placement policy to every filesystem interface method', () => {
     Reflect.ownKeys(placementMethods)
       .map((key) => (key === pathAdmission ? '[pathAdmission]' : key))
       .sort()
-  ).toEqual([...methods, 'readPrefix'].sort())
+  ).toEqual([...new Set([...methods, 'readPrefix', 'listStages'])].sort())
   const disk = Object.assign(new MemoryFileSystem(), { futureRead: async () => new Uint8Array() })
   const fs = new LocalFolderPlacement('Shared', 'Moved').fileSystem(disk)
   expect(() => Reflect.get(fs, 'futureRead')).toThrow(/no placement policy/)

@@ -35,6 +35,24 @@ it('permits cleanup of an owned opaque stage but refuses foreign cleanup', async
   await expect(async () => fs.discardStage('Private/sample.tmp')).rejects.toThrow('outside scope')
   expect(discardStage).toHaveBeenCalledExactlyOnceWith('Shared/sample.tmp')
 })
+it('inventories connection-private stages without granting foreign stage access', async () => {
+  const id = '.abele-sync/connections/sample/writes/.abele-sync-abcd1234.tmp'
+  const disk = Object.assign(new MemoryFileSystem(), {
+    async *listStages() {
+      yield { id, purpose: 'push-cache' }
+      yield { id: '.abele-sync/connections/sample/writes/unknown.tmp', purpose: 'unknown' }
+      yield { id: 'Private/sample.tmp', purpose: 'unknown' }
+    },
+  })
+  const fs = scopedFileSystem(disk, assertPath, includes, '.abele-sync/connections/sample')
+  const stages = Reflect.get(fs, 'listStages')()[Symbol.asyncIterator]()
+  expect((await stages.next()).value).toEqual({ id, purpose: 'push-cache' })
+  expect((await stages.next()).value).toEqual({
+    id: '.abele-sync/connections/sample/writes/unknown.tmp',
+    purpose: 'unknown',
+  })
+  await expect(stages.next()).rejects.toThrow('outside scope')
+})
 
 it.each(['abele.sync.inventory-pass-v1', 'abele.sync.operation-pass-v1'])(
   'delegates %s without widening scoped access',

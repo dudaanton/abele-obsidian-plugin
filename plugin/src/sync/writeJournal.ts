@@ -26,6 +26,8 @@ export interface JournalEntry {
   disposableSource?: boolean
   /** A resumable chunk stage; retained until the engine explicitly discards it. */
   streaming?: {
+    /** Server-backed prefetch; reclaimable only after the SDK proves no live owner. */
+    purpose?: 'push-cache'
     mtime: number
     base: { size: number; sha: string; mtime?: number; identity?: string } | null
     sealed?: { size: number; sha: string }
@@ -118,6 +120,7 @@ export class WriteJournal {
           (entry.temp !== undefined &&
             Number.isSafeInteger(entry.streaming?.mtime) &&
             entry.streaming.mtime >= 0 &&
+            (entry.streaming.purpose === undefined || entry.streaming.purpose === 'push-cache') &&
             (entry.streaming.base === null || identity(entry.streaming.base)) &&
             (entry.streaming.retainBase === undefined ||
               typeof entry.streaming.retainBase === 'boolean') &&

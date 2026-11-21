@@ -25,6 +25,7 @@ export class LocalPlacementError extends Error {
 
 type PlacementFileSystem = FileSystem & {
   readPrefix?(path: string, maximum: number): Promise<Uint8Array>
+  listStages?(): AsyncIterable<{ id: string; purpose: 'push-cache' | 'unknown' }>
 }
 // Adding a filesystem operation requires an explicit path/identity policy.
 export const placementMethods = {
@@ -50,6 +51,7 @@ export const placementMethods = {
   moveDirectory: 'pair',
   reopenStage: 'identity',
   discardStage: 'opaque',
+  listStages: 'opaque',
   conditionalFile: 'opaque',
   conditionalOwnership: 'opaque',
   trustedIndexIdentities: 'opaque',
@@ -515,6 +517,7 @@ export class LocalFolderPlacement {
               : result
           }
         // Opaque stage locators never pass through server-to-local path mapping.
+        if (key === 'listStages') return value.bind(target)
         if (key === 'discardStage') return (id: string) => value.call(target, id)
         if (policy === 'identity')
           return async (id: string) => {

@@ -4054,7 +4054,8 @@ export class ObsidianFileSystem implements FileSystem {
     path: string,
     mtime: number,
     expectedBase: (ContentIdentity & { mtime?: number; identity?: string }) | null,
-    beforeCreate?: (stageId: string) => Promise<void>
+    beforeCreate?: (stageId: string) => Promise<void>,
+    purpose?: 'push-cache'
   ): Promise<AtomicStage> {
     this.runtimeFence?.assertReady()
     this.externalCoordination.assertEnginePaths([path])
@@ -4069,6 +4070,7 @@ export class ObsidianFileSystem implements FileSystem {
         ? { disposableSource: true }
         : {}),
       streaming: {
+        ...(purpose === 'push-cache' ? { purpose } : {}),
         mtime,
         base: expectedBase ? { ...expectedBase } : null,
       },
@@ -4087,6 +4089,49 @@ export class ObsidianFileSystem implements FileSystem {
     } finally {
       this.stageOperations.delete(temp)
       if (!ready) releaseSourceStage(temp)
+    }
+  }
+  /** The SDK consumes this at its serial recovery boundary, before allocating push work. */
+  async *listStages(): AsyncIterable<{ id: string; purpose: 'push-cache' | 'unknown' }> {
+    this.runtimeFence?.assertReady()
+    const folder = stagingDirectory(this.configDir, this.privateRoot)
+    let entries: JournalEntry[] = []
+    try {
+      entries = await this.journal.currentEntries()
+    } catch (error) {
+      console.debug('[abele-sync] stage journal unreadable; retaining private artifacts', error)
+    }
+    const candidates = new Map<string, 'push-cache' | 'unknown'>()
+    for (const entry of entries) {
+      if (!entry.temp || !entry.streaming || !withinRoot(entry.temp, folder)) continue
+      candidates.set(
+        entry.temp,
+        !candidates.has(entry.temp) &&
+          entry.streaming.purpose === 'push-cache' &&
+          !entry.backup &&
+          !entry.retiredGeneration &&
+          !entry.conditionalReceipt &&
+          !entry.installed &&
+          !entry.streaming.retainBase &&
+          !entry.streaming.retainedBackup
+          ? 'push-cache'
+          : 'unknown'
+      )
+    }
+    // Include interrupted allocations and files whose metadata was lost. No vault walk,
+    // content reads, or per-stage stats: only one private directory listing.
+    try {
+      const listed = await this.disk.list(folder)
+      for (const id of [...listed.files, ...listed.folders])
+        if (!candidates.has(id)) candidates.set(id, 'unknown')
+    } catch (error) {
+      if (!notFound(error)) throw error
+    }
+    for (const [id, purpose] of candidates) {
+      this.runtimeFence?.assertReady()
+      if (purpose === 'unknown')
+        console.debug('[abele-sync] private stage retained for recovery', id)
+      yield { id, purpose }
     }
   }
   /** Cleanup also works after removal reached disk but journal retirement did not. */
