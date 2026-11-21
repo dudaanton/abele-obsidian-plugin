@@ -22,6 +22,7 @@ import {
   phoneGateChunk,
   type GateFile,
 } from './helpers/syncPhoneGate'
+import { assertDesktopReplicaReady } from './helpers/syncPhoneDesktop'
 
 targets('phone')
 const fixture = liveSuite(false)
@@ -35,6 +36,7 @@ liveCase(
   async () => {
     const s = fixture(),
       a = s.primary
+    assertDesktopReplicaReady()
     a.timeoutMs = 600_000
     const id = await s.connect()
     const desktopRoot = mkdtempSync(join(tmpdir(), 'sync-phone-gate-'))
