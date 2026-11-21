@@ -206,11 +206,12 @@ it.each([true, false])(
                 },
               } as never)
             : null,
-          createAbsent: async (path, bytes, mtime, temp) => {
+          createAbsent: async (path, bytes, mtime, temp, beforePublish) => {
             await disk.writeBinary(temp, bytes.slice().buffer, { mtime })
             await checked.wait(path)
             const release = await checked.acquire([path])
             try {
+              await beforePublish()
               await release.wait(disk.rename(temp, path))
               release.check()
             } finally {

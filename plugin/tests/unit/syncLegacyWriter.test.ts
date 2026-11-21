@@ -58,7 +58,7 @@ it('does not archive an unproven public retained-backup locator', async () => {
   expect((await journal.currentRecovered())[0].backup).toBe('sample.md')
 })
 
-it('persists intent, publication boundary and retirement with one payload write', async () => {
+it('persists publication intent and retirement with one payload write', async () => {
   const app = buildFakeVault([])
   const diagnostic = vi.fn()
   const disk = new ObsidianFileSystem(app as never, { diagnostic })
@@ -73,7 +73,7 @@ it('persists intent, publication boundary and retirement with one payload write'
   expect(write).toHaveBeenCalledTimes(1)
   await disk.discardInstallation('sample-receipt')
   expect(diagnostic.mock.calls.filter(([operation]) => operation === 'journal save')).toHaveLength(
-    3
+    2
   )
   expect(await app.vault.adapter.exists('sample.md')).toBe(true)
 })

@@ -159,12 +159,23 @@ export class VaultWriter {
         if (!resumePortable)
           return (await this.installedReceipt(id, path, entry.replacementSha)) ?? false
       }
+      if (
+        !previous &&
+        receipt &&
+        !this.deps.native &&
+        this.deps.createAbsent &&
+        (await this.there(temp))
+      ) {
+        // Staging can finish before the publication intent is committed. A retry
+        // may reuse only the exact receipt bytes; no public name was consumed yet.
+        const proof = await this.deps.fingerprint?.(temp)
+        resumePortable = proof?.sha === entry.replacementSha && proof.size === bytes.length
+      }
       if (!resumePortable && (await this.there(temp)))
         throw new EngineError('conflict', 'Installation path contains retained evidence')
       await this.deps.makeParents(path)
       await this.deps.makeParents(temp)
-      if (!previous) {
-        if (!this.deps.native && this.deps.createAbsent) entry.portablePublishing = false
+      if (!previous && (this.deps.native || !this.deps.createAbsent)) {
         await this.deps.journal.persist(() => this.deps.journal.add(entry))
       }
       if (!this.deps.native && this.deps.createAbsent) {
@@ -174,7 +185,10 @@ export class VaultWriter {
             // An old receipt with no phase is uncertain too; only an extant stage proves retry.
             const current = previous ?? entry
             const publishing = { ...current, portablePublishing: true }
-            await this.deps.journal.persist(() => this.deps.journal.replace(current, publishing))
+            await this.deps.journal.persist(() => {
+              if (previous) this.deps.journal.replace(current, publishing)
+              else this.deps.journal.add(publishing)
+            })
             // Settlement must use the exact phase that was durably committed.
             entry = publishing
           })

@@ -95,7 +95,8 @@ it.each([false, true])(
       'sample interrupted installation'
     )
     cut.mockRestore()
-    expect(await new WriteJournal(app).currentEntries()).toHaveLength(1)
+    // Staging failed before the rename boundary: no durable publication intent yet.
+    expect(await new WriteJournal(app).currentEntries()).toHaveLength(written ? 1 : 0)
     const restarted = new ObsidianFileSystem(app as never)
     await restarted.recover()
     await expect(restarted.conditionalFile({ path, expected: null, effect })).resolves.toBe(true)
@@ -105,6 +106,33 @@ it.each([false, true])(
     await expect(requireExternalEnrollmentSafety(app as never)).resolves.toBeUndefined()
   }
 )
+
+it('resumes an exact portable stage left before the publication intent was committed', async () => {
+  const app = buildFakeVault([])
+  const path = 'Shared/sample.md'
+  const effect = {
+    kind: 'write' as const,
+    bytes: new TextEncoder().encode('sample incoming bytes'),
+    mtime: 1000,
+    receipt: 'sample-staged',
+  }
+  const first = new ObsidianFileSystem(app as never)
+  const write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
+  const cut = vi.spyOn(app.vault.adapter, 'writeBinary').mockImplementation(async (...args) => {
+    await write(...args)
+    if (String(args[0]).includes('.abele-receipt-'))
+      throw new Error('sample interruption after staging')
+  })
+  await expect(first.conditionalFile({ path, expected: null, effect })).rejects.toThrow(
+    'sample interruption after staging'
+  )
+  cut.mockRestore()
+  expect(await new WriteJournal(app).currentEntries()).toEqual([])
+  const restarted = new ObsidianFileSystem(app as never)
+  await restarted.recover()
+  await expect(restarted.conditionalFile({ path, expected: null, effect })).resolves.toBe(true)
+  expect(await app.vault.adapter.read(path)).toBe('sample incoming bytes')
+})
 
 it('keeps an independently modified private stage when retrying a portable receipt', async () => {
   const app = buildFakeVault([])
