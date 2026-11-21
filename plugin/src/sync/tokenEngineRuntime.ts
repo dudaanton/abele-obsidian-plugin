@@ -9,6 +9,7 @@ import { SyncTaskBudget, waitForSyncRead, yieldSyncTask } from './syncTaskBudget
 import { gateMobileSource } from './mobileLargeFileGate'
 import { FINGERPRINT_UPLOAD, PHONE_FALLBACK_BYTES } from './mobileWholeRead'
 import { connectionPrivateRoot } from './connectionPaths'
+import { engineRemovalFileSystem } from './privateRemovalFileSystem'
 import { assertPhysicalPath } from './external/projection'
 import { NotSyncedState, notSyncedMetadata } from './notSyncedState'
 import { scopedFileSystem, FolderScopeError } from './scopedFileSystem'
@@ -721,6 +722,7 @@ export class TokenEngineRuntime
         options.preparePlacement = (paths) =>
           prepare(paths.map((path) => this.placement.toLocal(path)))
     }
+    options.fs = engineRemovalFileSystem(options.fs)
     // Watch reports and ledger entries use server paths, so scheduling must read
     // through the same scope and local-folder placement as the engine.
     this.quiet = new UploadQuietPeriod(

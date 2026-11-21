@@ -57,6 +57,47 @@ export function privateRemovalFileSystem(
   return view
 }
 
+/** Route only engine-owned retention paths through the host's private port. */
+export function engineRemovalFileSystem(raw: FileSystem): FileSystem {
+  const open = Reflect.get(raw, PRIVATE_REMOVAL_FILES)
+  if (typeof open !== 'function') return raw
+  const privateFiles = open.call(raw) as FileSystem
+  const pathMethods = new Set([
+    'stat',
+    'read',
+    'readPrefix',
+    'openRead',
+    'fingerprint',
+    'fileIdentity',
+    'writeAtomic',
+    'remove',
+    'mkdir',
+    'removeDirectory',
+  ])
+  return new Proxy(raw, {
+    get(target, key) {
+      const value = Reflect.get(target, key)
+      if (typeof value !== 'function') return value
+      if (pathMethods.has(String(key)))
+        return (path: string, ...args: unknown[]) =>
+          privatePath(path)
+            ? Reflect.get(privateFiles, key).call(privateFiles, path, ...args)
+            : value.call(target, path, ...args)
+      if (key === 'conditionalFile')
+        return (operation: ConditionalFileOperation) => {
+          const selected = privatePath(operation.path) ? privateFiles : target
+          return Reflect.get(selected, key).call(selected, operation)
+        }
+      if (key === 'move')
+        return (from: string, to: string, ...args: unknown[]) => {
+          const selected = privatePath(from) || privatePath(to) ? privateFiles : target
+          return Reflect.get(selected, key).call(selected, from, to, ...args)
+        }
+      return value.bind(target)
+    },
+  })
+}
+
 /** Raw teardown cannot throw away the only durable owner of retained resources. */
 export function assertDiscardableSyncLedger(metadata: ReadonlyMap<string, unknown>): void {
   for (const [key, value] of metadata) {

@@ -5,17 +5,58 @@ import {
   SyncEngine,
   scan,
   selectiveDefaults,
+  prepareRemovalCohort,
+  sha256,
   type EngineClient,
 } from '@abele/sync-sdk/core'
 import { HostSyncStorage } from '@/sync/hostSyncStorage'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { engineRemovalFileSystem } from '@/sync/privateRemovalFileSystem'
+import { connectionPrivateRoot } from '@/sync/connectionPaths'
 import { pluginRepresentation } from '@/sync/external/pluginRepresentation'
 import { RuntimeFence } from '@/sync/external/recovery'
 import { ProgressiveLocalScan, SCAN_HASH_READY } from '@/sync/progressiveLocalScan'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 afterEach(() => vi.restoreAllMocks())
+it('keeps portable removal retention in the connection private area', async () => {
+  const app = buildFakeVault([
+    { path: 'Notes/sample.md', content: 'sample bytes', mtime: 1000, ctime: 1000 },
+  ])
+  const host = await HostSyncStorage.open(new IDBFactory(), 'sample-retention-host', app)
+  try {
+    const owner = 'sample-retention-owner'
+    const raw = new ObsidianFileSystem(app as never, { journalOwner: owner })
+    const files = engineRemovalFileSystem(raw)
+    const bytes = new TextEncoder().encode('sample bytes')
+    const info = await files.stat('Notes/sample.md')
+    const cohort = await prepareRemovalCohort(files, [
+      {
+        operation: {
+          path: 'Notes/sample.md',
+          expected: { size: bytes.length, mtime: info!.mtime, sha: await sha256(bytes) },
+          effect: { kind: 'remove' },
+        },
+      },
+    ])
+    try {
+      expect(await files.stat('.abele-sync/retained-removals/summary.json')).not.toBeNull()
+      expect(
+        await app.vault.adapter.exists(
+          connectionPrivateRoot(owner) + '/retained-removals/summary.json'
+        )
+      ).toBe(true)
+      expect(await app.vault.adapter.exists('.abele-sync/retained-removals/summary.json')).toBe(
+        false
+      )
+    } finally {
+      await cohort.close()
+    }
+  } finally {
+    host.close()
+  }
+})
 it('keeps unindexed files out of an index-only discovery budget', async () => {
   const app = buildFakeVault([
     { path: '.obsidian/sample.bin', content: 'ordinary', mtime: 1000, ctime: 1000 },
@@ -158,7 +199,10 @@ it('uses metadata for a cold 12k inventory and continues new content on the next
     stores.push(store)
     const fence = new RuntimeFence(app, id, () => true)
     fence.activate()
-    const fs = new ObsidianFileSystem(app as never, { prepareStartupInventory: async () => {} })
+    const fs = new ObsidianFileSystem(app as never, {
+      journalOwner: id,
+      prepareStartupInventory: async () => {},
+    })
     const representation = await pluginRepresentation({
       app: app as never,
       factory,
@@ -222,7 +266,7 @@ it('uses metadata for a cold 12k inventory and continues new content on the next
       }),
     } as unknown as EngineClient
     const engine = new SyncEngine({
-      fs: second.fs,
+      fs: engineRemovalFileSystem(second.fs),
       state: new MemoryStateStore(),
       client,
       selective: selectiveDefaults(),
