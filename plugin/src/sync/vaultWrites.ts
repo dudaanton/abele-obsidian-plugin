@@ -478,6 +478,9 @@ export class VaultWriter {
                 (await this.deps.native.sameObject(entry.temp, entry.target)) &&
                 (await this.deps.journal.isCurrent(entry))
               ) {
+                // An interrupted batch still owns this alias until its ledger row
+                // commits. Keep the inode and its verified installation clock.
+                if (entry.disposableSource) continue
                 await this.finishAnonymous(entry)
                 publishedTargets?.add(entry.target)
               }

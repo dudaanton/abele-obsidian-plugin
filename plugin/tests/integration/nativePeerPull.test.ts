@@ -888,6 +888,26 @@ for (const fault of [
           expect(contentReads).toBe(0)
           const edited = published[0],
             prior = await disk.stat(join(root, edited.path))
+          const [receipt] = await new WriteJournal(host).currentForTargets([edited.path])
+          expect(receipt?.temp).toBeDefined()
+          await state.put({
+            path: edited.path,
+            wirePath: edited.path,
+            fileId: edited.file_id,
+            versionId: edited.version_id,
+            sha: edited.sha,
+            size: edited.size,
+            mtime: edited.mtime,
+          })
+          expect(await new WriteJournal(host).currentForTargets([edited.path])).toEqual([])
+          await expect(disk.stat(join(root, receipt!.temp!))).rejects.toMatchObject({
+            code: 'ENOENT',
+          })
+          contentReads = 0
+          expect((await files[Symbol.for('abele.sync.fingerprint-pull-v1')](edited.path)).sha).toBe(
+            edited.sha
+          )
+          expect(contentReads).toBe(0)
           await disk.writeFile(join(root, edited.path), payload(0).fill(91))
           await disk.utimes(join(root, edited.path), prior.atime, prior.mtime)
           expect((await files[Symbol.for('abele.sync.fingerprint-pull-v1')](edited.path)).sha).toBe(

@@ -31,6 +31,7 @@ it.each(['discard', 'retire'] as const)(
       const edit = async () => {
         // An external same-size write with restored mtime, before its watcher arrives.
         // Bypass the adapter's mutation notifications: only the native clock sees it.
+        await app.vault.adapter.write(path, 'modified', { mtime: info!.mtime })
         clock = 'edited-clock'
       }
       if (kind === 'discard') {

@@ -624,12 +624,14 @@ export class ObsidianFileSystem implements FileSystem {
       const key = this.pathKey(item.path)
       const revision = host.scanFingerprintRevision(key)
       const watched = this.watchPathRevision(key)
-      const contentRevision = await this.native?.fileContentRevision?.(item.path)
+      let contentRevision = await this.native?.fileContentRevision?.(item.path)
       if (
         publishedClocks &&
         (!contentRevision || publishedClocks.get(item.path) !== contentRevision)
-      )
-        continue
+      ) {
+        contentRevision = await this.reproveInstalled(item)
+        if (!contentRevision) continue
+      }
       const identity = await this.fileIdentity(item.path)
       const stat = await this.rawStat(item.path)
       if (
@@ -663,6 +665,17 @@ export class ObsidianFileSystem implements FileSystem {
       )
         this.promotedInstallations.add(row.value)
   }
+  private async reproveInstalled(item: InstallItem): Promise<string | undefined> {
+    const clock = await this.native?.fileContentRevision?.(item.path)
+    if (!clock) return undefined
+    const actual = await this.io.fingerprint(item.path, undefined, false, true)
+    return actual.sha === item.sha &&
+      actual.size === item.size &&
+      stamp(actual.mtime) === item.mtime &&
+      clock === (await this.native?.fileContentRevision?.(item.path))
+      ? clock
+      : undefined
+  }
   /** Removing our private hard link changes the inode clock, not its public bytes. */
   private async retireInstalledAlias(
     entry: JournalEntry,
@@ -687,16 +700,31 @@ export class ObsidianFileSystem implements FileSystem {
       (await this.native?.fileContentRevision?.(entry.target)) === saved.contentRevision
     await remove()
     if (
-      saved?.contentRevision &&
-      verified &&
-      host?.scanFingerprintRevision(key) === revision &&
-      this.watchPathRevision(key) === watched &&
-      (await this.fileIdentity?.(entry.target)) === saved.identity
+      !saved?.contentRevision ||
+      !verified ||
+      host?.scanFingerprintRevision(key) !== revision ||
+      this.watchPathRevision(key) !== watched ||
+      (await this.fileIdentity?.(entry.target)) !== saved.identity
     )
-      await this.rememberInstalled(
-        [{ path: entry.target, size: saved.size, mtime: stamp(saved.mtime), sha: saved.sha }],
-        new Map([[entry.target, saved.contentRevision]])
-      )
+      return
+    const afterClock = await this.native?.fileContentRevision?.(entry.target)
+    if (!afterClock) return
+    if (afterClock !== saved.contentRevision) {
+      // Removing a hard link advances the inode clock. Reprove the public bytes
+      // under the new clock; an external edit during removal must not inherit the
+      // downloaded hash, even when it restores the original size and mtime.
+      const proved = await this.reproveInstalled({
+        path: entry.target,
+        size: saved.size,
+        mtime: stamp(saved.mtime),
+        sha: saved.sha,
+      })
+      if (proved !== afterClock) return
+    }
+    await this.rememberInstalled(
+      [{ path: entry.target, size: saved.size, mtime: stamp(saved.mtime), sha: saved.sha }],
+      new Map([[entry.target, afterClock]])
+    )
   }
   readonly fileIdentity?: (path: string) => Promise<string | null>
   private readonly diagnostic?: ObsidianFileSystemOptions['diagnostic']
@@ -2076,8 +2104,12 @@ export class ObsidianFileSystem implements FileSystem {
         key &&
         saved?.contentRevision &&
         host?.scanInstallation(key) === saved
-      )
-        await this.rememberInstalled([item], new Map([[item.path, saved.contentRevision]]))
+      ) {
+        const afterClock = await this.native?.fileContentRevision?.(item.path)
+        const proved =
+          afterClock === saved.contentRevision ? afterClock : await this.reproveInstalled(item)
+        if (proved) await this.rememberInstalled([item], new Map([[item.path, proved]]))
+      }
     }
     try {
       for (;;) {
@@ -2855,8 +2887,18 @@ export class ObsidianFileSystem implements FileSystem {
       if (entry.disposableSource && entry.temp) {
         // An interrupted fresh batch can leave an uninstalled server-only cache.
         // The matching committed row now owns that version; never touch the public name.
-        if (await this.rawStat(entry.temp)) await this.disk.remove(entry.temp)
-        if (this.native) await this.native.syncPath(entry.temp, true)
+        const temp = entry.temp
+        const remove = async () => {
+          if (await this.rawStat(temp)) await this.disk.remove(temp)
+          if (this.native) await this.native.syncPath(temp, true)
+        }
+        if (
+          this.native?.sameObject &&
+          (await this.rawStat(temp)) &&
+          (await this.native.sameObject(temp, entry.target))
+        )
+          await this.retireInstalledAlias(entry, remove)
+        else await remove()
         installed.push(entry)
         continue
       }
