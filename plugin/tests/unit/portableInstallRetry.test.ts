@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { MAX_CHUNK_BYTES } from '@abele/sync-sdk/core'
 import { WriteJournal } from '@/sync/writeJournal'
 import { requireExternalEnrollmentSafety } from '@/sync/external/pluginSafety'
 import { buildFakeVault } from '../helpers/fakeVault'
@@ -133,6 +134,50 @@ it('resumes an exact portable stage left before the publication intent was commi
   await expect(restarted.conditionalFile({ path, expected: null, effect })).resolves.toBe(true)
   expect(await app.vault.adapter.read(path)).toBe('sample incoming bytes')
 })
+
+it.each(['retry', 'discard'])(
+  'recovers an interrupted multi-chunk portable stage on %s after restart',
+  async (action) => {
+    const app = buildFakeVault([])
+    const path = 'Shared/sample-large.md'
+    const receipt = 'sample-partial-stage'
+    const bytes = new Uint8Array(MAX_CHUNK_BYTES + 17).fill(42)
+    bytes[bytes.length - 1] = 43
+    const effect = { kind: 'write' as const, bytes, mtime: 1000, receipt }
+    const stage = `.obsidian/plugins/abele/sync-staging/.abele-receipt-${receipt}.tmp`
+    Object.assign(app.vault.adapter, {
+      appendBinary: async () => {
+        throw new Error('sample interruption after first chunk')
+      },
+    })
+    await expect(
+      new ObsidianFileSystem(app as never).conditionalFile({ path, expected: null, effect })
+    ).rejects.toThrow('sample interruption after first chunk')
+    expect((await app.vault.adapter.readBinary(stage)).byteLength).toBe(MAX_CHUNK_BYTES)
+    expect(await new WriteJournal(app).currentEntries()).toEqual([])
+    Object.assign(app.vault.adapter, {
+      appendBinary: async (at: string, chunk: ArrayBuffer) => {
+        const before = new Uint8Array(await app.vault.adapter.readBinary(at))
+        const combined = new Uint8Array(before.length + chunk.byteLength)
+        combined.set(before)
+        combined.set(new Uint8Array(chunk), before.length)
+        await app.vault.adapter.writeBinary(at, combined.buffer)
+      },
+    })
+    const restarted = new ObsidianFileSystem(app as never)
+    await restarted.recover()
+    if (action === 'retry') {
+      await expect(restarted.conditionalFile({ path, expected: null, effect })).resolves.toBe(true)
+      expect(new Uint8Array(await app.vault.adapter.readBinary(path))).toEqual(bytes)
+      expect(await app.vault.adapter.exists(stage)).toBe(false)
+    } else {
+      await restarted.discardInstallation(receipt)
+      expect(await app.vault.adapter.exists(stage)).toBe(false)
+      expect(await app.vault.adapter.exists(path)).toBe(false)
+    }
+  },
+  15_000
+)
 
 it('keeps an independently modified private stage when retrying a portable receipt', async () => {
   const app = buildFakeVault([])

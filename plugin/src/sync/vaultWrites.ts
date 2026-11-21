@@ -166,10 +166,14 @@ export class VaultWriter {
         this.deps.createAbsent &&
         (await this.there(temp))
       ) {
-        // Staging can finish before the publication intent is committed. A retry
-        // may reuse only the exact receipt bytes; no public name was consumed yet.
+        // Staging can stop between chunks before the publication intent is committed.
+        // A matching prefix is incoming data owned by this receipt, so the next
+        // write may replace it. Unrelated private bytes remain retained evidence.
         const proof = await this.deps.fingerprint?.(temp)
-        resumePortable = proof?.sha === entry.replacementSha && proof.size === bytes.length
+        resumePortable =
+          proof !== undefined &&
+          proof.size <= bytes.length &&
+          proof.sha === (await signature(bytes.subarray(0, proof.size)))
       }
       if (!resumePortable && (await this.there(temp)))
         throw new EngineError('conflict', 'Installation path contains retained evidence')
@@ -290,16 +294,29 @@ export class VaultWriter {
   }
 
   async discardReceipt(receipt: string): Promise<boolean> {
-    const temp = this.receiptPath(receipt),
-      entry = await this.deps.journal.currentEntry(temp)
-    if (!entry?.conditionalReceipt) return false
-    if (!this.consumed.has(temp) && (await this.there(temp))) {
-      await this.disk.remove(temp)
-      if (this.deps.native) await this.deps.native.syncPath(temp, true)
+    const temp = this.receiptPath(receipt)
+    while (inFlight.has(temp)) await waitForAdapterWrite(temp)
+    inFlight.add(temp)
+    try {
+      const entry = await this.deps.journal.currentEntry(temp)
+      if (!entry?.conditionalReceipt) {
+        // Portable staging has no journal entry until publication. An explicit
+        // discard may retire its private incoming bytes even after a restart.
+        if (entry || this.deps.native || !this.deps.createAbsent || !(await this.there(temp)))
+          return false
+        await this.disk.remove(temp)
+        return true
+      }
+      if (!this.consumed.has(temp) && (await this.there(temp))) {
+        await this.disk.remove(temp)
+        if (this.deps.native) await this.deps.native.syncPath(temp, true)
+      }
+      await this.deps.journal.persist(() => this.deps.journal.drop(entry))
+      this.consumed.delete(temp)
+      return true
+    } finally {
+      releaseInFlight(temp)
     }
-    await this.deps.journal.persist(() => this.deps.journal.drop(entry))
-    this.consumed.delete(temp)
-    return true
   }
 
   private async conditional(operation: ConditionalFileOperation): Promise<void> {
