@@ -1,6 +1,6 @@
 --- a/dist/internal/core/cycle.js
 +++ b/dist/internal/core/cycle.js
-@@ -346,21 +346,16 @@
+@@ -348,21 +348,16 @@
          // Read through the guarded state, and every step it leads to is a guarded write: a daemon
          // whose lock lapsed takes nothing of it (see `stillHeld`).
          const filed = await this.holds.decision();
@@ -25,7 +25,7 @@
          // A batch the last run never finished recording goes first: a scan taken over it would
          // describe a disk the state does not know about yet.
          const replayed = await resumeJournal(client, fs, state, { ...common, onCommitted: tally });
-@@ -441,6 +436,17 @@
+@@ -443,6 +438,17 @@
              verifyPaths,
              pairMoves: !reconciliation || reconciliation.phase === 'complete',
          }));
@@ -43,7 +43,7 @@
          for (const path of seen) {
              const checkpoint = work.step();
              if (checkpoint)
-@@ -449,7 +455,9 @@
+@@ -451,7 +457,9 @@
          }
          this.unscanned = false;
          this.unsettled = await work.set(found.dirty);
@@ -54,7 +54,7 @@
          this.ctx.set({ pending: judged.length });
          await this.noteCollisions(found.collisions, work);
          let before = first;
-@@ -476,7 +484,7 @@
+@@ -478,7 +486,7 @@
          // Drain acknowledged bookkeeping even if pause arrived during the issued commit.
          work = new ScanWork({ yieldTask: this.ctx.opts.yieldTask });
          // The confirmed deletes have gone out with the rest; the decision is done with.
@@ -198,7 +198,7 @@
       * decision, since there is nothing left to decide about them.
 --- a/dist/internal/core/fs.d.ts
 +++ b/dist/internal/core/fs.d.ts
-@@ -46,6 +46,11 @@
+@@ -51,6 +51,11 @@
       * made while the host was stopped. Matching saved verified identities may skip the
       * rolling content sweep; host events still invalidate ordinary scan observations. */
      readonly trustedIndexIdentities?: true;
