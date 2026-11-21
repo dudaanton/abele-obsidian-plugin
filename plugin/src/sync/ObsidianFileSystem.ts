@@ -4120,12 +4120,14 @@ export class ObsidianFileSystem implements FileSystem {
     }
     // Include interrupted allocations and files whose metadata was lost. No vault walk,
     // content reads, or per-stage stats: only one private directory listing.
-    try {
-      const listed = await this.disk.list(folder)
-      for (const id of [...listed.files, ...listed.folders])
-        if (!candidates.has(id)) candidates.set(id, 'unknown')
-    } catch (error) {
-      if (!notFound(error)) throw error
+    if ((await this.rawStat(folder)) !== null) {
+      try {
+        const listed = await this.disk.list(folder)
+        for (const id of [...listed.files, ...listed.folders])
+          if (!candidates.has(id)) candidates.set(id, 'unknown')
+      } catch (error) {
+        if (!notFound(error)) throw error
+      }
     }
     for (const [id, purpose] of candidates) {
       this.runtimeFence?.assertReady()

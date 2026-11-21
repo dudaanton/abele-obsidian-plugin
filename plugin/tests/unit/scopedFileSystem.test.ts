@@ -3,11 +3,29 @@ import { MemoryFileSystem, pathAdmission } from '@abele/sync-sdk/core'
 import { scopedFileSystem } from '@/sync/scopedFileSystem'
 import { PLACEMENT } from '@/sync/pathCoordinator'
 import { PRIVATE_PLACEMENT_STAGES } from '@/sync/privatePlacementStages'
+import { PRIVATE_REMOVAL_FILES } from '@/sync/privateRemovalFileSystem'
 
 const includes = (path: string) => path === 'Shared' || path.startsWith('Shared/')
 const assertPath = (path: string) => {
   if (!includes(path)) throw new Error('outside scope')
 }
+
+it('composes a placed removal view before checking the local scope', async () => {
+  const stat = vi.fn(async (_path: string) => null)
+  const disk = Object.assign(new MemoryFileSystem(), {
+    [PRIVATE_REMOVAL_FILES](toLocal: (path: string) => string) {
+      return { stat: (path: string) => stat(toLocal(path)) }
+    },
+  })
+  const fs = scopedFileSystem(disk, assertPath, includes)
+  const view = Reflect.get(
+    fs,
+    PRIVATE_REMOVAL_FILES
+  )((path: string) => path.replace(/^Remote\//, 'Shared/'))
+  await view.stat('Remote/sample.md')
+  expect(stat).toHaveBeenCalledExactlyOnceWith('Shared/sample.md')
+  expect(() => view.stat('Private/sample.md')).toThrow('outside scope')
+})
 
 it('forwards readonly scan revisions without granting a path and binds the current scope root', () => {
   const revision = Symbol.for('abele.sync.local-scan-revision-v1')

@@ -14,6 +14,7 @@ import { connectionPrivateRoot } from '@/sync/connectionPaths'
 import { privatePlacementStages } from '@/sync/privatePlacementStages'
 import { IDBFactory } from 'fake-indexeddb'
 import { HostSyncStorage, hostStorageOf } from '@/sync/hostSyncStorage'
+import { recoverOrphanStages } from '../../node_modules/@abele/sync-sdk/dist/internal/core/stageRecovery.js'
 
 const bytes = new TextEncoder().encode('sample streamed replacement')
 const setup = async () => {
@@ -40,6 +41,26 @@ it('inventories a durable push cache after allocation and restart for reclamatio
   await restarted.discardStage(stage.id)
   await restarted.discardStage(stage.id)
   expect(await app.vault.adapter.exists(stage.id)).toBe(false)
+})
+it('reclaims an orphan cache at the SDK recovery boundary and retains unpublished bytes', async () => {
+  const { app, fs } = await setup()
+  const orphan = await fs().beginAtomicWrite('sample-cache.bin', 0, null, undefined, 'push-cache')
+  const unpublished = await fs().beginAtomicWrite('sample-draft.bin', 0, null)
+  await unpublished.append(0, bytes)
+  const state = new MemoryStateStore()
+  const restarted = fs()
+  await recoverOrphanStages(restarted, state)
+  expect(await app.vault.adapter.exists(orphan.id)).toBe(false)
+  expect(await app.vault.adapter.exists(unpublished.id)).toBe(true)
+  expect((await restarted.reopenStage(unpublished.id)).offset).toBe(bytes.length)
+})
+it('retains a marked cache with a durable pull-write owner', async () => {
+  const { app, fs } = await setup()
+  const stage = await fs().beginAtomicWrite('sample-cache.bin', 0, null, undefined, 'push-cache')
+  const state = new MemoryStateStore()
+  await state.setMeta('pull-write:sample', JSON.stringify({ stageId: stage.id }))
+  await recoverOrphanStages(fs(), state)
+  expect(await app.vault.adapter.exists(stage.id)).toBe(true)
 })
 it('retains unpublished bytes and inventories unjournalled artifacts as unknown', async () => {
   const { app, fs } = await setup()

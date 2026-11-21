@@ -1735,6 +1735,20 @@ function inspectionFixture(
   const scope = { kind, id: 'root', path: folder }
   let cursor = 1
   const serverPaths = new Map<string, string>()
+  // A completed upload must appear in the next manifest. The refreshed core
+  // correctly treats an absent manifest row as a server-side removal on rescan.
+  const serverItems = new Map<
+    string,
+    {
+      file_id: string
+      version_id: string
+      path: string
+      kind: 'note'
+      sha: string
+      size: number
+      mtime: number
+    }
+  >()
   const transport = vi.fn<typeof fetch>(async (input, init) => {
     const path = new URL(String(input)).pathname
     if (path === '/v2/connection')
@@ -1765,10 +1779,22 @@ function inspectionFixture(
           // Modify carries an id, not a path; the server retains that file's path.
           const path = op.path ?? op.to_path ?? serverPaths.get(fileId) ?? scope.path
           serverPaths.set(fileId, path)
+          const versionId = crypto.randomUUID()
+          if (op.sha)
+            serverItems.set(fileId, {
+              file_id: fileId,
+              version_id: versionId,
+              path,
+              kind: 'note',
+              sha: op.sha,
+              size: op.size ?? 0,
+              mtime: op.mtime ?? 0,
+            })
+          else serverItems.delete(fileId)
           return {
             status: 'applied',
             file_id: fileId,
-            version_id: crypto.randomUUID(),
+            version_id: versionId,
             seq: cursor,
             path,
             sha: op.sha ?? null,
@@ -1779,6 +1805,18 @@ function inspectionFixture(
       })
     }
     if (path.startsWith('/v2/uploads/')) return new Response(null, { status: 201 })
+    if (path === '/v2/manifest')
+      return Response.json({
+        items: [...serverItems.values()].map((item) => ({
+          ...item,
+          path:
+            folder !== '/' && scope.path !== folder && item.path.startsWith(folder + '/')
+              ? scope.path + item.path.slice(folder.length)
+              : item.path,
+        })),
+        cursor,
+        next: null,
+      })
     return Response.json({ items: [], cursor, next: null })
   })
   const ui = new TokenUi(registry, secrets, transport, {
@@ -2418,6 +2456,13 @@ it.each(['folder', 'group'] as const)(
         conditional + '/retained',
         connectionPrivateRoot(id) + '/retained-removals/summary.json',
       ])
+      // Each SDK cycle now checks its private stage directory before push work.
+      // A single folder stat is allowed; unrelated vault paths remain forbidden.
+      const stageFolder =
+        kind === 'folder'
+          ? connectionPrivateRoot(id) + '/writes'
+          : '.obsidian/plugins/abele/sync-staging'
+      expect(stat.mock.calls.filter(([path]) => path === stageFolder)).toHaveLength(3)
       for (const [calls, metadata] of [
         [list.mock.calls, true],
         [stat.mock.calls, true],
@@ -2430,6 +2475,7 @@ it.each(['folder', 'group'] as const)(
                 ? path === 'Notes' || path.startsWith('Notes/')
                 : path === 'Notes/group.md') &&
               !ownedStages.has(path) &&
+              !(metadata && path === stageFolder) &&
               !(metadata && ownedMetadata.has(path)) &&
               path !== '.abele-sync-ignore'
           )

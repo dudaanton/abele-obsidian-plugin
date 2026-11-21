@@ -622,9 +622,11 @@ export function syncPlacementPlugin() {
         )
         code = replaceOnce(
           code,
-          '        if (this.report.bootstrapped)\n            await this.recheck();\n        this.syncHeld();',
-          `        if (this.report.bootstrapped)
-            await this.recheck();
+          `        if (this.opts.protectMissing && (await this.state.getMeta?.('pull-rewind-frontier')) != null)
+            await this.state.setMeta?.('pull-rewind-frontier', null);
+        this.syncHeld();`,
+          `        if (this.opts.protectMissing && (await this.state.getMeta?.('pull-rewind-frontier')) != null)
+            await this.state.setMeta?.('pull-rewind-frontier', null);
         const restores = JSON.parse(await this.state.getMeta?.('held-restore-paths') ?? '[]');
         if (restores.length) {
           const pending = [], restoreWork = new ScanWork({ ...scanScheduling(this.state), signal: this.opts.signal });
@@ -1395,17 +1397,15 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         )
         code = replaceOnce(
           code,
-          `if (entry !== null && (await this.edited(entry, target)))
-            return false;
-        const movedBasePossible =`,
+          `if (entry !== null && (await this.edited(entry, target))) {
+            if (change.op !== 'move' ||`,
           `if (pending && !pending.stageId && this.fs[Symbol.for('abele.sync.recover-published-pull-v1')] && this.fs.reopenStage && this.client.openVersion && change.size !== null) {
           if (from !== null && beforeFrom !== null && caseKey(from) !== caseKey(target) &&
               (!pending.sourceIdentity || await this.fs.fileIdentity?.(from) !== pending.sourceIdentity)) return false;
           return this.streamPlace(change, sha, entry, target, from, firstTarget, beforeFrom, local);
         }
-        if (entry !== null && (await this.edited(entry, target)))
-            return false;
-        const movedBasePossible =`
+        if (entry !== null && (await this.edited(entry, target))) {
+            if (change.op !== 'move' ||`
         )
         code = replaceOnce(
           code,
@@ -1464,8 +1464,8 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         )
         code = replaceOnce(
           code,
-          'async localSource(sha, local) {',
-          `async localSource(sha, local) {
+          'async localSource(sha, local, size, verifyKnown = true) {',
+          `async localSource(sha, local, size, verifyKnown = true) {
           const replay = this.fs[Symbol.for('abele.sync.replay-stage-v1')];
           if (replay && !await replay.call(this.fs)) return null;
         `

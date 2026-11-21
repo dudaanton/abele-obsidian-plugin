@@ -65,10 +65,11 @@ export function scopedFileSystem(
       if (key === PRIVATE_PLACEMENT_STAGES) return stages
       if (key === PRIVATE_REMOVAL_FILES) {
         const port = Reflect.get(target, key)
-        return () => {
+        return (toLocal: (path: string) => string = (path) => path) => {
           const local = (path: string) => {
-            assertPath(path)
-            return path
+            const mapped = toLocal(path)
+            assertPath(mapped)
+            return mapped
           }
           return typeof port === 'function'
             ? port.call(target, local)
