@@ -173,7 +173,11 @@ it('starts directory discovery at the scoped root rather than filtering a vault-
 it('does not inspect foreign configuration folders while watching a scoped folder', async () => {
   const { buildFakeVault } = await import('../helpers/fakeVault')
   const { ObsidianFileSystem } = await import('@/sync/ObsidianFileSystem')
-  const app = buildFakeVault([{ path: 'Shared/sample.md', content: 'sample' }])
+  const app = buildFakeVault([
+    { path: 'Shared/sample.md', content: 'sample' },
+    { path: '.obsidian/app.json', content: '{}' },
+    { path: 'Private/secret.md', content: 'private' },
+  ])
   await app.vault.adapter.write('.abele-sync-ignore', 'Shared/first.md\n')
   const list = vi.spyOn(app.vault.adapter, 'list'),
     stat = vi.spyOn(app.vault.adapter, 'stat')
@@ -183,14 +187,29 @@ it('does not inspect foreign configuration folders while watching a scoped folde
   try {
     fs.kick()
     await new Promise((resolve) => setTimeout(resolve, 10))
-    expect(list).not.toHaveBeenCalled()
+    // Omitted-file verification must list the scoped root; it must not walk
+    // the vault root or the configuration of another connection.
+    expect(list).toHaveBeenCalledWith('Shared')
+    expect(list.mock.calls.every(([path]) => path === 'Shared' || path.startsWith('Shared/'))).toBe(
+      true
+    )
     expect(stat).toHaveBeenCalled()
-    expect(new Set(stat.mock.calls.map(([path]) => path))).toEqual(new Set(['.abele-sync-ignore']))
+    expect(
+      stat.mock.calls.every(
+        ([path]) => path === '.abele-sync-ignore' || path === 'Shared' || path.startsWith('Shared/')
+      )
+    ).toBe(true)
     await app.vault.adapter.write('.abele-sync-ignore', 'Shared/another-file.md\n')
     fs.kick()
     await vi.waitFor(() => expect(notify).toHaveBeenCalledWith(['.abele-sync-ignore']))
-    expect(list).not.toHaveBeenCalled()
-    expect(new Set(stat.mock.calls.map(([path]) => path))).toEqual(new Set(['.abele-sync-ignore']))
+    expect(list.mock.calls.every(([path]) => path === 'Shared' || path.startsWith('Shared/'))).toBe(
+      true
+    )
+    expect(
+      stat.mock.calls.every(
+        ([path]) => path === '.abele-sync-ignore' || path === 'Shared' || path.startsWith('Shared/')
+      )
+    ).toBe(true)
   } finally {
     stop()
   }
