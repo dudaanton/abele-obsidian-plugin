@@ -86,7 +86,7 @@ it('requests the maximum manifest page without changing feed pages', async () =>
     { cursor: 0 } as never
   )
   await puller.run()
-  expect(manifest).toHaveBeenCalledWith(null, 5000)
+  expect(manifest).toHaveBeenCalledWith(null, 5000, undefined, expect.any(Function))
   expect(changes).toHaveBeenCalledWith(1, 1000)
 })
 

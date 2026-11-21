@@ -31,6 +31,18 @@ export async function tokenPublicationFixture(allow = true) {
     attachments: new AttachmentConsent(metadata),
     close: () => {},
   }
+  const serverItems = new Map<
+    string,
+    {
+      file_id: string
+      version_id: string
+      path: string
+      kind: 'attachment'
+      sha: string
+      size: number
+      mtime: number
+    }
+  >()
   const wire = vi.fn<typeof fetch>(async (input) => {
     const route = new URL(String(input)).pathname
     if (route === '/v2/connection')
@@ -42,7 +54,8 @@ export async function tokenPublicationFixture(allow = true) {
         status: 'active',
         limits: { max_file_bytes: 1000000, quota_bytes: null },
       })
-    if (route === '/v2/manifest') return Response.json({ items: [], cursor: 0, next: null })
+    if (route === '/v2/manifest')
+      return Response.json({ items: [...serverItems.values()], cursor: 1, next: null })
     if (route === '/v2/changes') return Response.json({ items: [], cursor: 0, next: null })
     throw new Error('Unexpected fixture route: ' + route)
   })
@@ -71,20 +84,41 @@ export async function tokenPublicationFixture(allow = true) {
     await reviews.attachments.decide(question.id, allow, runtime)
   const publish = vi
     .spyOn(runtime.client, 'publishGroupAsset')
-    .mockImplementation(async (path, bytes, mtime) => ({
-      cursor: 1,
-      results: [
-        {
-          status: 'applied',
-          file_id: 'file-' + path,
-          version_id: 'version-' + path,
-          path,
-          sha: await (await import('@abele/sync-sdk/core')).sha256(bytes),
-          size: bytes.length,
-          mtime,
-          seq: 1,
-        },
-      ],
-    }))
-  return { runtime, make, publish, files, state, metadata, reviews, source, targets, wire, locks }
+    .mockImplementation(async (path, bytes, mtime) => {
+      const result = {
+        status: 'applied' as const,
+        file_id: 'file-' + path,
+        version_id: 'version-' + path,
+        path,
+        sha: await (await import('@abele/sync-sdk/core')).sha256(bytes),
+        size: bytes.length,
+        mtime,
+        seq: 1,
+      }
+      if (!serverItems.has(path) || serverItems.get(path)!.mtime <= mtime)
+        serverItems.set(path, {
+          file_id: result.file_id,
+          version_id: result.version_id,
+          path: result.path,
+          kind: 'attachment',
+          sha: result.sha,
+          size: result.size,
+          mtime: result.mtime,
+        })
+      return { cursor: 1, results: [result] }
+    })
+  return {
+    runtime,
+    make,
+    publish,
+    files,
+    state,
+    metadata,
+    reviews,
+    source,
+    targets,
+    wire,
+    locks,
+    serverItems,
+  }
 }

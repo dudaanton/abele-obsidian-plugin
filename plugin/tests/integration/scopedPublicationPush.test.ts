@@ -203,6 +203,15 @@ it('a late publication receipt cannot downgrade a newer received baseline', asyn
     mtime: 5000,
   }
   await one.state.put(latest)
+  one.serverItems.set('first.bin', {
+    file_id: latest.fileId,
+    version_id: latest.versionId,
+    path: latest.wirePath,
+    kind: 'attachment',
+    sha: latest.sha,
+    size: latest.size,
+    mtime: latest.mtime,
+  })
   gate.resolve()
   await request
   expect(await one.state.get('first.bin')).toEqual(latest)
