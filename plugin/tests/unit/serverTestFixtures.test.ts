@@ -46,13 +46,14 @@ describe('server-backed fast-tier fixture gate', () => {
     // The native suffix-stream benchmark is also backed by the pinned server.
     // These consumers also import the pinned server helpers. They must join
     // test:server rather than fail collection when that fixture is absent.
-    expect(skipped).toHaveLength(20)
+    expect(skipped).toHaveLength(21)
     expect(skipped).toContain('tests/integration/directoryDeletionExchange.test.ts')
     expect(skipped).toContain('tests/integration/mobileConflictExchange.test.ts')
     expect(skipped).toContain('tests/integration/nativeSyncedRestart.test.ts')
     expect(skipped).toContain('tests/integration/nativeLargePull.test.ts')
     expect(skipped).toContain('tests/integration/nativeStoppedScopedRestart.test.ts')
     expect(skipped).toContain('tests/integration/serverDeleteServer.test.ts')
+    expect(skipped).toContain('tests/integration/syncPhoneDesktopPull.test.ts')
     expect(skipped).toContain('tests/integration/interruptedMoveExchange.test.ts')
     expect(skipped).not.toContain('tests/integration/scopedPublicationPush.test.ts')
     expect(skipped).toContain('tests/integration/tokenEngineServer.test.ts')
