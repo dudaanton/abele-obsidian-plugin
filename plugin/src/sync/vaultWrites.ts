@@ -303,7 +303,7 @@ export class VaultWriter {
 
   async retirePrePublication(path: string): Promise<void> {
     for (const entry of await this.deps.journal.currentForTargets([path])) {
-      if (!entry.prePublicationStage || !entry.temp) continue
+      if (!entry.prePublicationStage || entry.retiredGeneration || !entry.temp) continue
       if (inFlight.has(entry.temp) || adapterWriteInFlight(entry.temp)) continue
       if (!(await this.deps.journal.isCurrent(entry))) continue
       if (await this.there(entry.temp)) await this.disk.remove(entry.temp)

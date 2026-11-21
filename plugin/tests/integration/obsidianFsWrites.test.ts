@@ -135,6 +135,26 @@ it.each(['ledger acknowledgement', 'successful creation', 'successful replacemen
   }
 )
 
+it('preserves a retired partial anonymous stage when a later row is acknowledged', async () => {
+  const app = buildFakeVault([])
+  const state = new MemoryStateStore()
+  app.vault.adapter.appendBinary = vi.fn(async () => {
+    throw new Error('interrupted append')
+  })
+  const fs = new ObsidianFileSystem(app as unknown as App, { ledger: state })
+  await expect(fs.writeAtomic('sample.bin', new Uint8Array(1024 * 1024 + 1), 1)).rejects.toThrow()
+  const pending = app.loadLocalStorage(JOURNAL_KEY) as Array<{ temp: string }>
+  expect(pending).toHaveLength(1)
+  await fs.retireGeneration('retired-generation', async () => {})
+
+  const restarted = new ObsidianFileSystem(app as unknown as App, { ledger: state })
+  await restarted.acknowledgeWrites([{ path: 'sample.bin', sha: 'committed' }] as never)
+  expect(app.loadLocalStorage(JOURNAL_KEY)).toEqual([
+    expect.objectContaining({ temp: pending[0].temp, retiredGeneration: 'retired-generation' }),
+  ])
+  expect(await app.vault.adapter.exists(pending[0].temp)).toBe(true)
+})
+
 it('never replays or sweeps retired write intents and retains all three physical variants', async () => {
   const target = 'sample.bin',
     temp = '.obsidian/plugins/abele/.abele-sync-abcd1234.tmp',
