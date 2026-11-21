@@ -4968,7 +4968,7 @@ export class ObsidianFileSystem implements FileSystem {
       return this.scanWatchers > 0
     }
     const indexed = new Set<string>()
-    for (const file of this.indexedFiles(scope)) {
+    for (const file of await this.indexedFiles(scope)) {
       if (!check()) return changed
       const pause = budget.metadataRow()
       if (pause !== undefined) await pause
