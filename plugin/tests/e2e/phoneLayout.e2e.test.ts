@@ -2116,7 +2116,8 @@ const probeScript = layoutFixtureScript(
       if (window.__abelePhoneLayoutCancelled === ${JSON.stringify(fixtureId)})
         throw Error('Phone layout capture was cancelled')
       await app.workspace.revealLeaf(wordLeaf)
-      await until(() => wordLeaf.view.contentEl.querySelector('iframe')?.contentDocument?.querySelector('section.docx'), 15000)
+      if (!await until(() => wordLeaf.view.contentEl.querySelector('.abele-word-page'), 15000))
+        throw Error('Word page did not render')
       await screen('word document', wordLeaf.view.contentEl)
       report['word document'].handEditing = !!wordLeaf.view.contentEl.querySelector('.abele-word-edit')
     } finally {

@@ -72,3 +72,36 @@ it('does not open a late word leaf when teardown interrupts fixture creation', a
   expect(getLeaf).not.toHaveBeenCalled()
   expect(remove).toHaveBeenCalledWith(file)
 })
+
+it('recognizes the current word page without exhausting the readiness timeout', async () => {
+  const source = readFileSync('tests/e2e/phoneLayout.e2e.test.ts', 'utf8')
+  const start = source.indexOf('      await wordLeaf.setViewState')
+  const end = source.indexOf('\n    } finally', start)
+  const script = new Function('fixtureId', 'return `' + source.slice(start, end) + '`')(
+    'sample-run'
+  )
+  const report: Record<string, unknown> = { 'word document': {} }
+  const wordLeaf = {
+    setViewState: vi.fn(),
+    view: {
+      contentEl: {
+        querySelector: (selector: string) => (selector === '.abele-word-page' ? {} : null),
+      },
+    },
+  }
+  const until = vi.fn(async (find: () => unknown) => {
+    expect(find(), 'readiness must match the rendered page immediately').toBeTruthy()
+    return true
+  })
+  await new Function(
+    'wordLeaf',
+    'wordPath',
+    'window',
+    'app',
+    'until',
+    'screen',
+    'report',
+    'return (async () => {' + script + '})()'
+  )(wordLeaf, 'sample.docx', {}, { workspace: { revealLeaf: vi.fn() } }, until, vi.fn(), report)
+  expect(until).toHaveBeenCalledOnce()
+})
