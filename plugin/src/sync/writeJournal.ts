@@ -18,6 +18,8 @@ export interface JournalEntry {
   installed?: boolean
   /** Portable rename may have consumed its source; absence can no longer authorize replay. */
   portablePublishing?: boolean
+  /** Anonymous incoming stage failed before publication; no public bytes depend on it. */
+  prePublicationStage?: boolean
   /** Unfenced old inode must survive even if target contains exact replacement bytes. */
   preserveBackup?: boolean
   /** Disposable verified-network cache, never a retained local edit or pending target. */
@@ -110,6 +112,8 @@ export class WriteJournal {
         (entry.preserveBackup === undefined || typeof entry.preserveBackup === 'boolean') &&
         (entry.disposableSource === undefined || typeof entry.disposableSource === 'boolean') &&
         (entry.portablePublishing === undefined || typeof entry.portablePublishing === 'boolean') &&
+        (entry.prePublicationStage === undefined ||
+          typeof entry.prePublicationStage === 'boolean') &&
         (entry.streaming === undefined ||
           (entry.temp !== undefined &&
             Number.isSafeInteger(entry.streaming?.mtime) &&

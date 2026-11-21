@@ -19,6 +19,9 @@ export { nativeOf, type NativeFs } from './nativeVaultFs'
  */
 const inFlight = new Set<string>()
 const inFlightWaiters = new Map<string, Set<() => void>>()
+// Only a failed anonymous stage needs a same-process success-path cleanup probe.
+// Restart recovery reads the journal independently before placement begins.
+const prePublicationPaths = new WeakMap<DataAdapter, Set<string>>()
 export class RecoveryHeld extends Error {
   constructor(readonly path: string) {
     super('scan held while a journalled replacement has a live backup')
@@ -213,13 +216,23 @@ export class VaultWriter {
             !previous &&
             !(await this.deps.journal.currentEntry(temp)) &&
             (await this.there(temp))
-          )
-            await this.deps.journal.persist(() => this.deps.journal.add(entry))
+          ) {
+            await this.deps.journal.persist(() =>
+              this.deps.journal.add({ ...entry, prePublicationStage: true })
+            )
+            let paths = prePublicationPaths.get(this.deps.filesystem)
+            if (!paths) prePublicationPaths.set(this.deps.filesystem, (paths = new Set()))
+            paths.add(path)
+          }
           throw error
         }
         this.consumed.add(temp)
         this.deps.installed?.(path)
-        if (!receipt) await this.finishAnonymous(entry)
+        if (!receipt) {
+          await this.finishAnonymous(entry)
+          if (prePublicationPaths.get(this.deps.filesystem)?.has(path))
+            await this.retirePrePublication(path)
+        }
         await verified?.(entry.replacementSha)
         return true
       }
@@ -257,7 +270,11 @@ export class VaultWriter {
       }
       if (this.deps.native) await this.deps.native.syncPath(path)
       this.deps.installed?.(path)
-      if (!receipt) await this.finishAnonymous(entry)
+      if (!receipt) {
+        await this.finishAnonymous(entry)
+        if (prePublicationPaths.get(this.deps.filesystem)?.has(path))
+          await this.retirePrePublication(path)
+      }
       await verified?.(entry.replacementSha)
       return true
     } catch (error) {
@@ -282,6 +299,17 @@ export class VaultWriter {
     }
     this.consumed.delete(entry.temp)
     await this.finishInstallation(entry)
+  }
+
+  async retirePrePublication(path: string): Promise<void> {
+    for (const entry of await this.deps.journal.currentForTargets([path])) {
+      if (!entry.prePublicationStage || !entry.temp) continue
+      if (inFlight.has(entry.temp) || adapterWriteInFlight(entry.temp)) continue
+      if (!(await this.deps.journal.isCurrent(entry))) continue
+      if (await this.there(entry.temp)) await this.disk.remove(entry.temp)
+      if (this.deps.native) await this.deps.native.syncPath?.(entry.temp, true)
+      await this.deps.journal.persist(() => this.deps.journal.drop(entry))
+    }
   }
 
   async installedReceipt(receipt: string, path: string, sha: string): Promise<boolean | undefined> {
@@ -472,6 +500,10 @@ export class VaultWriter {
       )
         throw new EngineError('io', 'Legacy recovery locator is not an owned private artifact')
       if (entry.conditionalReceipt) continue // Owned by SDK receipt recovery, not legacy replay.
+      if (entry.prePublicationStage) {
+        await this.retirePrePublication(entry.target)
+        continue
+      }
       if (
         this.deps.retainInstalled &&
         !entry.backup &&

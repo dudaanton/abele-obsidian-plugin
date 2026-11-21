@@ -69,6 +69,72 @@ it('retains ownership when a failed write cannot remove its private temp', async
   expect(app.loadLocalStorage(JOURNAL_KEY)).toBeNull()
 })
 
+it('retires a partial anonymous stage before ledger-backed placement after restart', async () => {
+  const app = buildFakeVault([])
+  const state = new MemoryStateStore()
+  app.vault.adapter.appendBinary = vi.fn(async () => {
+    throw new Error('interrupted append')
+  })
+  const first = new ObsidianFileSystem(app as unknown as App, { ledger: state })
+  await expect(
+    first.writeAtomic('sample.bin', new Uint8Array(1024 * 1024 + 1), 1)
+  ).rejects.toThrow()
+  const pending = app.loadLocalStorage(JOURNAL_KEY) as Array<{
+    temp: string
+    prePublicationStage?: boolean
+  }>
+  expect(pending).toHaveLength(1)
+  expect(pending[0].prePublicationStage).toBe(true)
+  expect(await app.vault.adapter.exists(pending[0].temp)).toBe(true)
+
+  const restarted = new ObsidianFileSystem(app as unknown as App, { ledger: state })
+  await restarted.recover()
+  const placed: FileInfo[] = []
+  for await (const file of restarted.placementFiles(['sample.bin'])) placed.push(file)
+  expect(placed).toEqual([])
+  expect(await app.vault.adapter.exists(pending[0].temp)).toBe(false)
+  expect(app.loadLocalStorage(JOURNAL_KEY)).toBeNull()
+})
+
+it.each(['ledger acknowledgement', 'successful creation', 'successful replacement'])(
+  'retires a partial anonymous stage after %s',
+  async (settlement) => {
+    const app = buildFakeVault([])
+    const state = new MemoryStateStore()
+    const append = app.vault.adapter.appendBinary
+    app.vault.adapter.appendBinary = vi.fn(async () => {
+      throw new Error('interrupted append')
+    })
+    const first = new ObsidianFileSystem(app as unknown as App, { ledger: state })
+    await expect(
+      first.writeAtomic('sample.bin', new Uint8Array(1024 * 1024 + 1), 1)
+    ).rejects.toThrow()
+    app.vault.adapter.appendBinary = append
+    const pending = app.loadLocalStorage(JOURNAL_KEY) as Array<{ temp: string }>
+    if (settlement === 'successful replacement')
+      await app.vault.adapter.writeBinary('sample.bin', text('local').buffer, { mtime: 1 })
+    const restarted = new ObsidianFileSystem(app as unknown as App, { ledger: state })
+    if (settlement === 'ledger acknowledgement')
+      await restarted.acknowledgeWrites([{ path: 'sample.bin', sha: 'committed' }] as never)
+    else {
+      await restarted.writeAtomic('sample.bin', text('complete'), 2)
+      const sha = await import('@abele/sync-sdk/core').then((core) => core.sha256(text('complete')))
+      await restarted.acknowledgeWrites([{ path: 'sample.bin', sha }] as never)
+    }
+    expect(await app.vault.adapter.exists(pending[0].temp)).toBe(false)
+    expect(
+      (app.loadLocalStorage(JOURNAL_KEY) as Array<{ temp: string }> | null)?.some(
+        (entry) => entry.temp === pending[0].temp
+      )
+    ).not.toBe(true)
+    const placed: FileInfo[] = []
+    for await (const file of restarted.placementFiles(['sample.bin'])) placed.push(file)
+    expect(placed.map((file) => file.path)).toEqual(
+      settlement === 'ledger acknowledgement' ? [] : ['sample.bin']
+    )
+  }
+)
+
 it('never replays or sweeps retired write intents and retains all three physical variants', async () => {
   const target = 'sample.bin',
     temp = '.obsidian/plugins/abele/.abele-sync-abcd1234.tmp',

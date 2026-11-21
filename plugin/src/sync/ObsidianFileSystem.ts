@@ -2872,6 +2872,10 @@ export class ObsidianFileSystem implements FileSystem {
     const byPath = new Map(entries.map((entry) => [entry.path, entry.sha]))
     const installed: JournalEntry[] = []
     for (const entry of await this.journal.currentForTargets([...byPath.keys()])) {
+      if (entry.prePublicationStage) {
+        await this.writer.retirePrePublication(entry.target)
+        continue
+      }
       if (
         entry.backup ||
         // SDK receipts retire through discardInstallation, after their own
