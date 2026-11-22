@@ -438,7 +438,8 @@ export class BoundedVaultIo {
     path: string,
     bytes: Uint8Array,
     write: () => Promise<void>,
-    steps: readonly string[]
+    steps: readonly string[],
+    prepared?: { mtime: number }
   ): Promise<void> {
     const hash = sha256.create()
     for (let at = 0; at < bytes.length; at += MAX_CHUNK_BYTES) {
@@ -452,18 +453,18 @@ export class BoundedVaultIo {
     this.receipts.delete(path)
     try {
       await write()
-      const stat = await this.disk.stat(path)
+      const stat = prepared ? null : await this.disk.stat(path)
+      // A private buffered stage already has its parents prepared. Its first caller
+      // stat must bind the receipt to real metadata before it can identify any bytes.
+      const stamp: SourceStamp | undefined = prepared
+        ? { size: bytes.length, mtime: prepared.mtime, generation: '' }
+        : stat?.type === 'file'
+          ? stampOf(stat)
+          : undefined
       const proof = mutation.proof()
-      if (
-        !stat ||
-        stat.type !== 'file' ||
-        stat.size !== bytes.length ||
-        !proof ||
-        !mutation.owned()
-      )
-        return
+      if (!stamp || stamp.size !== bytes.length || !proof || !mutation.owned()) return
       const written = mutation.written()
-      if (mutation.compound() && written?.size !== stat.size) return
+      if (mutation.compound() && written?.size !== stamp.size) return
       const compound =
         steps.some((step) => step === 'appendBinary') && written?.size === bytes.length
       const actual = compound ? written.hash : hash
@@ -472,16 +473,15 @@ export class BoundedVaultIo {
         .clone()
         .digest()
         .every((byte, index) => byte === digest[index])
-      this.receipts.set(
-        path,
-        this.installationReceipt(
-          actual,
-          stampOf(stat),
-          proof,
-          installed,
-          installed ? witnesses : undefined
-        )
+      const receipt = this.installationReceipt(
+        actual,
+        stamp,
+        proof,
+        installed,
+        installed ? witnesses : undefined
       )
+      if (prepared) receipt.pendingStat = true
+      this.receipts.set(path, receipt)
     } finally {
       mutation.stop()
     }

@@ -1076,6 +1076,11 @@ ${ordinary}\n    }\n    async retryFailure`
         )
         code = replaceOnce(
           code,
+          'if (!selected.has(path) && !changed)',
+          'if (!changed && (!selected.has(path) || (!proofRequired && await pairedBaseline(fs, state, entry))))'
+        )
+        code = replaceOnce(
+          code,
           'const fingerprint = cached !== null',
           'const beforeIdentity = await fs.fileIdentity?.(info.path);\n                const fingerprint = cached !== null'
         )
@@ -1539,6 +1544,8 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         }
         async destinationMatches(path, sha, size, base) {
           try {
+            const there = await this.fs.stat(path);
+            if (!there || there.size !== size) return false;
             const known = base ?? await this.state.get(path);
             if (known && (known.sha !== sha || known.size !== size) &&
                 await this.fs.verifiedInstallation?.(path, known)) return false;

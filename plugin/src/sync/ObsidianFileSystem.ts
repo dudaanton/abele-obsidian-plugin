@@ -91,6 +91,7 @@ import {
   releaseSourceStage,
   RecoveryHeld,
   waitForAdapterWrite,
+  bytesOf,
   type NativeFs,
 } from './vaultWrites'
 
@@ -1680,9 +1681,28 @@ export class ObsidianFileSystem implements FileSystem {
                 typeof this.guardedAdapter.appendBinary === 'function'
                   ? MAX_CHUNK_BYTES
                   : bytes.length
-              await this.io.create(temp, mtime, 'acknowledged', bytes.slice(0, first), true)
+              // This payload is already owned in full. Observe the acknowledged batch
+              // without replaying its prefixes or checking metadata between chunks.
+              const steps = ['writeBinary']
               for (let at = first; at < bytes.length; at += MAX_CHUNK_BYTES)
-                await this.io.append(temp, at, bytes.slice(at, at + MAX_CHUNK_BYTES), mtime)
+                steps.push('appendBinary')
+              await this.io.writeWithReceipt(
+                temp,
+                bytes,
+                async () => {
+                  await this.guardedAdapter.writeBinary(temp, bytesOf(bytes.subarray(0, first)), {
+                    mtime,
+                  })
+                  for (let at = first; at < bytes.length; at += MAX_CHUNK_BYTES)
+                    await this.guardedAdapter.appendBinary(
+                      temp,
+                      bytesOf(bytes.subarray(at, at + MAX_CHUNK_BYTES)),
+                      { mtime }
+                    )
+                },
+                steps,
+                { mtime }
+              )
               await checked.wait(path)
               const release = await checked.acquire([path])
               try {
@@ -3798,7 +3818,8 @@ export class ObsidianFileSystem implements FileSystem {
     if (!host || !this.fileIdentity) return false
     const key = this.pathKey(path)
     const revision = host.scanFingerprintRevision(key)
-    const receipt = host.scanInstallation(key)
+    const live = host.scanInstallation(key)
+    const receipt = live ?? (await host.readScanFingerprint(key))
     if (
       !receipt?.installation ||
       !receipt.contentRevision ||
@@ -3821,7 +3842,7 @@ export class ObsidianFileSystem implements FileSystem {
       current.ctime === receipt.ctime &&
       (await this.fileIdentity(path)) === identity &&
       (await this.native.fileContentRevision(path)) === receipt.contentRevision &&
-      host.scanInstallation(key) === receipt &&
+      host.scanInstallation(key) === live &&
       host.scanFingerprintRevision(key) === revision
     )
   }
