@@ -51,7 +51,7 @@ it('captures four multi-scope screens on the phone without confirming destructiv
       'open Share picker',
       `
       const root=await openSyncTab();icon(connectionRow(root,${JSON.stringify(ownerId)}),'share-2');await poll(()=>modal('Share access'));
-      const box=modal('Share access');let input;await poll(()=>input=box.querySelector('.abele-share-picker input'));
+      const box=modal('Share access');box.querySelector('[data-scope-kind="group"]').click();await poll(()=>box.querySelector('[data-scope-kind="group"]').getAttribute('aria-pressed')==='true');let input;await poll(()=>input=box.querySelector('.abele-share-picker input'));
       if(!window.__e2eHost)throw new Error('Native phone host unavailable');
       await (${focusPhoneInput.toString()})(input,(x,y)=>window.__e2eHost.tap(x,y),sleep);
       await poll(()=>modal('Share access')===box&&box.isConnected&&box.ownerDocument.activeElement===input,undefined,'Share sheet and focused input after native tap');return true

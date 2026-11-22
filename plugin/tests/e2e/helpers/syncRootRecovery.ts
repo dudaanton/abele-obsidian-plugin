@@ -57,7 +57,7 @@ function capture(s: TokenSyncLive, state: string) {
 function stoppedRow(s: TokenSyncLive, id: string, reason: string) {
   return s.primary.long<{ line: string; disabled: boolean; state: string; lastSyncAt: number }>(
     'inspect stopped folder row',
-    `await poll(()=>svc.rows.value.find(row=>row.id===${JSON.stringify(id)})?.rootIssue,10000,'persisted stopped folder issue');const root=await openSyncTab();const row=connectionRow(root,${JSON.stringify(id)});row.scrollIntoView({block:'center'});await poll(()=>textOf(row).includes(${JSON.stringify(reason)}),10000,'visible stopped folder row');const button=row.querySelector('svg.lucide-refresh-cw').closest('.abele-obsidian-icon');const status=host.live.get(${JSON.stringify(id)}).engine.status;return {line:textOf(row),disabled:button.classList.contains('abele-obsidian-icon_disabled'),state:status.state,lastSyncAt:status.lastSyncAt}`
+    `await poll(()=>svc.rows.value.find(row=>row.id===${JSON.stringify(id)})?.rootIssue,10000,'persisted stopped folder issue');const root=await openSyncTab();const row=connectionRow(root,${JSON.stringify(id)});row.scrollIntoView({block:'center'});await poll(()=>textOf(row).includes(${JSON.stringify(reason)}),10000,'visible stopped folder row');const button=row.querySelector('svg.lucide-refresh-cw').closest('.abele-obsidian-icon');const statuses=connectionRuntimes(host,${JSON.stringify(id)}).map(one=>one?.engine.status);if(!statuses.length||statuses.some(one=>!one))throw new Error('Active member engine missing');const status=statuses[0];return {line:textOf(row),disabled:button.classList.contains('abele-obsidian-icon_disabled'),state:status.state,lastSyncAt:status.lastSyncAt}`
   )
 }
 
@@ -70,7 +70,7 @@ function openAction(s: TokenSyncLive, id: string, title: string) {
 async function chooseAction(s: TokenSyncLive, id: string, title: string) {
   await s.primary.long(
     'recover folder connection',
-    `const item=[...new Set([document,settingsDoc()])].flatMap(doc=>[...doc.querySelectorAll('.menu-item')]).find(item=>textOf(item)===${JSON.stringify(title)});if(!item)throw new Error('Recovery action missing');item.click();await poll(()=>{const row=svc.rows.value.find(row=>row.id===${JSON.stringify(id)});return row&&!row.rootIssue&&!row.paused&&row.status==='idle'&&host.live.get(row.id).engine.status.state==='idle'});await closeSettings();return true`
+    `const item=[...new Set([document,settingsDoc()])].flatMap(doc=>[...doc.querySelectorAll('.menu-item')]).find(item=>textOf(item)===${JSON.stringify(title)});if(!item)throw new Error('Recovery action missing');item.click();await poll(()=>{const row=svc.rows.value.find(row=>row.id===${JSON.stringify(id)});return row&&!row.rootIssue&&!row.paused&&row.status==='idle'&&connectionRuntimes(host,row.id).length>0&&connectionRuntimes(host,row.id).every(one=>one?.engine.status.state==='idle')});await closeSettings();return true`
   )
   await s.primary.syncNow(id)
 }
