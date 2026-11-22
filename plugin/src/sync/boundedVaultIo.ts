@@ -399,8 +399,8 @@ export class BoundedVaultIo {
   openUploadRead(path: string, expected?: SourceStamp, signal?: AbortSignal): Promise<ChunkSource> {
     return this.openSource(path, expected, true, signal)
   }
-  openRead(path: string, expected?: SourceStamp): Promise<ChunkSource> {
-    return this.openSource(path, expected, false)
+  openRead(path: string, expected?: SourceStamp, maxBytes?: number): Promise<ChunkSource> {
+    return this.openSource(path, expected, false, undefined, false, maxBytes)
   }
   /** Legacy consumers still need complete bytes, but native results stay chunked. */
   async readAll(path: string): Promise<Uint8Array> {
@@ -421,9 +421,13 @@ export class BoundedVaultIo {
     expected: SourceStamp | undefined,
     wholeFileUpload: boolean,
     signal?: AbortSignal,
-    requireChunks = false
+    requireChunks = false,
+    maxBytes?: number
   ): Promise<ChunkSource> {
     const original = stampOf(await this.stat(path))
+    // Enforce sweep admission before a mobile source can eagerly load bytes.
+    if (maxBytes !== undefined && original.size > maxBytes)
+      throw new EngineError('conflict', `${path} exceeds its admitted read size`)
     if (expected && original.generation !== expected.generation)
       throw new EngineError('conflict', `${path} changed before opening`)
     const raw = this.raw

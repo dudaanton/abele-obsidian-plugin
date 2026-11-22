@@ -3,6 +3,35 @@ import { MemoryStateStore, scan, sha256 } from '@abele/sync-sdk/core'
 import { reconciliationScan } from '../../node_modules/@abele/sync-sdk/dist/internal/core/reconciliation.js'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
+import { sweepFingerprintFile } from '../../node_modules/@abele/sync-sdk/dist/internal/core/fs.js'
+import { BoundedVaultIo } from '@/sync/boundedVaultIo'
+
+it.each(['io', 'filesystem'])(
+  'rejects grown mobile sweep files before eager whole-file reads (%s)',
+  async (port) => {
+    const admittedSize = 1024 * 1024
+    const app = buildFakeVault([{ path: 'sample.bin', content: 'sample' }])
+    // The listing admitted 1 MiB; the mobile adapter now sees a 4 MiB replacement.
+    vi.spyOn(app.vault.adapter, 'stat').mockResolvedValue({
+      type: 'file',
+      size: 4 * admittedSize,
+      mtime: 1,
+      ctime: 1,
+    })
+    const read = vi
+      .spyOn(app.vault.adapter, 'readBinary')
+      .mockImplementation(async () => new ArrayBuffer(4 * admittedSize))
+    const io = new BoundedVaultIo(app.vault.adapter as never)
+    const fs =
+      port === 'io' ? { openRead: io.openRead.bind(io) } : new ObsidianFileSystem(app as never)
+    for (let n = 0; n < 16; n++) {
+      await expect(
+        sweepFingerprintFile(fs as never, 'sample.bin', admittedSize, sha256)
+      ).rejects.toThrow()
+    }
+    expect(read).not.toHaveBeenCalled()
+  }
+)
 
 async function fixture(count: number) {
   const paths = Array.from(

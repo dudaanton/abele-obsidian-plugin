@@ -136,7 +136,13 @@ export function syncPlacementPlugin() {
       }
       const replaceOnce = (code, before, after) => replaceBoundary(code, before, after, id)
       let code = input
-      if (file.endsWith('/engine.js')) {
+      if (file.endsWith('/fs.js')) {
+        code = replaceOnce(
+          code,
+          'const source = await fs.openRead(path);\n        if (source.size !== admittedSize)',
+          'const source = await fs.openRead(path, undefined, admittedSize);\n        if (source.size !== admittedSize)'
+        )
+      } else if (file.endsWith('/engine.js')) {
         code = replaceOnce(
           code,
           '            const report = await this.cycle.cycle();',

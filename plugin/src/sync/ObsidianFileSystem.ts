@@ -3745,8 +3745,8 @@ export class ObsidianFileSystem implements FileSystem {
   [UPLOAD_READ](path: string, expected?: SourceStamp) {
     return this.io.openUploadRead(path, expected)
   }
-  async openRead(path: string, expected?: SourceStamp) {
-    return this.io.openRead(path, expected)
+  async openRead(path: string, expected?: SourceStamp, maxBytes?: number) {
+    return this.io.openRead(path, expected, maxBytes)
   }
   [Symbol.for('abele.sync.diagnostic-v1')](operation: string, startedAt: number, outcome: string) {
     this.diagnostic?.(operation, startedAt, outcome)
