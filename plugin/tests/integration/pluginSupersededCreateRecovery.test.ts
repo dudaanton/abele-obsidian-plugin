@@ -61,6 +61,31 @@ const client = {
   versions: async (): Promise<never[]> => [],
 } as unknown as EngineClient
 
+it('requires fresh bytes for a present journal payload despite a cached fingerprint', async () => {
+  const { app, state, journal } = await fixture()
+  const fs = new ObsidianFileSystem(app as never)
+  await app.vault.adapter.writeBinary(
+    'unsent.bin',
+    new TextEncoder().encode('unsent sample').buffer
+  )
+  const stale = await fs.fingerprint('unsent.bin')
+  await app.vault.adapter.writeBinary(
+    'unsent.bin',
+    new TextEncoder().encode('other sample!').buffer
+  )
+  const fingerprint = fs.fingerprint.bind(fs)
+  vi.spyOn(fs, 'fingerprint').mockImplementation((path, ...args) =>
+    path === 'unsent.bin' ? Promise.resolve(stale) : fingerprint(path, ...args)
+  )
+  await expect(fenceRestoredJournal(state, 11, fs, undefined, client)).rejects.toThrow(
+    'unsent bytes'
+  )
+  expect(await state.getJournal()).toEqual(journal)
+  expect(new TextDecoder().decode(await app.vault.adapter.readBinary('unsent.bin'))).toBe(
+    'other sample!'
+  )
+})
+
 it.each([13, MAX_CHUNK_BYTES + 13])(
   'reads fresh recovery bytes across a same-stat rewrite despite a cached fingerprint (%s bytes)',
   async (size) => {

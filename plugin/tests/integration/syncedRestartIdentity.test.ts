@@ -157,6 +157,8 @@ it.each([false, 'stat', 'object'] as const)(
   async (changed) => {
     const app = buildFakeVault([{ path: 'sample.bin', content: 'baseline bytes', mtime: 1000 }])
     withDesktopFs(app)
+    Object.assign(app.workspace, { layoutReady: true })
+    Object.assign(app.metadataCache, { initialized: true, isCacheClean: () => true })
     const state = new MemoryStateStore()
     const filter = { excluded: () => false }
     const original = new ObsidianFileSystem(app as never)
@@ -169,16 +171,21 @@ it.each([false, 'stat', 'object'] as const)(
       sha: await sha256(new TextEncoder().encode('baseline bytes')),
       size: 14,
       mtime: 1000,
+      ctime: (await original.stat('sample.bin'))!.ctime,
     })
     if (changed === 'object') await app.vault.adapter.remove('sample.bin')
     if (changed)
       await app.vault.adapter.write('sample.bin', 'modified bytes', {
         mtime: changed === 'object' ? 1000 : 2000,
       })
-    const restarted = new ObsidianFileSystem(app as never)
+    const restarted = new ObsidianFileSystem(app as never, {
+      prepareStartupInventory: async () => {},
+    })
     const fingerprint = vi.spyOn(restarted, 'fingerprint')
+    const openRead = vi.spyOn(restarted, 'openRead')
     const result = await reconciliationScan(restarted, state, filter, 0)
-    expect(fingerprint).toHaveBeenCalledTimes(changed ? 1 : 0)
+    expect(fingerprint).not.toHaveBeenCalled()
+    expect(openRead).toHaveBeenCalledTimes(changed ? 1 : 0)
     expect(result.found.dirty.has('sample.bin')).toBe(!!changed)
     if (changed) expect(result.found.ops).toContainEqual(expect.objectContaining({ op: 'modify' }))
   }

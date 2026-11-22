@@ -1,6 +1,6 @@
 --- a/dist/internal/core/cycle.js
 +++ b/dist/internal/core/cycle.js
-@@ -348,21 +348,16 @@
+@@ -354,21 +354,16 @@
          // Read through the guarded state, and every step it leads to is a guarded write: a daemon
          // whose lock lapsed takes nothing of it (see `stillHeld`).
          const filed = await this.holds.decision();
@@ -25,7 +25,7 @@
          // A batch the last run never finished recording goes first: a scan taken over it would
          // describe a disk the state does not know about yet.
          const replayed = await resumeJournal(client, fs, state, { ...common, onCommitted: tally });
-@@ -443,6 +438,17 @@
+@@ -449,6 +444,17 @@
              verifyPaths,
              pairMoves: !reconciliation || reconciliation.phase === 'complete',
          }));
@@ -43,7 +43,7 @@
          for (const path of seen) {
              const checkpoint = work.step();
              if (checkpoint)
-@@ -451,7 +457,9 @@
+@@ -457,7 +463,9 @@
          }
          this.unscanned = false;
          this.unsettled = await work.set(found.dirty);
@@ -54,7 +54,7 @@
          this.ctx.set({ pending: judged.length });
          await this.noteCollisions(found.collisions, work);
          let before = first;
-@@ -478,7 +486,7 @@
+@@ -484,7 +492,7 @@
          // Drain acknowledged bookkeeping even if pause arrived during the issued commit.
          work = new ScanWork({ yieldTask: this.ctx.opts.yieldTask });
          // The confirmed deletes have gone out with the rest; the decision is done with.
@@ -63,6 +63,17 @@
              await this.holds.settle(filed.raw);
          const pushed = await foldPush(replayed, sent, work);
          await this.staging.afterPush(judged);
+--- a/dist/internal/core/deleteGate.d.ts
++++ b/dist/internal/core/deleteGate.d.ts
+@@ -29,7 +29,7 @@
+      * The scan's ops as the delete guard lets them go: everything, or everything but the deletes
+      * it holds, which are filed for a host to list and said once in the log each time they change.
+      */
+-    judge(ops: CommitOp[], confirmed: ReadonlySet<string>): Promise<CommitOp[]>;
++    judge(ops: CommitOp[], confirmed: ReadonlySet<string>, complete?: boolean): Promise<CommitOp[]>;
+     /**
+      * Held deletes the server's own delete settled (`PullReport.settled`): out of the hold with no
+      * decision, since there is nothing left to decide about them.
 --- a/dist/internal/core/deleteGate.js
 +++ b/dist/internal/core/deleteGate.js
 @@ -9,7 +9,14 @@
@@ -81,6 +92,32 @@
          const entries = [];
          const work = new ScanWork(scanScheduling(this.ctx.state));
          for await (const entry of this.ctx.state.all()) {
+--- a/dist/internal/core/fs.d.ts
++++ b/dist/internal/core/fs.d.ts
+@@ -51,6 +51,11 @@
+      * made while the host was stopped. Matching saved verified identities may skip the
+      * rolling content sweep; host events still invalidate ordinary scan observations. */
+     readonly trustedIndexIdentities?: true;
++    /** Called only when observations and durable hints cannot supply the hash.
++     * Defer only new, untracked content discovery. Names remain present, tracked and
++     * explicit watcher paths bypass this hook, and missing-file deletions/move pairing
++     * wait while new candidates are unexamined. The host schedules a later scan. */
++    deferNewLocalFile?(info: FileInfo): Promise<boolean>;
+     [pathAdmission]?(path: string): PathAdmission;
+     /** conditionalFile enforces operation.authorize at its mutation boundary. */
+     readonly conditionalOwnership?: true;
+--- a/dist/internal/core/scanner.d.ts
++++ b/dist/internal/core/scanner.d.ts
+@@ -38,6 +38,9 @@
+     with: string;
+ }
+ export interface ScanResult {
++    /** False when candidates were deferred or unread. Such a pass cannot settle
++     * deletion holds; absence of delete operations is not evidence of restoration. */
++    complete?: boolean;
+     /** Deletes and moves, then modifies, then creates. See `scan` for why that order. */
+     ops: CommitOp[];
+     /**
 --- a/dist/internal/core/scanner.js
 +++ b/dist/internal/core/scanner.js
 @@ -7,7 +7,7 @@
@@ -92,7 +129,7 @@
  import { isFileFailure } from './fileRetry.js';
  import { sourceRecreation } from './sourceRecreation.js';
  import { heldDirectoryPaths } from './v2Directories.js';
-@@ -418,6 +418,32 @@
+@@ -426,6 +426,32 @@
      const modifies = [];
      let fresh = [];
      let unreadCandidate = false;
@@ -125,7 +162,7 @@
      for (const [wirePath, info] of files) {
          const checkpoint = work.step();
          if (checkpoint)
-@@ -470,7 +496,7 @@
+@@ -478,7 +504,7 @@
                  opts.revalidate !== 'all' &&
                  !opts.verifyPaths?.has(wirePath) &&
                  !(typeof opts.revalidate === 'number' && revalidate.has(wirePath))
@@ -134,7 +171,7 @@
                  : null;
              if (known !== undefined) {
                  sha = known;
-@@ -481,6 +507,14 @@
+@@ -489,6 +515,14 @@
                  contentVerified = true;
              }
              else {
@@ -146,10 +183,10 @@
 +                    unreadCandidate = true;
 +                    continue;
 +                }
-                 const fingerprint = await fingerprintFile(fs, info.path, hash, opts.signal);
+                 const fingerprint = await (opts.revalidate === 'all' ? freshFingerprintFile : fingerprintFile)(fs, info.path, hash, opts.signal);
                  if (fingerprint.size !== info.size)
                      throw new Error('file changed during scan');
-@@ -570,7 +604,8 @@
+@@ -578,7 +612,8 @@
      await work.sort(fresh, byPath);
      await work.sort(missing, (a, b) => byPath(a.wirePath, b.wirePath));
      const classifiedTargets = await work.set(classified.values());
@@ -159,7 +196,7 @@
          ? new Map()
          : await pairRenames(await work.collect(missing, (entry) => !classified.has(entry.wirePath)), await work.collect(fresh, (path) => !classified.has(path) && !classifiedTargets.has(path)), hashes, async (lost, found) => {
              const path = diskPaths.get(found);
-@@ -601,7 +636,7 @@
+@@ -609,7 +644,7 @@
          moves.set(from, to);
      }
      const ops = [];
@@ -168,7 +205,7 @@
      for (const [path, record] of recreated) {
          const checkpoint = work.step();
          if (checkpoint)
-@@ -663,7 +698,7 @@
+@@ -671,7 +706,7 @@
          dirty.add(path);
      }
      const movedTo = await work.set(moves.values());
@@ -177,7 +214,7 @@
          const checkpoint = work.step();
          if (checkpoint)
              await checkpoint;
-@@ -677,5 +712,6 @@
+@@ -685,5 +720,6 @@
          dirty.add(wirePath);
      }
      await work.sort(collisions, (a, b) => byPath(a.wirePath, b.wirePath));
@@ -185,40 +222,3 @@
 +    return { ops, hashes, diskPaths, infos, verified, dirty, skipped, collisions,
 +        complete: !unreadCandidate && skipped.length === 0 };
  }
---- a/dist/internal/core/deleteGate.d.ts
-+++ b/dist/internal/core/deleteGate.d.ts
-@@ -29,7 +29,7 @@
-      * The scan's ops as the delete guard lets them go: everything, or everything but the deletes
-      * it holds, which are filed for a host to list and said once in the log each time they change.
-      */
--    judge(ops: CommitOp[], confirmed: ReadonlySet<string>): Promise<CommitOp[]>;
-+    judge(ops: CommitOp[], confirmed: ReadonlySet<string>, complete?: boolean): Promise<CommitOp[]>;
-     /**
-      * Held deletes the server's own delete settled (`PullReport.settled`): out of the hold with no
-      * decision, since there is nothing left to decide about them.
---- a/dist/internal/core/fs.d.ts
-+++ b/dist/internal/core/fs.d.ts
-@@ -51,6 +51,11 @@
-      * made while the host was stopped. Matching saved verified identities may skip the
-      * rolling content sweep; host events still invalidate ordinary scan observations. */
-     readonly trustedIndexIdentities?: true;
-+    /** Called only when observations and durable hints cannot supply the hash.
-+     * Defer only new, untracked content discovery. Names remain present, tracked and
-+     * explicit watcher paths bypass this hook, and missing-file deletions/move pairing
-+     * wait while new candidates are unexamined. The host schedules a later scan. */
-+    deferNewLocalFile?(info: FileInfo): Promise<boolean>;
-     [pathAdmission]?(path: string): PathAdmission;
-     /** conditionalFile enforces operation.authorize at its mutation boundary. */
-     readonly conditionalOwnership?: true;
---- a/dist/internal/core/scanner.d.ts
-+++ b/dist/internal/core/scanner.d.ts
-@@ -38,6 +38,9 @@
-     with: string;
- }
- export interface ScanResult {
-+    /** False when candidates were deferred or unread. Such a pass cannot settle
-+     * deletion holds; absence of delete operations is not evidence of restoration. */
-+    complete?: boolean;
-     /** Deletes and moves, then modifies, then creates. See `scan` for why that order. */
-     ops: CommitOp[];
-     /**

@@ -28,7 +28,7 @@ it('maps cached hash requests and rejects paths outside the connection scope', a
 const content = '\uFEFF# Sample\r\nRaw café bytes\r\n'
 const sha = createHash('sha256').update(Buffer.from(content)).digest('hex')
 
-it('reuses the current host hash when the recorded note stat no longer matches', async () => {
+it('reads current bytes when the recorded note stat no longer matches', async () => {
   const app = buildFakeVault([{ path: 'sample.md', content, mtime: 1000 }])
   Object.assign(app.metadataCache, {
     getFileInfo: () => ({ hash: sha, size: Buffer.byteLength(content), mtime: 1000 }),
@@ -45,10 +45,12 @@ it('reuses the current host hash when the recorded note stat no longer matches',
   })
   const fs = new ObsidianFileSystem(app as never)
   const fingerprint = vi.spyOn(fs, 'fingerprint')
+  const openRead = vi.spyOn(fs, 'openRead')
   const result = await reconciliationScan(fs, state, { excluded: () => false }, 0)
   expect(result.found.hashes.get('sample.md')).toBe(sha)
   expect(result.found.ops).toContainEqual(expect.objectContaining({ op: 'modify', sha }))
   expect(fingerprint).not.toHaveBeenCalled()
+  expect(openRead).toHaveBeenCalledOnce()
 })
 
 it.each(['valid', 'missing', 'uppercase', 'stale', 'rebuilding', 'binary', 'explicit'])(
@@ -68,6 +70,7 @@ it.each(['valid', 'missing', 'uppercase', 'stale', 'rebuilding', 'binary', 'expl
     })
     const fs = new ObsidianFileSystem(app as never)
     const fingerprint = vi.spyOn(fs, 'fingerprint')
+    const openRead = vi.spyOn(fs, 'openRead')
     const result = await scan(
       fs,
       new MemoryStateStore(),
@@ -75,6 +78,9 @@ it.each(['valid', 'missing', 'uppercase', 'stale', 'rebuilding', 'binary', 'expl
       mode === 'explicit' ? { revalidate: 'all' } : {}
     )
     expect(result.hashes.get(path)).toBe(sha)
-    expect(fingerprint).toHaveBeenCalledTimes(['valid', 'binary'].includes(mode) ? 0 : 1)
+    expect(fingerprint).toHaveBeenCalledTimes(
+      ['valid', 'binary', 'explicit'].includes(mode) ? 0 : 1
+    )
+    expect(openRead).toHaveBeenCalledTimes(mode === 'explicit' ? 1 : 0)
   }
 )
