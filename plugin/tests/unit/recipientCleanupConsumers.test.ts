@@ -2,6 +2,7 @@ import { describe, expect, it, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import { recipientLayoutProbe } from '../helpers/keyDestinationLayoutProbe'
+import { phoneLayoutDialogs } from '../e2e/helpers/phoneLayoutPhase'
 
 const focusedFile = readFileSync('tests/e2e/keyDestinationLayout.e2e.test.ts', 'utf8')
 const focusedPart = focusedFile.slice(
@@ -19,10 +20,21 @@ new Function(
 )(exportsOf, recipientLayoutProbe, '/unused')
 const focusedScript = exportsOf.recipientLayoutScript
 const broadFile = readFileSync('tests/e2e/phoneLayout.e2e.test.ts', 'utf8')
-const broadLoop = broadFile.slice(
-  broadFile.indexOf('    report.__dialogs ='),
-  broadFile.indexOf("    // The timeline's", broadFile.indexOf('    report.__dialogs ='))
-)
+// Expand the native template before evaluating its dialog loop, as the live probe does.
+const broadLoopStart = broadFile.indexOf('    report.__dialogs =')
+const broadLoop = new Function(
+  'phoneLayoutDialogs',
+  'fixtureId',
+  'return `' +
+    broadFile.slice(broadLoopStart, broadFile.indexOf('    if (!syncOnly) {', broadLoopStart)) +
+    '`'
+)(phoneLayoutDialogs, 'sample-recipient') as string
+const broadPrelude = `
+  const syncOnly = false;
+  const probeStarted = performance.now();
+  const trace = { states: [] };
+  const settle = async () => {};
+`
 const helper = () =>
   new Function(
     recipientLayoutProbe + '; return { recipientFixture, cleanupRecipientConsumer };'
@@ -328,7 +340,7 @@ describe('actual recipient cleanup consumers', () => {
         'wait',
         'ringClipped',
         'report',
-        'return (async () => {' + broadLoop + '; return report; })()'
+        'return (async () => {' + broadPrelude + broadLoop + '; return report; })()'
       )
       const report = (await run(
         helper().recipientFixture,
@@ -402,7 +414,7 @@ describe('actual recipient cleanup consumers', () => {
       'wait',
       'ringClipped',
       'report',
-      'return (async () => {' + broadLoop + '; return report; })()'
+      'return (async () => {' + broadPrelude + broadLoop + '; return report; })()'
     )
     const report = (await run(
       fixture,
