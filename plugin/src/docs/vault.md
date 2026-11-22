@@ -113,6 +113,9 @@ pause flags and detached flags. Detached entries are retained so their local cop
 ledger identities can be kept. Grouping never changes the single-scope registry format and
 does not travel through settings transfer.
 
+Connecting the full access offered by a scoped token keeps that token's ordinary item
+grouping, so later issuer additions and removals remain live. Choosing a smaller device
+subset creates the managed keys described below.
 The device's chosen folders, groups and files are stored in each source record's
 `abele-sync-token-state:device-scope-v1` slot. Restricted choices use device-owned scoped
 access keys, with issuance, enrollment and revocation recovery in

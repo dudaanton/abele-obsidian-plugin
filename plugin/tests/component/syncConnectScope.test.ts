@@ -22,6 +22,42 @@ const token = (key = 'a') =>
     scope: { kind: 'folder', id: 'root', path: '/' },
   })
 
+it.each([1, 3])(
+  'connects the full %i-item access directly so issuer changes remain live',
+  async (count) => {
+    const ui = tokenUiFixture(true)
+    const narrowed = [
+      { kind: 'folder' as const, id: 'folder-a', path: 'Garden' },
+      { kind: 'group' as const, id: 'group-a', path: 'Reading.md' },
+      { kind: 'file' as const, id: 'file-a', path: 'Plan.md' },
+    ].slice(0, count)
+    vi.spyOn(ui.itemSets, 'connectScope').mockResolvedValue({
+      choices: narrowed,
+      narrowed,
+      serverFiles: 3,
+    })
+    const connect = vi.spyOn(ui, 'connect').mockResolvedValue()
+    ui.itemSets.install()
+    const wrapper = mount(TokenDialogs, {
+      props: { ui, mode: 'connect' },
+      global: { stubs: { Modal: { template: '<div><slot /><slot name="footer" /></div>' } } },
+    })
+    try {
+      await wrapper.find('input[type=password]').setValue(token())
+      await flushPromises()
+      expect(wrapper.findComponent(DeviceScopeField).props('modelValue')).toEqual(narrowed)
+      await wrapper
+        .findAllComponents(Button)
+        .find((button) => button.props('text') === 'Connect')!
+        .trigger('click')
+      expect(connect).toHaveBeenCalledWith(token(), expect.any(AbortSignal))
+    } finally {
+      wrapper.unmount()
+      ui.itemSets.uninstall()
+    }
+  }
+)
+
 it('allows Close while metadata is still pending and aborts that check on dismissal', async () => {
   const ui = tokenUiFixture(true)
   const answer = deferred<ConnectScope>()

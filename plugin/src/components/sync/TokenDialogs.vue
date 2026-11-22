@@ -441,7 +441,15 @@ async function run(action: () => Promise<void>) {
   }
 }
 async function connect() {
-  if (scope.value) await props.ui.connect(text.value, enrollment.signal, picked.value)
+  const full = scope.value?.narrowed
+  const entireAccess =
+    full &&
+    full.length === picked.value.length &&
+    full.every((item) =>
+      picked.value.some((chosen) => chosen.kind === item.kind && chosen.id === item.id)
+    )
+  if (scope.value && !entireAccess)
+    await props.ui.connect(text.value, enrollment.signal, picked.value)
   else await props.ui.connect(text.value, enrollment.signal)
   text.value = ''
   new Notice(t('streamC.1e965e25daad8d30'))
