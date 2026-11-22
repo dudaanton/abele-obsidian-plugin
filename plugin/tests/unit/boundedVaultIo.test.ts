@@ -7,6 +7,27 @@ import { mobileStreamFixture } from '../helpers/mobileStreamFixture'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { sha256 } from '@noble/hashes/sha2'
 
+it('does not extend an invalidated installation receipt after a same-stat overwrite', async () => {
+  const app = buildFakeVault([])
+  const io = new BoundedVaultIo(app.vault.adapter as never)
+  await io.create('sample.bin', 1000)
+  await io.append('sample.bin', 0, new Uint8Array([1, 2, 3]), 1000)
+  const before = await app.vault.adapter.stat('sample.bin')
+  await app.vault.adapter.writeBinary('sample.bin', new Uint8Array([3, 2, 1]).buffer, {
+    mtime: 1000,
+  })
+  expect(await app.vault.adapter.stat('sample.bin')).toEqual(before)
+  await io.append('sample.bin', 3, new Uint8Array([4]), 1000)
+  const stale = Array.from(sha256(new Uint8Array([1, 2, 3, 4])), (b) =>
+    b.toString(16).padStart(2, '0')
+  ).join('')
+  expect(await io.verifiedInstallation('sample.bin', { sha: stale, size: 4 })).toBe(false)
+  expect(new Uint8Array(await app.vault.adapter.readBinary('sample.bin'))).toEqual(
+    new Uint8Array([3, 2, 1, 4])
+  )
+  expect((await io.fingerprint('sample.bin')).sha).not.toBe(stale)
+})
+
 it.each(['before', 'during-stat'])(
   'does not reuse an owned stage hash after a same-stat host mutation (%s)',
   async (when) => {

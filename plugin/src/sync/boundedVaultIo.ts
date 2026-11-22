@@ -858,7 +858,11 @@ export class BoundedVaultIo {
     } else {
       const before = stampOf(await this.stat(path))
       let receipt = this.receipts.get(path)
-      if (!receipt || receipt.stamp.generation !== before.generation) {
+      if (
+        !receipt ||
+        receipt.stamp.generation !== before.generation ||
+        (receipt.installation && receipt.installation.revision() !== receipt.installation.epoch)
+      ) {
         this.receipts.delete(path)
         if (before.size > PHONE_FALLBACK_BYTES && !(await this.canReplayStage()))
           throw new EngineError(

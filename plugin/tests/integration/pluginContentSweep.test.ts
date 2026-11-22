@@ -9,6 +9,37 @@ import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { scopedFileSystem } from '@/sync/scopedFileSystem'
 import * as hostStorage from '@/sync/hostSyncStorage'
 
+it('invalidates installation evidence when a distinct adapter replaces the host adapter', async () => {
+  const app = buildFakeVault([])
+  // A previous plugin instance may have left its adapter-bound clock on the vault.
+  Object.defineProperty(app.vault, Symbol.for('abele.sync.installation-events-v1'), {
+    value: () => 0,
+  })
+  // Copy the raw methods before observation wraps them; both adapters use the same disk.
+  const replacement = { ...app.vault.adapter }
+  const fs = new ObsidianFileSystem(app as never)
+  const bytes = new Uint8Array([1, 2, 3])
+  const expected = { sha: await sha256(bytes), size: bytes.length }
+  await fs.writeAtomic('sample.bin', bytes, 1000)
+  expect(await fs.verifiedInstallation('sample.bin', expected)).toBe(true)
+  const before = await replacement.stat('sample.bin')
+  app.vault.adapter = replacement
+  expect(await fs.verifiedInstallation('sample.bin', expected)).toBe(false)
+  await replacement.writeBinary('sample.bin', new Uint8Array([3, 2, 1]).buffer, { mtime: 1000 })
+  expect(await replacement.stat('sample.bin')).toEqual(before)
+  const read = vi.spyOn(replacement, 'readBinary')
+  expect(await fs.verifiedInstallation('sample.bin', expected)).toBe(false)
+  const restarted = new ObsidianFileSystem(app as never)
+  expect(await restarted.verifiedInstallation('sample.bin', expected)).toBe(false)
+  expect(read).not.toHaveBeenCalled()
+  await restarted.writeAtomic('sample.bin', bytes, 1000)
+  read.mockClear()
+  expect(await restarted.verifiedInstallation('sample.bin', expected)).toBe(true)
+  await replacement.writeBinary('sample.bin', new Uint8Array([3, 2, 1]).buffer, { mtime: 1000 })
+  expect(await restarted.verifiedInstallation('sample.bin', expected)).toBe(false)
+  expect(read).not.toHaveBeenCalled()
+})
+
 it.each(['atomic', 'stage'])(
   'keeps portable installation evidence across adapter replacement and rejects observed events (%s)',
   async (kind) => {

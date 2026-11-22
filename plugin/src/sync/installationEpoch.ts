@@ -8,7 +8,8 @@ type Epochs = {
   changed(paths: readonly string[]): void
 }
 const ADAPTER = Symbol.for('abele.sync.installation-epochs-v1')
-const VAULT = Symbol.for('abele.sync.installation-events-v1')
+// Retire the adapter-bound clock retained by earlier plugin instances.
+const VAULT = Symbol.for('abele.sync.installation-events-v2')
 
 function epochs(adapter: DataAdapter, name?: (path: string) => string): Epochs {
   const cached = Reflect.get(adapter, ADAPTER) as Epochs | undefined
@@ -19,6 +20,14 @@ function epochs(adapter: DataAdapter, name?: (path: string) => string): Epochs {
     }
     return cached
   }
+  const state = createEpochs(name)
+  // One counter per adapter lifetime, with no filesystem/runtime retained.
+  Object.defineProperty(adapter, ADAPTER, { value: state })
+  observeAdapterConfig(adapter, '', (changed) => state.changed(changed))
+  return state
+}
+
+function createEpochs(name?: (path: string) => string): Epochs {
   const paths = new Map<string, number>()
   let generation = 0,
     floor = 0
@@ -47,9 +56,6 @@ function epochs(adapter: DataAdapter, name?: (path: string) => string): Epochs {
       }
     },
   }
-  // One counter per adapter lifetime, with no filesystem/runtime retained.
-  Object.defineProperty(adapter, ADAPTER, { value: state })
-  observeAdapterConfig(adapter, '', (changed) => state.changed(changed))
   return state
 }
 
@@ -60,7 +66,21 @@ export function adapterInstallationEpoch(adapter: DataAdapter): (path: string) =
 export function vaultInstallationEpoch(vault: Vault): (path: string) => number {
   const cached = Reflect.get(vault, VAULT) as ((path: string) => number) | undefined
   if (cached) return cached
-  const state = epochs(vault.adapter, vaultPathKey(vault))
+  const state = createEpochs(vaultPathKey(vault))
+  let bound = epochs(vault.adapter)
+  let stop = observeAdapterConfig(vault.adapter, '', (paths) => state.changed(paths))
+  const read = (path: string) => {
+    const current = epochs(vault.adapter)
+    // Forwarding proxies share the adapter clock; a distinct host adapter does not.
+    // Keep one monotonic vault clock so replacement cannot recycle an old epoch.
+    if (current !== bound) {
+      stop()
+      bound = current
+      state.changed([''])
+      stop = observeAdapterConfig(vault.adapter, '', (paths) => state.changed(paths))
+    }
+    return state.read(path)
+  }
   const changed = (file: { path: string }) => state.changed([file.path])
   // Keep history across filesystem replacements and watcher gaps, once per vault.
   // These callbacks retain only bounded counters, never a connection or runtime.
@@ -68,6 +88,6 @@ export function vaultInstallationEpoch(vault: Vault): (path: string) => number {
   vault.on('modify', changed)
   vault.on('delete', changed)
   vault.on('rename', (file, previous) => state.changed([file.path, previous]))
-  Object.defineProperty(vault, VAULT, { value: state.read })
-  return state.read
+  Object.defineProperty(vault, VAULT, { value: read })
+  return read
 }
