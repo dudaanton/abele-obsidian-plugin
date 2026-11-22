@@ -639,7 +639,15 @@ export class TokenItemSets implements ShareSetSource {
       .records()
       .filter((one) => !this.store.forRecord(one.id) || this.store.get(one.id))
     for (const row of leaders) {
-      if (!ready(row.id)) continue
+      // The public set ID can retain a detached first item after restart. Discovery
+      // remains gated by recovery, but any active member can establish readiness.
+      if (
+        !ready(row.id) &&
+        !this.store
+          .get(row.id)
+          ?.items.some((item) => !item.detached && item.recordId && ready(item.recordId))
+      )
+        continue
       if (!row.secretReference || (row.status === 'needs-token' && !this.store.get(row.id)))
         continue
       try {
