@@ -1,18 +1,19 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import {
   fenceRestoredJournal,
   MemoryStateStore,
   sha256,
+  MAX_CHUNK_BYTES,
   type EngineClient,
   type Journal,
 } from '@abele/sync-sdk/core'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 
-async function fixture(copy?: string) {
+async function fixture(copy?: string, content = 'unsent sample') {
   const app = buildFakeVault([
     { path: 'removed.md', content: 'old sample' },
-    ...(copy ? [{ path: copy, content: 'unsent sample' }] : []),
+    ...(copy ? [{ path: copy, content }] : []),
   ])
   const state = new MemoryStateStore()
   await state.setCursor(10)
@@ -28,8 +29,8 @@ async function fixture(copy?: string) {
   const create = {
     op: 'create' as const,
     path: 'unsent.bin',
-    sha: await sha256(new TextEncoder().encode('unsent sample')),
-    size: 13,
+    sha: await sha256(new TextEncoder().encode(content)),
+    size: new TextEncoder().encode(content).length,
     mtime: 1,
   }
   const journal: Journal = {
@@ -59,6 +60,64 @@ const client = {
   hasBlob: async () => false,
   versions: async (): Promise<never[]> => [],
 } as unknown as EngineClient
+
+it.each([13, MAX_CHUNK_BYTES + 13])(
+  'reads fresh recovery bytes across a same-stat rewrite despite a cached fingerprint (%s bytes)',
+  async (size) => {
+    const copy = '.hidden/copy.bin'
+    const payload = 'y'.repeat(size)
+    const { app, state, journal } = await fixture(copy, payload)
+    await app.vault.adapter.writeBinary(copy, new TextEncoder().encode('x'.repeat(size)).buffer, {
+      mtime: 0,
+    })
+    const fs = new ObsidianFileSystem(app as never)
+    const fingerprint = fs.fingerprint.bind(fs)
+    const stale = await fingerprint(copy)
+    const cached = vi
+      .spyOn(fs, 'fingerprint')
+      .mockImplementation((path, ...args) =>
+        path === copy ? Promise.resolve(stale) : fingerprint(path, ...args)
+      )
+    const before = await app.vault.adapter.stat(copy)
+    const open = fs.openRead.bind(fs)
+    let reads = 0,
+      opened = 0,
+      closed = 0
+    vi.spyOn(fs, 'openRead').mockImplementation(async (...args) => {
+      const source = await open(...args)
+      opened++
+      return {
+        ...source,
+        read: async (offset, length, signal) => {
+          expect(length).toBeLessThanOrEqual(MAX_CHUNK_BYTES)
+          reads++
+          return source.read(offset, length, signal)
+        },
+        close: async () => {
+          closed++
+          await source.close()
+        },
+      }
+    })
+    const racing = {
+      ...client,
+      hasBlob: async () => {
+        await app.vault.adapter.writeBinary(copy, new TextEncoder().encode(payload).buffer, {
+          mtime: before!.mtime,
+        })
+        return false
+      },
+    }
+    await expect(fenceRestoredJournal(state, 11, fs, undefined, racing)).rejects.toThrow(
+      'unsent bytes'
+    )
+    expect(await app.vault.adapter.stat(copy)).toEqual(before)
+    expect(await state.getJournal()).toEqual(journal)
+    expect(cached.mock.calls.map(([path]) => path)).not.toContain(copy)
+    expect(reads).toBeGreaterThanOrEqual(size > MAX_CHUNK_BYTES ? 4 : 2)
+    expect(closed).toBe(opened)
+  }
+)
 
 it('recovers a deleted unsubmitted create after a restart without replaying the mixed journal', async () => {
   const { app, state } = await fixture()
