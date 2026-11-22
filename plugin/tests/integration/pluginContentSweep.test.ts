@@ -8,6 +8,42 @@ import { BoundedVaultIo } from '@/sync/boundedVaultIo'
 import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { scopedFileSystem } from '@/sync/scopedFileSystem'
 import * as hostStorage from '@/sync/hostSyncStorage'
+import { connectionAdapter, connectionInspectionApp } from '@/sync/connectionScope'
+import { vaultInstallationEpoch } from '@/sync/installationEpoch'
+
+it('binds scoped capability clocks to the replaceable underlying vault', async () => {
+  const app = buildFakeVault([{ path: 'Shared/sample.bin', content: 'old', mtime: 1000 }])
+  const replacement = { ...app.vault.adapter }
+  const privateRoot = '.abele-sync/connections/sample'
+  const scoped = connectionInspectionApp(
+    app as never,
+    connectionAdapter(app.vault.adapter as never, 'Shared', privateRoot),
+    'Shared',
+    privateRoot
+  )
+  const clock = vaultInstallationEpoch(scoped.vault)
+  const before = clock('Shared/sample.bin')
+  app.vault.adapter = replacement
+  expect(clock('Shared/sample.bin')).not.toBe(before)
+  const bound = clock('Shared/sample.bin')
+  await replacement.writeBinary('Shared/sample.bin', new TextEncoder().encode('new').buffer, {
+    mtime: 1000,
+  })
+  expect(clock('Shared/sample.bin')).not.toBe(bound)
+})
+
+it('keeps one buffered payload write above the portable staging fallback limit', async () => {
+  const app = buildFakeVault([])
+  const fs = new ObsidianFileSystem(app as never)
+  const bytes = new Uint8Array(51 * 1024 * 1024).fill(3)
+  const expected = { sha: await sha256(bytes), size: bytes.length }
+  const write = vi.spyOn(app.vault.adapter, 'writeBinary')
+  await fs.writeAtomic('sample.bin', bytes, 1000)
+  expect(write).toHaveBeenCalledTimes(1)
+  const read = vi.spyOn(app.vault.adapter, 'readBinary')
+  expect(await fs.verifiedInstallation('sample.bin', expected)).toBe(true)
+  expect(read).not.toHaveBeenCalled()
+}, 30000)
 
 it('invalidates installation evidence when a distinct adapter replaces the host adapter', async () => {
   const app = buildFakeVault([])

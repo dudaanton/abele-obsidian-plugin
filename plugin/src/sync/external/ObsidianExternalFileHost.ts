@@ -9,6 +9,7 @@ import { makeParents } from '../vaultFolders'
 import { sha256 as incremental } from '@noble/hashes/sha2'
 import { chunks, type ChunkSource } from '@abele/sync-sdk/core'
 import { BoundedVaultIo } from '../boundedVaultIo'
+import { vaultInstallationEpoch } from '../installationEpoch'
 import { stagingDirectory } from '../stagingDirectory'
 import { transferBudgetOf } from '../transferBudget'
 import { ExchangeTrace } from '../exchangeTrace'
@@ -76,7 +77,9 @@ export class ExternalFileHost {
       undefined,
       app.vault.configDir,
       connectionPrivateArea(app),
-      options.platform === 'mobile'
+      options.platform === 'mobile',
+      vaultInstallationEpoch(app.vault),
+      app.vault
     )
     const opened = (file?: { path?: string } | null) => {
       this.coordination.opened([...this.openPaths(), ...(file?.path ? [file.path] : [])])
@@ -291,24 +294,30 @@ export class ExternalFileHost {
           else await mutateAdapter.writeBinary(path, bytesOf(bytes))
           return
         }
-        const hash = incremental.create()
-        for (let at = 0; at < bytes.length; at += chunkSize) {
-          // A view would expose its full backing buffer to the base64 bridge.
-          const chunk = bytes.slice(at, at + chunkSize)
-          assertEffect()
-          await this.effect(() =>
-            at === 0
-              ? this.options.stagingMtime
-                ? mutateAdapter.writeBinary(path, chunk.buffer, {
-                    mtime: this.options.stagingMtime(path),
-                  })
-                : mutateAdapter.writeBinary(path, chunk.buffer)
-              : mutateAdapter.appendBinary(path, chunk.buffer)
-          )
-          hash.update(chunk)
-        }
-        assertEffect()
-        await this.io.recordWrite(path, bytes.length, hash)
+        const steps = Array.from({ length: Math.ceil(bytes.length / chunkSize) }, (_, index) =>
+          index === 0 ? 'writeBinary' : 'appendBinary'
+        )
+        await this.io.writeWithReceipt(
+          path,
+          bytes,
+          async () => {
+            for (let at = 0; at < bytes.length; at += chunkSize) {
+              const chunk = bytes.slice(at, at + chunkSize)
+              assertEffect()
+              await this.effect(() =>
+                at === 0
+                  ? this.options.stagingMtime
+                    ? mutateAdapter.writeBinary(path, chunk.buffer, {
+                        mtime: this.options.stagingMtime(path),
+                      })
+                    : mutateAdapter.writeBinary(path, chunk.buffer)
+                  : mutateAdapter.appendBinary(path, chunk.buffer)
+              )
+            }
+            assertEffect()
+          },
+          steps
+        )
       },
       writeStagingSource: async (path, source, expected, assertEffect, signal) => {
         await transferBudgetOf(this.app.vault).run(async () => {
@@ -330,7 +339,9 @@ export class ExternalFileHost {
               vaultDisk(this.app.vault),
               this.app.vault.configDir,
               undefined,
-              this.options.platform === 'mobile'
+              this.options.platform === 'mobile',
+              vaultInstallationEpoch(this.app.vault),
+              this.app.vault
             )
             const mtime = this.options.stagingMtime?.(path) ?? Date.now()
             assertEffect()
@@ -369,14 +380,12 @@ export class ExternalFileHost {
         // interval is NOT an atomic no-clobber guarantee; that residual risk is accepted.
         if (await adapter.exists(to)) throw new ExternalFilePortError('collision')
         assertEffect()
-        await mutateAdapter.rename(from, to)
-        await this.io.adoptReceipt(from, to)
+        await this.io.adoptReceipt(from, to, () => mutateAdapter.rename(from, to))
       },
       removeOriginal: (path) => mutateAdapter.remove(path),
       moveOwned: async (from, to) => {
         if (await adapter.exists(to)) throw new ExternalFilePortError('collision')
-        await mutateAdapter.rename(from, to)
-        await this.io.adoptReceipt(from, to)
+        await this.io.adoptReceipt(from, to, () => mutateAdapter.rename(from, to))
       },
       reconcile: async (paths) => {
         const raw = adapter as DataAdapter & {

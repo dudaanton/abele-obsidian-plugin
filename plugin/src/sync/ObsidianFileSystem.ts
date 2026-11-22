@@ -1676,16 +1676,13 @@ export class ObsidianFileSystem implements FileSystem {
             ) => {
               if (bytes.length > MOBILE_WHOLE_READ_MAX)
                 throw new EngineError('io', 'mobile write exceeds the whole-file limit')
-              if (
-                bytes.length > MAX_CHUNK_BYTES &&
+              const first =
                 typeof this.guardedAdapter.appendBinary === 'function'
-              ) {
-                for (let at = 0; at < bytes.length; at += MAX_CHUNK_BYTES) {
-                  const chunk = bytes.slice(at, at + MAX_CHUNK_BYTES).buffer
-                  if (at === 0) await this.guardedAdapter.writeBinary(temp, chunk, { mtime })
-                  else await this.guardedAdapter.appendBinary(temp, chunk, { mtime })
-                }
-              } else await this.guardedAdapter.writeBinary(temp, bytes.slice().buffer, { mtime })
+                  ? MAX_CHUNK_BYTES
+                  : bytes.length
+              await this.io.create(temp, mtime, 'acknowledged', bytes.slice(0, first))
+              for (let at = first; at < bytes.length; at += MAX_CHUNK_BYTES)
+                await this.io.append(temp, at, bytes.slice(at, at + MAX_CHUNK_BYTES), mtime)
               await checked.wait(path)
               const release = await checked.acquire([path])
               try {
@@ -1693,7 +1690,11 @@ export class ObsidianFileSystem implements FileSystem {
                 release.check()
                 await beforePublish()
                 release.check()
-                await release.wait(this.mutationAdapter(() => release.check()).rename(temp, path))
+                await release.wait(
+                  this.io.adoptReceipt(temp, path, () =>
+                    this.mutationAdapter(() => release.check()).rename(temp, path)
+                  )
+                )
                 release.check()
               } catch (error) {
                 if (
@@ -1742,7 +1743,14 @@ export class ObsidianFileSystem implements FileSystem {
       native: this.native,
       journal: this.journal,
       fingerprint: (path) => this.io.fingerprint(path, undefined, true),
-      adoptReceipt: (from, to) => this.io.adoptReceipt(from, to),
+      writeStaging: async (path, bytes, mtime) => {
+        const first =
+          typeof this.guardedAdapter.appendBinary === 'function' ? MAX_CHUNK_BYTES : bytes.length
+        await this.io.create(path, mtime, 'acknowledged', bytes.slice(0, first))
+        for (let at = first; at < bytes.length; at += MAX_CHUNK_BYTES)
+          await this.io.append(path, at, bytes.slice(at, at + MAX_CHUNK_BYTES), mtime)
+      },
+      adoptReceipt: (from, to, move) => this.io.adoptReceipt(from, to, move),
       indexed: (path) => app.vault.getAbstractFileByPath(path)?.path === path,
       makeParents: (path) => this.makeParents(path),
       installed: (path) => {
@@ -1864,13 +1872,14 @@ export class ObsidianFileSystem implements FileSystem {
         return this.native.restoreDirectoryExclusive(from, to)
       },
       install: async (from, to) => {
-        if (!this.native) await this.disk.rename(from, to)
-        else {
-          if (!this.native.installExclusive)
-            throw new EngineError('io', 'exclusive native installation is unavailable')
-          await this.native.installExclusive(from, to)
-        }
-        await conditionalIo.adoptReceipt(from, to)
+        await conditionalIo.adoptReceipt(from, to, async () => {
+          if (!this.native) await this.disk.rename(from, to)
+          else {
+            if (!this.native.installExclusive)
+              throw new EngineError('io', 'exclusive native installation is unavailable')
+            await this.native.installExclusive(from, to)
+          }
+        })
       },
       flush: async (path, parentsOnly) => {
         if (!this.native) return // Mobile adapter acknowledgement is the host durability boundary.
@@ -1967,13 +1976,14 @@ export class ObsidianFileSystem implements FileSystem {
         return native.restoreDirectoryExclusive(from, to)
       },
       install: async (from, to) => {
-        if (!native) await disk.rename(from, to)
-        else {
-          if (!native.installExclusive)
-            throw new EngineError('io', 'exclusive native installation is unavailable')
-          await native.installExclusive(from, to)
-        }
-        await io.adoptReceipt(from, to)
+        await io.adoptReceipt(from, to, async () => {
+          if (!native) await disk.rename(from, to)
+          else {
+            if (!native.installExclusive)
+              throw new EngineError('io', 'exclusive native installation is unavailable')
+            await native.installExclusive(from, to)
+          }
+        })
       },
       flush: async (path, parentsOnly) => {
         if (!native) return
@@ -4585,7 +4595,7 @@ export class ObsidianFileSystem implements FileSystem {
         if (pause !== undefined) await pause
       }
       await this.writeUnreserved(path, bytes, mtime)
-      await this.io.recordWrite(path, bytes.length, hash)
+      await this.io.recordWrite(path, bytes.length, hash, true)
       // Record only a successful publication. A later local edit must differ from this
       // baseline on the next scan, rather than being adopted as part of our write.
       this.writtenStat = { path, size: bytes.length, mtime }

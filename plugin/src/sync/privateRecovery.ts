@@ -14,6 +14,7 @@ import { backgroundActivity } from './backgroundActivity'
 import { makeParents } from './vaultFolders'
 import { stagingDirectory } from './stagingDirectory'
 import { BoundedVaultIo } from './boundedVaultIo'
+import { vaultInstallationEpoch } from './installationEpoch'
 import { z } from 'zod'
 
 /** Finish preserving bytes, never replay an interrupted rename onto its public target. */
@@ -80,7 +81,11 @@ export async function finishRetainedWrites(
             assertCurrent,
             undefined,
             undefined,
-            app.vault.configDir
+            app.vault.configDir,
+            undefined,
+            false,
+            vaultInstallationEpoch(app.vault),
+            app.vault
           )
           const proof = await io.fingerprint(entry.temp)
           if (!(await journal.currentRecovered()).some((row) => row.backup === entry.temp))
@@ -134,7 +139,11 @@ export async function finishRetainedWrites(
           assertCurrent,
           undefined,
           undefined,
-          app.vault.configDir
+          app.vault.configDir,
+          undefined,
+          false,
+          vaultInstallationEpoch(app.vault),
+          app.vault
         )
         if (!entry.archive) {
           if (!(await vaultDisk(view.vault).exists(entry.backup)))
@@ -187,7 +196,11 @@ async function matchesCopy(
       () => {},
       undefined,
       undefined,
-      app.vault.configDir
+      app.vault.configDir,
+      undefined,
+      false,
+      vaultInstallationEpoch(app.vault),
+      app.vault
     ).fingerprint(path)
     return actual.sha === expected.sha && actual.size === expected.size
   } catch {

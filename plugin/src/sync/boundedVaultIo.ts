@@ -83,9 +83,15 @@ function readMobileChunk(
   )
 }
 
+interface ByteWitness {
+  size: number
+  digest: Uint8Array
+}
 interface WriteReceipt {
   hash: ReturnType<typeof sha256.create>
   stamp: SourceStamp
+  witnesses?: readonly ByteWitness[]
+  binding?: { revision: () => number; epoch: number }
   installation?: { revision: () => number; epoch: number }
 }
 // Process-local acknowledgements only; changed content stamps require ordinary reads.
@@ -178,21 +184,182 @@ export class BoundedVaultIo {
   }
   invalidateInstallations(path = ''): void {
     for (const [key, receipt] of this.receipts)
-      if (!path || key === path || key.startsWith(path + '/')) receipt.installation = undefined
+      if (!path || key === path || key.startsWith(path + '/')) {
+        receipt.installation = undefined
+        receipt.binding = undefined
+      }
     for (const [key, receipt] of this.installations)
-      if (!path || key === path || key.startsWith(path + '/')) receipt.installation = undefined
+      if (!path || key === path || key.startsWith(path + '/')) {
+        receipt.installation = undefined
+        receipt.binding = undefined
+      }
   }
   private installationReceipt(
     hash: WriteReceipt['hash'],
     stamp: SourceStamp,
-    proof: NonNullable<WriteReceipt['installation']>
+    proof: NonNullable<WriteReceipt['installation']>,
+    installed = true,
+    witnesses?: readonly ByteWitness[]
   ): WriteReceipt {
-    return { hash, stamp, ...(proof.revision() === proof.epoch ? { installation: proof } : {}) }
+    return {
+      hash,
+      stamp,
+      witnesses,
+      ...(proof.revision() === proof.epoch
+        ? { binding: proof, ...(installed ? { installation: proof } : {}) }
+        : {}),
+    }
   }
   private installationEpoch(path: string): NonNullable<WriteReceipt['installation']> {
     const clock = this.installationEpochFor
     const revision = () => clock(path)
     return { revision, epoch: revision() }
+  }
+  /** Only hashes of our own observed bytes with a live host binding may be reused. */
+  private receiptStillBinds(
+    receipt: WriteReceipt | undefined,
+    path: string,
+    stat: Stat | SourceStamp
+  ): receipt is WriteReceipt {
+    const proof = receipt?.binding
+    return !!(
+      receipt &&
+      proof &&
+      proof.revision() === proof.epoch &&
+      this.installationEpochFor(path) === proof.epoch &&
+      stat.size === receipt.stamp.size &&
+      stat.mtime === receipt.stamp.mtime &&
+      (this.metadataReceipts ||
+        ('generation' in stat ? stat.generation : stampOf(stat).generation) ===
+          receipt.stamp.generation)
+    )
+  }
+  private async witness(bytes: Uint8Array, native = false): Promise<ByteWitness[]> {
+    const result: ByteWitness[] = []
+    for (let at = 0; at < bytes.length; at += MAX_CHUNK_BYTES) {
+      const chunk = bytes.subarray(at, at + MAX_CHUNK_BYTES)
+      const hostCrypto = typeof window === 'undefined' ? undefined : window.crypto
+      const digest =
+        native && hostCrypto?.subtle
+          ? new Uint8Array(
+              await hostCrypto.subtle.digest('SHA-256', chunk as Uint8Array<ArrayBuffer>)
+            )
+          : sha256(chunk)
+      result.push({ size: chunk.length, digest })
+      const pause = this.taskBudget.account(chunk.length)
+      if (pause !== undefined) await pause
+    }
+    return result
+  }
+  /** Observe the complete owned host mutation before assigning a replacement epoch. */
+  private observeReceiptMutation(
+    paths: readonly string[],
+    directory: boolean,
+    kind: string | readonly string[] = directory ? 'rename' : 'writeBinary',
+    expectedBytes?: { hash: WriteReceipt['hash']; witnesses: readonly ByteWitness[] }
+  ) {
+    const key = this.installationEpochFor.key ?? ((path: string) => path)
+    const expected = paths.map(key)
+    const history: string[] = []
+    let uncertain = false
+    let proof: WriteReceipt['binding']
+    let written: { hash: WriteReceipt['hash']; size: number; ready: boolean } | undefined
+    const owned = () => {
+      const steps = typeof kind === 'string' ? [kind] : kind
+      let at = 0
+      for (const step of steps) {
+        if (history[at++] !== step + ':before') return false
+        if (step === 'appendBinary' && history[at] === 'writeBinary:before') {
+          if (history[at + 1] !== 'writeBinary:after') return false
+          at += 2
+        }
+        if (history[at++] !== step + ':after') return false
+      }
+      return at === history.length
+    }
+    const stop = this.installationEpochFor.observe?.((changed, changedDirectory, mutation) => {
+      if (
+        !changed.some(
+          (path) => !path || expected.some((name) => name === path || name.startsWith(path + '/'))
+        )
+      )
+        return
+      if (
+        changedDirectory !== directory ||
+        changed.length !== expected.length ||
+        changed.some((path, index) => path !== expected[index]) ||
+        !mutation ||
+        mutation.authoritative === false
+      )
+        uncertain = true
+      if (history.length < (typeof kind === 'string' ? 8 : kind.length * 4) + 1)
+        history.push((mutation?.kind ?? 'event') + ':' + (mutation?.phase ?? 'event'))
+      proof = this.installationEpoch(paths[paths.length - 1])
+      if (directory || mutation?.phase !== 'after' || mutation.kind !== 'writeBinary') return
+      if (!mutation.bytes || mutation.bytes.byteLength > MOBILE_WHOLE_READ_MAX) {
+        uncertain = true
+        return
+      }
+      const value = { hash: sha256.create(), size: mutation.bytes.byteLength, ready: false }
+      written = value
+      const bytes = new Uint8Array(mutation.bytes)
+      // The adapter keeps its write promise pending until this observer finishes, so
+      // the caller still owns an immutable write buffer. No disk read or copy occurs.
+      return (async () => {
+        if (
+          expectedBytes &&
+          expectedBytes.witnesses.reduce((size, block) => size + block.size, 0) === bytes.length
+        ) {
+          let at = 0,
+            matches = true
+          const hostCrypto = typeof window === 'undefined' ? undefined : window.crypto
+          const width = bytes.length > MAX_CHUNK_BYTES && hostCrypto?.subtle ? 4 : 1
+          for (let index = 0; index < expectedBytes.witnesses.length; index += width) {
+            const batch = expectedBytes.witnesses.slice(index, index + width)
+            // At most four bounded native snapshots are live, never a whole-file copy.
+            const actual = await Promise.all(
+              batch.map((block) => {
+                const from = at
+                at += block.size
+                return this.witness(bytes.subarray(from, at), bytes.length > MAX_CHUNK_BYTES)
+              })
+            )
+            if (
+              batch.some(
+                (block, item) =>
+                  !actual[item]?.[0]?.digest.every((byte, offset) => byte === block.digest[offset])
+              )
+            ) {
+              matches = false
+              break
+            }
+          }
+          if (matches) {
+            value.hash = expectedBytes.hash.clone()
+            value.ready = true
+            return
+          }
+        }
+        for (let at = 0; at < bytes.length; at += MAX_CHUNK_BYTES) {
+          const chunk = bytes.subarray(at, at + MAX_CHUNK_BYTES)
+          value.hash.update(chunk)
+          const pause = this.taskBudget.account(chunk.length)
+          if (pause !== undefined) await pause
+        }
+        value.ready = true
+      })()
+    })
+    return {
+      proof: () => (!uncertain && owned() ? proof : undefined),
+      owned,
+      compound: () =>
+        history.some(
+          (step, index) =>
+            step === 'appendBinary:before' && history[index + 1] === 'writeBinary:before'
+        ),
+      written: () => (written?.ready ? written : undefined),
+      stop: () => stop?.(),
+    }
   }
   async verifiedInstallation(
     path: string,
@@ -204,7 +371,7 @@ export class BoundedVaultIo {
     if (
       !receipt ||
       !proof ||
-      proof.revision() !== proof.epoch ||
+      !this.receiptStillBinds(receipt, path, receipt.stamp) ||
       receipt.stamp.size !== expected.size
     )
       return false
@@ -214,9 +381,7 @@ export class BoundedVaultIo {
     if (sha !== expected.sha) return false
     const current = await this.stat(path)
     return (
-      current.size === receipt.stamp.size &&
-      current.mtime === receipt.stamp.mtime &&
-      proof.revision() === proof.epoch &&
+      this.receiptStillBinds(receipt, path, current) &&
       (shared ? this.installations.get(path) : this.receipts.get(path)) === receipt &&
       receipt.installation === proof
     )
@@ -225,7 +390,8 @@ export class BoundedVaultIo {
   async recordWrite(
     path: string,
     size: number,
-    hash: ReturnType<typeof sha256.create>
+    hash: ReturnType<typeof sha256.create>,
+    existingOnly = false
   ): Promise<void> {
     this.assertOwned()
     const proof = this.installationEpoch(path)
@@ -234,9 +400,79 @@ export class BoundedVaultIo {
     if (!stat) return
     if (stat.type !== 'file' || stat.size !== size)
       throw new EngineError('conflict', 'Written file changed')
+    if (existingOnly) {
+      const current = this.installations.get(path) ?? this.receipts.get(path)
+      const expectedHash = hash.clone().digest()
+      if (
+        !current?.installation ||
+        !this.receiptStillBinds(current, path, stat) ||
+        current.stamp.size !== size ||
+        !current.hash
+          .clone()
+          .digest()
+          .every((byte, index) => byte === expectedHash[index])
+      ) {
+        this.receipts.delete(path)
+        this.installations.delete(path)
+      }
+      return
+    }
     const receipt = this.installationReceipt(hash.clone(), stampOf(stat), proof)
     this.receipts.set(path, receipt)
     this.installations.set(path, receipt)
+  }
+  /** A sequence of acknowledged writes of an already-owned complete payload. */
+  async writeWithReceipt(
+    path: string,
+    bytes: Uint8Array,
+    write: () => Promise<void>,
+    steps: readonly string[]
+  ): Promise<void> {
+    const hash = sha256.create()
+    for (let at = 0; at < bytes.length; at += MAX_CHUNK_BYTES) {
+      const chunk = bytes.subarray(at, at + MAX_CHUNK_BYTES)
+      hash.update(chunk)
+      const pause = this.taskBudget.account(chunk.length)
+      if (pause !== undefined) await pause
+    }
+    const witnesses = await this.witness(bytes)
+    const mutation = this.observeReceiptMutation([path], false, steps, { hash, witnesses })
+    this.receipts.delete(path)
+    try {
+      await write()
+      const stat = await this.disk.stat(path)
+      const proof = mutation.proof()
+      if (
+        !stat ||
+        stat.type !== 'file' ||
+        stat.size !== bytes.length ||
+        !proof ||
+        !mutation.owned()
+      )
+        return
+      const written = mutation.written()
+      if (mutation.compound() && written?.size !== stat.size) return
+      const compound =
+        steps.some((step) => step === 'appendBinary') && written?.size === bytes.length
+      const actual = compound ? written.hash : hash
+      const digest = hash.clone().digest()
+      const installed = actual
+        .clone()
+        .digest()
+        .every((byte, index) => byte === digest[index])
+      this.receipts.set(
+        path,
+        this.installationReceipt(
+          actual,
+          stampOf(stat),
+          proof,
+          installed,
+          installed ? witnesses : undefined
+        )
+      )
+    } finally {
+      mutation.stop()
+    }
   }
   async requireWrite(size: number): Promise<void> {
     if (
@@ -250,20 +486,54 @@ export class BoundedVaultIo {
       'Bounded staging writes are unavailable; the fallback limit is 50 MiB'
     )
   }
-  async adoptReceipt(from: string, to: string): Promise<void> {
+  async adoptReceipt(from: string, to: string, move?: () => Promise<void>): Promise<void> {
     const receipt = this.receipts.get(from)
-    if (!receipt) return
-    const proof = this.installationEpoch(to)
-    const stamp = stampOf(await this.stat(to))
-    if (stamp.size !== receipt.stamp.size || stamp.mtime !== receipt.stamp.mtime) {
+    // A completed move without an observed transfer has no byte provenance at its destination.
+    if (!move) {
       this.receipts.delete(from)
-      throw new EngineError('conflict', 'Published file changed')
+      this.installations.delete(from)
+      const current = this.receipts.get(to)
+      if (current && !this.receiptStillBinds(current, to, await this.stat(to))) {
+        this.receipts.delete(to)
+        this.installations.delete(to)
+      }
+      return
     }
-    const installed = this.installationReceipt(receipt.hash.clone(), stamp, proof)
-    this.receipts.set(to, installed)
-    this.installations.set(to, installed)
-    this.installations.delete(from)
-    this.receipts.delete(from)
+    const before = receipt ? await this.stat(from) : undefined
+    const bound = before && this.receiptStillBinds(receipt, from, before)
+    const sourceProof = receipt?.binding
+    const mutation = this.observeReceiptMutation([from, to], true)
+    try {
+      await move()
+      const current = await this.stat(to)
+      const proof = mutation.proof()
+      if (
+        bound &&
+        receipt &&
+        proof &&
+        this.receipts.get(from) === receipt &&
+        receipt.binding === sourceProof
+      ) {
+        const candidate: WriteReceipt = {
+          hash: receipt.hash.clone(),
+          stamp: receipt.stamp,
+          binding: proof,
+          ...(receipt.installation ? { installation: proof } : {}),
+        }
+        if (this.receiptStillBinds(candidate, to, current)) {
+          const installed = { ...candidate, stamp: stampOf(current) }
+          this.receipts.set(to, installed)
+          if (installed.installation) this.installations.set(to, installed)
+          return
+        }
+      }
+      this.receipts.delete(to)
+      this.installations.delete(to)
+    } finally {
+      mutation.stop()
+      this.receipts.delete(from)
+      this.installations.delete(from)
+    }
   }
   private get raw() {
     return nativeChunkPort(this.disk)
@@ -285,10 +555,8 @@ export class BoundedVaultIo {
     const receipt = this.receipts.get(path)
     if (
       receipt &&
-      (!receipt.installation || receipt.installation.revision() === receipt.installation.epoch) &&
-      stampOf(await this.stat(path)).generation === receipt.stamp.generation &&
-      this.receipts.get(path) === receipt &&
-      (!receipt.installation || receipt.installation.revision() === receipt.installation.epoch)
+      this.receiptStillBinds(receipt, path, await this.stat(path)) &&
+      this.receipts.get(path) === receipt
     )
       return true
     return this.canReplayStage()
@@ -676,15 +944,21 @@ export class BoundedVaultIo {
       return undefined
     signal?.throwIfAborted()
     const receipt = this.receipts.get(path)
-    if (receipt && receipt.stamp.size === stat.size && receipt.stamp.mtime === stat.mtime) {
+    if (this.receiptStillBinds(receipt, path, stat)) {
       const identity = {
         size: stat.size,
         sha: Array.from(receipt.hash.clone().digest(), (byte) =>
           byte.toString(16).padStart(2, '0')
         ).join(''),
       }
-      if (acknowledged?.(identity)) return { ...stampOf(stat), ...identity }
+      if (
+        acknowledged?.(identity) &&
+        this.receiptStillBinds(receipt, path, stat) &&
+        this.receipts.get(path) === receipt
+      )
+        return { ...stampOf(stat), ...identity }
     }
+    const proof = this.installationEpoch(path)
     const source = await this.openUploadRead(path, undefined, signal)
     const hash = sha256.create()
     try {
@@ -703,7 +977,7 @@ export class BoundedVaultIo {
       )
       await consume(identity, { ...source, close: async () => {} })
       await source.assertUnchanged()
-      this.receipts.set(path, { hash, stamp: source.stamp })
+      this.receipts.set(path, this.installationReceipt(hash, source.stamp, proof, false))
       return { ...source.stamp, ...identity }
     } finally {
       await source.close()
@@ -738,32 +1012,19 @@ export class BoundedVaultIo {
       }
     }
     signal?.throwIfAborted()
-    let receipt = fresh ? undefined : this.receipts.get(path)
-    if (receipt?.installation && receipt.installation.revision() !== receipt.installation.epoch) {
-      this.receipts.delete(path)
-      receipt = undefined
-    }
+    const receipt = fresh ? undefined : this.receipts.get(path)
     if (receipt) {
-      const stamp = stampOf(await this.stat(path))
-      if (
-        (this.metadataReceipts
-          ? stamp.size === receipt.stamp.size && stamp.mtime === receipt.stamp.mtime
-          : stamp.generation === receipt.stamp.generation) &&
-        this.receipts.get(path) === receipt &&
-        (!receipt.installation || receipt.installation.revision() === receipt.installation.epoch)
-      )
+      const stat = await this.stat(path)
+      if (this.receiptStillBinds(receipt, path, stat) && this.receipts.get(path) === receipt)
         return {
-          ...stamp,
+          ...stampOf(stat),
           sha: Array.from(receipt.hash.clone().digest(), (byte) =>
             byte.toString(16).padStart(2, '0')
           ).join(''),
         }
-      // A recorded large mobile file with changed metadata must stay local. Never
-      // turn an invalidated receipt into an automatic whole-file eviction proof.
-      if (this.metadataReceipts && stamp.size > PHONE_FALLBACK_BYTES)
+      this.receipts.delete(path)
+      if (this.metadataReceipts && stat.size > PHONE_FALLBACK_BYTES)
         throw new EngineError('conflict', 'Recorded file changed; file kept')
-      if (stamp.size !== receipt.stamp.size || stamp.mtime !== receipt.stamp.mtime)
-        this.receipts.delete(path)
     }
     if (
       boundedOnly &&
@@ -774,6 +1035,7 @@ export class BoundedVaultIo {
         'conflict',
         'Existing bytes require bounded local verification; file kept'
       )
+    const proof = this.installationEpoch(path)
     const source = await this.openRead(path)
     if (!this.metadataReceipts) {
       const identity = await fingerprintSource(source, MAX_CHUNK_BYTES, signal)
@@ -793,15 +1055,26 @@ export class BoundedVaultIo {
       signal
     )
     this.assertOwned()
-    this.receipts.set(path, { hash, stamp: source.stamp })
+    this.receipts.set(path, this.installationReceipt(hash, source.stamp, proof, false))
     return { ...source.stamp, ...identity }
   }
   async create(
     path: string,
     mtime: number,
-    durability: 'acknowledged' | 'deferred' = 'acknowledged'
+    durability: 'acknowledged' | 'deferred' = 'acknowledged',
+    initial = new Uint8Array()
   ): Promise<void> {
     this.assertOwned()
+    if (initial.length > MOBILE_WHOLE_READ_MAX || initial.buffer.byteLength > MOBILE_WHOLE_READ_MAX)
+      throw new EngineError('io', 'oversized buffered staging write')
+    const hash = sha256.create()
+    for (let at = 0; at < initial.length; at += MAX_CHUNK_BYTES) {
+      const chunk = initial.subarray(at, at + MAX_CHUNK_BYTES)
+      hash.update(chunk)
+      const pause = this.taskBudget.account(chunk.length)
+      if (pause !== undefined) await pause
+    }
+    const witnesses = await this.witness(initial)
     const cut = path.lastIndexOf('/')
     if (cut > 0) await this.effect(() => ensureVaultDirectory(this.disk, path.slice(0, cut)))
     if (this.raw.open && this.raw.fullPath) {
@@ -812,14 +1085,47 @@ export class BoundedVaultIo {
       } finally {
         await handle.close()
       }
+      for (let at = 0; at < initial.length; at += MAX_CHUNK_BYTES)
+        await this.append(
+          path,
+          at,
+          initial.slice(at, at + MAX_CHUNK_BYTES),
+          mtime,
+          undefined,
+          durability
+        )
     } else {
       this.receipts.delete(path)
-      await this.disk.writeBinary(path, new ArrayBuffer(0), { mtime })
-      const proof = this.installationEpoch(path)
-      this.receipts.set(
-        path,
-        this.installationReceipt(sha256.create(), stampOf(await this.stat(path)), proof)
-      )
+      const mutation = this.observeReceiptMutation([path], false, 'writeBinary', {
+        hash,
+        witnesses,
+      })
+      try {
+        await this.disk.writeBinary(path, bytesOf(initial), { mtime })
+        const stamp = stampOf(await this.stat(path))
+        if (stamp.size !== initial.length)
+          throw new EngineError('conflict', 'Created staging file changed')
+        const proof = mutation.proof()
+        const actual = mutation.written()?.hash ?? hash
+        const digest = hash.clone().digest()
+        const matches = actual
+          .clone()
+          .digest()
+          .every((byte, index) => byte === digest[index])
+        if (proof)
+          this.receipts.set(
+            path,
+            this.installationReceipt(
+              actual,
+              stamp,
+              proof,
+              mutation.owned() && matches,
+              matches ? witnesses : undefined
+            )
+          )
+      } finally {
+        mutation.stop()
+      }
     }
   }
   async append(
@@ -856,13 +1162,10 @@ export class BoundedVaultIo {
         await handle.close()
       }
     } else {
-      const before = stampOf(await this.stat(path))
+      const stat = await this.stat(path)
+      const before = stampOf(stat)
       let receipt = this.receipts.get(path)
-      if (
-        !receipt ||
-        receipt.stamp.generation !== before.generation ||
-        (receipt.installation && receipt.installation.revision() !== receipt.installation.epoch)
-      ) {
+      if (!this.receiptStillBinds(receipt, path, stat)) {
         this.receipts.delete(path)
         if (before.size > PHONE_FALLBACK_BYTES && !(await this.canReplayStage()))
           throw new EngineError(
@@ -870,6 +1173,7 @@ export class BoundedVaultIo {
             'Bounded staging recovery is unavailable; the fallback limit is 50 MiB'
           )
         const hash = sha256.create()
+        const binding = this.installationEpoch(path)
         const source = await this.openRead(path)
         try {
           for (let at = 0; at < source.size; at += MAX_CHUNK_BYTES)
@@ -878,36 +1182,69 @@ export class BoundedVaultIo {
         } finally {
           await source.close()
         }
-        receipt = { hash, stamp: before }
+        receipt = this.installationReceipt(hash, before, binding, false)
+        if (!this.receiptStillBinds(receipt, path, await this.stat(path)))
+          throw new EngineError('conflict', 'Staging prefix changed while reading')
       }
       // An uncertain append cannot contribute an acknowledged identity.
       this.receipts.delete(path)
-      if (typeof this.disk.appendBinary === 'function')
-        await this.disk.appendBinary(path, bytesOf(bytes), { mtime })
-      else {
-        if (offset + bytes.length > PHONE_FALLBACK_BYTES)
-          throw new EngineError(
-            'io',
-            'Bounded staging writes are unavailable; the fallback limit is 50 MiB'
-          )
-        const existing = new Uint8Array(await this.disk.readBinary(path))
-        const complete = new Uint8Array(offset + bytes.length)
-        complete.set(existing)
-        complete.set(bytes, offset)
-        this.assertOwned()
-        await this.disk.writeBinary(path, complete.buffer, { mtime })
-      }
-      const proof = this.installationEpoch(path)
-      const stamp = stampOf(await this.stat(path))
-      if (stamp.size !== offset + bytes.length)
-        throw new EngineError('io', 'Staging append size is invalid')
-      receipt.hash.update(bytes)
-      this.receipts.set(
-        path,
-        receipt.installation
-          ? this.installationReceipt(receipt.hash, stamp, proof)
-          : { hash: receipt.hash, stamp }
+      const intended: WriteReceipt['hash'] = receipt.hash.clone().update(bytes)
+      const witnesses = receipt.witnesses
+        ? [...receipt.witnesses, ...(await this.witness(bytes))]
+        : undefined
+      if (!this.receiptStillBinds(receipt, path, stat))
+        throw new EngineError('conflict', 'Staging prefix changed before append')
+      const mutation = this.observeReceiptMutation(
+        [path],
+        false,
+        typeof this.disk.appendBinary === 'function' ? 'appendBinary' : 'writeBinary',
+        witnesses ? { hash: intended, witnesses } : undefined
       )
+      try {
+        if (typeof this.disk.appendBinary === 'function')
+          await this.disk.appendBinary(path, bytesOf(bytes), { mtime })
+        else {
+          if (offset + bytes.length > PHONE_FALLBACK_BYTES)
+            throw new EngineError(
+              'io',
+              'Bounded staging writes are unavailable; the fallback limit is 50 MiB'
+            )
+          const existing = new Uint8Array(await this.disk.readBinary(path))
+          const complete = new Uint8Array(offset + bytes.length)
+          complete.set(existing)
+          complete.set(bytes, offset)
+          this.assertOwned()
+          await this.disk.writeBinary(path, complete.buffer, { mtime })
+        }
+        const stamp = stampOf(await this.stat(path))
+        if (stamp.size !== offset + bytes.length)
+          throw new EngineError('io', 'Staging append size is invalid')
+        const proof = mutation.proof()
+        const written = mutation.written()
+        if (proof && (!written || written.size === stamp.size)) {
+          const actual = written?.hash ?? intended
+          const digest = intended.clone().digest()
+          const installed =
+            !!receipt.installation &&
+            mutation.owned() &&
+            actual
+              .clone()
+              .digest()
+              .every((byte, index) => byte === digest[index])
+          this.receipts.set(
+            path,
+            this.installationReceipt(
+              actual,
+              stamp,
+              proof,
+              installed,
+              installed ? witnesses : undefined
+            )
+          )
+        }
+      } finally {
+        mutation.stop()
+      }
     }
     signal?.throwIfAborted()
     this.assertOwned()

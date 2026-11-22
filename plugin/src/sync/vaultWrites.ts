@@ -100,7 +100,8 @@ export interface WriterDeps {
   makeParents(path: string): Promise<void>
   installed?(path: string): void
   fingerprint?(path: string): Promise<{ size: number; sha: string }>
-  adoptReceipt?(from: string, to: string): Promise<void>
+  writeStaging?(path: string, bytes: Uint8Array, mtime: number): Promise<void>
+  adoptReceipt?(from: string, to: string, move?: () => Promise<void>): Promise<void>
 }
 
 export class VaultWriter {
@@ -238,7 +239,9 @@ export class VaultWriter {
       }
       // This is an owned private path, never a public overwrite. Publication remains exclusive.
       const chunkSize = 1024 * 1024
-      if (bytes.length > chunkSize && !this.deps.native) {
+      if (!this.deps.native && this.deps.writeStaging)
+        await this.deps.writeStaging(temp, bytes, mtime)
+      else if (bytes.length > chunkSize && !this.deps.native) {
         for (let at = 0; at < bytes.length; at += chunkSize) {
           const chunk = bytesOf(bytes.slice(at, at + chunkSize))
           if (at === 0) await this.disk.writeBinary(temp, chunk, { mtime })
@@ -251,11 +254,15 @@ export class VaultWriter {
         await this.deps.native.syncPath(temp)
       }
       try {
-        if (this.deps.native) await this.deps.native.installExclusive(temp, path)
-        else {
-          await this.disk.rename(temp, path)
-          this.consumed.add(temp)
+        const publish = async () => {
+          if (this.deps.native) await this.deps.native.installExclusive(temp, path)
+          else {
+            await this.disk.rename(temp, path)
+            this.consumed.add(temp)
+          }
         }
+        if (this.deps.adoptReceipt) await this.deps.adoptReceipt(temp, path, publish)
+        else await publish()
       } catch (error) {
         // A lost acknowledgement is uncertain; keep the intent and data for proof/review.
         const code = (error as { code?: string })?.code

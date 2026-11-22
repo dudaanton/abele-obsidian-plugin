@@ -3,9 +3,255 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { desktopFsPort } from '../helpers/desktopRequire'
 import type { DataAdapter } from 'obsidian'
 import { BoundedVaultIo } from '@/sync/boundedVaultIo'
+import { vaultInstallationEpoch } from '@/sync/installationEpoch'
 import { mobileStreamFixture } from '../helpers/mobileStreamFixture'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { sha256 } from '@noble/hashes/sha2'
+
+const digest = (bytes: Uint8Array) =>
+  Array.from(sha256(bytes), (b) => b.toString(16).padStart(2, '0')).join('')
+
+it.each(['append', 'fingerprint', 'resume'])(
+  'does not trust a rebuilt receipt after another same-stat overwrite (%s)',
+  async (reader) => {
+    const app = buildFakeVault([])
+    const io = new BoundedVaultIo(app.vault.adapter as never)
+    await io.create('sample.bin', 1000)
+    await io.append('sample.bin', 0, new Uint8Array([1, 2, 3]), 1000)
+    await app.vault.adapter.writeBinary('sample.bin', new Uint8Array([3, 2, 1]).buffer, {
+      mtime: 1000,
+    })
+    await io.append('sample.bin', 3, new Uint8Array([4]), 1000)
+    await app.vault.adapter.writeBinary('sample.bin', new Uint8Array([4, 3, 2, 1]).buffer, {
+      mtime: 1000,
+    })
+    if (reader === 'resume') expect(await io.canResumeStage('sample.bin')).toBe(false)
+    else {
+      if (reader === 'append') await io.append('sample.bin', 4, new Uint8Array([5]), 1000)
+      const actual = new Uint8Array(await app.vault.adapter.readBinary('sample.bin'))
+      expect((await io.fingerprint('sample.bin')).sha).toBe(digest(actual))
+    }
+  }
+)
+
+it.each(['clean', 'before', 'during', 'after', 'event'])(
+  'transfers only the receipt bound throughout an owned rename (%s)',
+  async (when) => {
+    const app = buildFakeVault([])
+    const io = new BoundedVaultIo(
+      app.vault.adapter as never,
+      undefined,
+      undefined,
+      app.vault.adapter,
+      undefined,
+      undefined,
+      false,
+      vaultInstallationEpoch(app.vault as never)
+    )
+    const original = new Uint8Array([1, 2, 3])
+    await io.create('stage.bin', 1000)
+    await io.append('stage.bin', 0, original, 1000)
+    const overwrite = (path: string) =>
+      app.vault.adapter.writeBinary(path, new Uint8Array([3, 2, 1]).buffer, { mtime: 1000 })
+    if (when === 'before') await overwrite('stage.bin')
+    if (when === 'during') {
+      const rename = app.vault.adapter.rename.bind(app.vault.adapter)
+      vi.spyOn(app.vault.adapter, 'rename').mockImplementationOnce(async (from, to) => {
+        await overwrite(from)
+        await rename(from, to)
+      })
+    }
+    const read = vi.spyOn(app.vault.adapter, 'readBinary')
+    await io.adoptReceipt('stage.bin', 'sample.bin', async () => {
+      if (when === 'event') app.emit('vault', 'modify', { path: 'stage.bin' })
+      await app.vault.adapter.rename('stage.bin', 'sample.bin')
+      if (when === 'after') await overwrite('sample.bin')
+    })
+    expect(await io.verifiedInstallation('sample.bin', { sha: digest(original), size: 3 })).toBe(
+      when === 'clean'
+    )
+    expect(read).not.toHaveBeenCalled()
+  }
+)
+
+it('does not renew a prefix receipt across an intervening write during append', async () => {
+  const app = buildFakeVault([])
+  const io = new BoundedVaultIo(app.vault.adapter as never)
+  await io.create('sample.bin', 1000)
+  await io.append('sample.bin', 0, new Uint8Array([1, 2, 3]), 1000)
+  const write = app.vault.adapter.writeBinary.bind(app.vault.adapter)
+  vi.spyOn(app.vault.adapter, 'writeBinary').mockImplementationOnce(
+    async (path, bytes, options) => {
+      await write(path, bytes, options)
+      await write(path, new Uint8Array([4, 3, 2, 1]).buffer, options)
+    }
+  )
+  await io.append('sample.bin', 3, new Uint8Array([4]), 1000)
+  expect(
+    await io.verifiedInstallation('sample.bin', {
+      sha: digest(new Uint8Array([1, 2, 3, 4])),
+      size: 4,
+    })
+  ).toBe(false)
+  expect((await io.fingerprint('sample.bin')).sha).toBe(digest(new Uint8Array([4, 3, 2, 1])))
+})
+
+it('does not renew invalid publication evidence from a supplied write hash', async () => {
+  const app = buildFakeVault([])
+  const io = new BoundedVaultIo(app.vault.adapter as never)
+  const original = new Uint8Array([1, 2, 3])
+  await io.create('sample.bin', 1000)
+  await io.append('sample.bin', 0, original, 1000)
+  await app.vault.adapter.writeBinary('sample.bin', new Uint8Array([3, 2, 1]).buffer, {
+    mtime: 1000,
+  })
+  await io.recordWrite('sample.bin', 3, sha256.create().update(original), true)
+  expect(await io.verifiedInstallation('sample.bin', { sha: digest(original), size: 3 })).toBe(
+    false
+  )
+})
+
+it('upgrades legacy adapter observation before binding byte receipts', async () => {
+  const app = buildFakeVault([])
+  const adapter = app.vault.adapter
+  const revisions = Symbol.for('abele.sync.adapter-config-revisions-v1')
+  const observers = Symbol.for('abele.sync.adapter-config-observers-v1')
+  Object.defineProperty(adapter, revisions, { value: new Map([['', 0]]) })
+  Object.defineProperty(adapter, observers, { value: new Set() })
+  const raw = adapter.writeBinary.bind(adapter)
+  adapter.writeBinary = async (path, bytes, options) => {
+    const notify = () => {
+      for (const observe of Reflect.get(adapter, observers)) observe([path], false)
+    }
+    notify()
+    try {
+      await raw(path, bytes, options)
+    } finally {
+      notify()
+    }
+  }
+  const io = new BoundedVaultIo(adapter as never)
+  const bytes = new Uint8Array([1, 2, 3])
+  await io.create('sample.bin', 1000)
+  await io.append('sample.bin', 0, bytes, 1000)
+  expect(await io.verifiedInstallation('sample.bin', { sha: digest(bytes), size: 3 })).toBe(true)
+  await adapter.writeBinary('sample.bin', new Uint8Array([3, 2, 1]).buffer, { mtime: 1000 })
+  expect(await io.verifiedInstallation('sample.bin', { sha: digest(bytes), size: 3 })).toBe(false)
+})
+
+it('does not bind an earlier binary buffer across a later text mutation', async () => {
+  const app = buildFakeVault([])
+  const adapter = app.vault.adapter
+  const rawWrite = adapter.writeBinary.bind(adapter)
+  const changed = new Uint8Array([4, 3, 2, 1])
+  Object.assign(adapter, {
+    process: async (path: string) => rawWrite(path, changed.buffer, { mtime: 1000 }),
+  })
+  const io = new BoundedVaultIo(adapter as never)
+  await io.create('sample.bin', 1000)
+  await io.append('sample.bin', 0, new Uint8Array([1, 2, 3]), 1000)
+  const write = adapter.writeBinary.bind(adapter)
+  vi.spyOn(adapter, 'writeBinary').mockImplementationOnce(async (path, bytes, options) => {
+    await write(path, bytes, options)
+    await Reflect.get(adapter, 'process')(path)
+  })
+  await io.append('sample.bin', 3, new Uint8Array([4]), 1000)
+  expect((await io.fingerprint('sample.bin')).sha).toBe(digest(changed))
+})
+
+it('does not admit a read receipt while a same-stat host write is still in flight', async () => {
+  const app = buildFakeVault([{ path: 'sample.bin', content: 'old', mtime: 1000 }])
+  const adapter = app.vault.adapter
+  const rawWrite = adapter.writeBinary.bind(adapter)
+  let start!: () => void, acknowledge!: () => void, written!: () => void
+  const begin = new Promise<void>((resolve) => {
+    start = resolve
+  })
+  const ack = new Promise<void>((resolve) => {
+    acknowledge = resolve
+  })
+  const changed = new Promise<void>((resolve) => {
+    written = resolve
+  })
+  adapter.writeBinary = async (path, bytes, options) => {
+    await begin
+    await rawWrite(path, bytes, options)
+    written()
+    await ack
+  }
+  const io = new BoundedVaultIo(
+    adapter as never,
+    undefined,
+    undefined,
+    adapter,
+    undefined,
+    undefined,
+    true
+  )
+  const pending = adapter.writeBinary('sample.bin', new TextEncoder().encode('new').buffer, {
+    mtime: 1000,
+  })
+  try {
+    await io.fingerprint('sample.bin')
+    start()
+    await changed
+    expect((await io.fingerprint('sample.bin')).sha).toBe(digest(new TextEncoder().encode('new')))
+  } finally {
+    start()
+    acknowledge()
+    await pending
+  }
+})
+
+it('does not adopt a renamed receipt after a same-stat destination overwrite', async () => {
+  const app = buildFakeVault([])
+  const io = new BoundedVaultIo(app.vault.adapter as never)
+  const original = new Uint8Array([1, 2, 3])
+  await io.create('stage.bin', 1000)
+  await io.append('stage.bin', 0, original, 1000)
+  await app.vault.adapter.rename('stage.bin', 'sample.bin')
+  await app.vault.adapter.writeBinary('sample.bin', new Uint8Array([3, 2, 1]).buffer, {
+    mtime: 1000,
+  })
+  await io.adoptReceipt('stage.bin', 'sample.bin')
+  expect(await io.verifiedInstallation('sample.bin', { sha: digest(original), size: 3 })).toBe(
+    false
+  )
+  expect((await io.fingerprint('sample.bin')).sha).toBe(digest(new Uint8Array([3, 2, 1])))
+})
+
+it('uploads changed large portable bytes despite an acknowledged same-stat receipt', async () => {
+  const size = 51 * 1024 * 1024
+  let fill = 1
+  const readBinary = vi.fn(async () => new Uint8Array(size).fill(fill).buffer)
+  const adapter = {
+    stat: async () => ({ type: 'file', size, mtime: 1000, ctime: 1 }),
+    readBinary,
+    writeBinary: async () => {
+      fill = 2
+    },
+  } as unknown as DataAdapter
+  const io = new BoundedVaultIo(adapter)
+  const consume = vi.fn(async () => {})
+  const first = await io.fingerprintForUpload('sample.bin', consume)
+  await adapter.writeBinary('sample.bin', new ArrayBuffer(0))
+  const second = await io.fingerprintForUpload(
+    'sample.bin',
+    consume,
+    undefined,
+    (id) => id.sha === first!.sha
+  )
+  expect(second!.sha).not.toBe(first!.sha)
+  const third = await io.fingerprintForUpload(
+    'sample.bin',
+    consume,
+    undefined,
+    (id) => id.sha === second!.sha
+  )
+  expect(third!.sha).toBe(second!.sha)
+  expect(consume).toHaveBeenCalledTimes(2)
+  expect(readBinary).toHaveBeenCalledTimes(2)
+}, 30000)
 
 it('does not extend an invalidated installation receipt after a same-stat overwrite', async () => {
   const app = buildFakeVault([])

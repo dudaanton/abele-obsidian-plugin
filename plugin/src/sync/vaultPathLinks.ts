@@ -247,7 +247,7 @@ function rootAccess(adapter: DataAdapter & LinkAdapter): RootAccess {
   const port = origin.fsPromises && diagnosticOrigin(origin.fsPromises)
   const native = (port &&
     originalNativeLeaf(nativeOrigins.get(port) ?? port)) as LinkAdapter['fsPromises']
-  const resolver = origin.getFullPath
+  const resolver = Reflect.get(origin, 'getFullPath')
   // Re-resolve the logical root and method identity. Only callable scaffolding
   // is reused; callers still verify physical root and ancestor identities.
   const logical = resolver?.call(origin, '')
@@ -1431,7 +1431,19 @@ export function guardedVaultPort<T extends object>(port: T): T {
 
 const REVISIONS = Symbol.for('abele.sync.adapter-config-revisions-v1')
 const CONFIG_OBSERVERS = Symbol.for('abele.sync.adapter-config-observers-v1')
-type ConfigObserver = (paths: readonly string[], directory: boolean) => void
+const MUTATION_WRAPPERS = Symbol.for('abele.sync.adapter-mutation-observers-v2')
+const MUTATION_OBSERVERS = Symbol.for('abele.sync.adapter-byte-observers-v1')
+export interface AdapterMutation {
+  kind: string
+  phase: 'before' | 'after'
+  authoritative?: boolean
+  bytes?: ArrayBuffer
+}
+type ConfigObserver = (
+  paths: readonly string[],
+  directory: boolean,
+  mutation?: AdapterMutation
+) => void | Promise<void>
 
 /** Scoped observation only; the caller removes its callback at the end of the pass. */
 export function observeAdapterConfig(
@@ -1444,17 +1456,35 @@ export function observeAdapterConfig(
   const shared = adapter as DataAdapter & { [CONFIG_OBSERVERS]?: Set<ConfigObserver> }
   if (!shared[CONFIG_OBSERVERS])
     Object.defineProperty(shared, CONFIG_OBSERVERS, { value: new Set<ConfigObserver>() })
-  const callback: ConfigObserver = (paths, directory) => {
+  const callback: ConfigObserver = (paths, directory, mutation) => {
+    // An older wrapper may still surround the same host method after a plugin reload.
+    // Its untyped notifications are superseded by the current outer wrapper.
+    if (!mutation) return
     const relevant = paths.filter(
       (path) =>
         root === '' || path === root || path.startsWith(root + '/') || root.startsWith(path + '/')
     )
-    if (relevant.length) observe(relevant, directory)
+    if (relevant.length) return observe(relevant, directory, mutation)
   }
   const observers = shared[CONFIG_OBSERVERS]
   observers.add(callback)
   return () => {
     observers.delete(callback)
+  }
+}
+
+/** Lifetime byte clocks are separate from per-pass inventory observers. */
+export function observeAdapterMutations(adapter: DataAdapter, observe: ConfigObserver): () => void {
+  adapter = adapterOrigins.get(adapter) ?? adapter
+  adapterConfigRevision(adapter, '')
+  let observers = Reflect.get(adapter, MUTATION_OBSERVERS) as Set<ConfigObserver> | undefined
+  if (!observers) {
+    observers = new Set<ConfigObserver>()
+    Object.defineProperty(adapter, MUTATION_OBSERVERS, { value: observers })
+  }
+  observers.add(observe)
+  return () => {
+    observers.delete(observe)
   }
 }
 
@@ -1469,6 +1499,9 @@ export function adapterConfigRevision(adapter: DataAdapter, root: string): () =>
   if (!roots) {
     roots = new Map()
     Object.defineProperty(adapter, REVISIONS, { value: roots })
+  }
+  if (!Reflect.get(adapter, MUTATION_WRAPPERS)) {
+    Object.defineProperty(adapter, MUTATION_WRAPPERS, { value: true })
     const held = roots
     for (const key of [
       'write',
@@ -1484,7 +1517,7 @@ export function adapterConfigRevision(adapter: DataAdapter, root: string): () =>
     ] as const) {
       const original: unknown = Reflect.get(adapter, key)
       if (typeof original !== 'function') continue
-      const change = (paths: unknown[]) => {
+      const change = (paths: unknown[], phase: AdapterMutation['phase'], args: unknown[]) => {
         for (const [root, revision] of held) {
           if (
             paths.some(
@@ -1499,20 +1532,42 @@ export function adapterConfigRevision(adapter: DataAdapter, root: string): () =>
             held.set(root, revision + 1)
         }
         const observers = Reflect.get(adapter, CONFIG_OBSERVERS) as Set<ConfigObserver> | undefined
-        for (const observe of observers ?? [])
-          observe(
+        const pending: Promise<void>[] = []
+        const byteObservers = Reflect.get(adapter, MUTATION_OBSERVERS) as
+          | Set<ConfigObserver>
+          | undefined
+        for (const observe of [...(byteObservers ?? []), ...(observers ?? [])]) {
+          const result = observe(
             paths.filter((path): path is string => typeof path === 'string'),
-            key === 'mkdir' || key === 'rmdir' || key === 'rename'
+            key === 'mkdir' || key === 'rmdir' || key === 'rename',
+            {
+              kind: key,
+              phase,
+              ...(key === 'writeBinary' && args[1] instanceof ArrayBuffer
+                ? { bytes: args[1] }
+                : {}),
+            }
           )
+          if (result) pending.push(result)
+        }
+        if (pending.length) return Promise.all(pending).then(() => {})
       }
       const wrap = (method: Method) =>
         function (this: DataAdapter, ...args: unknown[]) {
           const paths = args.slice(0, key === 'rename' || key === 'copy' ? 2 : 1)
-          change(paths)
           try {
-            return Promise.resolve(method.apply(this, args)).finally(() => change(paths))
+            const before = change(paths, 'before', args)
+            const result =
+              before !== undefined
+                ? Promise.resolve(before).then(() => method.apply(this, args))
+                : method.apply(this, args)
+            return Promise.resolve(result).finally(() => change(paths, 'after', args))
           } catch (error) {
-            change(paths)
+            const after = change(paths, 'after', args)
+            if (after !== undefined)
+              return after.then(() => {
+                throw error
+              })
             throw error
           }
         }

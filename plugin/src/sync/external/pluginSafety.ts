@@ -22,6 +22,7 @@ import {
 import { sha256 } from './hash'
 import type { App } from 'obsidian'
 import { BoundedVaultIo } from '../boundedVaultIo'
+import { vaultInstallationEpoch } from '../installationEpoch'
 import { stagingDirectory, stagingPathReserved } from '../stagingDirectory'
 import { adapterWriteInFlight } from '../vaultWrites'
 import { pathCoordinatorOf } from '../pathCoordinator'
@@ -512,7 +513,7 @@ export async function projectionEvidence(
   const task = new SyncTaskBudget()
   const inspect = async (path: string) => {
     const pause = task.metadataRow(inspection.signal)
-    if (pause) await pause
+    if (pause !== undefined) await pause
     if (!includeControl && path === IGNORE_FILE) return
     assertCurrent()
     const saved = previous.get(path)
@@ -1234,7 +1235,11 @@ export async function requireExternalLifecycleSafety(
             assertCurrent,
             undefined,
             undefined,
-            app.vault.configDir
+            app.vault.configDir,
+            undefined,
+            false,
+            vaultInstallationEpoch(app.vault),
+            app.vault
           ).fingerprint(path)
         )
         if (identity.size !== size || identity.sha !== sha)
