@@ -34,6 +34,7 @@ import {
   privateDownload,
   withinRoot,
   CONNECTION_ROOT_SYMLINK,
+  CONNECTION_PRIVATE_SYMLINK,
 } from './connectionPaths'
 import { assertPhysicalPath } from './external/projection'
 import { crossesSymlink } from './symlinkChain'
@@ -3054,7 +3055,12 @@ export class ObsidianFileSystem implements FileSystem {
   /** Recovery needs physical absence evidence, including files excluded from sync. */
   async *listRecoveryFiles(): AsyncIterable<FileInfo> {
     const budget = new SyncTaskBudget()
-    const pending = ['']
+    const root = this.scopedRoot()
+    const pending: string[] = []
+    for (const path of root ? [root, ...(this.privateRoot ? [this.privateRoot] : [])] : ['']) {
+      if (path && (await crossesSymlink(path, (part) => this.isSymlink(part)))) continue
+      if (!path || (await this.disk.stat(path)) !== null) pending.push(path)
+    }
     const seen = new Set<string>()
     while (pending.length) {
       const parent = pending.pop()
@@ -5184,6 +5190,13 @@ export class ObsidianFileSystem implements FileSystem {
   }
 
   private async isSymlink(path: string): Promise<boolean> {
+    const privateProbe = Reflect.get(this.scopedAdapter, CONNECTION_PRIVATE_SYMLINK) as
+      | (() => Promise<boolean>)
+      | undefined
+    if (this.privateRoot && privateProbe) {
+      if (this.privateRoot.startsWith(path + '/')) return false
+      if (path === this.privateRoot) return privateProbe()
+    }
     const root = this.scopedRoot()
     const rootSymlink = Reflect.get(this.scopedAdapter, CONNECTION_ROOT_SYMLINK) as
       | (() => Promise<boolean>)

@@ -2181,6 +2181,7 @@ import {
   CONNECTION_HOST,
   CONNECTION_ROOT,
   CONNECTION_ROOT_SYMLINK,
+  CONNECTION_PRIVATE_SYMLINK,
   CONNECTION_PRIVATE,
   CONNECTION_JOURNAL_OWNER,
 } from './connectionPaths'
@@ -2368,6 +2369,13 @@ export function connectionAdapter(
         }
       }
       if (key === CONNECTION_ROOT_SYMLINK) return rootSymlink
+      if (key === CONNECTION_PRIVATE_SYMLINK)
+        return async () =>
+          native?.lstat && typeof full === 'function'
+            ? crossesSymlink(privateRoot, async (path) =>
+                (await native.lstat(full.call(adapter, path))).isSymbolicLink()
+              )
+            : false
       if (key === Symbol.for('abele.sync.scoped-candidate-path-guard-v1'))
         return (path: string) => {
           check(path, 'stat')

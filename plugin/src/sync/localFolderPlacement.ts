@@ -17,7 +17,7 @@ import { SyncTaskBudget } from './syncTaskBudget'
 import { INSTALL_BATCH, type InstallItem } from './nativeInstallBatch'
 
 export { FolderScopeError } from './scopedFileSystem'
-import { FolderScopeError } from './scopedFileSystem'
+import { FolderScopeError, assertRecoveryPath } from './scopedFileSystem'
 
 export class LocalPlacementError extends Error {
   readonly code = 'local-placement'
@@ -32,6 +32,7 @@ export const placementMethods = {
   [pathAdmission]: 'key',
   pathKey: 'key',
   list: 'list',
+  listRecoveryFiles: 'recovery',
   listDirectories: 'list',
   listChildren: 'children',
   watch: 'watch',
@@ -62,7 +63,16 @@ export const placementMethods = {
   recoverConditionalFiles: 'opaque',
 } satisfies Record<
   keyof PlacementFileSystem,
-  'list' | 'watch' | 'path' | 'pair' | 'identity' | 'children' | 'opaque' | 'key' | 'info'
+  | 'list'
+  | 'recovery'
+  | 'watch'
+  | 'path'
+  | 'pair'
+  | 'identity'
+  | 'children'
+  | 'opaque'
+  | 'key'
+  | 'info'
 >
 /** The host's received-directory identity lookup takes one vault path. */
 const DIRECTORY_IDENTITY = Symbol.for('abele.sync.directory-identity-v1')
@@ -208,6 +218,7 @@ export class LocalFolderPlacement {
     const stages = Reflect.get(fs, PRIVATE_PLACEMENT_STAGES) ?? privatePlacementStages(fs)
     // Opaque stage handles are authorized only by this filesystem allocating/reopening them.
     const handles = new Set<string>()
+    const recoveryFiles = new Map<string, string>()
     const retainedStage = <T extends AtomicStage>(stage: T): T => {
       handles.add(stage.id)
       if (!stage.discard) return stage
@@ -455,17 +466,27 @@ export class LocalFolderPlacement {
           return (info: FileInfo, ...args: unknown[]) =>
             value.call(target, { ...info, path: placement.toLocal(info.path) }, ...args)
         if (policy === 'key') return (path: string) => value.call(target, placement.toLocal(path))
-        if (policy === 'list')
+        if (policy === 'list' || policy === 'recovery')
           return async function* () {
             const root = placement.local,
               prefix = root + '/'
             const budget = new SyncTaskBudget()
             for await (const item of value.call(target)) {
-              if (item.path === root || item.path.startsWith(prefix))
-                yield {
+              if (item.path === root || item.path.startsWith(prefix)) {
+                const mapped = {
                   ...item,
                   path: placement.toServer(item.path, String(key) + '.result', true),
                 }
+                if (policy === 'recovery') {
+                  assertRecoveryPath(item.path)
+                  recoveryFiles.set(mapped.path, item.path)
+                }
+                yield mapped
+              } else if (policy === 'recovery' && item.path.startsWith('.abele-sync/')) {
+                assertRecoveryPath(item.path)
+                recoveryFiles.set(item.path, item.path)
+                yield item
+              }
               const pause = budget.account(4096)
               if (pause !== undefined) await pause
             }
@@ -505,15 +526,25 @@ export class LocalFolderPlacement {
             value.call(target, placement.toLocal(from), placement.toLocal(to))
         if (policy === 'path')
           return async (path: string, ...args: unknown[]) => {
-            const handle = (key === 'stat' || key === 'openRead') && handles.has(path)
+            const handle =
+              ((key === 'stat' || key === 'openRead') && handles.has(path)) ||
+              (['read', 'readPrefix', 'stat', 'fileIdentity', 'fingerprint', 'openRead'].includes(
+                String(key)
+              ) &&
+                recoveryFiles.has(path))
             const result = await value.call(
               target,
-              handle ? path : placement.toLocal(path),
+              handle ? (recoveryFiles.get(path) ?? path) : placement.toLocal(path),
               ...args
             )
             if (key === 'beginAtomicWrite') return retainedStage(result)
-            return key === 'stat' && result && !handle
-              ? { ...result, path: placement.toServer(result.path, 'stat.result') }
+            return key === 'stat' &&
+              result &&
+              (!handle || (recoveryFiles.has(path) && recoveryFiles.get(path) !== path))
+              ? {
+                  ...result,
+                  path: placement.toServer(result.path, 'stat.result', recoveryFiles.has(path)),
+                }
               : result
           }
         // Opaque stage locators never pass through server-to-local path mapping.

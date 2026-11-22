@@ -75,7 +75,7 @@ it.each(['.hidden/copy.bin', 'ignored/copy.bin', '.abele-sync/private/copy.bin']
   async (copy) => {
     const { app, state, journal } = await fixture(copy)
     for (let restart = 0; restart < 2; restart++) {
-      const fs = new ObsidianFileSystem(app as never, { fileScope: 'synced' })
+      const fs = new ObsidianFileSystem(app as never)
       await expect(fenceRestoredJournal(state, 11, fs, undefined, client)).rejects.toThrow(
         'unsent bytes'
       )

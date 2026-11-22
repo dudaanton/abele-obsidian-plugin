@@ -27,6 +27,17 @@ export class FolderScopeError extends EngineError {
   }
 }
 
+/** Recovery includes physical names which are deliberately not valid publication paths. */
+export function assertRecoveryPath(path: string): void {
+  if (
+    /^(?:\/|\\|[a-z]:)/i.test(path) ||
+    path.includes('\\') ||
+    path.includes('\0') ||
+    path.split('/').some((part) => !part || part === '.' || part === '..')
+  )
+    throw new FolderScopeError('Invalid recovery path')
+}
+
 /** A missed incoming validation must never turn into access to another local folder. */
 export function scopedFileSystem(
   fs: FileSystem,
@@ -36,6 +47,7 @@ export function scopedFileSystem(
   scopeRootInput?: string | (() => string)
 ): FileSystem {
   const handles = new Set<string>()
+  const recoveryFiles = new Set<string>()
   const stages =
     Reflect.get(fs, PRIVATE_PLACEMENT_STAGES) ?? privatePlacementStages(fs, privateRoot)
   const privateStage = (path: string) =>
@@ -240,6 +252,16 @@ export function scopedFileSystem(
             await value.call(target, id, path, mtime, from, beforeCreate, ...recovery)
           )
         }
+      if (key === 'listRecoveryFiles')
+        return async function* () {
+          for await (const info of value.call(target)) {
+            assertRecoveryPath(info.path)
+            if (!includes(info.path) && !(privateRoot && info.path.startsWith(privateRoot + '/')))
+              throw new FolderScopeError('Recovery inventory is outside this connection')
+            recoveryFiles.add(info.path)
+            yield info
+          }
+        }
       if (key === 'list' || key === 'listDirectories')
         return async function* () {
           for await (const info of value.call(target)) {
@@ -321,7 +343,14 @@ export function scopedFileSystem(
         key === Symbol.for('abele.sync.index-absent-v1')
       )
         return async (path: string, ...args: unknown[]) => {
-          if (key === 'stat') assertStage(path)
+          const recoveryRead =
+            ['read', 'stat', 'fileIdentity', 'fingerprint', 'openRead'].includes(String(key)) &&
+            recoveryFiles.has(path)
+          if (recoveryRead) {
+            assertRecoveryPath(path)
+            if (!includes(path) && !(privateRoot && path.startsWith(privateRoot + '/')))
+              throw new FolderScopeError('Recovery file is outside this connection')
+          } else if (key === 'stat') assertStage(path)
           else if (!(key === 'openRead' && handles.has(path))) assertPath(path)
           const result = await value.call(target, path, ...args)
           return key === 'beginAtomicWrite' ? retained(result) : result
