@@ -27,6 +27,7 @@
 import { TFile, TFolder, TAbstractFile } from 'obsidian'
 import { dump as dumpYaml, load as loadYaml } from 'js-yaml'
 import { OperationDelays } from './deferred'
+import { primeVaultMutationEvents } from '@/sync/vaultMutationEvents'
 
 export interface FakeLinkCache {
   link: string
@@ -1044,5 +1045,7 @@ export function buildFakeVault(
       stats.resolvedLinks = 0
     },
   }
+  // The host starts lifetime observation before a filesystem/exchange is constructed.
+  primeVaultMutationEvents(self.vault as never)
   return self
 }

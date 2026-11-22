@@ -38,6 +38,7 @@ describe('startup mark boundaries', () => {
       const config = { init: noop, ai: { enabled } }
       const names = {
         markLoad: (name: string) => events.push(name),
+        primeVaultMutationEvents: () => events.push('vault epoch events'),
         beginStartup: noop,
         yieldSyncTask: async () => {},
         dayjs: { extend: noop },
@@ -86,6 +87,7 @@ describe('startup mark boundaries', () => {
         'evalEnd',
         'onloadStart',
         'onloadEnd',
+        'vault epoch events',
         'locale',
         'settings sections',
         'settings section source',
@@ -103,6 +105,8 @@ describe('startup mark boundaries', () => {
       before('evalStart', 'evalEnd')
       before('evalEnd', 'onloadStart')
       before('onloadStart', 'onloadEnd')
+      before('onloadStart', 'vault epoch events')
+      before('vault epoch events', 'locale')
       before('onloadStart', 'locale')
       before('locale', 'initializeLocale:de')
       before('initializeLocale:de', 'settings')

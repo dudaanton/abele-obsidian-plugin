@@ -11,6 +11,7 @@ import '@/helpers/deferredCleanup'
 import { openSyncedFile } from './sync/openSyncedFile'
 import { abeleSectionsSource } from './sync/abeleSections'
 import { liveAbeleSections, installSectionSettings } from './sync/abeleSectionsRuntime'
+import { primeVaultMutationEvents } from './sync/vaultMutationEvents'
 import { tokenOffloadsOf } from './sync/tokenOffloadCoordinator'
 import { pathCoordinatorOf } from './sync/pathCoordinator'
 import { MarkdownPostProcessorContext, Notice, Plugin, Platform } from 'obsidian'
@@ -299,6 +300,7 @@ export default class AbelePlugin extends Plugin {
     markLoad('onloadStart')
     this.syncTimeline.mark('onload')
     try {
+      primeVaultMutationEvents(this.app.vault)
       // Every step below runs on its own: one that throws is named in the console and the rest of
       // the start goes on, instead of leaving the sidebars and everything after it unregistered.
       beginStartup()

@@ -1,4 +1,5 @@
 import { waitForSyncRead } from './syncTaskBudget'
+import { observeVaultMutationEvents } from './vaultMutationEvents'
 import {
   boundedNativeOperations,
   boundedNativeRead,
@@ -2899,15 +2900,11 @@ export function vaultInstallationEpoch(vault: Vault): InstallationEpochPort {
   }
   read.key = state.read.key
   read.observe = state.read.observe
-  const changed = (file: { path: string }) => state.changed([file.path])
   // Keep history across filesystem replacements and watcher gaps, once per vault.
   // These callbacks retain only bounded counters, never a connection or runtime.
-  if (typeof Reflect.get(vault, 'on') === 'function') {
-    vault.on('create', changed)
-    vault.on('modify', changed)
-    vault.on('delete', changed)
-    vault.on('rename', (file, previous) => state.changed([file.path, previous]))
-  }
+  observeVaultMutationEvents(vault, (paths) => {
+    void state.changed(paths)
+  })
   Object.defineProperty(vault, VAULT, { value: read })
   return read
 }
