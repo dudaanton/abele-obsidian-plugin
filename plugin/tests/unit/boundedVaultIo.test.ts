@@ -192,15 +192,16 @@ it('does not admit a read receipt while a same-stat host write is still in fligh
     mtime: 1000,
   })
   try {
-    await io.fingerprint('sample.bin')
+    await expect(io.fingerprint('sample.bin')).rejects.toMatchObject({ code: 'conflict' })
     start()
     await changed
-    expect((await io.fingerprint('sample.bin')).sha).toBe(digest(new TextEncoder().encode('new')))
+    await expect(io.fingerprint('sample.bin')).rejects.toMatchObject({ code: 'conflict' })
   } finally {
     start()
     acknowledge()
     await pending
   }
+  expect((await io.fingerprint('sample.bin')).sha).toBe(digest(new TextEncoder().encode('new')))
 })
 
 it('does not adopt a renamed receipt after a same-stat destination overwrite', async () => {
@@ -219,6 +220,61 @@ it('does not adopt a renamed receipt after a same-stat destination overwrite', a
   )
   expect((await io.fingerprint('sample.bin')).sha).toBe(digest(new Uint8Array([3, 2, 1])))
 })
+
+it('rejects a large portable fingerprint changed during upload consumption', async () => {
+  const size = 51 * 1024 * 1024
+  let fill = 1
+  const adapter = {
+    stat: async () => ({ type: 'file', size, mtime: 1000, ctime: 1 }),
+    readBinary: async () => new Uint8Array(size).fill(fill).buffer,
+    writeBinary: async () => {
+      fill = 2
+    },
+  } as unknown as DataAdapter
+  const io = new BoundedVaultIo(adapter)
+  await expect(
+    io.fingerprintForUpload('sample.bin', async () => {
+      await adapter.writeBinary('sample.bin', new ArrayBuffer(0))
+    })
+  ).rejects.toMatchObject({ code: 'conflict' })
+}, 30000)
+
+it.each([false, true])(
+  'rejects a fresh fingerprint changed during reading (metadata receipts %s)',
+  async (metadataReceipts) => {
+    let stored = new Uint8Array([1, 2, 3]).buffer
+    let mutate = true
+    const adapter = {
+      stat: async () => ({ type: 'file', size: 3, mtime: 1000, ctime: 1 }),
+      readBinary: async () => {
+        const bytes = stored
+        if (mutate) {
+          mutate = false
+          await adapter.writeBinary('sample.bin', new Uint8Array([3, 2, 1]).buffer)
+        }
+        return bytes
+      },
+      writeBinary: async (_path: string, bytes: ArrayBuffer) => {
+        stored = bytes
+      },
+    } as unknown as DataAdapter
+    const io = new BoundedVaultIo(
+      adapter,
+      undefined,
+      undefined,
+      adapter,
+      undefined,
+      undefined,
+      metadataReceipts
+    )
+    await expect(io.fingerprint('sample.bin', undefined, false, true)).rejects.toMatchObject({
+      code: 'conflict',
+    })
+    expect((await io.fingerprint('sample.bin', undefined, false, true)).sha).toBe(
+      digest(new Uint8Array([3, 2, 1]))
+    )
+  }
+)
 
 it('uploads changed large portable bytes despite an acknowledged same-stat receipt', async () => {
   const size = 51 * 1024 * 1024

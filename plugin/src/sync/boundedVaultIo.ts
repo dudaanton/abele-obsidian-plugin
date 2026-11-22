@@ -926,6 +926,10 @@ export class BoundedVaultIo {
       },
     }
   }
+  private assertFingerprintEpoch(path: string, proof: NonNullable<WriteReceipt['binding']>) {
+    if (proof.revision() !== proof.epoch || this.installationEpochFor(path) !== proof.epoch)
+      throw new EngineError('conflict', `${path} changed while fingerprinting`)
+  }
   /** Hash and publish while the one mobile buffer is alive, rather than reread after scanning.
    * The caller only publishes content-addressed bytes; ordinary engine commits still own paths.
    * No buffer survives a completed scan callback, an upload failure, or a server hit. */
@@ -977,6 +981,7 @@ export class BoundedVaultIo {
       )
       await consume(identity, { ...source, close: async () => {} })
       await source.assertUnchanged()
+      this.assertFingerprintEpoch(path, proof)
       this.receipts.set(path, this.installationReceipt(hash, source.stamp, proof, false))
       return { ...source.stamp, ...identity }
     } finally {
@@ -985,6 +990,7 @@ export class BoundedVaultIo {
   }
   async fingerprint(path: string, signal?: AbortSignal, boundedOnly = false, fresh = false) {
     if (this.raw.open && this.raw.fullPath) {
+      const proof = this.installationEpoch(path)
       const before = stampOf(await this.stat(path))
       const handle = await this.raw.open(this.raw.fullPath(path), 'r')
       try {
@@ -1002,6 +1008,7 @@ export class BoundedVaultIo {
         }
         if (stampOf(await this.stat(path)).generation !== before.generation)
           throw new EngineError('conflict', `${path} changed while reading`)
+        this.assertFingerprintEpoch(path, proof)
         return {
           ...before,
           size,
@@ -1039,6 +1046,7 @@ export class BoundedVaultIo {
     const source = await this.openRead(path)
     if (!this.metadataReceipts) {
       const identity = await fingerprintSource(source, MAX_CHUNK_BYTES, signal)
+      this.assertFingerprintEpoch(path, proof)
       return { ...source.stamp, ...identity }
     }
     const hash = sha256.create()
@@ -1055,6 +1063,7 @@ export class BoundedVaultIo {
       signal
     )
     this.assertOwned()
+    this.assertFingerprintEpoch(path, proof)
     this.receipts.set(path, this.installationReceipt(hash, source.stamp, proof, false))
     return { ...source.stamp, ...identity }
   }
