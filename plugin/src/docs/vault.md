@@ -187,6 +187,13 @@ continue. Legacy journals without publication metadata are treated as uncertain.
 confirmation on the host reads the physical disk, bypassing its index and inventory caches.
 These records do not travel in settings.
 
+A provably unsubmitted create deleted locally can be retired from a mixed recovery
+journal only after complete physical inventories, before and after server probes,
+find no surviving copy, including hidden, ignored and private files. The original
+request is preserved as `superseded-create-journal:<key>` in device-local metadata.
+An incomplete inventory or uncertain submission keeps the original journal and stops
+for manual recovery; pruning a create never authorizes the remaining deletions.
+
 Retiring a destructive journal also records `restored-delete-protection:<file-id>` for
 each restored local file, atomically with retirement. This snapshot binds protection to
 the file's tracked version even when restored bytes and timestamps match its old baseline.

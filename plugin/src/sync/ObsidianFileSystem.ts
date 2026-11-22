@@ -3051,6 +3051,42 @@ export class ObsidianFileSystem implements FileSystem {
     }
   }
 
+  /** Recovery needs physical absence evidence, including files excluded from sync. */
+  async *listRecoveryFiles(): AsyncIterable<FileInfo> {
+    const budget = new SyncTaskBudget()
+    const pending = ['']
+    const seen = new Set<string>()
+    while (pending.length) {
+      const parent = pending.pop()
+      await budget.metadataRow(this.indexWaitSignal?.())
+      if (parent && (await crossesSymlink(parent, (path) => this.isSymlink(path)))) continue
+      const listed = await this.disk.list(parent)
+      for (const [kind, paths] of [
+        ['file', listed.files],
+        ['folder', listed.folders],
+      ] as const) {
+        for (const path of paths) {
+          await budget.metadataRow(this.indexWaitSignal?.())
+          // A malformed or partial adapter result cannot establish a complete inventory.
+          const parts = path.split('/')
+          if (
+            parts.some((part) => !part || part === '.' || part === '..' || part.includes('\\')) ||
+            parts.slice(0, -1).join('/') !== parent ||
+            seen.has(path)
+          )
+            throw new EngineError('io', 'Invalid recovery inventory entry')
+          seen.add(path)
+          if (await crossesSymlink(path, (part) => this.isSymlink(part))) continue
+          const stat = await this.disk.stat(path)
+          if (!stat || stat.type !== kind)
+            throw new EngineError('io', 'Recovery inventory changed while reading')
+          if (kind === 'folder') pending.push(path)
+          else yield { path, size: stat.size, mtime: stamp(stat.mtime), ctime: stat.ctime }
+        }
+      }
+    }
+  }
+
   async *list(): AsyncIterable<FileInfo> {
     this.listPhase('start')
     const signal = this.runIndexSignal ?? this.indexWaitSignal?.()
