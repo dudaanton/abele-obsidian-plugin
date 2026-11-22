@@ -6,6 +6,7 @@ import { decodeAccessToken } from '@/sync/v2/client'
 import { encodeAccessToken } from '@/sync/v2/contract'
 import { scopeInventory } from '@/sync/deviceScopeInventory'
 import type { DeviceScopeLease } from '@/sync/deviceScopeLease'
+import { LocalOnlyCopies } from '@/sync/localOnlyCopies'
 import {
   MemoryFileSystem,
   MemoryStateStore,
@@ -133,9 +134,19 @@ function fixture(rootPath = '/', folderPath = 'Garden', multiSource = false) {
       const body = JSON.parse(String(init.body))
       issueRequests.push(body)
       issued = true
-      chosen = [items.find((item) => item.scope.id === body.scope.id)!]
+      chosen = [
+        body.scope.id === root.id
+          ? {
+              id: 'item-root',
+              scope_id: root.id,
+              scope: root,
+              added_at: '2025-01-01T00:00:00Z',
+              removed_at: null,
+            }
+          : items.find((item) => item.scope.id === body.scope.id)!,
+      ]
       return Response.json({
-        token: owned,
+        token: encodeAccessToken({ ...decodeAccessToken(owned), scope: chosen[0].scope }),
         info: {
           id: 'owned',
           label: body.label,
@@ -469,8 +480,34 @@ it('issues whole-vault access without requiring unpublished local files first', 
   expect(
     f.ui.itemSets.notOnServer(id, [{ kind: 'vault', id: 'local:vault', path: '/' }])
   ).toBeNull()
-  await expect(
-    f.ui.deviceScopes.resolve(id, [{ kind: 'vault', id: 'local:vault', path: '/' }])
-  ).resolves.toEqual([{ kind: 'vault', id: 'root', path: '/' }])
+  const path = 'Drafts/sample-0.md',
+    bytes = new TextEncoder().encode('Retained local draft')
+  const fs = new MemoryFileSystem()
+  await fs.writeAtomic(path, bytes, 1)
+  f.registry.storage(id).saveLocalStorage('abele-sync-token-state:local-only', [path])
+  const copies = new LocalOnlyCopies(f.registry)
+  const retire = vi.fn(async (held: (path: string) => boolean) => {
+    expect(held(path)).toBe(true)
+    expect(copies.has(path)).toBe(true)
+    expect(await fs.read(path)).toEqual(bytes)
+  })
+  const release = vi.fn(async (connectionId: string, paths: string[]) => {
+    await copies.assertPublishSafe(async (path) => !!(await fs.stat(path)))
+    await copies.releaseSelected(connectionId, paths, retire)
+  })
+  f.ui.releaseLocalOnly = release
+  const encoded = await f.ui.itemSets.issue(id, {
+    items: [{ kind: 'vault', id: 'local:vault', path: '/' }],
+    label: 'Sample whole-vault access',
+    readOnly: false,
+  })
+  expect(decodeAccessToken(encoded)).toMatchObject({
+    v: 2,
+    items: [{ kind: 'folder', scope_id: 'root', path: '/' }],
+  })
+  expect(release).toHaveBeenCalledExactlyOnceWith(id, ['/'])
+  expect(retire).toHaveBeenCalledOnce()
+  expect(copies.has(path)).toBe(false)
+  expect(await fs.read(path)).toEqual(bytes)
   expect(sync).not.toHaveBeenCalled()
 })
