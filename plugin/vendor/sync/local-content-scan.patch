@@ -94,7 +94,7 @@
          for await (const entry of this.ctx.state.all()) {
 --- a/dist/internal/core/fs.d.ts
 +++ b/dist/internal/core/fs.d.ts
-@@ -51,6 +51,11 @@
+@@ -53,6 +53,11 @@
       * made while the host was stopped. Matching saved verified identities may skip the
       * rolling content sweep; host events still invalidate ordinary scan observations. */
      readonly trustedIndexIdentities?: true;
@@ -129,7 +129,7 @@
  import { isFileFailure } from './fileRetry.js';
  import { sourceRecreation } from './sourceRecreation.js';
  import { heldDirectoryPaths } from './v2Directories.js';
-@@ -426,6 +426,32 @@
+@@ -429,6 +429,32 @@
      const modifies = [];
      let fresh = [];
      let unreadCandidate = false;
@@ -162,7 +162,7 @@
      for (const [wirePath, info] of files) {
          const checkpoint = work.step();
          if (checkpoint)
-@@ -478,7 +504,7 @@
+@@ -481,7 +507,7 @@
                  opts.revalidate !== 'all' &&
                  !opts.verifyPaths?.has(wirePath) &&
                  !(typeof opts.revalidate === 'number' && revalidate.has(wirePath))
@@ -171,7 +171,7 @@
                  : null;
              if (known !== undefined) {
                  sha = known;
-@@ -489,6 +515,14 @@
+@@ -492,6 +518,14 @@
                  contentVerified = true;
              }
              else {
@@ -183,10 +183,10 @@
 +                    unreadCandidate = true;
 +                    continue;
 +                }
-                 const fingerprint = await (opts.revalidate === 'all' ? freshFingerprintFile : fingerprintFile)(fs, info.path, hash, opts.signal);
-                 if (fingerprint.size !== info.size)
-                     throw new Error('file changed during scan');
-@@ -578,7 +612,8 @@
+                 const fingerprint = opts.revalidate === 'all'
+                     ? await freshFingerprintFile(fs, info.path, hash, opts.signal)
+                     : typeof opts.revalidate === 'number' && revalidate.has(wirePath)
+@@ -585,7 +619,8 @@
      await work.sort(fresh, byPath);
      await work.sort(missing, (a, b) => byPath(a.wirePath, b.wirePath));
      const classifiedTargets = await work.set(classified.values());
@@ -196,7 +196,7 @@
          ? new Map()
          : await pairRenames(await work.collect(missing, (entry) => !classified.has(entry.wirePath)), await work.collect(fresh, (path) => !classified.has(path) && !classifiedTargets.has(path)), hashes, async (lost, found) => {
              const path = diskPaths.get(found);
-@@ -609,7 +644,7 @@
+@@ -616,7 +651,7 @@
          moves.set(from, to);
      }
      const ops = [];
@@ -205,7 +205,7 @@
      for (const [path, record] of recreated) {
          const checkpoint = work.step();
          if (checkpoint)
-@@ -671,7 +706,7 @@
+@@ -678,7 +713,7 @@
          dirty.add(path);
      }
      const movedTo = await work.set(moves.values());
@@ -214,7 +214,7 @@
          const checkpoint = work.step();
          if (checkpoint)
              await checkpoint;
-@@ -685,5 +720,6 @@
+@@ -692,5 +727,6 @@
          dirty.add(wirePath);
      }
      await work.sort(collisions, (a, b) => byPath(a.wirePath, b.wirePath));

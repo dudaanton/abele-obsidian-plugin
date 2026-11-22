@@ -7,6 +7,7 @@ import type { DataAdapter, Stat } from 'obsidian'
 import {
   EngineError,
   MAX_CHUNK_BYTES,
+  EAGER_READ_CAP,
   fingerprintSource,
   type ChunkSource,
   type SourceStamp,
@@ -26,6 +27,7 @@ import {
 import { stagingDirectory, reserveStagingPath } from './stagingDirectory'
 import { makeParents } from './vaultFolders'
 import { SyncTaskBudget, waitForSyncRead } from './syncTaskBudget'
+import { adapterInstallationEpoch } from './installationEpoch'
 
 interface MobileFiles {
   readFile(options: { path: string; offset: number; length: number }): Promise<{ data: string }>
@@ -84,9 +86,11 @@ function readMobileChunk(
 interface WriteReceipt {
   hash: ReturnType<typeof sha256.create>
   stamp: SourceStamp
+  installation?: { revision: () => number; epoch: number }
 }
 // Process-local acknowledgements only; changed content stamps require ordinary reads.
 const writeReceipts = new WeakMap<object, Map<string, WriteReceipt>>()
+const installedReceipts = new WeakMap<object, Map<string, WriteReceipt>>()
 
 /** Native capabilities are discovered on the adapter, without loading Node on mobile. */
 export class BoundedVaultIo {
@@ -152,7 +156,9 @@ export class BoundedVaultIo {
     private readonly receiptScope: object = disk,
     private readonly configDir?: string,
     private readonly privateRoot?: string,
-    private readonly metadataReceipts = false
+    private readonly metadataReceipts = false,
+    private readonly installationEpochFor = adapterInstallationEpoch(receiptScope as DataAdapter),
+    private readonly installationScope: object = receiptScope
   ) {
     this.disk = guardedVaultAdapter(disk)
   }
@@ -161,8 +167,59 @@ export class BoundedVaultIo {
     if (!receipts) writeReceipts.set(this.receiptScope, (receipts = new Map()))
     return receipts
   }
+  private get installations(): Map<string, WriteReceipt> {
+    let receipts = installedReceipts.get(this.installationScope)
+    if (!receipts) installedReceipts.set(this.installationScope, (receipts = new Map()))
+    return receipts
+  }
   retireReceipts(): void {
     this.receipts.clear()
+    this.installations.clear()
+  }
+  invalidateInstallations(path = ''): void {
+    for (const [key, receipt] of this.receipts)
+      if (!path || key === path || key.startsWith(path + '/')) receipt.installation = undefined
+    for (const [key, receipt] of this.installations)
+      if (!path || key === path || key.startsWith(path + '/')) receipt.installation = undefined
+  }
+  private installationReceipt(
+    hash: WriteReceipt['hash'],
+    stamp: SourceStamp,
+    proof: NonNullable<WriteReceipt['installation']>
+  ): WriteReceipt {
+    return { hash, stamp, ...(proof.revision() === proof.epoch ? { installation: proof } : {}) }
+  }
+  private installationEpoch(path: string): NonNullable<WriteReceipt['installation']> {
+    const clock = this.installationEpochFor
+    const revision = () => clock(path)
+    return { revision, epoch: revision() }
+  }
+  async verifiedInstallation(
+    path: string,
+    expected: { sha: string; size: number }
+  ): Promise<boolean> {
+    const shared = this.installations.get(path)
+    const receipt = shared ?? this.receipts.get(path)
+    const proof = receipt?.installation
+    if (
+      !receipt ||
+      !proof ||
+      proof.revision() !== proof.epoch ||
+      receipt.stamp.size !== expected.size
+    )
+      return false
+    const sha = Array.from(receipt.hash.clone().digest(), (b) =>
+      b.toString(16).padStart(2, '0')
+    ).join('')
+    if (sha !== expected.sha) return false
+    const current = await this.stat(path)
+    return (
+      current.size === receipt.stamp.size &&
+      current.mtime === receipt.stamp.mtime &&
+      proof.revision() === proof.epoch &&
+      (shared ? this.installations.get(path) : this.receipts.get(path)) === receipt &&
+      receipt.installation === proof
+    )
   }
   /** Call only after an acknowledged owned write, with the hash of its written chunks. */
   async recordWrite(
@@ -171,12 +228,15 @@ export class BoundedVaultIo {
     hash: ReturnType<typeof sha256.create>
   ): Promise<void> {
     this.assertOwned()
+    const proof = this.installationEpoch(path)
     const stat = await this.disk.stat(path)
     this.assertOwned()
     if (!stat) return
     if (stat.type !== 'file' || stat.size !== size)
       throw new EngineError('conflict', 'Written file changed')
-    this.receipts.set(path, { hash: hash.clone(), stamp: stampOf(stat) })
+    const receipt = this.installationReceipt(hash.clone(), stampOf(stat), proof)
+    this.receipts.set(path, receipt)
+    this.installations.set(path, receipt)
   }
   async requireWrite(size: number): Promise<void> {
     if (
@@ -193,12 +253,16 @@ export class BoundedVaultIo {
   async adoptReceipt(from: string, to: string): Promise<void> {
     const receipt = this.receipts.get(from)
     if (!receipt) return
+    const proof = this.installationEpoch(to)
     const stamp = stampOf(await this.stat(to))
     if (stamp.size !== receipt.stamp.size || stamp.mtime !== receipt.stamp.mtime) {
       this.receipts.delete(from)
       throw new EngineError('conflict', 'Published file changed')
     }
-    this.receipts.set(to, { hash: receipt.hash.clone(), stamp })
+    const installed = this.installationReceipt(receipt.hash.clone(), stamp, proof)
+    this.receipts.set(to, installed)
+    this.installations.set(to, installed)
+    this.installations.delete(from)
     this.receipts.delete(from)
   }
   private get raw() {
@@ -219,7 +283,13 @@ export class BoundedVaultIo {
   }
   async canResumeStage(path: string): Promise<boolean> {
     const receipt = this.receipts.get(path)
-    if (receipt && stampOf(await this.stat(path)).generation === receipt.stamp.generation)
+    if (
+      receipt &&
+      (!receipt.installation || receipt.installation.revision() === receipt.installation.epoch) &&
+      stampOf(await this.stat(path)).generation === receipt.stamp.generation &&
+      this.receipts.get(path) === receipt &&
+      (!receipt.installation || receipt.installation.revision() === receipt.installation.epoch)
+    )
       return true
     return this.canReplayStage()
   }
@@ -451,10 +521,11 @@ export class BoundedVaultIo {
           'io',
           'Bounded file reads are unavailable; local bytes retained for retry'
         )
-      if (!wholeFileUpload && original.size > PHONE_FALLBACK_BYTES)
+      const eagerLimit = maxBytes === undefined ? PHONE_FALLBACK_BYTES : EAGER_READ_CAP
+      if (!wholeFileUpload && original.size > eagerLimit)
         throw new EngineError(
           'io',
-          'Bounded file reads are unavailable; the fallback limit is 50 MiB'
+          `Bounded file reads are unavailable; the fallback limit is ${eagerLimit / 1024 / 1024} MiB`
         )
       if (original.size > MOBILE_WHOLE_READ_MAX) throw new MobileWholeReadLimitError(original.size)
     }
@@ -667,13 +738,19 @@ export class BoundedVaultIo {
       }
     }
     signal?.throwIfAborted()
-    const receipt = fresh ? undefined : this.receipts.get(path)
+    let receipt = fresh ? undefined : this.receipts.get(path)
+    if (receipt?.installation && receipt.installation.revision() !== receipt.installation.epoch) {
+      this.receipts.delete(path)
+      receipt = undefined
+    }
     if (receipt) {
       const stamp = stampOf(await this.stat(path))
       if (
-        this.metadataReceipts
+        (this.metadataReceipts
           ? stamp.size === receipt.stamp.size && stamp.mtime === receipt.stamp.mtime
-          : stamp.generation === receipt.stamp.generation
+          : stamp.generation === receipt.stamp.generation) &&
+        this.receipts.get(path) === receipt &&
+        (!receipt.installation || receipt.installation.revision() === receipt.installation.epoch)
       )
         return {
           ...stamp,
@@ -738,7 +815,11 @@ export class BoundedVaultIo {
     } else {
       this.receipts.delete(path)
       await this.disk.writeBinary(path, new ArrayBuffer(0), { mtime })
-      this.receipts.set(path, { hash: sha256.create(), stamp: stampOf(await this.stat(path)) })
+      const proof = this.installationEpoch(path)
+      this.receipts.set(
+        path,
+        this.installationReceipt(sha256.create(), stampOf(await this.stat(path)), proof)
+      )
     }
   }
   async append(
@@ -812,11 +893,17 @@ export class BoundedVaultIo {
         this.assertOwned()
         await this.disk.writeBinary(path, complete.buffer, { mtime })
       }
+      const proof = this.installationEpoch(path)
       const stamp = stampOf(await this.stat(path))
       if (stamp.size !== offset + bytes.length)
         throw new EngineError('io', 'Staging append size is invalid')
       receipt.hash.update(bytes)
-      this.receipts.set(path, { hash: receipt.hash, stamp })
+      this.receipts.set(
+        path,
+        receipt.installation
+          ? this.installationReceipt(receipt.hash, stamp, proof)
+          : { hash: receipt.hash, stamp }
+      )
     }
     signal?.throwIfAborted()
     this.assertOwned()

@@ -73,6 +73,8 @@ import { externalCoordinationOf } from './external/ObsidianExternalFileHost'
 import type { ExternalFileCoordination } from './external/coordination'
 import { folderMutations } from './folderMutations'
 import { adapterConfigRevision, observeAdapterConfig } from './adapterConfigChanges'
+import { vaultInstallationEpoch } from './installationEpoch'
+import { sha256 as receiptHash } from '@noble/hashes/sha2'
 import { pathCoordinatorOf } from './pathCoordinator'
 import type { LocalStorage } from './ledgerId'
 import { makeParents } from './vaultFolders'
@@ -1650,7 +1652,10 @@ export class ObsidianFileSystem implements FileSystem {
       (work) => (this.runtimeFence ? this.runtimeFence.effect(work) : work()),
       this.scopedAdapter,
       this.configDir,
-      this.privateRoot
+      this.privateRoot,
+      false,
+      vaultInstallationEpoch(app.vault),
+      app.vault
     )
     const checked = !this.native
       ? checkedVaultPort(app.vault, this.guardedAdapter, {
@@ -1774,7 +1779,10 @@ export class ObsidianFileSystem implements FileSystem {
       (work) => (this.runtimeFence ? this.runtimeFence.effect(work) : work()),
       this.scopedAdapter,
       this.configDir,
-      this.privateRoot
+      this.privateRoot,
+      false,
+      vaultInstallationEpoch(this.app.vault),
+      this.app.vault
     )
     // Recovery must not initialize a capability through the not-yet-ready public port.
     const conditionalHost: ConditionalFileHost = {
@@ -1924,7 +1932,10 @@ export class ObsidianFileSystem implements FileSystem {
       },
       this.scopedAdapter,
       this.configDir,
-      this.privateRoot
+      this.privateRoot,
+      false,
+      vaultInstallationEpoch(this.app.vault),
+      this.app.vault
     )
     io.reuseCapabilitiesFrom(this.io)
     return {
@@ -3758,7 +3769,23 @@ export class ObsidianFileSystem implements FileSystem {
     this.runtimeFence?.assertReady()
     const local = storageOf(this.app)
     const host = local ? durableHostOf(local) : undefined
-    if (!host || !this.fileIdentity || !this.native?.fileContentRevision) return false
+    if (!this.native?.fileContentRevision) {
+      if (await this.io.verifiedInstallation(path, expected)) return true
+      const before = await this.rawStat(path)
+      if (before?.type !== 'file') return false
+      const actual = await this.spellingOnDisk(path)
+      if (!actual || actual === path) return false
+      if (!(await this.io.verifiedInstallation(actual, expected))) return false
+      const after = await this.rawStat(path)
+      return (
+        after?.type === 'file' &&
+        after.size === before.size &&
+        after.mtime === before.mtime &&
+        after.ctime === before.ctime &&
+        (await this.io.verifiedInstallation(actual, expected))
+      )
+    }
+    if (!host || !this.fileIdentity) return false
     const key = this.pathKey(path)
     const revision = host.scanFingerprintRevision(key)
     const receipt = host.scanInstallation(key)
@@ -4549,7 +4576,16 @@ export class ObsidianFileSystem implements FileSystem {
     this.writtenStat = null
     const release = this.beginEngineMutation([path])
     try {
+      const hash = receiptHash.create()
+      const budget = new SyncTaskBudget()
+      for (let at = 0; at < bytes.length; at += MAX_CHUNK_BYTES) {
+        const part = bytes.subarray(at, at + MAX_CHUNK_BYTES)
+        hash.update(part)
+        const pause = budget.account(part.length)
+        if (pause !== undefined) await pause
+      }
       await this.writeUnreserved(path, bytes, mtime)
+      await this.io.recordWrite(path, bytes.length, hash)
       // Record only a successful publication. A later local edit must differ from this
       // baseline on the next scan, rather than being adopted as part of our write.
       this.writtenStat = { path, size: bytes.length, mtime }

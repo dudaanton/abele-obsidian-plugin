@@ -9,6 +9,32 @@ import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
 import { scopedFileSystem } from '@/sync/scopedFileSystem'
 import * as hostStorage from '@/sync/hostSyncStorage'
 
+it.each(['atomic', 'stage'])(
+  'keeps portable installation evidence across adapter replacement and rejects observed events (%s)',
+  async (kind) => {
+    const app = buildFakeVault([])
+    const fs = new ObsidianFileSystem(app as never)
+    const bytes = new TextEncoder().encode('installed sample')
+    const expected = { sha: await sha256(bytes), size: bytes.length }
+    if (kind === 'atomic') await fs.writeAtomic('sample.bin', bytes, 1000)
+    else {
+      const stage = await fs.beginAtomicWrite('sample.bin', 1000, null)
+      await stage.append(0, bytes)
+      await stage.seal(expected)
+      await stage.commit()
+    }
+    const read = vi.spyOn(app.vault.adapter, 'readBinary')
+    read.mockClear()
+    expect(await fs.verifiedInstallation('sample.bin', expected)).toBe(true)
+    app.vault.adapter = new Proxy(app.vault.adapter, {})
+    const restarted = new ObsidianFileSystem(app as never)
+    expect(await restarted.verifiedInstallation('sample.bin', expected)).toBe(true)
+    app.emit('vault', 'modify', { path: 'sample.bin' })
+    expect(await restarted.verifiedInstallation('sample.bin', expected)).toBe(false)
+    expect(read).not.toHaveBeenCalled()
+  }
+)
+
 it('accepts only an exact installation bound to the current object and content revision', async () => {
   const app = buildFakeVault([{ path: 'sample.bin', content: 'sample' }])
   const fs = new ObsidianFileSystem(app as never)

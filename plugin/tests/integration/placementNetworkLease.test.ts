@@ -224,6 +224,7 @@ it.each([
       }
     })
     const wholeRead = vi.fn(async (_path: string): Promise<ArrayBuffer> => {
+      console.debug('blocked local read', new Error().stack)
       throw new Error('Whole local read forbidden')
     })
     vi.spyOn(app.vault.adapter, 'readBinary').mockImplementation((path) => {

@@ -77,8 +77,12 @@ async function scenario(
   })
   if (bounded) withDesktopFs(app, { maxBufferBytes: CHUNK })
   const wholeRead = vi.spyOn(app.vault.adapter, 'readBinary').mockImplementation(async (path) => {
+    const caller = new Error().stack
     const size = (await app.vault.adapter.stat(path))?.size ?? 0
-    if (size > CHUNK) throw new Error('Whole multi-chunk read forbidden')
+    if (size > CHUNK) {
+      console.debug('blocked multi-chunk read', caller)
+      throw new Error('Whole multi-chunk read forbidden')
+    }
     return rawRead(path)
   })
   const incoming = new Uint8Array(small ? 1024 : CHUNK * 2 + 17).fill(17)

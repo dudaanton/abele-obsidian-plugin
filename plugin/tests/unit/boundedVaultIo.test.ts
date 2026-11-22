@@ -4,9 +4,76 @@ import { desktopFsPort } from '../helpers/desktopRequire'
 import type { DataAdapter } from 'obsidian'
 import { BoundedVaultIo } from '@/sync/boundedVaultIo'
 import { mobileStreamFixture } from '../helpers/mobileStreamFixture'
+import { buildFakeVault } from '../helpers/fakeVault'
+import { sha256 } from '@noble/hashes/sha2'
+
+it.each(['before', 'during-stat'])(
+  'does not reuse an owned stage hash after a same-stat host mutation (%s)',
+  async (when) => {
+    const app = buildFakeVault([])
+    const io = new BoundedVaultIo(app.vault.adapter as never)
+    await io.create('sample.bin', 1000)
+    await io.append('sample.bin', 0, new Uint8Array([1, 2, 3]), 1000)
+    const before = await io.fingerprint('sample.bin')
+    const mutate = () =>
+      app.vault.adapter.writeBinary('sample.bin', new Uint8Array([3, 2, 1]).buffer, {
+        mtime: 1000,
+      })
+    if (when === 'before') await mutate()
+    else {
+      const stat = app.vault.adapter.stat.bind(app.vault.adapter)
+      vi.spyOn(app.vault.adapter, 'stat').mockImplementationOnce(async (path) => {
+        await mutate()
+        return stat(path)
+      })
+    }
+    expect((await io.fingerprint('sample.bin')).sha).not.toBe(before.sha)
+  }
+)
+
+it('attests portable installs only while the recorded mutation epoch and receipt remain active', async () => {
+  const app = buildFakeVault([])
+  const io = new BoundedVaultIo(app.vault.adapter as never)
+  const bytes = new Uint8Array([1, 2, 3])
+  await io.create('sample.bin', 1000)
+  await io.append('sample.bin', 0, bytes, 1000)
+  const expected = {
+    size: 3,
+    sha: Array.from(sha256(bytes), (b) => b.toString(16).padStart(2, '0')).join(''),
+  }
+  const read = vi.spyOn(app.vault.adapter, 'readBinary')
+  read.mockClear()
+  expect(await io.verifiedInstallation('sample.bin', expected)).toBe(true)
+  expect(await io.verifiedInstallation('sample.bin', { ...expected, sha: 'a'.repeat(64) })).toBe(
+    false
+  )
+  await app.vault.adapter.writeBinary('sample.bin', bytes.buffer, { mtime: 1000 })
+  expect(await io.verifiedInstallation('sample.bin', expected)).toBe(false)
+  await io.recordWrite('sample.bin', 3, sha256.create().update(bytes))
+  expect(await io.verifiedInstallation('sample.bin', expected)).toBe(true)
+  io.invalidateInstallations('sample.bin')
+  expect(await io.verifiedInstallation('sample.bin', expected)).toBe(false)
+  expect(read).not.toHaveBeenCalled()
+})
 
 const MiB = 1024 * 1024
 afterEach(() => vi.unstubAllGlobals())
+
+it('allows an admitted 64 MiB source and refuses larger eager sources before reading', async () => {
+  let size = 64 * MiB
+  const readBinary = vi.fn()
+  const adapter = {
+    stat: async () => ({ type: 'file', size, mtime: 1, ctime: 1 }),
+    readBinary,
+  } as unknown as DataAdapter
+  const io = new BoundedVaultIo(adapter)
+  const source = await io.openRead('sample.bin', undefined, size)
+  expect(source.size).toBe(size)
+  await source.close()
+  size++
+  await expect(io.openRead('sample.bin', undefined, size)).rejects.toThrow('64 MiB')
+  expect(readBinary).not.toHaveBeenCalled()
+})
 
 it('shares one mobile probe when a native proxy returns fresh method wrappers', async () => {
   const fixture = mobileStreamFixture()
