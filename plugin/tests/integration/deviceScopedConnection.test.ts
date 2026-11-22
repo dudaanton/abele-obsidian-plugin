@@ -466,7 +466,9 @@ it('issues whole-vault access without requiring unpublished local files first', 
   const sync = vi
     .spyOn(f.ui, 'sync')
     .mockRejectedValue(new Error('publication must stay independent'))
-  expect(f.ui.itemSets.notOnServer(id, [{ kind: 'vault', id: 'local:vault', path: '/' }])).toBeNull()
+  expect(
+    f.ui.itemSets.notOnServer(id, [{ kind: 'vault', id: 'local:vault', path: '/' }])
+  ).toBeNull()
   await expect(
     f.ui.deviceScopes.resolve(id, [{ kind: 'vault', id: 'local:vault', path: '/' }])
   ).resolves.toEqual([{ kind: 'vault', id: 'root', path: '/' }])
