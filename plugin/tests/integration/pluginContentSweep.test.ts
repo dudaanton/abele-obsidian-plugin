@@ -5,6 +5,100 @@ import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { sweepFingerprintFile } from '../../node_modules/@abele/sync-sdk/dist/internal/core/fs.js'
 import { BoundedVaultIo } from '@/sync/boundedVaultIo'
+import { LocalFolderPlacement } from '@/sync/localFolderPlacement'
+import { scopedFileSystem } from '@/sync/scopedFileSystem'
+import * as hostStorage from '@/sync/hostSyncStorage'
+
+it('accepts only an exact installation bound to the current object and content revision', async () => {
+  const app = buildFakeVault([{ path: 'sample.bin', content: 'sample' }])
+  const fs = new ObsidianFileSystem(app as never)
+  const stat = (await app.vault.adapter.stat('sample.bin'))!
+  const expected = { sha: 'a'.repeat(64), size: stat.size }
+  const receipt = {
+    ...expected,
+    ...stat,
+    identity: 'object-1',
+    installation: true,
+    contentRevision: 'revision-1',
+  }
+  let identity = receipt.identity
+  let revision = receipt.contentRevision
+  let epoch = 0
+  let bound = true
+  Object.defineProperty(fs, 'native', { value: { fileContentRevision: async () => revision } })
+  Object.defineProperty(fs, 'fileIdentity', { value: async () => identity })
+  const store = vi.spyOn(hostStorage, 'durableHostOf').mockReturnValue({
+    scanFingerprintRevision: () => epoch,
+    scanInstallation: () => (bound ? receipt : undefined),
+  } as never)
+  const read = vi.spyOn(app.vault.adapter, 'readBinary')
+  try {
+    expect(await fs.verifiedInstallation('sample.bin', expected)).toBe(true)
+    expect(await fs.verifiedInstallation('sample.bin', { ...expected, sha: 'b'.repeat(64) })).toBe(
+      false
+    )
+    expect(await fs.verifiedInstallation('sample.bin', { ...expected, size: stat.size + 1 })).toBe(
+      false
+    )
+    revision = 'revision-2'
+    expect(await fs.verifiedInstallation('sample.bin', expected)).toBe(false)
+    revision = receipt.contentRevision
+    identity = 'object-2'
+    expect(await fs.verifiedInstallation('sample.bin', expected)).toBe(false)
+    identity = receipt.identity
+    vi.spyOn(app.vault.adapter, 'stat').mockImplementationOnce(async () => {
+      bound = false
+      return stat
+    })
+    expect(await fs.verifiedInstallation('sample.bin', expected)).toBe(false)
+    bound = true
+    vi.spyOn(app.vault.adapter, 'stat').mockImplementation(async () => {
+      epoch++
+      return stat
+    })
+    expect(await fs.verifiedInstallation('sample.bin', expected)).toBe(false)
+    expect(read).not.toHaveBeenCalled()
+  } finally {
+    store.mockRestore()
+  }
+})
+
+it('maps read-only proof capabilities through connection scope and placement', async () => {
+  const proof = vi.fn(async () => true)
+  const bounded = vi.fn(async () => false)
+  const fs = Object.assign(new ObsidianFileSystem(buildFakeVault([]) as never), {
+    verifiedInstallation: proof,
+    boundedReadAvailable: bounded,
+  })
+  const scoped = scopedFileSystem(
+    fs,
+    (path) => {
+      if (!path.startsWith('Local/')) throw new Error('outside')
+    },
+    (path) => path.startsWith('Local/')
+  )
+  const mapped = new LocalFolderPlacement('Shared', 'Local').fileSystem(scoped)
+  const expected = { sha: 'a'.repeat(64), size: 7 }
+  expect(await mapped.verifiedInstallation!('Shared/sample.bin', expected)).toBe(true)
+  expect(await mapped.boundedReadAvailable!('Shared/sample.bin')).toBe(false)
+  expect(proof).toHaveBeenCalledExactlyOnceWith('Local/sample.bin', expected)
+  expect(bounded).toHaveBeenCalledExactlyOnceWith('Local/sample.bin')
+  await expect(scoped.verifiedInstallation!('Other/sample.bin', expected)).rejects.toThrow(
+    'outside'
+  )
+  expect(proof).toHaveBeenCalledOnce()
+})
+
+it('does not turn an indexed hash or an eager reader into installation evidence', async () => {
+  const app = buildFakeVault([{ path: 'sample.bin', content: 'sample' }])
+  const fs = new ObsidianFileSystem(app as never)
+  const identity = await fs.fingerprint('sample.bin')
+  const read = vi.spyOn(app.vault.adapter, 'readBinary')
+  read.mockClear()
+  expect(await fs.verifiedInstallation('sample.bin', identity)).toBe(false)
+  expect(await fs.boundedReadAvailable('sample.bin')).toBe(false)
+  expect(read).not.toHaveBeenCalled()
+})
 
 it.each(['io', 'filesystem'])(
   'rejects grown mobile sweep files before eager whole-file reads (%s)',

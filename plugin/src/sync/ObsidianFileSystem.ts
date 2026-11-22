@@ -3748,6 +3748,46 @@ export class ObsidianFileSystem implements FileSystem {
   async openRead(path: string, expected?: SourceStamp, maxBytes?: number) {
     return this.io.openRead(path, expected, maxBytes)
   }
+  async boundedReadAvailable(_path: string): Promise<boolean> {
+    return this.io.canReplayStage()
+  }
+  async verifiedInstallation(
+    path: string,
+    expected: { sha: string; size: number }
+  ): Promise<boolean> {
+    this.runtimeFence?.assertReady()
+    const local = storageOf(this.app)
+    const host = local ? durableHostOf(local) : undefined
+    if (!host || !this.fileIdentity || !this.native?.fileContentRevision) return false
+    const key = this.pathKey(path)
+    const revision = host.scanFingerprintRevision(key)
+    const receipt = host.scanInstallation(key)
+    if (
+      !receipt?.installation ||
+      !receipt.contentRevision ||
+      receipt.sha !== expected.sha ||
+      receipt.size !== expected.size
+    )
+      return false
+    const identity = await this.fileIdentity(path)
+    if (
+      !identity ||
+      identity !== receipt.identity ||
+      (await this.native.fileContentRevision(path)) !== receipt.contentRevision
+    )
+      return false
+    const current = await this.rawStat(path)
+    return (
+      current?.type === 'file' &&
+      current.size === expected.size &&
+      current.mtime === receipt.mtime &&
+      current.ctime === receipt.ctime &&
+      (await this.fileIdentity(path)) === identity &&
+      (await this.native.fileContentRevision(path)) === receipt.contentRevision &&
+      host.scanInstallation(key) === receipt &&
+      host.scanFingerprintRevision(key) === revision
+    )
+  }
   [Symbol.for('abele.sync.diagnostic-v1')](operation: string, startedAt: number, outcome: string) {
     this.diagnostic?.(operation, startedAt, outcome)
   }

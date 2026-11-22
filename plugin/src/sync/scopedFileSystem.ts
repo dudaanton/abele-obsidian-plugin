@@ -330,6 +330,8 @@ export function scopedFileSystem(
           'fileIdentity',
           'fingerprint',
           'openRead',
+          'verifiedInstallation',
+          'boundedReadAvailable',
           'writeAtomic',
           'beginAtomicWrite',
           'remove',

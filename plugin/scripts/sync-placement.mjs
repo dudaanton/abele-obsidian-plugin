@@ -136,13 +136,7 @@ export function syncPlacementPlugin() {
       }
       const replaceOnce = (code, before, after) => replaceBoundary(code, before, after, id)
       let code = input
-      if (file.endsWith('/fs.js')) {
-        code = replaceOnce(
-          code,
-          'const source = await fs.openRead(path);\n        if (source.size !== admittedSize)',
-          'const source = await fs.openRead(path, undefined, admittedSize);\n        if (source.size !== admittedSize)'
-        )
-      } else if (file.endsWith('/engine.js')) {
+      if (file.endsWith('/engine.js')) {
         code = replaceOnce(
           code,
           '            const report = await this.cycle.cycle();',
@@ -1345,8 +1339,8 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
           '            : await settledPlacementStat(this.fs, target, sha, wrote, this.hash);'
         )
         code += `
-        async function fingerprintPlacementFile(fs, path, hash) {
-          return freshFingerprintFile(fs, path, hash);
+        async function fingerprintPlacementFile(fs, path, hash, expected) {
+          return pullFingerprintFile(fs, path, expected, hash);
         }
         async function settledPlacementStat(fs, path, sha, wrote, hash) {
           const receipt = await fs[Symbol.for('abele.sync.written-stat-v1')]?.(path, wrote);
@@ -1513,7 +1507,7 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         async localCandidate(sha, size, local) {
           const verify = async (path) => {
             try {
-              const have = await fingerprintPlacementFile(this.fs, path, this.hash);
+              const have = await fingerprintPlacementFile(this.fs, path, this.hash, { sha, size });
               return have.sha === sha && have.size === size ? { path } : null;
             } catch { return null; }
           };
@@ -1534,12 +1528,12 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
           try { target = await resolveLocalFile(this.fs, this.state, change.path); }
           catch { return true; }
           if (await this.fs.stat(target) === null) return false;
-          try { return (await fingerprintPlacementFile(this.fs, target, this.hash)).sha !== entry.sha; }
+          try { return (await fingerprintPlacementFile(this.fs, target, this.hash, entry)).sha !== entry.sha; }
           catch { return true; }
         }
         async destinationMatches(path, sha, size) {
           try {
-            const have = await fingerprintPlacementFile(this.fs, path, this.hash);
+            const have = await fingerprintPlacementFile(this.fs, path, this.hash, { sha, size });
             return have.sha === sha && have.size === size;
           } catch { return false; }
         }
@@ -1608,7 +1602,7 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
             if (candidate) {
               let verified = false;
               try {
-                const have = await fingerprintPlacementFile(this.fs, candidate.path, this.hash);
+                const have = await fingerprintPlacementFile(this.fs, candidate.path, this.hash, { sha, size: change.size });
                 verified = have.sha === sha && have.size === change.size;
               } catch { /* A removed or changed candidate falls back to the server. */ }
               if (verified) {

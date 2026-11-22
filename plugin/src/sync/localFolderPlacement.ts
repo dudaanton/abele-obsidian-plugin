@@ -45,6 +45,8 @@ export const placementMethods = {
   mkdir: 'path',
   removeDirectory: 'path',
   openRead: 'path',
+  verifiedInstallation: 'path',
+  boundedReadAvailable: 'path',
   fingerprint: 'path',
   deferNewLocalFile: 'info',
   beginAtomicWrite: 'path',
