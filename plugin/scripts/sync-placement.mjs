@@ -1077,7 +1077,7 @@ ${ordinary}\n    }\n    async retryFailure`
         code = replaceOnce(
           code,
           'if (!selected.has(path) && !changed)',
-          'if (!changed && (!selected.has(path) || (!proofRequired && await pairedBaseline(fs, state, entry))))'
+          'if (!changed && (!selected.has(path) || (startup && !proofRequired && await pairedBaseline(fs, state, entry))))'
         )
         code = replaceOnce(
           code,

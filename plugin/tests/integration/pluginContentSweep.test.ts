@@ -300,6 +300,37 @@ it('finds same-stat edits through openRead within three rotating bounded sweeps'
   expect(cached).not.toHaveBeenCalled()
 })
 
+it.each([true, false])(
+  'uses the paired identity only for startup, then resumes fresh sweeping (startup=%s)',
+  async (startup) => {
+    const { fs, state, paths } = await fixture(1)
+    const path = paths[0]
+    Object.assign(fs, { fileIdentity: async () => 'sample-object' })
+    await state.setMeta(
+      'paired-file:' + path,
+      JSON.stringify({
+        ...(await state.get(path)),
+        identity: 'sample-object',
+      })
+    )
+    const read = vi.spyOn(fs, 'openRead')
+    const { found } = await reconciliationScan(
+      fs,
+      state,
+      { excluded: () => false },
+      0,
+      undefined,
+      undefined,
+      startup
+    )
+    if (startup) expect(read).not.toHaveBeenCalled()
+    else {
+      expect(read).toHaveBeenCalledOnce()
+      expect(found.hashes.get(path)).toBe(await sha256(new TextEncoder().encode('new')))
+    }
+  }
+)
+
 it('closes a grown sweep source before reading beyond its admitted size', async () => {
   const { fs, state } = await fixture(1)
   const read = vi.fn(async () => new Uint8Array(4))
