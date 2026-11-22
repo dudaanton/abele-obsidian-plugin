@@ -1398,14 +1398,16 @@ async function scanWithUploads(fs, state, filter, opts = {}) {`
         code = replaceOnce(
           code,
           `if (entry !== null && (await this.edited(entry, target))) {
-            if (change.op !== 'move' ||`,
+            // A recreated source still needs its original ledger so scan can classify
+            // the offline move and the independent create. Do not split that evidence.`,
           `if (pending && !pending.stageId && this.fs[Symbol.for('abele.sync.recover-published-pull-v1')] && this.fs.reopenStage && this.client.openVersion && change.size !== null) {
           if (from !== null && beforeFrom !== null && caseKey(from) !== caseKey(target) &&
               (!pending.sourceIdentity || await this.fs.fileIdentity?.(from) !== pending.sourceIdentity)) return false;
           return this.streamPlace(change, sha, entry, target, from, firstTarget, beforeFrom, local);
         }
         if (entry !== null && (await this.edited(entry, target))) {
-            if (change.op !== 'move' ||`
+            // A recreated source still needs its original ledger so scan can classify
+            // the offline move and the independent create. Do not split that evidence.`
         )
         code = replaceOnce(
           code,
