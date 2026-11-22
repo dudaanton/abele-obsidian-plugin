@@ -221,6 +221,30 @@ it('does not adopt a renamed receipt after a same-stat destination overwrite', a
   expect((await io.fingerprint('sample.bin')).sha).toBe(digest(new Uint8Array([3, 2, 1])))
 })
 
+it.each([false, true])(
+  'binds prepared write metadata only while its epoch survives (changed=%s)',
+  async (changed) => {
+    let stored = new Uint8Array([1, 2, 3]).buffer
+    const readBinary = vi.fn(async () => stored)
+    const adapter = {
+      stat: async () => ({ type: 'file', size: 3, mtime: 2000, ctime: 2 }),
+      writeBinary: async (_path: string, bytes: ArrayBuffer) => {
+        stored = bytes
+      },
+      readBinary,
+    } as unknown as DataAdapter
+    const io = new BoundedVaultIo(adapter)
+    const bytes = new Uint8Array([1, 2, 3])
+    await io.create('sample.bin', 1000, 'acknowledged', bytes, true)
+    if (changed) await adapter.writeBinary('sample.bin', new Uint8Array([3, 2, 1]).buffer)
+    expect(await io.verifiedInstallation('sample.bin', { size: 3, sha: digest(bytes) })).toBe(
+      !changed
+    )
+    expect((await io.fingerprint('sample.bin')).sha).toBe(digest(new Uint8Array(stored)))
+    expect(readBinary).toHaveBeenCalledTimes(changed ? 1 : 0)
+  }
+)
+
 it('rejects a large portable fingerprint changed during upload consumption', async () => {
   const size = 51 * 1024 * 1024
   let fill = 1

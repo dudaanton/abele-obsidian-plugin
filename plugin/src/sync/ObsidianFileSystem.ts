@@ -1680,7 +1680,7 @@ export class ObsidianFileSystem implements FileSystem {
                 typeof this.guardedAdapter.appendBinary === 'function'
                   ? MAX_CHUNK_BYTES
                   : bytes.length
-              await this.io.create(temp, mtime, 'acknowledged', bytes.slice(0, first))
+              await this.io.create(temp, mtime, 'acknowledged', bytes.slice(0, first), true)
               for (let at = first; at < bytes.length; at += MAX_CHUNK_BYTES)
                 await this.io.append(temp, at, bytes.slice(at, at + MAX_CHUNK_BYTES), mtime)
               await checked.wait(path)

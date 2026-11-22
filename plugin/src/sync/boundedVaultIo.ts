@@ -88,6 +88,10 @@ interface ByteWitness {
   digest: Uint8Array
 }
 interface WriteReceipt {
+  /** Complete owned bytes acknowledged before the first metadata observation. */
+  pendingStat?: boolean
+  /** An observed owned rename preserves bytes; bind its new ctime on the next caller stat. */
+  renamed?: boolean
   hash: ReturnType<typeof sha256.create>
   stamp: SourceStamp
   witnesses?: readonly ByteWitness[]
@@ -222,17 +226,25 @@ export class BoundedVaultIo {
     stat: Stat | SourceStamp
   ): receipt is WriteReceipt {
     const proof = receipt?.binding
-    return !!(
+    const binds = !!(
       receipt &&
       proof &&
       proof.revision() === proof.epoch &&
       this.installationEpochFor(path) === proof.epoch &&
       stat.size === receipt.stamp.size &&
-      stat.mtime === receipt.stamp.mtime &&
-      (this.metadataReceipts ||
+      (receipt.pendingStat || stat.mtime === receipt.stamp.mtime) &&
+      (receipt.pendingStat ||
+        receipt.renamed ||
+        this.metadataReceipts ||
         ('generation' in stat ? stat.generation : stampOf(stat).generation) ===
           receipt.stamp.generation)
     )
+    if (binds && (receipt?.renamed || receipt?.pendingStat) && 'ctime' in stat) {
+      receipt.stamp = stampOf(stat)
+      receipt.renamed = false
+      receipt.pendingStat = false
+    }
+    return binds
   }
   private async witness(bytes: Uint8Array, native = false): Promise<ByteWitness[]> {
     const result: ByteWitness[] = []
@@ -394,18 +406,12 @@ export class BoundedVaultIo {
     existingOnly = false
   ): Promise<void> {
     this.assertOwned()
-    const proof = this.installationEpoch(path)
-    const stat = await this.disk.stat(path)
-    this.assertOwned()
-    if (!stat) return
-    if (stat.type !== 'file' || stat.size !== size)
-      throw new EngineError('conflict', 'Written file changed')
     if (existingOnly) {
       const current = this.installations.get(path) ?? this.receipts.get(path)
       const expectedHash = hash.clone().digest()
       if (
         !current?.installation ||
-        !this.receiptStillBinds(current, path, stat) ||
+        !this.receiptStillBinds(current, path, current.stamp) ||
         current.stamp.size !== size ||
         !current.hash
           .clone()
@@ -417,6 +423,12 @@ export class BoundedVaultIo {
       }
       return
     }
+    const proof = this.installationEpoch(path)
+    const stat = await this.disk.stat(path)
+    this.assertOwned()
+    if (!stat) return
+    if (stat.type !== 'file' || stat.size !== size)
+      throw new EngineError('conflict', 'Written file changed')
     const receipt = this.installationReceipt(hash.clone(), stampOf(stat), proof)
     this.receipts.set(path, receipt)
     this.installations.set(path, receipt)
@@ -499,13 +511,11 @@ export class BoundedVaultIo {
       }
       return
     }
-    const before = receipt ? await this.stat(from) : undefined
-    const bound = before && this.receiptStillBinds(receipt, from, before)
+    const bound = receipt && this.receiptStillBinds(receipt, from, receipt.stamp)
     const sourceProof = receipt?.binding
     const mutation = this.observeReceiptMutation([from, to], true)
     try {
       await move()
-      const current = await this.stat(to)
       const proof = mutation.proof()
       if (
         bound &&
@@ -517,11 +527,13 @@ export class BoundedVaultIo {
         const candidate: WriteReceipt = {
           hash: receipt.hash.clone(),
           stamp: receipt.stamp,
+          pendingStat: receipt.pendingStat,
+          renamed: true,
           binding: proof,
           ...(receipt.installation ? { installation: proof } : {}),
         }
-        if (this.receiptStillBinds(candidate, to, current)) {
-          const installed = { ...candidate, stamp: stampOf(current) }
+        if (this.receiptStillBinds(candidate, to, candidate.stamp)) {
+          const installed = candidate
           this.receipts.set(to, installed)
           if (installed.installation) this.installations.set(to, installed)
           return
@@ -1071,7 +1083,8 @@ export class BoundedVaultIo {
     path: string,
     mtime: number,
     durability: 'acknowledged' | 'deferred' = 'acknowledged',
-    initial = new Uint8Array()
+    initial = new Uint8Array(),
+    prepared = false
   ): Promise<void> {
     this.assertOwned()
     if (initial.length > MOBILE_WHOLE_READ_MAX || initial.buffer.byteLength > MOBILE_WHOLE_READ_MAX)
@@ -1085,7 +1098,8 @@ export class BoundedVaultIo {
     }
     const witnesses = await this.witness(initial)
     const cut = path.lastIndexOf('/')
-    if (cut > 0) await this.effect(() => ensureVaultDirectory(this.disk, path.slice(0, cut)))
+    if (cut > 0 && !prepared)
+      await this.effect(() => ensureVaultDirectory(this.disk, path.slice(0, cut)))
     if (this.raw.open && this.raw.fullPath) {
       const handle = await this.effect(() => this.raw.open(this.raw.fullPath(path), 'wx'))
       try {
@@ -1111,7 +1125,11 @@ export class BoundedVaultIo {
       })
       try {
         await this.disk.writeBinary(path, bytesOf(initial), { mtime })
-        const stamp = stampOf(await this.stat(path))
+        // The buffered writer already prepared this private path. Its caller takes
+        // the installed stat; keep byte provenance without a second bridge trip.
+        const stamp: SourceStamp = prepared
+          ? { size: initial.length, mtime, generation: '' }
+          : stampOf(await this.stat(path))
         if (stamp.size !== initial.length)
           throw new EngineError('conflict', 'Created staging file changed')
         const proof = mutation.proof()
@@ -1121,17 +1139,17 @@ export class BoundedVaultIo {
           .clone()
           .digest()
           .every((byte, index) => byte === digest[index])
-        if (proof)
-          this.receipts.set(
-            path,
-            this.installationReceipt(
-              actual,
-              stamp,
-              proof,
-              mutation.owned() && matches,
-              matches ? witnesses : undefined
-            )
+        if (proof) {
+          const receipt = this.installationReceipt(
+            actual,
+            stamp,
+            proof,
+            mutation.owned() && matches,
+            matches ? witnesses : undefined
           )
+          if (prepared) receipt.pendingStat = true
+          this.receipts.set(path, receipt)
+        }
       } finally {
         mutation.stop()
       }
@@ -1150,8 +1168,8 @@ export class BoundedVaultIo {
     await this.requireWrite(offset + bytes.length)
     if (bytes.buffer.byteLength > MAX_CHUNK_BYTES || bytes.length > MAX_CHUNK_BYTES)
       throw new EngineError('io', 'oversized staging chunk')
-    if ((await this.stat(path)).size !== offset)
-      throw new EngineError('io', 'staging offset changed')
+    const stat = await this.stat(path)
+    if (stat.size !== offset) throw new EngineError('io', 'staging offset changed')
     if (this.raw.open && this.raw.fullPath) {
       const handle = await this.raw.open(this.raw.fullPath(path), 'r+')
       try {
@@ -1171,7 +1189,6 @@ export class BoundedVaultIo {
         await handle.close()
       }
     } else {
-      const stat = await this.stat(path)
       const before = stampOf(stat)
       let receipt = this.receipts.get(path)
       if (!this.receiptStillBinds(receipt, path, stat)) {
