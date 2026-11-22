@@ -64,6 +64,25 @@ export class DeviceScopedConnections {
       primary?.id
     )
   }
+  async delegationClient(id: string, item: ShareItem): Promise<V2Client> {
+    const kind = item.kind === 'vault' ? 'folder' : item.kind
+    const sources = this.sourceRecords(id)
+    const exact = sources.find((source) => {
+      const scope = this.source(source).scope
+      return scope.kind === kind && scope.id === item.id
+    })
+    if (exact) return this.managementClient(exact)
+    for (const source of sources) {
+      const client = this.managementClient(source)
+      if (
+        (await this.ui.choices(source, client)).some(
+          (scope) => scope.kind === kind && scope.id === item.id
+        )
+      )
+        return client
+    }
+    throw new Error('The selected items are outside this access')
+  }
   visible(id: string): boolean {
     const record = this.ui.registry.records().find((one) => one.id === id)
     return (
@@ -151,7 +170,7 @@ export class DeviceScopedConnections {
       resolve: (items) => this.resolve(id, items, undefined, false),
       tokens: async () => (await this.managementClient(id).tokens()).items,
       issue: async (items, label) => {
-        const client = this.managementClient(id)
+        const client = await this.delegationClient(id, items[0])
         const authority = await client.connection()
         const result = await client.issue({
           scope: { kind: items[0].kind === 'vault' ? 'folder' : items[0].kind, id: items[0].id },
@@ -159,7 +178,7 @@ export class DeviceScopedConnections {
           read_only: authority.read_only ?? false,
         })
         for (const item of items.slice(1))
-          await client.itemClient().addItem(result.info.id, {
+          await (await this.delegationClient(id, item)).itemClient().addItem(result.info.id, {
             kind: item.kind === 'vault' ? 'folder' : item.kind,
             id: item.id,
           })
@@ -290,6 +309,12 @@ export class DeviceScopedConnections {
     requirePublished = true
   ): Promise<ShareItem[]> {
     let choices = await this.remoteChoices(id)
+    // Whole-vault access names an existing root; publication proceeds independently.
+    if (items.length === 1 && items[0].kind === 'vault') {
+      const root = choices.find((item) => item.kind === 'folder' && item.path === '/')
+      if (!root) throw new Error('The selected items are outside this access')
+      return [{ ...root, kind: 'vault' }]
+    }
     const toServer = this.mapper(id, false),
       toLocal = this.mapper(id, true)
     const remembered = this.state(id)?.resolved ?? []

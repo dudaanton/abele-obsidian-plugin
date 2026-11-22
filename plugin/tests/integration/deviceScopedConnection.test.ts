@@ -14,7 +14,7 @@ import {
   selectiveDefaults,
 } from '@abele/sync-sdk/core'
 
-function fixture(rootPath = '/', folderPath = 'Garden') {
+function fixture(rootPath = '/', folderPath = 'Garden', multiSource = false) {
   const values = new Map<string, unknown>(),
     secrets = new Map<string, string>()
   const storage = {
@@ -35,12 +35,26 @@ function fixture(rootPath = '/', folderPath = 'Garden') {
     added_at: '2025-01-01T00:00:00Z',
     removed_at: null,
   }))
-  const source = encodeAccessToken({
-    v: 1,
-    address: 'https://sync.example',
-    key: 'a'.repeat(43),
-    scope: root,
-  })
+  const source = encodeAccessToken(
+    multiSource
+      ? {
+          v: 2,
+          address: 'https://sync.example',
+          key: 'a'.repeat(43),
+          items: [items[1], items[0], items[2]].map((item) => ({
+            id: item.id,
+            kind: item.scope.kind,
+            scope_id: item.scope.id,
+            path: item.scope.path,
+          })),
+        }
+      : {
+          v: 1,
+          address: 'https://sync.example',
+          key: 'a'.repeat(43),
+          scope: root,
+        }
+  )
   const owned = encodeAccessToken({
     v: 1,
     address: 'https://sync.example',
@@ -84,7 +98,11 @@ function fixture(rootPath = '/', folderPath = 'Garden') {
         protocol: 2,
         token_id: sourceKey ? 'source' : 'owned',
         space_id: 'space',
-        scope: sourceKey ? root : selected.scope,
+        scope: sourceKey
+          ? multiSource
+            ? (items.find((item) => item.id === headers.get('abele-scope-item')) ?? items[1]).scope
+            : root
+          : selected.scope,
         status: 'active',
         read_only: readOnly,
         limits: { max_file_bytes: 100000, quota_bytes: null },
@@ -108,7 +126,9 @@ function fixture(rootPath = '/', folderPath = 'Garden') {
         next: null,
       })
     if (url.pathname === '/v2/connection/items')
-      return Response.json({ items: sourceKey ? [] : chosen })
+      return Response.json({
+        items: sourceKey ? (multiSource ? [items[1], items[0], items[2]] : []) : chosen,
+      })
     if (url.pathname === '/v2/tokens' && init?.method === 'POST') {
       const body = JSON.parse(String(init.body))
       issueRequests.push(body)
@@ -129,6 +149,8 @@ function fixture(rootPath = '/', folderPath = 'Garden') {
     if (url.pathname === '/v2/tokens/owned/items' && init?.method === 'POST') {
       const body = JSON.parse(String(init.body))
       const item = items.find((item) => item.scope.id === body.scope.id)!
+      if (multiSource && headers.get('abele-scope-item') !== item.id)
+        return Response.json({ error: { code: 'forbidden' } }, { status: 403 })
       chosen.push(item)
       return Response.json(item)
     }
@@ -177,6 +199,27 @@ function fixture(rootPath = '/', folderPath = 'Garden') {
     issued: () => issued,
   }
 }
+
+it('reconnects a folder with a sibling group and file through their own delegation authorities', async () => {
+  const f = fixture('/', 'Garden', true)
+  await f.ui.connect(f.source, undefined, [f.scopes[1], f.scopes[0], f.scopes[2]])
+  const id = f.ui.rows.value[0].id
+  expect(f.ui.deviceScopes.state(id)?.current?.records).toHaveLength(3)
+  await f.registry.flush()
+  const restarted = f.restart()
+  await restarted.ui.deviceScopes.resume()
+  expect(restarted.ui.deviceScopes.state(id)?.current?.records).toHaveLength(3)
+  expect(f.issueRequests).toHaveLength(1)
+  const shared = decodeAccessToken(
+    await restarted.ui.itemSets.issue(id, {
+      items: [f.scopes[1], f.scopes[0], f.scopes[2]],
+      label: 'Sample shared access',
+      readOnly: false,
+    })
+  )
+  expect(shared.v).toBe(2)
+  if (shared.v === 2) expect(shared.items).toHaveLength(3)
+})
 
 it('connects groups, folders and files using a device-owned Share key and keeps source management-only', async () => {
   const f = fixture()
@@ -412,4 +455,20 @@ it('adopts equal group files after a fresh scoped ledger without downloading or 
   } finally {
     await engine.stop()
   }
+})
+
+it('issues whole-vault access without requiring unpublished local files first', async () => {
+  const f = fixture()
+  await f.ui.connect(f.source)
+  const id = f.ui.rows.value[0].id
+  f.ui.scopeInventory = () =>
+    scopeInventory(Array.from({ length: 14000 }, (_, i) => ({ path: `Drafts/sample-${i}.md` })))
+  const sync = vi
+    .spyOn(f.ui, 'sync')
+    .mockRejectedValue(new Error('publication must stay independent'))
+  expect(f.ui.itemSets.notOnServer(id, [{ kind: 'vault', id: 'local:vault', path: '/' }])).toBeNull()
+  await expect(
+    f.ui.deviceScopes.resolve(id, [{ kind: 'vault', id: 'local:vault', path: '/' }])
+  ).resolves.toEqual([{ kind: 'vault', id: 'root', path: '/' }])
+  expect(sync).not.toHaveBeenCalled()
 })

@@ -807,13 +807,17 @@ export class TokenItemSets implements ShareSetSource {
       kind: item.kind === 'vault' ? ('folder' as const) : item.kind,
       id: item.id,
     })
-    const issued = await client.issue({
+    const issued = await (
+      await this.ui.deviceScopes.delegationClient(connectionId, resolved[0])
+    ).issue({
       scope: selector(resolved[0]),
       label: set.label,
       read_only: set.readOnly || (await client.connection()).read_only === true,
     })
     for (const item of resolved.slice(1))
-      await client.itemClient().addItem(issued.info.id, selector(item))
+      await (await this.ui.deviceScopes.delegationClient(connectionId, item))
+        .itemClient()
+        .addItem(issued.info.id, selector(item))
     await this.ui.releaseLocalOnly(
       connectionId,
       set.items.map((one) => one.path)
@@ -835,6 +839,7 @@ export class TokenItemSets implements ShareSetSource {
     })
   }
   notOnServer = (id: string | undefined, items: ShareItem[]) => {
+    if (items.length === 1 && items[0].kind === 'vault') return null
     const remote = this.choiceCache.get(this.selected(id)) ?? []
     const inventory = this.inventory()
     const remotePaths = new Set(
