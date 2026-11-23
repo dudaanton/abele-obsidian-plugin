@@ -16,6 +16,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import {
   evalJson,
+  evalLong,
   evalRaw,
   hasTestApi,
   isObsidianRunning,
@@ -357,6 +358,14 @@ describe.skipIf(!available)('a pull request on a phone', () => {
     }
     // The window first: leaving emulation reloads the app at whatever size the window is.
     if (size[0]) await setWindowSize(size[0], size[1])
+    await evalLong(
+      `(async () => {
+      if (app.workspace.getLeavesOfType('abele-github').length) throw Error('GitHub leaves remained after cleanup')
+      await app.workspace.requestSaveLayout.run()
+      return 'saved'
+    })()`,
+      30_000
+    )
     await reload('app.emulateMobile(false)')
   }, 180_000)
 

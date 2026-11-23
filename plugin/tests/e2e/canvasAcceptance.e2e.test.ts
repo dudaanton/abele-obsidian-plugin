@@ -198,6 +198,7 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
         for(const leaf of leaves){leaf.view.documentLease?.document.discardDraft();leaf.detach()}
         if(state?.owned){const dir=app.vault.getAbstractFileByPath(${JSON.stringify(DIR)});if(dir)await app.vault.delete(dir,true)}
         if(state){window.__abeleTest.AbeleConfig.getInstance().canvasViewer=state.preference;app.vault.setConfig('newFileLocation',state.location);app.vault.setConfig('newFileFolderPath',state.newFolder);app.vault.setConfig('attachmentFolderPath',state.folder);await app.workspace.changeLayout(state.layout)}
+        await app.workspace.requestSaveLayout.run()
         delete window.__canvasAcceptance;return true
       `)
     } finally {

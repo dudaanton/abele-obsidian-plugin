@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
+import { evalLong, evalRaw, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
 import { shotDir } from './helpers/shots'
 import { visibleToolbarTarget, findToolbarScroller } from '../helpers/visibleToolbarTarget'
@@ -65,9 +65,7 @@ let nativeToolbar:
       sourceUnchanged: boolean
     }
   | undefined
-const run = <T>(body: string): T => {
-  const result = evalRaw(
-    `(async () => {
+const script = (body: string): string => `(async () => {
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
   const until = async fn => { for(let i=0;i<80;i++) { if(fn()) return true; await wait(100) } return false }
   // Until measure() holds still for three frames with no finite animation running, at most ms.
@@ -95,9 +93,15 @@ const run = <T>(body: string): T => {
   const note = app.vault.getAbstractFileByPath(${JSON.stringify(PATH)})
   const view = app.workspace.getLeavesOfType('markdown').find(leaf => leaf.view.file?.path === note?.path)?.view
   ${body}
-})()`,
-    90_000
-  )
+})()`
+const run = <T>(body: string): T => {
+  const result = evalRaw(script(body), 90_000)
+  if (result.startsWith('Error:')) throw new Error(result)
+  return JSON.parse(result)
+}
+
+const runLong = async <T>(body: string): Promise<T> => {
+  const result = await evalLong(script(body), 120_000)
   if (result.startsWith('Error:')) throw new Error(result)
   return JSON.parse(result)
 }
@@ -324,17 +328,19 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
     `)
     expect(r.inSight, r.chain.join(' < ')).toBe(true)
   })
-  it.skipIf(!onPhone())('native keyboard geometry, save and edit preserve the source note', () => {
-    const result = run<{
-      keyboard: boolean
-      room: number
-      geometry: unknown
-      toolbar: boolean
-      saved: boolean
-      sourceUnchanged: boolean
-      edited: boolean
-      shots: string[]
-    }>(`
+  it.skipIf(!onPhone())(
+    'native keyboard geometry, save and edit preserve the source note',
+    async () => {
+      const result = await runLong<{
+        keyboard: boolean
+        room: number
+        geometry: unknown
+        toolbar: boolean
+        saved: boolean
+        sourceUnchanged: boolean
+        edited: boolean
+        shots: string[]
+      }>(`
       await view.setState({ mode: 'source' }, {})
       app.workspace.setActiveLeaf(view.leaf, { focus: true })
       view.editor.setSelection(view.editor.offsetToPos(2), view.editor.offsetToPos(20))
@@ -382,15 +388,16 @@ describe.skipIf(!available)('ordinary-note text comments', () => {
       dismiss(); await until(() => !document.querySelector('.abele-text-comments'))
       return JSON.stringify({keyboard, room, geometry, toolbar, sourceUnchanged:view.editor.getValue()===sourceBefore, saved, edited, shots})
     `)
-    console.log('Native comment editor:', result)
-    expect(result.keyboard).toBe(true)
-    expect(result.room).toBeGreaterThan(150)
-    expect(result.toolbar).toBe(true)
-    expect(result.sourceUnchanged).toBe(true)
-    expect(result.saved).toBe(true)
-    expect(result.edited).toBe(true)
-    expect(result.shots.every((path) => !path.startsWith('no picture'))).toBe(true)
-  })
+      console.log('Native comment editor:', result)
+      expect(result.keyboard).toBe(true)
+      expect(result.room).toBeGreaterThan(150)
+      expect(result.toolbar).toBe(true)
+      expect(result.sourceUnchanged).toBe(true)
+      expect(result.saved).toBe(true)
+      expect(result.edited).toBe(true)
+      expect(result.shots.every((path) => !path.startsWith('no picture'))).toBe(true)
+    }
+  )
   it.skipIf(!onPhone())('native toolbar actions cannot change the underlying note', () => {
     nativeToolbar = run<{
       clicked: boolean

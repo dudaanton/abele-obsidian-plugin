@@ -869,8 +869,8 @@ const REMOVE_TIMELINE_FIXTURE = `
 
 // Synthetic fixtures may survive an interrupted run. Remove only proven owned notes.
 async function removeFixtures(): Promise<void> {
-  const deadline = Date.now() + 120_000
   for (const dir of [FOLDER, FOLDER + ' short']) {
+    const deadline = Date.now() + 120_000
     evalRaw(
       `(() => {
         ${REMOVE_TIMELINE_FIXTURE}

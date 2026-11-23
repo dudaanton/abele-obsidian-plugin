@@ -207,7 +207,7 @@ describe.skipIf(!available)(
       await (${focusPhoneInput.toString()})(token, (x,y) => window.__e2eHost.tap(x,y), wait)
       // A short value exercises secure native input without a long key-by-key driver run.
       await window.__e2eHost.type('xx')
-      if (token.value !== 'xx') throw Error('Native token input did not arrive intact')
+      if (!await until(() => token.value === 'xx')) throw Error('Native token input did not arrive intact: expected length 2, received length ' + token.value.length)
       await wait(500)
       paths.push(await window.__e2eHost.shot(${JSON.stringify(shots + '/token-keyboard.png')}))
       const footer = modal.querySelector('.abele-modal__footer').getBoundingClientRect().bottom
