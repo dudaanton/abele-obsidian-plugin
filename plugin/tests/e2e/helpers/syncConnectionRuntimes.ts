@@ -3,7 +3,7 @@ export function connectionRuntimes<T>(
   host: {
     live: ReadonlyMap<string, T>
     ui: {
-      itemSets: {
+      itemSets?: {
         store: {
           get(id: string):
             | {
@@ -17,7 +17,7 @@ export function connectionRuntimes<T>(
   },
   id: string
 ): (T | undefined)[] {
-  const items = host.ui.itemSets.store.get(id)?.items
+  const items = host.ui.itemSets?.store.get(id)?.items
   if (!items) return [host.live.get(id)]
   return items
     .filter((item) => !item.paused && !item.detached)
