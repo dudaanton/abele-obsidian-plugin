@@ -76,10 +76,26 @@ function folderFixture(files: Record<string, string>) {
         exists
           ? {
               path,
-              children: [...contents.keys()].map((name) => ({ path: path + '/' + name })),
+              children: [...contents.keys()]
+                .filter((name) => !name.startsWith('.'))
+                .map((name) => ({ path: path + '/' + name })),
             }
           : null,
-      adapter: { read: async (path: string) => contents.get(path.slice(path.indexOf('/') + 1)) },
+      adapter: {
+        read: async (path: string) => contents.get(path.slice(path.indexOf('/') + 1)),
+        list: vi.fn(async (path: string) => ({
+          files: [...contents.keys()]
+            .filter((name) => !name.includes('/'))
+            .map((name) => path + '/' + name),
+          folders: [
+            ...new Set(
+              [...contents.keys()]
+                .filter((name) => name.includes('/'))
+                .map((name) => path + '/' + name.split('/')[0])
+            ),
+          ],
+        })),
+      },
       delete: vi.fn(async () => {
         contents.clear()
         exists = false
@@ -112,6 +128,20 @@ it('recovers a marked folder after a crash during script creation', async () => 
   await f.prepareScriptFixtureFolder('Sample', folderSources)
   expect(f.app.vault.delete).toHaveBeenCalledTimes(1)
 })
+it.each(['.backup/notes.md', '.notes.md'])(
+  'preserves unindexed disk contents during setup and cleanup: %s',
+  async (hidden) => {
+    const f = folderFixture({
+      ...folderSources,
+      'abele-test-script-fixture.txt': 'abele-script-fixture-v1',
+      [hidden]: 'Keep this',
+    })
+    await expect(f.prepareScriptFixtureFolder('Sample', folderSources)).rejects.toThrow('not owned')
+    await expect(f.removeScriptFixtureFolder('Sample', folderSources)).rejects.toThrow('not owned')
+    expect(f.app.vault.delete).not.toHaveBeenCalled()
+    expect(f.contents.get(hidden)).toBe('Keep this')
+  }
+)
 it.each([
   { 'notes.md': 'Keep this' },
   { ...folderSources, 'notes.md': 'Keep this' },

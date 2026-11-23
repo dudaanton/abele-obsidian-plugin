@@ -14,7 +14,8 @@ export const SCRIPT_FIXTURE = String.raw`
     const refuse = () => { throw new Error('Script fixture folder is not owned: ' + folder) }
     if (!Array.isArray(entry.children)) refuse()
     let marked = false, scripts = 0
-    for (const child of entry.children) {
+    const verified = new Set()
+    for (const child of [...entry.children]) {
       if (child.children) refuse()
       const name = child.path.slice(folder.length + 1)
       const source = await app.vault.adapter.read(child.path)
@@ -25,10 +26,16 @@ export const SCRIPT_FIXTURE = String.raw`
         if (!Object.hasOwn(sources, name) || sources[name] !== source) refuse()
         scripts++
       }
+      verified.add(child.path)
     }
     // Older fixtures had no durable marker. Only their complete, exact synthetic
     // source set proves ownership; a folder name or a partial match never does.
     if (!marked && (!scripts || scripts !== Object.keys(sources).length)) refuse()
+    // Force deletion also removes hidden entries absent from the vault index.
+    // Require the disk listing to contain exactly the files whose bytes we verified.
+    const disk = await app.vault.adapter.list(folder)
+    if (disk.folders.length || disk.files.length !== verified.size ||
+        disk.files.some(path => !verified.has(path))) refuse()
     await app.vault.delete(entry, true)
   }
   async function prepareScriptFixtureFolder(folder, sources) {
