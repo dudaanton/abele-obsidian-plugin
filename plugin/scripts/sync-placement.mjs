@@ -694,10 +694,10 @@ export function syncPlacementPlugin() {
         )
         code = replaceOnce(
           code,
-          'const local = await shaIndex(this.state);',
-          `const local = this.opts.nativeBatchLocal ?? await shaIndex(this.state);
-        // Each page has a fresh committed source index. Share it rather than
-        // retaining the previous page's hints or copying the inventory again.
+          'const local = (this.localReuseIndex ??= await shaIndex(this.state));',
+          `const local = (this.localReuseIndex ??= this.opts.nativeBatchLocal ?? await shaIndex(this.state));
+        // Retain one index for the pass so speculative reuse shares its proof budget.
+        // The native batch can seed that index without copying the inventory again.
         // Reuse still fingerprints the current source before publication.
         this.placer.initialLocal = local;`
         )
