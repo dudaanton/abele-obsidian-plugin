@@ -331,6 +331,7 @@ export function scopedFileSystem(
           'fingerprint',
           'openRead',
           'verifiedInstallation',
+          'fingerprintAfterAcceptance',
           'boundedReadAvailable',
           'writeAtomic',
           'beginAtomicWrite',

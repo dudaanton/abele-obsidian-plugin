@@ -1964,6 +1964,32 @@ export class TokenEngineRuntime
                     this.updateDiscoveryPriority()
                   })
               }
+            if (name === 'fingerprintAfterAcceptance' && typeof value === 'function')
+              return async (
+                path: string,
+                expected: { sha: string; size: number },
+                signal?: AbortSignal
+              ) => {
+                const managed = this.engine.status.state === 'syncing'
+                const run = this.comparisonRun
+                const cancellation =
+                  signal ?? (managed ? this.comparisonCancellation.signal : this.requests.signal)
+                const current = () => {
+                  if (
+                    !this.active ||
+                    (managed && run !== this.comparisonRun) ||
+                    cancellation.aborted
+                  )
+                    throw new SyncCancelled()
+                }
+                await this.comparisonBudget.account(0)
+                current()
+                return this.trace.run('fs acceptance proof ' + path, async () => {
+                  const result = await value.call(target, path, expected, cancellation)
+                  current()
+                  return result
+                })
+              }
             if (
               (name === 'read' ||
                 name === 'stat' ||

@@ -210,6 +210,10 @@ hints. Installation receipts retain the native identity, size, modification/crea
 content-change revision and verified hash in the host IndexedDB store. Fresh watcher checks
 and pull adoption may reuse only receipts still matching the live file; mutations invalidate
 them before effects. Receipts are not permission to overwrite or delete files.
+Ordinary native hashes may also retain a content-change revision captured unchanged
+across the physical read. After upload acceptance, that revision, live identity and
+mutation clocks can prove the current hash without another content read. Index hints
+alone cannot certify acceptance, and recovery continues to require fresh physical proofs.
 
 The connection ledger keeps server size refusals under `plugin:size-refusal:` plus the
 encoded path. Each records the server/generation context, current limit, source size,

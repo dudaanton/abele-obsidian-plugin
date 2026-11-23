@@ -334,7 +334,13 @@ export class TokenOffloadCoordinator {
               : ((await target.stat(path)) ??
                 virtual().find((one) => caseKey(one.path) === caseKey(path)) ??
                 null)
-        if (method === 'read' || method === 'openRead' || method === 'fingerprint')
+        if (
+          method === 'read' ||
+          method === 'openRead' ||
+          method === 'fingerprint' ||
+          (method === 'fingerprintAfterAcceptance' &&
+            typeof Reflect.get(target, method) === 'function')
+        )
           return async (path: string, ...args: unknown[]) => {
             if (artifact(path)) throw new Error('Projection is not file content')
             if (!(await target.stat(path))) await this.prepare([path])

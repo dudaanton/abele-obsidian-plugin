@@ -46,6 +46,7 @@ export const placementMethods = {
   removeDirectory: 'path',
   openRead: 'path',
   verifiedInstallation: 'path',
+  fingerprintAfterAcceptance: 'path',
   boundedReadAvailable: 'path',
   fingerprint: 'path',
   deferNewLocalFile: 'info',
@@ -540,7 +541,7 @@ export class LocalFolderPlacement {
               ...args
             )
             if (key === 'beginAtomicWrite') return retainedStage(result)
-            return key === 'stat' &&
+            return (key === 'stat' || key === 'fingerprintAfterAcceptance') &&
               result &&
               (!handle || (recoveryFiles.has(path) && recoveryFiles.get(path) !== path))
               ? {

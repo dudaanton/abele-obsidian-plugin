@@ -3792,6 +3792,46 @@ export class ObsidianFileSystem implements FileSystem {
   async boundedReadAvailable(_path: string): Promise<boolean> {
     return this.io.canReplayStage()
   }
+  async fingerprintAfterAcceptance(
+    path: string,
+    _expected: { sha: string; size: number },
+    signal?: AbortSignal
+  ): Promise<(FileInfo & { sha: string }) | null> {
+    signal?.throwIfAborted()
+    this.runtimeFence?.assertReady()
+    const local = storageOf(this.app)
+    const host = local ? durableHostOf(local) : undefined
+    if (!host || !this.native?.fileContentRevision) return null
+    const key = this.pathKey(path)
+    const revision = host.scanFingerprintRevision(key)
+    const clock = vaultInstallationEpoch(this.app.vault)
+    const epoch = clock(path)
+    const content = await this.native.fileContentRevision(path)
+    const before = await this.rawStat(path)
+    signal?.throwIfAborted()
+    this.runtimeFence?.assertReady()
+    if (!content || before?.type !== 'file') return null
+    // Count one host proof, bypass index hints, and reuse only a bound native hash.
+    // Acceptance can run inside the installation cohort it is proving.
+    const proof = await this.fingerprint(path, signal, true, false, true)
+    const after = await this.rawStat(path)
+    const current = await this.native.fileContentRevision(path)
+    signal?.throwIfAborted()
+    this.runtimeFence?.assertReady()
+    if (
+      after?.type !== 'file' ||
+      after.size !== before.size ||
+      after.mtime !== before.mtime ||
+      after.ctime !== before.ctime ||
+      proof.size !== after.size ||
+      proof.mtime !== stamp(after.mtime) ||
+      content !== current ||
+      clock(path) !== epoch ||
+      host.scanFingerprintRevision(key) !== revision
+    )
+      throw new EngineError('conflict', 'File changed during acceptance proof')
+    return { path, sha: proof.sha, size: after.size, mtime: stamp(after.mtime), ctime: after.ctime }
+  }
   async verifiedInstallation(
     path: string,
     expected: { sha: string; size: number }
@@ -3905,7 +3945,13 @@ export class ObsidianFileSystem implements FileSystem {
       host.scanFingerprintRevision(key) === revision
     )
   }
-  async fingerprint(path: string, signal?: AbortSignal, fresh = false, waitForInstallation = true) {
+  async fingerprint(
+    path: string,
+    signal?: AbortSignal,
+    fresh = false,
+    waitForInstallation = true,
+    acceptance = false
+  ) {
     signal?.throwIfAborted()
     const pause = this.scanHashBudget.metadataRow(signal)
     if (pause !== undefined) await pause
@@ -3956,6 +4002,7 @@ export class ObsidianFileSystem implements FileSystem {
     const indexedStat = indexed?.stat
     if (
       !fresh &&
+      !acceptance &&
       !fromInstall &&
       !legacyKey &&
       indexedStat &&
@@ -4029,7 +4076,7 @@ export class ObsidianFileSystem implements FileSystem {
     const before = await this.rawStat(path)
     if (!beforeIdentity || before?.type !== 'file') return this.fingerprintFresh(path, signal)
     if (
-      (!fresh || fromInstall) &&
+      (!fresh || fromInstall || (acceptance && !!saved?.contentRevision)) &&
       saved?.identity === beforeIdentity &&
       saved.size === before.size &&
       saved.mtime === before.mtime &&
@@ -4048,6 +4095,7 @@ export class ObsidianFileSystem implements FileSystem {
         (await this.fileIdentity(path)) === beforeIdentity &&
         (!saved.contentRevision ||
           saved.contentRevision === (await this.native?.fileContentRevision?.(path))) &&
+        host.scanFingerprintRevision(key) === revision &&
         (!fromInstall || host.scanInstallation(key) === installed)
       ) {
         signal?.throwIfAborted()
@@ -4073,6 +4121,7 @@ export class ObsidianFileSystem implements FileSystem {
       }
     }
     host.forgetScanInstallation(key)
+    const contentRevision = await this.native?.fileContentRevision?.(path)
     const result = await this.fingerprintFresh(path, signal)
     const after = await this.rawStat(path)
     const afterIdentity = await this.fileIdentity(path)
@@ -4084,7 +4133,9 @@ export class ObsidianFileSystem implements FileSystem {
       after.size === before.size &&
       after.mtime === before.mtime &&
       after.ctime === before.ctime &&
-      afterIdentity === beforeIdentity
+      afterIdentity === beforeIdentity &&
+      (!contentRevision || contentRevision === (await this.native?.fileContentRevision?.(path))) &&
+      host.scanFingerprintRevision(key) === revision
     )
       await host.writeScanFingerprint(
         key,
@@ -4094,6 +4145,7 @@ export class ObsidianFileSystem implements FileSystem {
           mtime: before.mtime,
           ctime: before.ctime,
           sha: result.sha,
+          ...(contentRevision ? { contentRevision } : {}),
         },
         revision
       )

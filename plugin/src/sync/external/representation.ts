@@ -841,7 +841,12 @@ export class ExternalRepresentation {
               }
             }
           }
-        if (method === 'openRead' || method === 'fingerprint')
+        if (
+          method === 'openRead' ||
+          method === 'fingerprint' ||
+          (method === 'fingerprintAfterAcceptance' &&
+            typeof Reflect.get(target, method) === 'function')
+        )
           return async (path: string, ...args: unknown[]) => {
             if (
               (await self.classify(path, undefined, undefined, String(method))).kind !== 'ordinary'
