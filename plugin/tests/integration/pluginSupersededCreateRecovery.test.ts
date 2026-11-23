@@ -66,12 +66,15 @@ it('requires fresh bytes for a present journal payload despite a cached fingerpr
   const fs = new ObsidianFileSystem(app as never)
   await app.vault.adapter.writeBinary(
     'unsent.bin',
-    new TextEncoder().encode('unsent sample').buffer
+    new TextEncoder().encode('unsent sample').buffer,
+    { mtime: 1 }
   )
   const stale = await fs.fingerprint('unsent.bin')
   await app.vault.adapter.writeBinary(
     'unsent.bin',
-    new TextEncoder().encode('other sample!').buffer
+    new TextEncoder().encode('other sample!').buffer,
+    // Keep the captured source time: this is ambiguous replacement, not later intent.
+    { mtime: 1 }
   )
   const fingerprint = fs.fingerprint.bind(fs)
   vi.spyOn(fs, 'fingerprint').mockImplementation((path, ...args) =>
@@ -81,6 +84,33 @@ it('requires fresh bytes for a present journal payload despite a cached fingerpr
     'unsent bytes'
   )
   expect(await state.getJournal()).toEqual(journal)
+  expect(new TextDecoder().decode(await app.vault.adapter.readBinary('unsent.bin'))).toBe(
+    'other sample!'
+  )
+})
+
+it('keeps freshly proven later create bytes despite a cached prior fingerprint', async () => {
+  const { app, state } = await fixture()
+  const fs = new ObsidianFileSystem(app as never)
+  await app.vault.adapter.writeBinary(
+    'unsent.bin',
+    new TextEncoder().encode('unsent sample').buffer,
+    { mtime: 1 }
+  )
+  const stale = await fs.fingerprint('unsent.bin')
+  await app.vault.adapter.writeBinary(
+    'unsent.bin',
+    new TextEncoder().encode('other sample!').buffer,
+    { mtime: 2 }
+  )
+  const fingerprint = fs.fingerprint.bind(fs)
+  vi.spyOn(fs, 'fingerprint').mockImplementation((path, ...args) =>
+    path === 'unsent.bin' ? Promise.resolve(stale) : fingerprint(path, ...args)
+  )
+  const read = vi.spyOn(fs, 'openRead')
+  await expect(fenceRestoredJournal(state, 11, fs, undefined, client)).resolves.toBeUndefined()
+  expect(read).toHaveBeenCalled()
+  expect(await state.getJournal()).toBeNull()
   expect(new TextDecoder().decode(await app.vault.adapter.readBinary('unsent.bin'))).toBe(
     'other sample!'
   )
