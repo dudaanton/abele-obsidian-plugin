@@ -3841,6 +3841,9 @@ export class ObsidianFileSystem implements FileSystem {
     const host = local ? durableHostOf(local) : undefined
     if (!this.native?.fileContentRevision) {
       if (await this.io.verifiedInstallation(path, expected)) return true
+      // An exact indexed name needs no alias search after a receipt miss. This
+      // declines attestation; the caller must still prove the bytes afresh.
+      if (this.indexReady() && this.app.vault.getFileByPath(path)?.path === path) return false
       const before = await this.rawStat(path)
       if (before?.type !== 'file') return false
       const actual = await this.spellingOnDisk(path)
