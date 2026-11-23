@@ -3447,6 +3447,15 @@ export class TokenEngineRuntime
     this.invalidate()
     await this.close()
   }
+  async pauseForDisconnect(): Promise<void> {
+    // A missing or renamed root already stopped its producers. Ordinary Pause
+    // rejects that root, but leaving must still drain and check its private state.
+    if (this.rootIssue) this.pauseEngine()
+    else await this.pause(true)
+    // Existing reads must release the engine queue before disconnect hydration
+    // can enter it. Keep the transport owner alive for new authenticated reads.
+    for (const request of this.readRequests) request.abort()
+  }
   private pauseEngine(): void {
     this.indexWaitCancellation.abort()
     this.quiet.pause(true)

@@ -267,12 +267,15 @@ export class TokenEngines {
       this.activityReports.delete(id)
     }
     ui.stopRuntime = async (id) => {
-      // Remote-only files still need authenticated hydration before requests are aborted.
+      const runtime = this.live.get(id)
+      // Cancel producers before hydration waits for the engine's exclusive queue.
+      // Pause keeps authenticated access and recovery ownership available for hydration.
+      if (runtime && !this.drained.has(id)) await runtime.pauseForDisconnect()
+      // Remote-only files still need authenticated hydration before transport is revoked.
       // This preparation shares the bounded deletion wait and retains every recovery guard.
       await this.offloadPorts.get(id)?.prepareDisconnect()
       // Abort network work, but keep the host's ownership and recovery ports until the
       // writer drains and departure safety is checked. Only disconnect removes the host.
-      const runtime = this.live.get(id)
       if (runtime) {
         await runtime.disconnect()
         ui.runtimes.delete(id)

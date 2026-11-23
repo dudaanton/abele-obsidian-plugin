@@ -946,6 +946,59 @@ it('joins the vault adapter directory barriers before publishing paused through 
   }
 })
 
+it('pauses sync before disconnect hydration needs its exclusive queue, keeping local bytes intact', async () => {
+  const f = inspectionFixture(false, 'Notes')
+  const entered = deferred<void>(),
+    response = deferred<Response>()
+  let syncing: Promise<unknown> | undefined
+  let aborted = false
+  try {
+    f.release()
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await f.ui.sync(id)
+    const runtime = Reflect.get(f.host, 'live').get(id) as TokenEngineRuntime
+    const transport = f.transport.getMockImplementation()!
+    f.transport.mockImplementation(async (input, init) => {
+      if (new URL(String(input)).pathname !== '/v2/changes') return transport(input, init)
+      const cancel = () => {
+        aborted = true
+        response.reject(new DOMException('Cancelled sample transfer', 'AbortError'))
+      }
+      if (init?.signal?.aborted) cancel()
+      else init?.signal?.addEventListener('abort', cancel, { once: true })
+      entered.resolve()
+      return response.promise
+    })
+    syncing = f.ui.sync(id).catch(() => {})
+    await entered.promise
+    expect(runtime.engine.status.state).toBe('syncing')
+    const port = Reflect.get(f.host, 'offloadPorts').get(id)
+    const prepare = port.prepareDisconnect.bind(port)
+    let prepared = false
+    const hydration = vi.spyOn(port, 'prepareDisconnect').mockImplementation(async () => {
+      // Preparation enters engine.runExclusive; a running producer must be cancelled
+      // before this wait, while authenticated hydration must still be available.
+      expect(aborted).toBe(true)
+      expect(runtime.available).toBe(true)
+      if (!prepared) expect((await runtime.client.connection()).scope).toEqual(f.scope)
+      await prepare()
+      prepared = true
+    })
+    await f.ui.stopRuntime(id)
+    await syncing
+    expect(aborted).toBe(true)
+    expect(hydration).toHaveBeenCalledOnce()
+    expect(await f.app.vault.adapter.read('Notes/slow.txt')).toBe('ordinary note')
+    await expect(f.ui.connectionChangeGuard(id)).resolves.toBeUndefined()
+  } finally {
+    response.resolve(Response.json({ items: [], cursor: 1, next: null }))
+    await syncing
+    f.release()
+    await f.host.close()
+  }
+})
+
 it('inspects kept copies through the host only after the live download is drained', async () => {
   const f = inspectionFixture(false, 'Notes')
   try {
