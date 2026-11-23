@@ -1,5 +1,6 @@
 import { vaultDisk } from './vaultPathLinks'
-import { flushHostStorage, hostStorageOf } from './hostSyncStorage'
+import { durableHostOf, flushHostStorage, hostStorageOf } from './hostSyncStorage'
+import { SerialQueue } from './queue'
 import type { App, TFile } from 'obsidian'
 import { z } from 'zod'
 import { markdownLinkTargets } from '@/helpers/markdownLinkTargets'
@@ -9,22 +10,47 @@ const KEY = 'abele-token-local-files-v1'
 const records = z.array(z.object({ id: z.uuid(), path: z.string(), birth: z.number() }))
 /** Local identities never confer remote read or publication authority. */
 export class TokenAttachmentHost {
+  private readonly writes = new SerialQueue()
+
+  private persist<T>(work: () => T | Promise<T>): Promise<T> {
+    return this.writes.run(async () => {
+      const store = durableHostOf(this.app)
+      // Rebuild from committed rows, never from a draft left by a failed commit.
+      await store?.readValue(KEY)
+      try {
+        const result = await work()
+        const expected = this.rows()
+        await flushHostStorage(this.app)
+        const committed = records.parse(store ? ((await store.readValue(KEY)) ?? []) : this.rows())
+        if (JSON.stringify(committed) !== JSON.stringify(expected))
+          throw new Error('Local file identities were not committed')
+        return result
+      } catch (error) {
+        // A failed write must not leave a draft that a retry mistakes for persistence.
+        await store?.readValue(KEY).catch(() => {})
+        throw error
+      }
+    })
+  }
+
   constructor(
     private readonly app: App,
     private readonly offloaded: (path: string) => boolean = () => false
   ) {}
   async remember(path: string): Promise<void> {
-    const file = this.app.vault.getFileByPath(path)
-    if (file) this.identity(file)
-    await flushHostStorage(this.app)
+    await this.persist(() => {
+      const file = this.app.vault.getFileByPath(path)
+      if (file) this.identity(file)
+    })
   }
   async hydrated(path: string): Promise<void> {
-    const file = this.app.vault.getFileByPath(path)
-    if (file)
-      this.save(
-        this.rows().map((row) => (row.path === path ? { ...row, birth: file.stat.ctime } : row))
-      )
-    await flushHostStorage(this.app)
+    await this.persist(() => {
+      const file = this.app.vault.getFileByPath(path)
+      if (file)
+        this.save(
+          this.rows().map((row) => (row.path === path ? { ...row, birth: file.stat.ctime } : row))
+        )
+    })
   }
   private rows() {
     return records.parse(hostStorageOf(this.app).loadLocalStorage(KEY) ?? [])
@@ -45,12 +71,14 @@ export class TokenAttachmentHost {
     ])
     return id
   }
-  renamed(from: string, to: string): void {
-    this.save(
-      this.rows().map((one) =>
-        one.path === from || one.path.startsWith(from + '/')
-          ? { ...one, path: to + one.path.slice(from.length) }
-          : one
+  async renamed(from: string, to: string): Promise<void> {
+    await this.persist(() =>
+      this.save(
+        this.rows().map((one) =>
+          one.path === from || one.path.startsWith(from + '/')
+            ? { ...one, path: to + one.path.slice(from.length) }
+            : one
+        )
       )
     )
   }
@@ -67,7 +95,12 @@ export class TokenAttachmentHost {
       kind: extension === 'md' ? 'note' : extension === 'canvas' ? 'canvas' : 'attachment',
     }
   }
-  async note(path: string): Promise<{ id: string; targets: ConsentTarget[] } | null> {
+  note(path: string): Promise<{ id: string; targets: ConsentTarget[] } | null> {
+    return this.persist(() => this.inspectNote(path))
+  }
+  private async inspectNote(
+    path: string
+  ): Promise<{ id: string; targets: ConsentTarget[] } | null> {
     const file = this.app.vault.getFileByPath(path)
     if (!file || file.extension !== 'md') return null
     const text = await vaultDisk(this.app.vault).read(path)
@@ -82,7 +115,6 @@ export class TokenAttachmentHost {
       if (resolved) targets.set(id, resolved)
     }
     const id = this.identity(file)
-    await flushHostStorage(this.app)
     return { id, targets: [...targets.values()] }
   }
 }

@@ -1,6 +1,6 @@
 import type { App } from 'obsidian'
 import { expect, it, vi } from 'vitest'
-import { IDBFactory } from 'fake-indexeddb'
+import { IDBFactory, IDBObjectStore as FakeObjectStore } from 'fake-indexeddb'
 import { TokenAttachmentHost } from '@/sync/tokenAttachmentHost'
 import { HostSyncStorage } from '@/sync/hostSyncStorage'
 import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
@@ -66,5 +66,81 @@ it('retains mobile attachment identity when host local storage refuses writes', 
     fileHost.close()
     storage.close()
     save.mockRestore()
+  }
+})
+
+function abortNextCommit() {
+  const put = FakeObjectStore.prototype.put
+  return vi.spyOn(FakeObjectStore.prototype, 'put').mockImplementationOnce(function (
+    this: FakeObjectStore,
+    value,
+    key
+  ) {
+    this.transaction.abort()
+    return put.call(this, value, key)
+  })
+}
+
+it.each(['remember', 'hydrated'] as const)(
+  'persists identity after a failed %s commit and retry',
+  async (operation) => {
+    const app = buildFakeVault([{ path: 'sample.bin', content: 'sample bytes' }])
+    const factory = new IDBFactory()
+    let storage = await HostSyncStorage.open(factory, 'sample-retry', app)
+    const host = new TokenAttachmentHost(app as unknown as App)
+    try {
+      if (operation === 'hydrated') {
+        await host.remember('sample.bin')
+        app.vault.getFileByPath('sample.bin')!.stat.ctime++
+      }
+      const abort = abortNextCommit()
+      try {
+        await expect(host[operation]('sample.bin')).rejects.toThrow()
+      } finally {
+        abort.mockRestore()
+      }
+      await host[operation]('sample.bin')
+      const rows = storage.loadLocalStorage('abele-token-local-files-v1') as { id: string }[]
+      const id = rows[0].id
+      storage.close()
+      storage = await HostSyncStorage.open(factory, 'sample-retry', app)
+      expect(new TokenAttachmentHost(app as unknown as App).resolve(id)?.path).toBe('sample.bin')
+    } finally {
+      storage.close()
+    }
+  }
+)
+
+it('reports a failed rename commit and retains the committed path across restart', async () => {
+  const app = buildFakeVault([{ path: 'sample.bin', content: 'sample bytes' }])
+  const factory = new IDBFactory()
+  let storage = await HostSyncStorage.open(factory, 'sample-rename', app)
+  const host = new TokenAttachmentHost(app as unknown as App)
+  try {
+    await host.remember('sample.bin')
+    const id = (storage.loadLocalStorage('abele-token-local-files-v1') as { id: string }[])[0].id
+    await app.vault.rename(app.vault.getFileByPath('sample.bin')!, 'renamed.bin')
+    const abort = abortNextCommit()
+    try {
+      await expect(host.renamed('sample.bin', 'renamed.bin')).rejects.toThrow()
+    } finally {
+      abort.mockRestore()
+    }
+    expect(
+      (storage.loadLocalStorage('abele-token-local-files-v1') as { path: string }[])[0].path
+    ).toBe('sample.bin')
+    storage.close()
+    storage = await HostSyncStorage.open(factory, 'sample-rename', app)
+    expect(
+      (storage.loadLocalStorage('abele-token-local-files-v1') as { path: string }[])[0].path
+    ).toBe('sample.bin')
+    const restarted = new TokenAttachmentHost(app as unknown as App)
+    expect(restarted.resolve(id)).toBeNull()
+    await restarted.renamed('sample.bin', 'renamed.bin')
+    storage.close()
+    storage = await HostSyncStorage.open(factory, 'sample-rename', app)
+    expect(new TokenAttachmentHost(app as unknown as App).resolve(id)?.path).toBe('renamed.bin')
+  } finally {
+    storage.close()
   }
 })

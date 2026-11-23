@@ -235,9 +235,9 @@ export class TokenEngines {
     this.localFiles = new TokenAttachmentHost(app, (path) =>
       tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault)).isOffloaded(path)
     )
-    this.renameEvent = app.vault.on('rename', (file, from) => {
+    this.renameEvent = app.vault.on('rename', async (file, from) => {
       this.localOnly.renamed(from, file.path)
-      this.localFiles.renamed(from, file.path)
+      const identityRename = this.localFiles.renamed(from, file.path)
       const pins = this.devicePins()
       const moved = pins.map((path) =>
         caseKey(path) === caseKey(from) || caseKey(path).startsWith(caseKey(from) + '/')
@@ -246,6 +246,11 @@ export class TokenEngines {
       )
       if (JSON.stringify(moved) !== JSON.stringify(pins)) this.saveDevicePins(moved)
       for (const runtime of this.live.values()) runtime.localRenamed(from, file.path)
+      try {
+        await identityRename
+      } catch (error) {
+        console.error('[Abele Sync attachment identity rename]', error)
+      }
     })
     this.deleteEvent = app.vault.on('delete', (file) =>
       this.localOnly.deleted(file.path, (path) => !!app.vault.getAbstractFileByPath(path))
