@@ -6,6 +6,7 @@ import { join, relative } from 'node:path'
 import { targets } from './helpers/target'
 import { liveCase, liveSuite } from './helpers/syncLiveCases'
 import { driver, phoneHome, beginPhoneCase, endPhoneCase, installPhoneHost } from './helpers/phone'
+import { phoneGateBudgets, phoneGateWatchdog, runGatePhase } from './helpers/syncPhoneGatePhases'
 import { fixtureFetch } from './helpers/syncServer'
 import { waitFor } from './helpers/syncVault'
 import {
@@ -40,8 +41,30 @@ liveCase(
     const s = fixture(),
       a = s.primary
     assertDesktopReplicaReady()
-    a.timeoutMs = 600_000
-    const id = await s.connect()
+    const phase = <T>(
+      name: keyof typeof phoneGateBudgets,
+      work: (signal: AbortSignal) => Promise<T>
+    ) =>
+      runGatePhase(name, phoneGateBudgets[name], async (signal) => {
+        const previous = a.timeoutMs
+        const deadline = Date.now() + phoneGateBudgets[name]
+        // Every page action consumes this phase's remaining time, rather than
+        // receiving a fresh full timeout after the preceding action completed.
+        Object.defineProperty(a, 'timeoutMs', {
+          configurable: true,
+          get: () => Math.max(1, deadline - Date.now()),
+        })
+        try {
+          return await work(signal)
+        } finally {
+          Object.defineProperty(a, 'timeoutMs', {
+            configurable: true,
+            writable: true,
+            value: previous,
+          })
+        }
+      })
+    const id = await phase('connect', () => s.connect())
     const desktopRoot = mkdtempSync(join(tmpdir(), 'sync-phone-gate-'))
     const own: GateFile[] = [],
       remote: GateFile[] = []
@@ -175,13 +198,14 @@ liveCase(
       ).toEqual([])
     }
     try {
-      await a.pause(id, true)
-      // A nested file path alone does not create a shareable directory item.
-      await s.commit([{ op: 'mkdir', path: s.root }])
-      await startMemory()
-      await a.long(
-        'create synthetic large phone vault in bounded chunks',
-        `
+      await phase('create phone files', async () => {
+        await a.pause(id, true)
+        // A nested file path alone does not create a shareable directory item.
+        await s.commit([{ op: 'mkdir', path: s.root }])
+        await startMemory()
+        await a.long(
+          'create synthetic large phone vault in bounded chunks',
+          `
         await (${allowFixtureAttachment.toString()})(svc,${JSON.stringify(id)},${largeSize});
         const make=${phoneGateChunk.toString()};
         if(!await app.vault.adapter.exists(${JSON.stringify(s.root)}))await app.vault.adapter.mkdir(${JSON.stringify(s.root)});
@@ -190,45 +214,47 @@ liveCase(
           if(!await app.vault.adapter.exists(parent))await app.vault.adapter.mkdir(parent);
           await app.vault.adapter.writeBinary(file.path,new ArrayBuffer(0));
           for(let offset=0;offset<file.size;offset+=${chunk})await app.vault.adapter.appendBinary(file.path,make(file.seed,offset,Math.min(${chunk},file.size-offset)).buffer);
-        }return true`,
-        false,
-        600_000
-      )
-      await interrupt('upload')
+        }return true`
+        )
+      })
+      await phase('upload interruption', () => interrupt('upload'))
       expect(
         s.server.contentGets(),
         'phone must never download its own upload, including before relaunch'
       ).toBe(0)
-      const ownIds = new Set(
-        (await s.items())
-          .filter((row) => own.some((file) => file.path === row.path))
-          .map((row) => createHash('sha256').update(row.file_id).digest('hex'))
-      )
-      expect(ownIds.size).toBe(own.length)
-      await a.pause(id, true)
-      const beforePull = s.server.contentFiles().length
-      for (let i = 0; i < 128; i++) {
-        const bytes = phoneGateChunk(4000 + i, 0, i === 127 ? largeSize : 4096)
-        const sha = createHash('sha256').update(bytes).digest('hex')
-        const path = s.root + '/remote/sample-' + i + '.bin'
-        await s.client().putBlob(sha, bytes)
-        await s.commit([{ op: 'create', path, sha, size: bytes.length, mtime: 1000 }])
-        remote.push({ path, sha, size: bytes.length })
-      }
-      remoteHeads = (await s.items()).flatMap((row) =>
-        row.kind !== 'directory' && remote.some((file) => file.path === row.path)
-          ? [
-              {
-                path: row.path,
-                sha: row.sha,
-                size: row.size,
-                key: createHash('sha256').update(row.file_id).digest('hex'),
-              },
-            ]
-          : []
-      )
-      expect(remoteHeads).toHaveLength(remote.length)
-      await interrupt('pull')
+      const { ownIds, beforePull } = await phase('prepare remote files', async () => {
+        const ownIds = new Set(
+          (await s.items())
+            .filter((row) => own.some((file) => file.path === row.path))
+            .map((row) => createHash('sha256').update(row.file_id).digest('hex'))
+        )
+        expect(ownIds.size).toBe(own.length)
+        await a.pause(id, true)
+        const beforePull = s.server.contentFiles().length
+        for (let i = 0; i < 128; i++) {
+          const bytes = phoneGateChunk(4000 + i, 0, i === 127 ? largeSize : 4096)
+          const sha = createHash('sha256').update(bytes).digest('hex')
+          const path = s.root + '/remote/sample-' + i + '.bin'
+          await s.client().putBlob(sha, bytes)
+          await s.commit([{ op: 'create', path, sha, size: bytes.length, mtime: 1000 }])
+          remote.push({ path, sha, size: bytes.length })
+        }
+        remoteHeads = (await s.items()).flatMap((row) =>
+          row.kind !== 'directory' && remote.some((file) => file.path === row.path)
+            ? [
+                {
+                  path: row.path,
+                  sha: row.sha,
+                  size: row.size,
+                  key: createHash('sha256').update(row.file_id).digest('hex'),
+                },
+              ]
+            : []
+        )
+        expect(remoteHeads).toHaveLength(remote.length)
+        return { ownIds, beforePull }
+      })
+      await phase('pull interruption', () => interrupt('pull'))
       expect(
         s.server
           .contentFiles()
@@ -237,62 +263,68 @@ liveCase(
       ).toEqual([])
       await stopMemory()
       const expected = [...own, ...remote]
-      const actual = await a.long<GateFile[]>(
-        'hash every phone file from disk',
-        `
+      await phase('verify phone bytes', async () => {
+        const actual = await a.long<GateFile[]>(
+          'hash every phone file from disk',
+          `
         const root=${JSON.stringify(s.root)},result=[],walk=async dir=>{
           const listing=await app.vault.adapter.list(dir);
           for(const path of listing.files){const bytes=await app.vault.adapter.readBinary(path),digest=await crypto.subtle.digest('SHA-256',bytes);result.push({path,size:bytes.byteLength,sha:Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('')})}
           for(const folder of listing.folders)await walk(folder);
-        };await walk(root);return result`,
-        false,
-        600_000
-      )
-      assertPhoneGateInventory(expected, actual)
-      // A real desktop SDK replica, separate disk and durable ledger; no phone CLI routing.
-      mkdirSync(join(desktopRoot, 'files'))
-      const folderId = await findServerFolderId(s.server.rootToken, s.root, fixtureFetch)
-      const desktopKey = await s.server.issue({ kind: 'folder', id: folderId })
-      await syncDesktopGateReplica({
-        key: desktopKey,
-        dir: join(desktopRoot, 'files'),
-        stateDir: join(desktopRoot, 'state'),
-        fetch: fixtureFetch,
+        };await walk(root);return result`
+        )
+        assertPhoneGateInventory(expected, actual)
       })
-      const desktopFiles: GateFile[] = []
-      const walk = (dir: string) => {
-        for (const entry of readdirSync(dir, { withFileTypes: true })) {
-          const path = join(dir, entry.name)
-          if (entry.isDirectory()) walk(path)
-          else {
-            const bytes = readFileSync(path)
-            desktopFiles.push({
-              path: relative(join(desktopRoot, 'files'), path),
-              size: bytes.length,
-              sha: createHash('sha256').update(bytes).digest('hex'),
-            })
+      // A real desktop SDK replica, separate disk and durable ledger; no phone CLI routing.
+      await phase('desktop replica', async (signal) => {
+        mkdirSync(join(desktopRoot, 'files'))
+        const folderId = await findServerFolderId(s.server.rootToken, s.root, fixtureFetch)
+        const desktopKey = await s.server.issue({ kind: 'folder', id: folderId })
+        await syncDesktopGateReplica({
+          key: desktopKey,
+          dir: join(desktopRoot, 'files'),
+          stateDir: join(desktopRoot, 'state'),
+          fetch: fixtureFetch,
+          signal,
+        })
+        const desktopFiles: GateFile[] = []
+        const walk = (dir: string) => {
+          for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            const path = join(dir, entry.name)
+            if (entry.isDirectory()) walk(path)
+            else {
+              const bytes = readFileSync(path)
+              desktopFiles.push({
+                path: relative(join(desktopRoot, 'files'), path),
+                size: bytes.length,
+                sha: createHash('sha256').update(bytes).digest('hex'),
+              })
+            }
           }
         }
-      }
-      walk(join(desktopRoot, 'files'))
-      assertPhoneGateInventory(expected, desktopFiles)
-      const serverFiles: GateFile[] = []
-      for (const row of await s.items()) {
-        if (row.kind === 'directory' || !row.path.startsWith(s.root + '/')) continue
-        const source = await s
-          .client()
-          .openVersion(row.file_id, row.version_id!, { size: row.size!, sha: row.sha! })
-        const hash = createHash('sha256')
-        try {
-          for (let offset = 0; offset < row.size!; offset += chunk)
-            hash.update(await source.read(offset, Math.min(chunk, row.size! - offset)))
-          await source.assertUnchanged()
-        } finally {
-          await source.close()
+        walk(join(desktopRoot, 'files'))
+        assertPhoneGateInventory(expected, desktopFiles)
+      })
+      await phase('verify server bytes', async (signal) => {
+        const serverFiles: GateFile[] = []
+        for (const row of await s.items()) {
+          signal.throwIfAborted()
+          if (row.kind === 'directory' || !row.path.startsWith(s.root + '/')) continue
+          const source = await s
+            .client()
+            .openVersion(row.file_id, row.version_id!, { size: row.size!, sha: row.sha! })
+          const hash = createHash('sha256')
+          try {
+            for (let offset = 0; offset < row.size!; offset += chunk)
+              hash.update(await source.read(offset, Math.min(chunk, row.size! - offset), signal))
+            await source.assertUnchanged()
+          } finally {
+            await source.close()
+          }
+          serverFiles.push({ path: row.path, size: row.size!, sha: hash.digest('hex') })
         }
-        serverFiles.push({ path: row.path, size: row.size!, sha: hash.digest('hex') })
-      }
-      assertPhoneGateInventory(expected, serverFiles)
+        assertPhoneGateInventory(expected, serverFiles)
+      })
       console.info('[phone gate result]', {
         files: expected.length,
         bytes: expected.reduce((n, file) => n + file.size, 0),
@@ -315,5 +347,5 @@ liveCase(
     }
   },
   fixture,
-  1_800_000
+  phoneGateWatchdog
 )

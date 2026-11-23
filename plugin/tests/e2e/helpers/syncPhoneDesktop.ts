@@ -44,19 +44,58 @@ export async function syncDesktopGateReplica(options: {
   dir: string
   stateDir: string
   fetch: typeof fetch
+  signal?: AbortSignal
 }): Promise<void> {
   // The public open() API does not expose the Node replica's lock timing, and it
   // replaces a failed engine sync with a generic SyncError. Use the same SDK disk
   // replica directly so this gate retains the original cause on failure.
+  options.signal?.throwIfAborted()
+  const started = Date.now()
+  let networkMs = 0
+  let requests = 0
   const replica = await openReplica({
     ...options,
+    fetch: async (input, init) => {
+      const at = Date.now()
+      requests++
+      try {
+        return await options.fetch(input, {
+          ...init,
+          signal: options.signal
+            ? AbortSignal.any([options.signal, ...(init?.signal ? [init.signal] : [])])
+            : init?.signal,
+        })
+      } finally {
+        networkMs += Date.now() - at
+      }
+    },
     lockTiming: { heartbeatMs: 1000, watchMs: 600_000 },
   })
+  const openMs = Date.now() - started
+  console.info('[phone gate desktop]', { state: 'opened', openMs })
+  const engine = replica.buildEngine({})
+  const abort = () => engine.pause()
+  options.signal?.addEventListener('abort', abort, { once: true })
   try {
-    await replica.buildEngine({}).sync()
+    options.signal?.throwIfAborted()
+    await engine.sync()
+    options.signal?.throwIfAborted()
   } catch (cause) {
     throw new Error('Desktop SDK replica pull failed', { cause })
   } finally {
-    replica.close()
+    options.signal?.removeEventListener('abort', abort)
+    try {
+      await engine.stop()
+    } finally {
+      replica.close()
+      // The fixture transport buffers responses, so this includes response bytes.
+      // Other transports may resolve at headers; this is not a disk/CPU estimate.
+      console.info('[phone gate desktop]', {
+        elapsedMs: Date.now() - started,
+        openMs,
+        requests,
+        networkMs,
+      })
+    }
   }
 }
