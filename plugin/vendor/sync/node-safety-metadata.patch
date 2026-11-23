@@ -1,6 +1,6 @@
 --- a/dist/internal/node/externalSafety.js
 +++ b/dist/internal/node/externalSafety.js
-@@ -102,7 +102,20 @@
+@@ -102,7 +102,21 @@
                  hold(`unsafe state database ${name}`);
              const db = new SqliteDatabase(file, { readonly: true, fileMustExist: true });
              try {
@@ -18,7 +18,8 @@
 +                    )
 +                    OR key GLOB 'daemon:pull-cleanup:*'
 +                    OR key GLOB 'daemon:scoped-placement:pull-cleanup:*'` : ''}
-+                    ${scan || retirement ? "OR key GLOB 'daemon:scoped-placement:pull-write:*'" : ''}`).all()) {
++                    ${scan || retirement ? "OR key GLOB 'daemon:scoped-placement:pull-write:*'" : ''}
++                    UNION ALL SELECT key, value FROM meta WHERE typeof(key) <> 'text'`).all()) {
                      if (row.key === 'daemon:external-disconnect-ready' && !lifecycle)
                          hold('retained disconnect preparation receipt');
                      if (row.key === 'daemon:external-files') {

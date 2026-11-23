@@ -1,6 +1,6 @@
 /** Independent limits: unused time in one phase never extends another phase. */
 // Calibration: creation 72 s, upload resume 160 s, phone byte audit 5.1 s,
-// desktop pull about 1230 s (over 1490 s under load), server audit 17 s.
+// desktop pull about 300 s after bounded metadata reads, server audit 17 s.
 // Interruption limits include the foreground/background/kill/relaunch controls;
 // the generous desktop margin cannot relax any phone or byte-verification limit.
 export const phoneGateBudgets = {
@@ -10,7 +10,7 @@ export const phoneGateBudgets = {
   'prepare remote files': 60_000,
   'pull interruption': 120_000,
   'verify phone bytes': 30_000,
-  'desktop replica': 2_400_000,
+  'desktop replica': 900_000,
   'verify server bytes': 60_000,
 } as const
 

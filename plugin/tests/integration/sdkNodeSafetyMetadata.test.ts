@@ -61,6 +61,17 @@ it('observes new recovery evidence at the next effect boundary', () => {
   expect(() => assertLocalSafety(root, false, false, true)).toThrow()
 })
 
+it.each([null, Buffer.from('sample-invalid-key')])(
+  'still rejects a non-text ledger key: %s',
+  (key) => {
+    const root = ledger('sample-valid-key', '{}')
+    const db = new Database(join(root, '.abele-sync/state.db'))
+    db.prepare('INSERT INTO meta VALUES (?, ?)').run(key, '{}')
+    db.close()
+    expect(() => assertLocalSafety(root, false, false, true)).toThrow()
+  }
+)
+
 it.each([
   'daemon:external-disconnect-ready',
   'daemon:external-files',

@@ -1,8 +1,8 @@
 {
   "version": "0.3.18-scan.12",
   "source": "file:vendor/sync/abele-sync-sdk-0.3.18-scan.12.tgz",
-  "sha256": "bbda5326142eec8fcd447f4927a6787d1b0350aa054503887953e688bde80acf",
-  "integrity": "sha512-spSjh1e11Bk5XV+3VtSjE6OhdqioFDuHmRieKbQvD1zybs744cJuiF1rWdg2rY5BjZrDhSpTs15AhGZK2DVZZA==",
+  "sha256": "f597c72ded1cf37fe4ae2f0b24da113f2e423d71b3e33c3fa522487c589b7f34",
+  "integrity": "sha512-uLMCPDT7BPrzOHDKZTAyeL4bJeQnON5GKbg4isiRWaAuEj41Uyyh+saUZpPK8k6ah7TALbgDCgR2d8NZG0E59g==",
   "files": {
     "dist/internal/core/LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
     "dist/internal/node/LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
@@ -44,7 +44,7 @@
     "dist/internal/core/exclusiveOperations.js": "143697fe9b6111455137af9d8e734271b80c0befeb029a437248371a1bd1e08f",
     "dist/internal/node/externalDiscovery.js": "a3c0b78e0456cc238b245f148b46ebc93212af88e6d46a9130be7903c45df1c4",
     "dist/internal/protocol/externalFiles.js": "1a44fad0485743468c71f42a548e4d742a220d0b2b44897c4ea8f1ac9ab81404",
-    "dist/internal/node/externalSafety.js": "f64cfaf4b89da24f734420e4968fe692cdf0c1dbc5874baa4b7d109fddd79f62",
+    "dist/internal/node/externalSafety.js": "9bd287370fb9bf20f0f74f060d2b180a4c81439eda3f7de3f3f0d959cb7c4818",
     "dist/internal/core/externalVerification.js": "89f482eedf0d8dd648cad996370bebec1779d87a74180c9ea6d7da41654192a7",
     "dist/internal/core/fileRetry.js": "a3fc64db857321d367ae418347b69069b421ecc53a5d077000d4361ce5f79c2c",
     "dist/internal/core/fs.js": "0c98024443656c89fc1021a5e9b60dcf60be743f961191553f9ada266d03fea2",
