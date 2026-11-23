@@ -2469,7 +2469,7 @@ export function connectionAdapter(
       if (typeof value !== 'function') return value
       if (key === 'getName' || key === 'getBasePath' || key === 'queue') return value.bind(adapter)
       return (...args: unknown[]) => {
-        const method = String(key)
+        const method = key === RECONCILE_ORIGIN ? 'reconcileInternalFile' : String(key)
         if (!singles.has(method) && !pairs.has(method))
           throw new FolderScopeError('Adapter operation has no scope policy: ' + method)
         const root = currentRoot()

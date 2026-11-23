@@ -7,6 +7,7 @@ import { privatePlacementStages, PRIVATE_PLACEMENT_STAGES } from './privatePlace
 import { IGNORE_FILE } from './scope'
 import { INSTALL_BATCH, type InstallItem } from './nativeInstallBatch'
 import { SyncTaskBudget } from './syncTaskBudget'
+import { RECONCILE_ORIGIN, type ReconciliationNotify } from './vaultMutationEvents'
 
 async function includedChildren<T extends { path: string }>(
   children: T[],
@@ -125,6 +126,16 @@ export function scopedFileSystem(
         } satisfies NonNullable<FileSystem['trustedPathCandidates']>
       }
       if (typeof value !== 'function') return value
+      if (key === RECONCILE_ORIGIN)
+        return (path: string, notify: ReconciliationNotify) => {
+          assertPath(path)
+          const scopedNotify: ReconciliationNotify = (kind, changed, deliver) => {
+            if (!includes(changed)) return deliver()
+            assertPath(changed)
+            return notify(kind, changed, deliver)
+          }
+          return value.call(target, path, scopedNotify)
+        }
       if (key === Symbol.for('abele.sync.scan-hash-ready-v1'))
         return async (info: { path: string }, pass: object) => {
           assertPath(info.path)

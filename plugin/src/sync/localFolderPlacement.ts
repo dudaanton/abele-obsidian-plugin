@@ -15,6 +15,7 @@ import { IGNORE_FILE } from './scope'
 import { PLACEMENT } from './pathCoordinator'
 import { SyncTaskBudget } from './syncTaskBudget'
 import { INSTALL_BATCH, type InstallItem } from './nativeInstallBatch'
+import { RECONCILE_ORIGIN, type ReconciliationNotify } from './vaultMutationEvents'
 
 export { FolderScopeError } from './scopedFileSystem'
 import { FolderScopeError, assertRecoveryPath } from './scopedFileSystem'
@@ -456,6 +457,13 @@ export class LocalFolderPlacement {
               })
             }
             return result
+          }
+        if (key === RECONCILE_ORIGIN)
+          return (path: string, notify: ReconciliationNotify) => {
+            const local = placement.toLocal(path)
+            const placedNotify: ReconciliationNotify = (kind, changed, deliver) =>
+              changed === local ? notify(kind, path, deliver) : deliver()
+            return value.call(target, local, placedNotify)
           }
         const policy =
           key === Symbol.for('abele.sync.scan-hash-ready-v1')

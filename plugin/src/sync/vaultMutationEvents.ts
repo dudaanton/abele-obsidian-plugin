@@ -5,7 +5,7 @@ type Listener = (paths: readonly string[]) => void
 const EVENTS = Symbol.for('abele.sync.vault-mutation-events-v3')
 const NOTIFICATION = Symbol.for('abele.sync.vault-index-notification-origin-v1')
 export const RECONCILE_ORIGIN = Symbol.for('abele.sync.reconcile-origin-port-v1')
-type Notify = (kind: string, path: string, deliver: () => unknown) => unknown
+export type ReconciliationNotify = (kind: string, path: string, deliver: () => unknown) => unknown
 type Notification = { kind: string; path: string; remaining: number }
 
 /** A separate receiver carries origin through the host's awaited reconciliation.
@@ -13,7 +13,7 @@ type Notification = { kind: string; path: string; remaining: number }
 export async function reconcileAdapterWithOrigin(
   adapter: object,
   path: string,
-  notify: Notify
+  notify: ReconciliationNotify
 ): Promise<void> {
   const reconcile = Reflect.get(adapter, 'reconcileInternalFile')
   if (typeof reconcile !== 'function') return Promise.resolve()
@@ -46,7 +46,7 @@ export async function reconcileVaultFile(
   vault = connectionHost(vault) as Vault
   if (!Object.prototype.hasOwnProperty.call(vault, NOTIFICATION))
     Object.defineProperty(vault, NOTIFICATION, { value: undefined, writable: true })
-  const notify: Notify = (kind, changed, deliver) => {
+  const notify: ReconciliationNotify = (kind, changed, deliver) => {
     const event = kind === 'file-created' ? 'create' : kind === 'modified' ? 'modify' : undefined
     if (changed !== path || !event) return deliver()
     const previous = Reflect.get(vault, NOTIFICATION)
