@@ -1,5 +1,6 @@
 import type { Vault } from 'obsidian'
 import { connectionHost } from './connectionPaths'
+import { reconcileGuardedAdapter } from './vaultPathLinks'
 
 type Listener = (paths: readonly string[]) => void
 const EVENTS = Symbol.for('abele.sync.vault-mutation-events-v3')
@@ -7,35 +8,6 @@ const NOTIFICATION = Symbol.for('abele.sync.vault-index-notification-origin-v1')
 export const RECONCILE_ORIGIN = Symbol.for('abele.sync.reconcile-origin-port-v1')
 export type ReconciliationNotify = (kind: string, path: string, deliver: () => unknown) => unknown
 type Notification = { kind: string; path: string; remaining: number }
-
-/** A separate receiver carries origin through the host's awaited reconciliation.
- * The original adapter and its foreign callbacks are never patched. */
-export async function reconcileAdapterWithOrigin(
-  adapter: object,
-  path: string,
-  notify: ReconciliationNotify
-): Promise<void> {
-  const reconcile = Reflect.get(adapter, 'reconcileInternalFile')
-  if (typeof reconcile !== 'function') return Promise.resolve()
-  const handler = Reflect.get(adapter, 'handler')
-  if (typeof handler !== 'function') return reconcile.call(adapter, path)
-  let active = true
-  const receiver = new Proxy(adapter, {
-    get(target, key, view) {
-      if (key !== 'handler') return Reflect.get(target, key, view)
-      return (kind: string, changed: string, ...args: unknown[]) => {
-        const deliver = () => handler.call(target, kind, changed, ...args)
-        return active ? notify(kind, changed, deliver) : deliver()
-      }
-    },
-  })
-  try {
-    await reconcile.call(receiver, path)
-  } finally {
-    // A callback retained by the host cannot attribute any later notification.
-    active = false
-  }
-}
 
 /** Only the synchronous delivery of our own index callback carries a token. */
 export async function reconcileVaultFile(
@@ -57,10 +29,7 @@ export async function reconcileVaultFile(
       Reflect.set(vault, NOTIFICATION, previous)
     }
   }
-  const port = Reflect.get(adapter, RECONCILE_ORIGIN)
-  await (typeof port === 'function'
-    ? port(path, notify)
-    : reconcileAdapterWithOrigin(adapter, path, notify))
+  await reconcileGuardedAdapter(adapter, path, notify)
 }
 const listeners = (vault: Vault) => Reflect.get(vault, EVENTS) as Set<Listener> | undefined
 

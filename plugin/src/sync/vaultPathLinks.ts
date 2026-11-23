@@ -2,7 +2,7 @@ import { waitForSyncRead } from './syncTaskBudget'
 import {
   observeVaultMutationEvents,
   RECONCILE_ORIGIN,
-  reconcileAdapterWithOrigin,
+  type ReconciliationNotify,
 } from './vaultMutationEvents'
 import {
   boundedNativeOperations,
@@ -30,6 +30,47 @@ import { EngineError } from '@abele/sync-sdk/core'
 import { PathCoordinator } from './pathCoordinator'
 import { SyncTaskBudget } from './syncTaskBudget'
 import { caseKey } from '@abele/sync-sdk/protocol'
+
+/** All host adapter capabilities, including reconciliation, cross this boundary. */
+export async function reconcileGuardedAdapter(
+  adapter: object,
+  path: string,
+  notify: ReconciliationNotify
+): Promise<void> {
+  const port = Reflect.get(adapter, RECONCILE_ORIGIN)
+  await (typeof port === 'function'
+    ? port(path, notify)
+    : reconcileAdapterWithOrigin(adapter, path, notify))
+}
+
+/** A separate receiver carries origin through the host's awaited reconciliation.
+ * The original adapter and its foreign callbacks are never patched. */
+async function reconcileAdapterWithOrigin(
+  adapter: object,
+  path: string,
+  notify: ReconciliationNotify
+): Promise<void> {
+  const reconcile = Reflect.get(adapter, 'reconcileInternalFile')
+  if (typeof reconcile !== 'function') return Promise.resolve()
+  const handler = Reflect.get(adapter, 'handler')
+  if (typeof handler !== 'function') return reconcile.call(adapter, path)
+  let active = true
+  const receiver = new Proxy(adapter, {
+    get(target, key, view) {
+      if (key !== 'handler') return Reflect.get(target, key, view)
+      return (kind: string, changed: string, ...args: unknown[]) => {
+        const deliver = () => handler.call(target, kind, changed, ...args)
+        return active ? notify(kind, changed, deliver) : deliver()
+      }
+    },
+  })
+  try {
+    await reconcile.call(receiver, path)
+  } finally {
+    // A callback retained by the host cannot attribute any later notification.
+    active = false
+  }
+}
 
 /** Explicit test-pool maintenance calls this only after its identity/ownership proof. */
 export async function eraseSyncPoolPrivateDirectory(vault: Vault): Promise<void> {

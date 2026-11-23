@@ -66,9 +66,18 @@ export async function verifyReopenedIdentity(
   // Submit the entire readonly batch while the transaction is active. A host
   // suspension between request callbacks must not turn the next get into a
   // request on an expired transaction.
-  const rows = await Promise.all(
-    checks.map((check) => wait<{ value: unknown } | undefined>(tx.objectStore(META).get(check.key)))
-  )
-  if (checks.some((check, index) => rows[index]?.value !== check.value))
-    throw new StateRecoveryRequired()
+  try {
+    const rows = await Promise.all(
+      checks.map((check) =>
+        wait<{ value: unknown } | undefined>(tx.objectStore(META).get(check.key))
+      )
+    )
+    if (checks.some((check, index) => rows[index]?.value !== check.value))
+      throw new StateRecoveryRequired()
+  } catch (cause) {
+    // Failure to start a transaction above can be retried after reconnecting.
+    // Once its identity read was submitted, a second loss leaves the reopened
+    // database unverified; never hide that failure behind another attempt.
+    throw cause instanceof StateRecoveryRequired ? cause : new StateRecoveryRequired(cause)
+  }
 }
