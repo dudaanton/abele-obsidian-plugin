@@ -4255,6 +4255,14 @@ export class ObsidianFileSystem implements FileSystem {
   ): Promise<AtomicStage> {
     this.runtimeFence?.assertReady()
     this.externalCoordination.assertEnginePaths([path])
+    if (expectedBase && expectedBase.mtime === undefined) {
+      // Some callers supply content authority only. Observe metadata only after
+      // proving that the current bytes still equal that authority.
+      const current = await this.fingerprint(path, undefined, true, false)
+      if (current.sha !== expectedBase.sha || current.size !== expectedBase.size)
+        throw new EngineError('conflict', 'stage target changed before allocation')
+      expectedBase = { ...expectedBase, mtime: current.mtime }
+    }
     await makeParents(this.disk, path)
     const temp = await this.writer.freeName(path, 'tmp')
     // The durable core intent owns this opaque locator before any artifact exists.

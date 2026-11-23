@@ -11,6 +11,51 @@ const target = 'Notes/sample.md',
   temp = 'Notes/.abele-sync-efgh5678.tmp'
 const bytes = (text: string) => new TextEncoder().encode(text)
 const read = (data: ArrayBuffer) => new TextDecoder().decode(data)
+it('does not bind new metadata to a content-only base whose bytes changed', async () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'first', mtime: 10 }])
+  const fs = new ObsidianFileSystem(app as unknown as App)
+  const original = await fs.fingerprint('sample.md')
+  await app.vault.adapter.writeBinary('sample.md', bytes('other').buffer as ArrayBuffer, {
+    mtime: 10,
+  })
+  await expect(
+    fs.beginAtomicWrite('sample.md', 20, {
+      sha: original.sha,
+      size: original.size,
+    })
+  ).rejects.toThrow('changed before allocation')
+  expect(read(await app.vault.adapter.readBinary('sample.md'))).toBe('other')
+})
+it('publishes against a content-only base and fences an edit after staging', async () => {
+  const app = buildFakeVault([{ path: 'sample.md', content: 'initial bytes', mtime: 10 }])
+  const fs = new ObsidianFileSystem(app as unknown as App)
+  const original = await fs.fingerprint('sample.md')
+  const stage = await fs.beginAtomicWrite('sample.md', 20, {
+    sha: original.sha,
+    size: original.size,
+  })
+  await stage.append(0, bytes('replacement bytes'))
+  await stage.seal({
+    sha: await sha256(bytes('replacement bytes')),
+    size: bytes('replacement bytes').length,
+  })
+  await stage.commit()
+  expect(read(await app.vault.adapter.readBinary('sample.md'))).toBe('replacement bytes')
+  const next = await fs.fingerprint('sample.md')
+  const pending = await fs.beginAtomicWrite('sample.md', 30, { sha: next.sha, size: next.size })
+  await pending.append(0, bytes('later replacement'))
+  await pending.seal({
+    sha: await sha256(bytes('later replacement')),
+    size: bytes('later replacement').length,
+  })
+  await app.vault.adapter.writeBinary(
+    'sample.md',
+    bytes('independent edit').buffer as ArrayBuffer,
+    { mtime: 40 }
+  )
+  await expect(pending.commit()).rejects.toThrow('changed')
+  expect(read(await app.vault.adapter.readBinary('sample.md'))).toBe('independent edit')
+})
 async function list(fs: ObsidianFileSystem) {
   const paths = []
   for await (const file of fs.list()) paths.push(file.path)
