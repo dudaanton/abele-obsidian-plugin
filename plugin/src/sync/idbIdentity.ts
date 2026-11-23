@@ -62,14 +62,13 @@ export async function verifyReopenedIdentity(
   db: IDBDatabase,
   checks: DatabaseIdentity[]
 ): Promise<void> {
-  try {
-    const tx = db.transaction([META], 'readonly')
-    for (const check of checks) {
-      const row = await wait<{ value: unknown } | undefined>(tx.objectStore(META).get(check.key))
-      if (row?.value !== check.value) throw new StateRecoveryRequired()
-    }
-  } catch (cause) {
-    if (cause instanceof StateRecoveryRequired) throw cause
-    throw new StateRecoveryRequired(cause)
-  }
+  const tx = db.transaction([META], 'readonly')
+  // Submit the entire readonly batch while the transaction is active. A host
+  // suspension between request callbacks must not turn the next get into a
+  // request on an expired transaction.
+  const rows = await Promise.all(
+    checks.map((check) => wait<{ value: unknown } | undefined>(tx.objectStore(META).get(check.key)))
+  )
+  if (checks.some((check, index) => rows[index]?.value !== check.value))
+    throw new StateRecoveryRequired()
 }

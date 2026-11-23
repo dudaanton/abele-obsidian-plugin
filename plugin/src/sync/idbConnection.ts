@@ -5,6 +5,7 @@ import { verifyReopenedIdentity, StateRecoveryRequired, type DatabaseIdentity } 
 export class IndexedDbConnection {
   private closed = false
   private reopening: Promise<void> | null = null
+  private needsReopen = false
   private failure: StateRecoveryRequired | null = null
   onRecoveryRequired: ((error: StateRecoveryRequired) => void) | null = null
 
@@ -14,7 +15,7 @@ export class IndexedDbConnection {
     private readonly identities: DatabaseIdentity[]
   ) {}
   get permitsEffects(): boolean {
-    return !this.closed && this.failure === null
+    return !this.closed && !this.needsReopen && this.failure === null
   }
   assertRecovery(): void {
     if (this.failure) throw this.failure
@@ -33,6 +34,7 @@ export class IndexedDbConnection {
   }
   async once<T>(what: string, attempt: () => Promise<T>): Promise<T> {
     this.assertRecovery()
+    if (this.needsReopen && !this.closed) await this.recover()
     const failedOn = this.db
     try {
       return await attempt()
@@ -43,11 +45,10 @@ export class IndexedDbConnection {
         error
       )
       try {
-        if (this.db === failedOn)
-          this.reopening ??= this.reopen().finally(() => {
-            this.reopening = null
-          })
-        await this.reopening
+        if (this.db === failedOn) {
+          this.needsReopen = true
+          await this.recover()
+        } else await this.reopening
       } catch (cause) {
         console.debug('[abele-sync] the state database would not reopen', cause)
         if (cause instanceof StateRecoveryRequired) throw cause
@@ -57,7 +58,24 @@ export class IndexedDbConnection {
       return attempt()
     }
   }
+  private recover(): Promise<void> {
+    return (this.reopening ??= this.reopen().finally(() => {
+      this.reopening = null
+    }))
+  }
   private async reopen(): Promise<void> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await this.reopenOnce()
+        return
+      } catch (cause) {
+        if (cause instanceof StateRecoveryRequired || !lostTransaction(cause) || attempt >= 2)
+          throw cause
+        console.debug('[abele-sync] retrying storage identity read after lost transaction', cause)
+      }
+    }
+  }
+  private async reopenOnce(): Promise<void> {
     const stale = this.db
     let fresh: IDBDatabase | null = null
     try {
@@ -75,6 +93,7 @@ export class IndexedDbConnection {
         return
       }
       this.db = fresh
+      this.needsReopen = false
       stale.onversionchange = null
       stale.close()
     } catch (cause) {
@@ -85,8 +104,10 @@ export class IndexedDbConnection {
       } catch {
         /* already closed */
       }
-      const failure =
-        cause instanceof StateRecoveryRequired ? cause : new StateRecoveryRequired(cause)
+      // Failure to read is not evidence of lost identity. Keep the connection
+      // retryable; effects cannot pass once() until a fresh identity read succeeds.
+      if (!(cause instanceof StateRecoveryRequired)) throw cause
+      const failure = cause
       this.failure = failure
       this.closed = true
       this.onRecoveryRequired?.(failure)

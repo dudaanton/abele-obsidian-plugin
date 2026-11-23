@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { IDBFactory } from 'fake-indexeddb'
+import { IndexedDbConnection } from '@/sync/idbConnection'
+import { initializeDatabaseIdentity } from '@/sync/idbIdentity'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { authorizeLedgerBootstrap, requireLedger, LEDGER_IDENTITY_KEY } from '@/sync/ledgerRecovery'
 import { buildFakeVault } from '../helpers/fakeVault'
@@ -15,6 +17,56 @@ const row = {
   size: 1,
   mtime: 1,
 }
+
+it.each([1, 3])(
+  'retries transient identity reads without declaring storage loss (%s failures)',
+  async (failures) => {
+    const factory = new IDBFactory()
+    const store = await IndexedDbStateStore.open(factory, 'sample-transient')
+    const db = (store as unknown as { db: IDBDatabase }).db
+    const identity = await initializeDatabaseIdentity(db)
+    let remaining = failures
+    const connect = vi.fn(async () => {
+      const fresh = await new Promise<IDBDatabase>((resolve) => {
+        const request = factory.open('sample-transient')
+        request.onsuccess = () => resolve(request.result)
+      })
+      if (remaining-- > 0) {
+        vi.spyOn(fresh, 'transaction').mockImplementationOnce(() => {
+          throw new DOMException(
+            'Attempt to get a record from database without an in-progress transaction',
+            'UnknownError'
+          )
+        })
+      }
+      return fresh
+    })
+    const connection = new IndexedDbConnection(db, connect, [identity])
+    const fatal = vi.fn()
+    connection.onRecoveryRequired = fatal
+    const attempt = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new DOMException('Connection to Indexed Database server lost', 'UnknownError')
+      )
+      .mockResolvedValue(9)
+    try {
+      if (failures === 3) {
+        await expect(connection.once('read cursor', attempt)).rejects.toThrow()
+        expect(connection.permitsEffects).toBe(false)
+        expect(attempt).toHaveBeenCalledTimes(1)
+      }
+      expect(await connection.once('read cursor', attempt)).toBe(9)
+      expect(connection.permitsEffects).toBe(true)
+      expect(fatal).not.toHaveBeenCalled()
+      expect(connect).toHaveBeenCalledTimes(failures + 1)
+    } finally {
+      connection.close()
+      store.close()
+      vi.restoreAllMocks()
+    }
+  }
+)
 
 describe('strict identity before WebKit reconnect retry', () => {
   it.each(['read', 'write'])(
