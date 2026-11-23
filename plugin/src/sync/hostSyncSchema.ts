@@ -62,6 +62,7 @@ const KEYS = [
   'abele-sync-connection-sets-v1',
   'abele-sync-external-activation-v1',
   'abele-token-local-files-v1',
+  'abele-sync-retired-access-cleanup-v1',
 ]
 
 export function openHostDatabase(factory: IDBFactory): Promise<IDBDatabase> {
@@ -126,7 +127,9 @@ export async function migrateHostStorage(
       const addingKey =
         marker &&
         !row &&
-        (key === 'abele-sync-external-activation-v1' || key === 'abele-token-local-files-v1')
+        (key === 'abele-sync-external-activation-v1' ||
+          key === 'abele-token-local-files-v1' ||
+          key === 'abele-sync-retired-access-cleanup-v1')
       if (marker && !row && !addingKey)
         throw new Error('Sync host storage is incomplete; recovery is required')
       const value =

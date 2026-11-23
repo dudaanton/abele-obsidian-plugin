@@ -15,7 +15,7 @@ export async function prepareTokenConnections(
   const host = factory ? await prepareHostSyncStorage(app, factory) : undefined
   try {
     const registry = TokenConnectionRegistry.open(app)
-    discardLegacyConnections(app, secrets, loadedSync)
+    await discardLegacyConnections(app, secrets, loadedSync)
     await registry.flush()
     await registry.finishForgottenDurably(secrets)
     return registry

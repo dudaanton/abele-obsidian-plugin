@@ -111,6 +111,7 @@ it('migrates existing consent identities after host storage was already initiali
   const original = await HostSyncStorage.open(factory, 'sample-upgrade', app)
   original.close()
   // An older host schema has migration markers but no attachment identity key.
+  app.saveLocalStorage(key, rows)
   const db = await openHostDatabase(factory)
   const tx = db.transaction([STORE, RECORDS], 'readwrite')
   const done = completion(tx, 'cannot prepare previous schema')
@@ -128,6 +129,25 @@ it('migrates existing consent identities after host storage was already initiali
   } finally {
     storage.close()
     save.mockRestore()
+  }
+})
+
+it('releases the migrated local identity copy and does not recreate it on restart', async () => {
+  const app = buildFakeVault([{ path: 'sample.bin', content: 'sample bytes' }])
+  const key = 'abele-token-local-files-v1'
+  const rows = [{ id: crypto.randomUUID(), path: 'sample.bin', birth: 1 }]
+  app.saveLocalStorage(key, rows)
+  const factory = new IDBFactory()
+  let storage = await HostSyncStorage.open(factory, 'sample-reclaim', app)
+  try {
+    expect(app.loadLocalStorage(key)).toBeNull()
+    expect(await storage.readValue(key)).toEqual(rows)
+    storage.close()
+    storage = await HostSyncStorage.open(factory, 'sample-reclaim', app)
+    expect(app.loadLocalStorage(key)).toBeNull()
+    expect(await storage.readValue(key)).toEqual(rows)
+  } finally {
+    storage.close()
   }
 })
 

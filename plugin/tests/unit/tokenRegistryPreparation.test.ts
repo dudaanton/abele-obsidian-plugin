@@ -1,8 +1,79 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import type { App } from 'obsidian'
 import { prepareTokenConnections } from '@/sync/tokenRegistryPreparation'
 import { TOKEN_REGISTRY_KEY } from '@/sync/tokenConnectionRegistry'
 import { recordTeardown } from '@/sync/teardownBarrier'
+import { IDBFactory } from 'fake-indexeddb'
+import { durableHostOf, HostSyncStorage } from '@/sync/hostSyncStorage'
+
+it('starts with quota-full local storage and no retired credentials', async () => {
+  const { app } = local()
+  Object.assign(app, { appId: 'sample-quota' })
+  app.saveLocalStorage = () => {}
+  try {
+    const registry = await prepareTokenConnections(
+      app,
+      { get: () => '', remove: () => {} },
+      undefined,
+      new IDBFactory()
+    )
+    expect(registry.records()).toEqual([])
+  } finally {
+    durableHostOf(app)?.close()
+  }
+})
+
+it('resumes retired credential deletion from durable storage after quota-full startup', async () => {
+  const { app, data } = local()
+  Object.assign(app, { appId: 'sample-quota-restart' })
+  data.set('abele-sync-connection', { deviceTokenId: 'abele-sync-device-old' })
+  app.saveLocalStorage = (key, value) => {
+    if (value == null) data.delete(key)
+  }
+  const factory = new IDBFactory()
+  const values = new Map([['abele-sync-device-old', 'old-key']])
+  let interrupted = true
+  const secrets = {
+    get: (ref: string) => values.get(ref) ?? '',
+    remove: (ref: string) => {
+      if (interrupted) throw new Error('keychain unavailable')
+      values.delete(ref)
+    },
+  }
+  try {
+    await expect(prepareTokenConnections(app, secrets, undefined, factory)).rejects.toThrow(
+      'keychain unavailable'
+    )
+    expect(data.has('abele-sync-connection')).toBe(false)
+    interrupted = false
+    expect((await prepareTokenConnections(app, secrets, undefined, factory)).records()).toEqual([])
+    expect(values.size).toBe(0)
+  } finally {
+    durableHostOf(app)?.close()
+  }
+})
+
+it('keeps legacy references and credentials when the cleanup journal cannot commit', async () => {
+  const { app } = local()
+  Object.assign(app, { appId: 'sample-journal-failure' })
+  app.saveLocalStorage('abele-sync-connection', { deviceTokenId: 'abele-sync-device-old' })
+  const factory = new IDBFactory()
+  const host = await HostSyncStorage.open(factory, 'sample-journal-failure', app)
+  const remove = vi.fn()
+  const flush = vi.spyOn(host, 'flush').mockRejectedValue(new Error('storage unavailable'))
+  try {
+    await expect(
+      prepareTokenConnections(app, { get: () => 'old-key', remove }, undefined, factory)
+    ).rejects.toThrow('storage unavailable')
+    expect(app.loadLocalStorage('abele-sync-connection')).toEqual({
+      deviceTokenId: 'abele-sync-device-old',
+    })
+    expect(remove).not.toHaveBeenCalled()
+  } finally {
+    flush.mockRestore()
+    host.close()
+  }
+})
 
 function local() {
   const data = new Map<string, unknown>()

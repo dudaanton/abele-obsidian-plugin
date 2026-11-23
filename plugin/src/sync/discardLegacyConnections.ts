@@ -1,4 +1,5 @@
 import type { LocalStorage } from './ledgerId'
+import { flushHostStorage, hostStorageOf } from './hostSyncStorage'
 
 export interface RetiredSecrets {
   get(reference: string): string
@@ -43,15 +44,16 @@ const retiredReference = (id: string) =>
     id
   )
 
-/** Retire only known access metadata/credential namespaces. No files or databases are touched. */
-export function discardLegacyConnections(
+/** Retire only known access metadata/credential namespaces. No vault files are touched. */
+export async function discardLegacyConnections(
   local: LocalStorage,
   secrets: RetiredSecrets,
   loadedSync?: unknown
-): void {
+): Promise<void> {
   const references = new Set<string>(),
     keys = new Set(legacyKeys)
-  const existing = local.loadLocalStorage(cleanupKey)
+  const journal = hostStorageOf(local)
+  const existing = journal.loadLocalStorage(cleanupKey)
   if (existing != null) {
     if (
       !Array.isArray(existing) ||
@@ -98,7 +100,10 @@ export function discardLegacyConnections(
       throw new Error('Retired access cleanup was not stored')
   }
   // Only references are retained until deletion completes; no old state becomes active.
-  write(cleanupKey, [...references])
+  journal.saveLocalStorage(cleanupKey, [...references])
+  if (JSON.stringify(journal.loadLocalStorage(cleanupKey)) !== JSON.stringify([...references]))
+    throw new Error('Retired access cleanup was not stored')
+  await flushHostStorage(journal)
   for (const key of keys) if (local.loadLocalStorage(key) != null) write(key, null)
   for (const reference of references) {
     let value: string
@@ -112,5 +117,9 @@ export function discardLegacyConnections(
     secrets.remove(reference)
     if (secrets.get(reference)) throw new Error('Retired credential was not removed')
   }
-  write(cleanupKey, null)
+  await secrets.flush?.()
+  journal.saveLocalStorage(cleanupKey, null)
+  await flushHostStorage(journal)
+  if (journal.loadLocalStorage(cleanupKey) != null)
+    throw new Error('Retired access cleanup was not stored')
 }

@@ -158,7 +158,19 @@ export class HostSyncStorage implements LocalStorage {
       for (const [key, value] of await migrateHostStorage(db, namespace, local))
         result.setView(key, value)
       // Only a compatibility view. On every reopen the committed IDB rows win.
-      for (const [key, value] of result.values) local.saveLocalStorage(key, structuredClone(value))
+      for (const [key, value] of result.values) {
+        if (
+          key === 'abele-token-local-files-v1' ||
+          key === 'abele-sync-retired-access-cleanup-v1'
+        ) {
+          // Migration has committed. Do not refill limited app storage with durable records.
+          try {
+            local.saveLocalStorage(key, null)
+          } catch (error) {
+            console.debug('Sync host local copy cleanup failed', error)
+          }
+        } else local.saveLocalStorage(key, structuredClone(value))
+      }
       prepared.set(local, result)
       if (typeof BroadcastChannel !== 'undefined') {
         result.channel = new BroadcastChannel(DATABASE + ':' + namespace)

@@ -291,6 +291,9 @@ Previews are never separate vault files or sync inputs. Missing previews fall ba
 Local attachment consent identities (`abele-token-local-files-v1`) live in the host IndexedDB
 store, migrated from app-local storage. Eviction and hydration commit identity updates before
 reporting completion, so a refused localStorage write does not block attachment offloading.
+After migration commits, the old localStorage identity copy is cleared and is not recreated.
+Retired credential cleanup references also live in host IndexedDB, committed before old access
+metadata or credentials are removed; cleanup resumes there after an interrupted startup.
 
 Records bind to the local ledger, normalized endpoint, vault, personal/scoped mode, principal,
 grant, connection generation and credential association. They separate local representation
