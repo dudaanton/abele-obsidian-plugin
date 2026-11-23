@@ -11,7 +11,6 @@ import { NodeService } from '@/node/NodeService'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { DEFAULT_AI_SETTINGS } from '@/ai/types'
 import { NodeClient, MemoryClientStore } from '@abele/node-client'
-import { GlobalStore } from '@/stores/GlobalStore'
 import { openAgents, closeAgents } from '@/agents/openAgents'
 import { generateIdentity } from '@abele/channel-protocol'
 import { useAttentionVault as useVault } from '../helpers/attentionVault'
@@ -125,11 +124,8 @@ describe("a node's sessions in the agents list", () => {
   })
 
   it('renders a daemon input turn through the SDK and command dialog without injected rows', async () => {
-    useVault([])
-    const app = GlobalStore.getInstance().app
-    vi.spyOn(app, 'loadLocalStorage').mockImplementation((key) =>
-      key === 'abele-node-registry' ? [{ ...NODE, url: 'http://127.0.0.1:7777' }] : undefined
-    )
+    const app = useVault([])
+    app.saveLocalStorage('abele-node-registry', [{ ...NODE, url: 'http://127.0.0.1:7777' }])
     const busy = {
       ...session('sample-session', 'Sample busy session'),
       workspace_id: 'sample-workspace',
@@ -204,6 +200,9 @@ describe("a node's sessions in the agents list", () => {
         expect(root.textContent).not.toContain('No agents at work')
         expect(root.textContent).not.toContain('Sample quiet session')
       })
+      expect(app.loadLocalStorage('abele-node-registry')).toMatchObject([
+        { ...NODE, scopeAuthorizationId: expect.any(String) },
+      ])
       expect(request).toHaveBeenCalledWith('session.state', { session_id: busy.session_id })
     } finally {
       closeAgents()
