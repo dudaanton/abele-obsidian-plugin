@@ -4297,7 +4297,8 @@ export class ObsidianFileSystem implements FileSystem {
   }
   /** The SDK consumes this at its serial recovery boundary, before allocating push work. */
   async *listStages(): AsyncIterable<{ id: string; purpose: 'push-cache' | 'unknown' }> {
-    this.runtimeFence?.assertReady()
+    // Startup journal validation inventories private stages before recovery permits effects.
+    this.runtimeFence?.assertOwned()
     const folder = stagingDirectory(this.configDir, this.privateRoot)
     let entries: JournalEntry[] = []
     try {
@@ -4334,7 +4335,7 @@ export class ObsidianFileSystem implements FileSystem {
       }
     }
     for (const [id, purpose] of candidates) {
-      this.runtimeFence?.assertReady()
+      this.runtimeFence?.assertOwned()
       if (purpose === 'unknown')
         console.debug('[abele-sync] private stage retained for recovery', id)
       yield { id, purpose }

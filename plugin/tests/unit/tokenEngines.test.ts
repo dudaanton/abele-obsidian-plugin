@@ -2021,6 +2021,105 @@ it('restarts a relocated group with server-named members in its durable ledger',
   }
 })
 
+it('restarts relocated scope validation with a never-submitted create and delete journal', async () => {
+  const f = inspectionFixture(false, 'Notes')
+  let restarted: TokenEngines | undefined
+  let handshake: ReturnType<typeof vi.spyOn> | undefined
+  let journalFence: ReturnType<typeof vi.spyOn> | undefined
+  f.release()
+  try {
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await f.ui.sync(id)
+    await f.host.close()
+    await f.app.vault.rename(f.app.vault.getAbstractFileByPath('Notes')!, 'Imported')
+    f.registry.setLocalRoot(id, 'Imported')
+    const state = await openTokenLedger(f.factory, f.registry, f.registry.records()[0], () => {})
+    try {
+      const deleted = (await state.get('Notes/slow.txt'))!
+      expect(deleted).not.toBeNull()
+      const text = 'temporary unsent bytes'
+      await f.app.vault.adapter.write('Imported/temporary.md', text)
+      const stat = (await f.app.vault.adapter.stat('Imported/temporary.md'))!
+      const create = {
+        op: 'create' as const,
+        path: 'Notes/temporary.md',
+        sha: await sha256(new TextEncoder().encode(text)),
+        size: text.length,
+        mtime: stat.mtime,
+      }
+      await state.setJournal({
+        batchId: 'sample-pending',
+        idempotencyKey: 'sample-never-sent',
+        startedAt: new Date().toISOString(),
+        commitAttempted: false,
+        origin: {
+          cursor: await state.getCursor(),
+          generation: await state.getMeta('server-restore-generation'),
+        },
+        ops: [
+          create,
+          { op: 'delete', file_id: deleted.fileId, base_version_id: deleted.versionId },
+        ],
+        conflictSources: [
+          {
+            op: JSON.stringify(create),
+            source: {
+              path: create.path,
+              sha: create.sha,
+              size: create.size,
+              mtime: create.mtime,
+              identity: 'sample-file-identity',
+            },
+          },
+        ],
+      })
+      await f.app.vault.adapter.remove('Imported/temporary.md')
+      await f.app.vault.adapter.remove('Imported/slow.txt')
+    } finally {
+      state.close()
+    }
+    const stat = vi.spyOn(f.app.vault.adapter, 'stat')
+    handshake = vi
+      .spyOn(ObsidianFileSystem.prototype, 'needsRecoveryHandshake')
+      .mockResolvedValue(true)
+    const validate = syncCore.fenceRestoredJournal
+    journalFence = vi
+      .spyOn(syncCore, 'fenceRestoredJournal')
+      .mockImplementation(async (...args) => {
+        // Validate the canonical private path at the same port as ordinary server paths.
+        expect(await args[2]!.stat('.abele-sync/retained-removals/summary.json')).toBeNull()
+        return validate(...args)
+      })
+    restarted = f.makeHost()
+    restarted.start()
+    await vi.waitFor(() => {
+      expect(f.ui.activity.value[id]?.error).toBeUndefined()
+      expect(f.ui.runtimes.has(id)).toBe(true)
+    })
+    await f.ui.sync(id)
+    expect(
+      stat.mock.calls.some(
+        ([path]) => path === connectionPrivateRoot(id) + '/retained-removals/summary.json'
+      )
+    ).toBe(true)
+    expect(await f.app.vault.adapter.exists('Imported/temporary.md')).toBe(false)
+    expect(await f.app.vault.adapter.exists('Imported/slow.txt')).toBe(false)
+    await restarted.close()
+    const reopened = await openTokenLedger(f.factory, f.registry, f.registry.records()[0], () => {})
+    try {
+      expect(await reopened.getJournal()).toBeNull()
+    } finally {
+      reopened.close()
+    }
+  } finally {
+    journalFence?.mockRestore()
+    handshake?.mockRestore()
+    await restarted?.close()
+    await f.host.close()
+  }
+})
+
 it('enables ordinary verification from the first successful exchange report', async () => {
   const f = inspectionFixture()
   const completed = vi.spyOn(ObsidianFileSystem.prototype, 'completeInitialExchange')

@@ -1,4 +1,5 @@
 import { LocalOnlyCopies } from './localOnlyCopies'
+import { engineRemovalFileSystem } from './privateRemovalFileSystem'
 import { deviceScopeMatcher, readDeviceScope } from './deviceScope'
 import { SCOPE_BOOTSTRAP } from './deviceScopedConnections'
 import { scopeInventory } from './deviceScopeInventory'
@@ -1073,7 +1074,7 @@ export class TokenEngines {
           await fenceRestoredJournal(
             state,
             head.head_seq,
-            externalPlacement?.fileSystem(ordinary) ?? ordinary,
+            engineRemovalFileSystem(externalPlacement?.fileSystem(ordinary) ?? ordinary),
             undefined,
             client
           )
