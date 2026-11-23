@@ -61,6 +61,53 @@ const client = {
   versions: async (): Promise<never[]> => [],
 } as unknown as EngineClient
 
+it.each(['metadata', 'summary', 'foreign', 'payload'] as const)(
+  'distinguishes owned recovery housekeeping from %s bytes',
+  async (kind) => {
+    const root = '.abele-sync/connections/sample/conditional'
+    const object = root + '/objects/11111111-2222-4333-8444-555555555555/'
+    const path =
+      kind === 'summary'
+        ? '.abele-sync/connections/sample/retained-removals/summary.json'
+        : object +
+          (kind === 'metadata' ? 'intent.json' : kind === 'payload' ? 'data' : 'foreign.bin')
+    const { app, state, journal } = await fixture()
+    const parts = path.split('/')
+    for (let length = 1; length < parts.length; length++) {
+      const folder = parts.slice(0, length).join('/')
+      if (!(await app.vault.adapter.exists(folder))) await app.vault.adapter.mkdir(folder)
+    }
+    await app.vault.adapter.writeBinary(
+      path,
+      new TextEncoder().encode(
+        kind === 'payload' ? 'unsent sample' : kind === 'summary' ? '[]' : 'sample metadata'
+      ).buffer
+    )
+    let stamp = 100
+    const racing = {
+      ...client,
+      hasBlob: async () => {
+        await app.vault.adapter.writeBinary(
+          path,
+          new TextEncoder().encode(kind === 'summary' ? '[]' : 'updated metadata').buffer,
+          { mtime: stamp++ }
+        )
+        return false
+      },
+    }
+    const fs = new ObsidianFileSystem(app as never, { connectionId: 'sample' })
+    if (kind === 'metadata' || kind === 'summary') {
+      await fenceRestoredJournal(state, 11, fs, undefined, racing)
+      expect(await state.getJournal()).toBeNull()
+    } else {
+      await expect(fenceRestoredJournal(state, 11, fs, undefined, racing)).rejects.toThrow(
+        'unsent bytes'
+      )
+      expect(await state.getJournal()).toEqual(journal)
+    }
+  }
+)
+
 it('requires fresh bytes for a present journal payload despite a cached fingerprint', async () => {
   const { app, state, journal } = await fixture()
   const fs = new ObsidianFileSystem(app as never)

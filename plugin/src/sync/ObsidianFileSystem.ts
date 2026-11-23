@@ -3097,6 +3097,11 @@ export class ObsidianFileSystem implements FileSystem {
   /** Recovery needs physical absence evidence, including files excluded from sync. */
   async *listRecoveryFiles(): AsyncIterable<FileInfo> {
     const budget = new SyncTaskBudget()
+    const summary = (this.privateRemovalRoot ?? '.abele-sync') + '/retained-removals/summary.json'
+    const receipt = '(?:[a-f0-9]{32}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})'
+    const housekeeping = new RegExp(
+      `^(?:(?:active|completed|retiring|review|recovered|retained)/${receipt}\\.json|objects/${receipt}/(?:allocation|complete|data-restored|dying|intent\\.json|late-effect\\.json|ready|restored|restore-plans/${receipt}\\.json))$`
+    )
     const root = this.scopedRoot()
     const pending: string[] = []
     for (const path of root ? [root, ...(this.privateRoot ? [this.privateRoot] : [])] : ['']) {
@@ -3125,6 +3130,14 @@ export class ObsidianFileSystem implements FileSystem {
             throw new EngineError('io', 'Invalid recovery inventory entry')
           seen.add(path)
           if (await crossesSymlink(path, (part) => this.isSymlink(part))) continue
+          // The core reads this summary independently before and after its absence proof.
+          if (kind === 'file' && path === summary) continue
+          if (kind === 'file' && path.startsWith(this.conditionalRoot + '/')) {
+            const relative = path.slice(this.conditionalRoot.length + 1)
+            // Recovery compares user payloads, not our receipt bookkeeping. Keep
+            // data/victim files and unrecognized private names in the complete inventory.
+            if (housekeeping.test(relative)) continue
+          }
           const stat = await this.disk.stat(path)
           if (!stat || stat.type !== kind)
             throw new EngineError('io', 'Recovery inventory changed while reading')
