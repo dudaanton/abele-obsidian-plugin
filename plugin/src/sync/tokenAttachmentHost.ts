@@ -1,4 +1,5 @@
 import { vaultDisk } from './vaultPathLinks'
+import { flushHostStorage, hostStorageOf } from './hostSyncStorage'
 import type { App, TFile } from 'obsidian'
 import { z } from 'zod'
 import { markdownLinkTargets } from '@/helpers/markdownLinkTargets'
@@ -12,22 +13,24 @@ export class TokenAttachmentHost {
     private readonly app: App,
     private readonly offloaded: (path: string) => boolean = () => false
   ) {}
-  remember(path: string): void {
+  async remember(path: string): Promise<void> {
     const file = this.app.vault.getFileByPath(path)
     if (file) this.identity(file)
+    await flushHostStorage(this.app)
   }
-  hydrated(path: string): void {
+  async hydrated(path: string): Promise<void> {
     const file = this.app.vault.getFileByPath(path)
     if (file)
       this.save(
         this.rows().map((row) => (row.path === path ? { ...row, birth: file.stat.ctime } : row))
       )
+    await flushHostStorage(this.app)
   }
   private rows() {
-    return records.parse(this.app.loadLocalStorage(KEY) ?? [])
+    return records.parse(hostStorageOf(this.app).loadLocalStorage(KEY) ?? [])
   }
   private save(rows: z.infer<typeof records>) {
-    this.app.saveLocalStorage(KEY, rows)
+    hostStorageOf(this.app).saveLocalStorage(KEY, rows)
     if (JSON.stringify(this.rows()) !== JSON.stringify(rows))
       throw new Error('Local file identities were not stored')
   }
@@ -78,6 +81,8 @@ export class TokenAttachmentHost {
         resolved = this.resolve(id)
       if (resolved) targets.set(id, resolved)
     }
-    return { id: this.identity(file), targets: [...targets.values()] }
+    const id = this.identity(file)
+    await flushHostStorage(this.app)
+    return { id, targets: [...targets.values()] }
   }
 }

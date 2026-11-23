@@ -61,6 +61,7 @@ const KEYS = [
   'abele-sync-registry-write-v1',
   'abele-sync-connection-sets-v1',
   'abele-sync-external-activation-v1',
+  'abele-token-local-files-v1',
 ]
 
 export function openHostDatabase(factory: IDBFactory): Promise<IDBDatabase> {
@@ -122,14 +123,17 @@ export async function migrateHostStorage(
       const row = marker
         ? await wait<{ value: unknown } | undefined>(rows.get([namespace, key]))
         : undefined
-      const addingActivation = marker && !row && key === 'abele-sync-external-activation-v1'
-      if (marker && !row && !addingActivation)
+      const addingKey =
+        marker &&
+        !row &&
+        (key === 'abele-sync-external-activation-v1' || key === 'abele-token-local-files-v1')
+      if (marker && !row && !addingKey)
         throw new Error('Sync host storage is incomplete; recovery is required')
       const value =
-        marker && !addingActivation
+        marker && !addingKey
           ? (row?.value ?? null)
           : structuredClone(local.loadLocalStorage(key) ?? null)
-      if (recordMarker && !addingActivation) {
+      if (recordMarker && !addingKey) {
         const loaded = pathMarker
           ? await readGroup(records, namespace, key)
           : await wait<HostRecord[]>(
@@ -175,7 +179,7 @@ export async function migrateHostStorage(
         }
         views.push([key, value])
       }
-      if (!marker || addingActivation) await wait(rows.put({ namespace, key, value }))
+      if (!marker || addingKey) await wait(rows.put({ namespace, key, value }))
     }
     if (!marker) await wait(rows.put({ namespace, key: MIGRATED, value: true }))
     if (!recordMarker) await wait(rows.put({ namespace, key: RECORDS_MIGRATED, value: true }))

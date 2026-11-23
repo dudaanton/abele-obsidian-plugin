@@ -51,8 +51,8 @@ export async function tokenOffloadConnection(input: {
     paths: string[],
     fingerprint?: (path: string) => Promise<{ size: number; sha: string }>
   ): Promise<void>
-  rememberIdentity(path: string): void
-  hydratedIdentity(path: string): void
+  rememberIdentity(path: string): void | Promise<void>
+  hydratedIdentity(path: string): void | Promise<void>
 }) {
   const { state, ledgerId, fence, manager } = input
   const toLocal = (path: string) => input.placement?.toLocal(path) ?? path
@@ -316,7 +316,7 @@ export async function tokenOffloadConnection(input: {
       )
       if (result.status !== 'complete') throw new Error('File hydration stopped: ' + result.status)
       await refresh()
-      input.hydratedIdentity(path)
+      await input.hydratedIdentity(path)
     } finally {
       stop()
       signal?.removeEventListener('abort', cancel)
@@ -380,7 +380,7 @@ export async function tokenOffloadConnection(input: {
     hydrate,
     evict: async (path: string, version?: string) => {
       if (!input.includes(path)) throw new Error('File is outside this connection')
-      input.rememberIdentity(path)
+      await input.rememberIdentity(path)
       const entry = await head(path),
         api = await store(),
         snapshot = await api.get(entry.fileId)

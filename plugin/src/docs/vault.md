@@ -288,6 +288,9 @@ The `abele-external-previews-v1` app-local cache holds at most 128 JPEG data URL
 at most 56 KiB encoded and 512 pixels on the long side. The optional projection `preview`
 field references a cache entry by SHA-256; `offloadedAt` records the local offload time.
 Previews are never separate vault files or sync inputs. Missing previews fall back to a row.
+Local attachment consent identities (`abele-token-local-files-v1`) live in the host IndexedDB
+store, migrated from app-local storage. Eviction and hydration commit identity updates before
+reporting completion, so a refused localStorage write does not block attachment offloading.
 
 Records bind to the local ledger, normalized endpoint, vault, personal/scoped mode, principal,
 grant, connection generation and credential association. They separate local representation

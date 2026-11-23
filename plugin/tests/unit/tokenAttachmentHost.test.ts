@@ -20,7 +20,7 @@ it('keeps consent identity through proven offload and hydration, but never adopt
   const app = useVault([{ path: 'sample.bin', content: 'bytes' }])
   let absent = false
   const host = new TokenAttachmentHost(app as never, () => absent)
-  host.remember('sample.bin')
+  await host.remember('sample.bin')
   const rows = app.loadLocalStorage('abele-token-local-files-v1') as { id: string }[],
     id = rows[0].id
   await app.vault.adapter.remove('sample.bin')
@@ -29,7 +29,7 @@ it('keeps consent identity through proven offload and hydration, but never adopt
   absent = false
   expect(host.resolve(id)).toBeNull()
   await app.vault.adapter.write('sample.bin', 'bytes')
-  host.hydrated('sample.bin')
+  await host.hydrated('sample.bin')
   expect(host.resolve(id)?.path).toBe('sample.bin')
   await app.vault.adapter.remove('sample.bin')
   await app.vault.adapter.write('sample.bin', 'different file', { ctime: 9876 })
