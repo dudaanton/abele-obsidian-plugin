@@ -12,7 +12,27 @@ import { sha256 } from '@noble/hashes/sha2'
 const digest = (bytes: Uint8Array) =>
   Array.from(sha256(bytes), (b) => b.toString(16).padStart(2, '0')).join('')
 
-it.each(['owned', 'legacy-clock', 'foreign-write', 'foreign-event'])(
+it.each([
+  'owned',
+  'owned-modify',
+  'legacy-clock',
+  'foreign-write',
+  'foreign-event',
+  'foreign-during-before',
+  'foreign-during-after',
+  'foreign-create-before',
+  'foreign-create-after',
+  'foreign-create-only',
+  'foreign-handler-before',
+  'foreign-handler-after',
+  'foreign-handler-only',
+  'duplicate-handler-notification',
+  'unattributed-host',
+  'retained-callback',
+  'modify-only',
+  'missing-event-stat',
+  'mismatched-event-stat',
+])(
   'keeps mobile rename receipts through explicit index reconciliation only (%s)',
   async (change) => {
     const app = buildFakeVault([])
@@ -21,6 +41,8 @@ it.each(['owned', 'legacy-clock', 'foreign-write', 'foreign-event'])(
         value: () => NaN,
       })
     const adapter = app.vault.adapter
+    const rawWrite = adapter.writeBinary
+    let retained: (() => void) | undefined
     const io = new BoundedVaultIo(
       adapter as never,
       undefined,
@@ -38,19 +60,52 @@ it.each(['owned', 'legacy-clock', 'foreign-write', 'foreign-event'])(
       adapter.rename('stage.bin', 'sample.bin')
     )
     Object.assign(adapter, {
-      reconcileInternalFile: async (path: string) => {
+      handler: (kind: string, path: string) => {
+        app.emit('vault', kind === 'modified' ? 'modify' : 'create', { path })
+        if (change === 'duplicate-handler-notification') app.emit('vault', 'create', { path })
+      },
+      reconcileInternalFile: async function (
+        this: { handler(kind: string, path: string): void },
+        path: string
+      ) {
+        if (change === 'retained-callback') retained = () => this.handler('modified', path)
+        const foreign = async (event = 'modify', originalHandler = false) => {
+          await rawWrite.call(adapter, path, new Uint8Array([3, 2, 1]).buffer, { mtime: 1000 })
+          if (originalHandler) Reflect.get(adapter, 'handler')('modified', path)
+          else app.emit('vault', event, { path, stat: await adapter.stat(path) })
+        }
+        if (change === 'foreign-during-before') await foreign()
+        if (change === 'foreign-create-before') await foreign('create')
+        if (change === 'foreign-create-only') return foreign('create')
+        if (change === 'foreign-handler-before') await foreign('modify', true)
+        if (change === 'foreign-handler-only') return foreign('modify', true)
+        if (change === 'modify-only') return foreign()
         if (change === 'foreign-write')
           await adapter.writeBinary(path, new Uint8Array([3, 2, 1]).buffer, { mtime: 1000 })
-        app.emit('vault', 'create', { path })
+        if (change === 'missing-event-stat' || change === 'unattributed-host')
+          app.emit('vault', 'create', { path })
+        else if (change === 'mismatched-event-stat')
+          app.emit('vault', 'create', { path, stat: { size: 3, mtime: 1001 } })
+        else this.handler(change === 'owned-modify' ? 'modified' : 'file-created', path)
+        if (change === 'foreign-during-after') await foreign()
+        if (change === 'foreign-create-after') await foreign('create')
+        if (change === 'foreign-handler-after') await foreign('modify', true)
       },
     })
+    if (change === 'unattributed-host') Reflect.deleteProperty(adapter, 'handler')
+    const originalHandler = Reflect.get(adapter, 'handler')
     await reconcileVaultFile(app.vault as never, adapter, 'sample.bin')
+    if (change === 'retained-callback') {
+      await rawWrite.call(adapter, 'sample.bin', new Uint8Array([3, 2, 1]).buffer, { mtime: 1000 })
+      retained!()
+    }
+    expect(Reflect.get(adapter, 'handler')).toBe(originalHandler)
     if (change === 'foreign-event') app.emit('vault', 'modify', { path: 'sample.bin' })
     const read = vi.spyOn(adapter, 'readBinary')
     expect(await io.verifiedInstallation('sample.bin', { sha: digest(bytes), size: 3 })).toBe(
-      change === 'owned' || change === 'legacy-clock'
+      change === 'owned' || change === 'owned-modify' || change === 'legacy-clock'
     )
-    if (change === 'owned' || change === 'legacy-clock')
+    if (change === 'owned' || change === 'owned-modify' || change === 'legacy-clock')
       expect((await io.fingerprint('sample.bin')).sha).toBe(digest(bytes))
     expect(read).not.toHaveBeenCalled()
   }

@@ -59,8 +59,14 @@ it.each([50, 200])(
       remove: async (path: string) => {
         records.delete(path)
       },
-      reconcileInternalFile: async (path: string) => {
-        app.emit('vault', records.has(path) ? 'create' : 'delete', { path })
+      handler: (kind: string, path: string) => {
+        app.emit('vault', kind === 'file-created' ? 'create' : 'delete', { path })
+      },
+      reconcileInternalFile: async function (
+        this: { handler(kind: string, path: string): void },
+        path: string
+      ) {
+        this.handler(records.has(path) ? 'file-created' : 'file-removed', path)
       },
       readBinary,
     })

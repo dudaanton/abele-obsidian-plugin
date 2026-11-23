@@ -1,5 +1,9 @@
 import { waitForSyncRead } from './syncTaskBudget'
-import { observeVaultMutationEvents } from './vaultMutationEvents'
+import {
+  observeVaultMutationEvents,
+  RECONCILE_ORIGIN,
+  reconcileAdapterWithOrigin,
+} from './vaultMutationEvents'
 import {
   boundedNativeOperations,
   boundedNativeRead,
@@ -662,6 +666,11 @@ export function guardedVaultAdapter(adapter: DataAdapter): DataAdapter {
   const guarded = new Proxy(adapter, {
     get(target, key) {
       if (key === GUARDED) return true
+      if (key === RECONCILE_ORIGIN)
+        return async (path: string, notify: Parameters<typeof reconcileAdapterWithOrigin>[2]) => {
+          await assertVaultPath(target, path)
+          await reconcileAdapterWithOrigin(target, path, notify)
+        }
       if (key === 'fsPromises') {
         if (Reflect.get(target, key) !== suppliedNative) {
           adapters.delete(target)
@@ -2046,6 +2055,11 @@ function mobileGuard(adapter: DataAdapter): DataAdapter {
   return new Proxy(adapter, {
     get(target, key) {
       if (key === GUARDED) return true
+      if (key === RECONCILE_ORIGIN)
+        return async (path: string, notify: Parameters<typeof reconcileAdapterWithOrigin>[2]) => {
+          await assertVaultPath(target, path)
+          await reconcileAdapterWithOrigin(target, path, notify)
+        }
       const value = Reflect.get(target, key)
       const cached = methods.get(key)
       if (cached && cached.source === value) return cached.wrapped
@@ -2770,7 +2784,7 @@ const ADAPTER = Symbol.for('abele.sync.installation-epochs-v4')
 // Retire the adapter-bound clock retained by earlier plugin instances.
 // Earlier clocks subscribed before index notifications had explicit provenance.
 // Retire those closures on plugin reload together with their module-local receipts.
-const VAULT = Symbol.for('abele.sync.installation-events-v7')
+const VAULT = Symbol.for('abele.sync.installation-events-v8')
 
 function epochs(adapter: DataAdapter, name?: (path: string) => string): Epochs {
   const cached = Reflect.get(adapter, ADAPTER) as Epochs | undefined
