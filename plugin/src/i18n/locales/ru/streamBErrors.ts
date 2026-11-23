@@ -1,4 +1,6 @@
 export const streamBErrors = {
+  'streamBError.nodeRegistrySave':
+    'Не удалось сохранить регистрацию ноды. Освободите место в локальном хранилище и попробуйте снова.',
   'streamBError.diffLineBudget':
     'В сравнении слишком много строк. Откройте каждую сторону отдельно.',
   'streamBError.diffDistinctLines':

@@ -1,4 +1,6 @@
 export const streamBErrors = {
+  'streamBError.nodeRegistrySave':
+    'Die Knotenregistrierung konnte nicht gespeichert werden. Gib lokalen Speicherplatz frei und versuche es erneut.',
   'streamBError.diffLineBudget':
     'Dieser Vergleich überschreitet die Zeilenbegrenzung. Öffne jede Seite einzeln.',
   'streamBError.diffDistinctLines':

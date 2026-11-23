@@ -96,5 +96,8 @@ describe('product pairing admission', () => {
     await f.model.connect(code, 'Sample device', { host: 'sample.example.ts.net', port: 443 })
     expect(f.model.state.value.phase).toBe('error')
     expect(f.client.disconnect).toHaveBeenCalledOnce()
+    await f.model.connect(code, 'Sample device', { host: 'sample.example.ts.net', port: 443 })
+    expect(f.model.state.value.phase).toBe('connected')
+    expect(f.adopt).toHaveBeenCalledTimes(2)
   })
 })

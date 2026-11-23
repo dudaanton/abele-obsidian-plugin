@@ -1153,5 +1153,8 @@
   },
   "streamBError.diffDistinctLines": {
     "englishHash": "807034125533155ecb506e9756aa2118f49254c2619635db393eca8d17abec00"
+  },
+  "streamBError.nodeRegistrySave": {
+    "englishHash": "2b04f7d910918afe9e1d031c6a1c75f016908a9d791defc34f483d5dc1ee5cb0"
   }
 }

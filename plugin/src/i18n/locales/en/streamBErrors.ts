@@ -1,4 +1,6 @@
 export const streamBErrors = {
+  'streamBError.nodeRegistrySave':
+    'Could not save the node registration. Free local storage space, then try again.',
   'streamBError.diffLineBudget': 'This diff exceeds the line budget. Open each side separately.',
   'streamBError.diffDistinctLines':
     'Too many distinct lines to compare safely. Open each side separately.',

@@ -1,4 +1,6 @@
 export const streamBErrors = {
+  'streamBError.nodeRegistrySave':
+    'Neizdevās saglabāt mezgla reģistrāciju. Atbrīvojiet vietu lokālajā krātuvē un mēģiniet vēlreiz.',
   'streamBError.diffLineBudget':
     'Šajā salīdzinājumā ir pārāk daudz rindu. Atveriet katru pusi atsevišķi.',
   'streamBError.diffDistinctLines':

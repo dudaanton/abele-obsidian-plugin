@@ -1,4 +1,6 @@
 export const streamBErrors = {
+  'streamBError.nodeRegistrySave':
+    'No se pudo guardar el registro del nodo. Libera espacio de almacenamiento local e inténtalo de nuevo.',
   'streamBError.diffLineBudget':
     'Esta comparación supera el límite de líneas. Abre cada lado por separado.',
   'streamBError.diffDistinctLines':

@@ -11,6 +11,7 @@ import { NodeDeviceKeyStore, claimedEnrollment } from './NodeDeviceKeyStore'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { secrets } from '@/secrets/SecretStore'
 import { NodeRegistry, channelUrl, isPairedNode, type RegisteredNode } from './NodeRegistry'
+import { nodeRegistryStorage } from './nodeRegistryStorage'
 import { NodeClientStore } from './NodeClientStore'
 import { NodeDelegationController } from './NodeDelegationController'
 import { NodeManagerController } from './NodeManagerController'
@@ -653,8 +654,7 @@ export class NodeService {
       (app.loadLocalStorage('abele-node-installation') as string) || crypto.randomUUID()
     app.saveLocalStorage('abele-node-installation', this.installation)
     this.registry = new NodeRegistry({
-      read: () => app.loadLocalStorage('abele-node-registry'),
-      write: (nodes) => app.saveLocalStorage('abele-node-registry', nodes),
+      ...nodeRegistryStorage(app),
       getSecret: (id) => secrets().getLocal(id),
       setSecret: (id, value) => secrets().setLocal(id, value),
       removeSecret: (id) => secrets().forgetLocal(id),
