@@ -1,0 +1,24 @@
+--- a/dist/internal/node/externalSafety.js
++++ b/dist/internal/node/externalSafety.js
+@@ -102,7 +102,20 @@
+                 hold(`unsafe state database ${name}`);
+             const db = new SqliteDatabase(file, { readonly: true, fileMustExist: true });
+             try {
+-                for (const row of db.prepare('SELECT key, value FROM meta').all()) {
++                for (const row of db.prepare(`SELECT key, value FROM meta
++                    WHERE key IN (
++                        'daemon:external-disconnect-ready', 'daemon:external-files',
++                        'daemon:settlement-departure:index:', 'daemon:deferred-changes', 'journal'
++                    )
++                    OR key GLOB 'daemon:settlement-departure:row:*'
++                    OR key GLOB 'daemon:pull-write:*'
++                    ${retirement ? `OR key IN (
++                        'daemon:pull-cleanup-head', 'daemon:scoped-placement:pull-cleanup-head',
++                        'daemon:held-deletes', 'daemon:delete-decision'
++                    )
++                    OR key GLOB 'daemon:pull-cleanup:*'
++                    OR key GLOB 'daemon:scoped-placement:pull-cleanup:*'` : ''}
++                    ${scan || retirement ? "OR key GLOB 'daemon:scoped-placement:pull-write:*'" : ''}`).all()) {
+                     if (row.key === 'daemon:external-disconnect-ready' && !lifecycle)
+                         hold('retained disconnect preparation receipt');
+                     if (row.key === 'daemon:external-files') {
