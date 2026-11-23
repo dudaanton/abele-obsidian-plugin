@@ -7,6 +7,97 @@ import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { openHostDatabase, STORE, RECORDS, recordKey } from '@/sync/hostSyncSchema'
 import { completion, wait } from '@/sync/idbRequests'
+import { sha256 } from '@abele/sync-sdk/core'
+import { tokenOffloadConnection } from '@/sync/tokenOffloadConnection'
+import { TokenOffloadCoordinator } from '@/sync/tokenOffloadCoordinator'
+import { PathCoordinator } from '@/sync/pathCoordinator'
+import { RuntimeFence } from '@/sync/external/recovery'
+import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
+
+it('rejects eviction while an on-disk attachment has no indexed identity, then allows retry', async () => {
+  const path = 'sample.bin'
+  const app = buildFakeVault([{ path, content: 'sample bytes' }])
+  app.workspace.iterateAllLeaves = () => {}
+  const factory = new IDBFactory()
+  const storage = await HostSyncStorage.open(factory, 'sample-unindexed', app)
+  const ledgerId = 'sample-unindexed-ledger'
+  const state = await IndexedDbStateStore.open(factory, ledgerId)
+  const fence = new RuntimeFence(app, ledgerId, () => true)
+  fence.activate()
+  const bytes = new TextEncoder().encode('sample bytes')
+  const head = {
+    path,
+    wirePath: path,
+    fileId: 'sample-file',
+    versionId: 'sample-version',
+    sha: await sha256(bytes),
+    size: bytes.length,
+    mtime: 1,
+  }
+  await state.put(head)
+  const identities = new TokenAttachmentHost(app as unknown as App)
+  const capture = vi.fn(async () => {})
+  const port = await tokenOffloadConnection({
+    app: app as unknown as App,
+    factory,
+    state,
+    ledgerId,
+    fence,
+    binding: {
+      endpoint: 'https://sync.example.invalid',
+      vaultId: 'sample-vault',
+      mode: 'personal',
+      principalId: 'sample-device',
+      principalType: 'device',
+      grantId: null,
+      generation: 1,
+      credentialAssociation: 'sample-slot',
+    },
+    fs: new ObsidianFileSystem(app as unknown as App),
+    manager: new TokenOffloadCoordinator(new PathCoordinator()),
+    scriptsFolder: () => 'Scripts',
+    client: () =>
+      ({
+        verifyExternalFile: async () => ({
+          file_id: head.fileId,
+          version_id: head.versionId,
+          path,
+          sha: head.sha,
+          size: head.size,
+          verified: true,
+        }),
+        versionBytes: async () => bytes,
+      }) as never,
+    sync: async () => {},
+    includes: () => true,
+    capture,
+    rememberIdentity: (file) => identities.remember(file),
+    hydratedIdentity: (file) => identities.hydrated(file),
+  })
+  const indexed = vi.spyOn(app.vault, 'getFileByPath').mockReturnValue(null)
+  try {
+    const before = await state.getExternalState()
+    expect(await app.vault.adapter.exists(path)).toBe(true)
+    await expect(port.evict(path)).rejects.toThrow(/index.*retry/i)
+    expect(await app.vault.adapter.read(path)).toBe('sample bytes')
+    expect(await app.vault.adapter.exists(path + '.abele-ref')).toBe(false)
+    expect(await state.getExternalState()).toBe(before)
+    expect(capture).not.toHaveBeenCalled()
+    indexed.mockRestore()
+    expect((await port.evict(path)).status).toBe('complete')
+    expect(await app.vault.adapter.exists(path)).toBe(false)
+    expect(await app.vault.adapter.exists(path + '.abele-ref')).toBe(true)
+    const rows = (await storage.readValue('abele-token-local-files-v1')) as { path: string }[]
+    expect(rows.map((row) => row.path)).toEqual([path])
+  } finally {
+    indexed.mockRestore()
+    port.close()
+    fence.release()
+    state.close()
+    storage.close()
+  }
+})
 
 it('migrates existing consent identities after host storage was already initialized', async () => {
   const app = buildFakeVault([{ path: 'sample.bin', content: 'sample bytes' }])

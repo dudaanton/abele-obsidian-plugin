@@ -40,7 +40,8 @@ export class TokenAttachmentHost {
   async remember(path: string): Promise<void> {
     await this.persist(() => {
       const file = this.app.vault.getFileByPath(path)
-      if (file) this.identity(file)
+      if (!file) throw new Error('Attachment is not indexed yet; retry after indexing completes')
+      this.identity(file)
     })
   }
   async hydrated(path: string): Promise<void> {
