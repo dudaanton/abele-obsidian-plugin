@@ -1,6 +1,7 @@
 /** Independent limits: unused time in one phase never extends another phase. */
 // Calibration: creation 72 s, upload resume 160 s, phone byte audit 5.1 s,
-// desktop pull about 300 s after bounded metadata reads, server audit 17 s.
+// desktop pull 437 s after bounded metadata reads (900 s allows about 2x),
+// server audit 17 s.
 // Interruption limits include the foreground/background/kill/relaunch controls;
 // the generous desktop margin cannot relax any phone or byte-verification limit.
 export const phoneGateBudgets = {
