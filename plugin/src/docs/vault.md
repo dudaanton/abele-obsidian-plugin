@@ -3331,6 +3331,12 @@ as local moves or server deletes. Disconnect remains available.
 Incoming folder paths are validated before placement or review, and filesystem translations
 refuse paths outside the connection boundary.
 
+File and group scopes narrowed from a relocated folder retain its device-local prefix
+mapping in `scopePlacement` (`server`, `local`). Group members under that prefix use
+the same mapping. Enrollment, reconnect and restart preserve it; the engine ledger
+continues to use server paths. Local files at the unmapped server prefix are outside
+that connection and cannot be published by it.
+
 `abele-sync-device-review-id-v1` is a verified device-local UUID for the review database.
 Incoming-code review selects the exact displayed candidate ID; later candidates remain
 pending. Only workspace file-open events ask the attachment-consent port to resolve stable

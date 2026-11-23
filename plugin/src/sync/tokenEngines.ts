@@ -348,7 +348,8 @@ export class TokenEngines {
       }
       const record = this.ui.registry.records().find((one) => one.id === id)
       const root =
-        record?.scope?.kind === 'folder' ? (record.localRoot ?? record.scope.path) : undefined
+        record?.scopePlacement?.local ??
+        (record?.scope?.kind === 'folder' ? (record.localRoot ?? record.scope.path) : undefined)
       const scopedApp =
         root && root !== '/'
           ? connectionInspectionApp(
@@ -794,11 +795,13 @@ export class TokenEngines {
       const key = this.key(record.secretReference)
       if (!key || !record.scope) throw new Error('Connection needs its token')
       let localRoot = this.ui.registry.pinLocalRoot(record.id)
-      const scopedRoot = record.scope.kind === 'folder' && localRoot !== '/' ? localRoot : undefined
+      const scopedRoot =
+        record.scopePlacement?.local ??
+        (record.scope.kind === 'folder' && localRoot !== '/' ? localRoot : undefined)
       const adapter = scopedRoot
         ? connectionAdapter(
             vaultDisk(this.app.vault),
-            () => localRoot,
+            () => record.scopePlacement?.local ?? localRoot,
             connectionPrivateRoot(record.id)
           )
         : vaultDisk(this.app.vault)
@@ -807,7 +810,7 @@ export class TokenEngines {
         ? connectionInspectionApp(
             journalApp,
             adapter,
-            () => localRoot,
+            () => record.scopePlacement?.local ?? localRoot,
             connectionPrivateRoot(record.id)
           )
         : journalApp
@@ -892,8 +895,9 @@ export class TokenEngines {
       closeStore = () => state.close()
       assertActive()
       const storage = this.ui.registry.storage(record.id)
-      const externalPlacement =
-        record.scope.kind === 'folder' && record.scope.path !== '/'
+      const externalPlacement = record.scopePlacement
+        ? new LocalFolderPlacement(record.scopePlacement.server, record.scopePlacement.local)
+        : record.scope.kind === 'folder' && record.scope.path !== '/'
           ? new LocalFolderPlacement(record.scope.path, localRoot)
           : undefined
       state.onRecoveryRequired((error) => {
@@ -914,10 +918,12 @@ export class TokenEngines {
         tokenExternalBinding(record, key)
       )
       assertActive()
-      const groupCandidates = new Set<string>([record.scope.path.normalize('NFC')])
+      const physicalPath = (path: string) => externalPlacement?.toLocal(path) ?? path
+      const groupCandidates = new Set<string>([physicalPath(record.scope.path).normalize('NFC')])
       let localCandidates = new Set<string>()
       if (record.scope.kind === 'group')
-        for await (const entry of state.all()) groupCandidates.add(entry.path.normalize('NFC'))
+        for await (const entry of state.all())
+          groupCandidates.add(physicalPath(entry.path).normalize('NFC'))
       let discoveryScope = record.scope
       await stage('Checking kept copies', () =>
         this.localOnly.assertPublishSafe(
@@ -1223,6 +1229,7 @@ export class TokenEngines {
           mobile: Platform.isMobile,
           id: record.id,
           localRoot,
+          scopePlacement: current.scopePlacement,
           comparing: (comparison) =>
             !this.closed &&
             this.ui.queueProgress(
@@ -1246,15 +1253,15 @@ export class TokenEngines {
             })
           },
           discoveryCandidates: (paths) => {
-            for (const path of paths) groupCandidates.add(path.normalize('NFC'))
+            for (const path of paths) groupCandidates.add(physicalPath(path).normalize('NFC'))
           },
           discoveryLocalCandidates: (paths) => {
-            localCandidates = new Set(paths)
+            localCandidates = new Set(paths.map(physicalPath))
           },
           discoveryScope: (scope) => {
             this.ui.registry.setScopePath(record.id, scope.path)
             discoveryScope = scope
-            if (externalPlacement) {
+            if (externalPlacement && scope.kind === 'folder') {
               externalPlacement.server = scope.path
               externalPlacement.local = localRoot
             }
@@ -1315,12 +1322,19 @@ export class TokenEngines {
               localCandidates:
                 record.scope.kind === 'group'
                   ? localGroupCandidates(
-                      discoveryScope.path,
+                      physicalPath(discoveryScope.path),
                       this.app.vault.getMarkdownFiles().map((file) => ({
                         path: file.path,
                         groups: this.app.metadataCache.getFileCache(file)?.frontmatter?.groups,
                       }))
                     )
+                      .filter(
+                        (path) =>
+                          !record.scopePlacement ||
+                          path === record.scopePlacement.local ||
+                          path.startsWith(record.scopePlacement.local + '/')
+                      )
+                      .map((path) => externalPlacement?.toServer(path) ?? path)
                   : record.scope.kind === 'file'
                     ? [discoveryScope.path]
                     : undefined,
@@ -1963,17 +1977,12 @@ export class TokenEngines {
       )
       fence.activate()
       const raw = new ObsidianFileSystem(this.app, { runtimeFence: fence, journalOwner: id })
-      const fs =
-        record.scope.kind === 'folder' && record.scope.path !== '/'
-          ? new LocalFolderPlacement(
-              record.scope.path,
-              record.localRoot ?? record.scope.path
-            ).fileSystem(raw)
-          : raw
-      const placement =
-        record.scope.kind === 'folder' && record.scope.path !== '/'
+      const placement = record.scopePlacement
+        ? new LocalFolderPlacement(record.scopePlacement.server, record.scopePlacement.local)
+        : record.scope.kind === 'folder' && record.scope.path !== '/'
           ? new LocalFolderPlacement(record.scope.path, record.localRoot ?? record.scope.path)
           : null
+      const fs = placement?.fileSystem(raw) ?? raw
       const covered = (path: string) =>
         retainedCopyCovered(
           this.ui.registry.records(),

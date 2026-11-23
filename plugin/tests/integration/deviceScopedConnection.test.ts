@@ -7,6 +7,14 @@ import { encodeAccessToken } from '@/sync/v2/contract'
 import { scopeInventory } from '@/sync/deviceScopeInventory'
 import type { DeviceScopeLease } from '@/sync/deviceScopeLease'
 import { LocalOnlyCopies } from '@/sync/localOnlyCopies'
+import { TokenEngineRuntime } from '@/sync/tokenEngineRuntime'
+import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
+import { connectionAdapter } from '@/sync/connectionScope'
+import { connectionPrivateRoot } from '@/sync/connectionPaths'
+import { ExecutableReview } from '@/sync/executableReview'
+import { AttachmentConsent } from '@/sync/attachmentConsent'
+import { buildFakeVault } from '../helpers/fakeVault'
+import { retainedCopyCovered } from '@/sync/retainedCopyCoverage'
 import {
   MemoryFileSystem,
   MemoryStateStore,
@@ -25,9 +33,17 @@ function fixture(rootPath = '/', folderPath = 'Garden', multiSource = false) {
     },
   }
   const root = { kind: 'folder' as const, id: 'root', path: rootPath }
-  const group = { kind: 'group' as const, id: 'group-note', path: 'Reading.md' }
+  const group = {
+    kind: 'group' as const,
+    id: 'group-note',
+    path: rootPath === '/' ? 'Reading.md' : rootPath + '/Reading.md',
+  }
   const folder = { kind: 'folder' as const, id: 'folder-a', path: folderPath }
-  const file = { kind: 'file' as const, id: 'file-a', path: 'Plan.md' }
+  const file = {
+    kind: 'file' as const,
+    id: 'file-a',
+    path: rootPath === '/' ? 'Plan.md' : rootPath + '/Plan.md',
+  }
   const scopes = [group, folder, file]
   const items = scopes.map((scope, index) => ({
     id: 'item-' + index,
@@ -68,7 +84,7 @@ function fixture(rootPath = '/', folderPath = 'Garden', multiSource = false) {
   const issueRequests: { read_only?: boolean }[] = []
   const revoked: string[] = []
   const calls: string[] = []
-  let remoteMembers = ['Reading.md']
+  let remoteMembers = rootPath === '/' ? ['Reading.md'] : [group.path, file.path]
   const content = (path: string) =>
     new TextEncoder().encode(
       path === 'Reading.md' ? 'Sample group\n' : '---\ngroups: ["[[Reading]]"]\n---\nSample note\n'
@@ -122,7 +138,9 @@ function fixture(rootPath = '/', folderPath = 'Garden', multiSource = false) {
               },
               fileItem(file.path, file.id),
             ]
-          : remoteMembers.map((path) => fileItem(path)),
+          : (selected.scope.kind === 'file' ? [selected.scope.path] : remoteMembers).map((path) =>
+              fileItem(path, rootPath === '/' ? path : path === file.path ? file.id : group.id)
+            ),
         cursor: 1,
         next: null,
       })
@@ -146,7 +164,22 @@ function fixture(rootPath = '/', folderPath = 'Garden', multiSource = false) {
           : items.find((item) => item.scope.id === body.scope.id)!,
       ]
       return Response.json({
-        token: encodeAccessToken({ ...decodeAccessToken(owned), scope: chosen[0].scope }),
+        token:
+          chosen[0].scope.kind === 'file'
+            ? encodeAccessToken({
+                v: 2,
+                address: 'https://sync.example',
+                key: 'b'.repeat(43),
+                items: [
+                  {
+                    id: chosen[0].id,
+                    kind: 'file',
+                    scope_id: chosen[0].scope.id,
+                    path: chosen[0].scope.path,
+                  },
+                ],
+              })
+            : encodeAccessToken({ ...decodeAccessToken(owned), scope: chosen[0].scope }),
         info: {
           id: 'owned',
           label: body.label,
@@ -355,6 +388,123 @@ it('finishes disconnect when the durable set still references forgotten owned ch
   expect(f.ui.itemSets.store.get(id)).toBeNull()
   expect(f.secrets.size).toBe(0)
   expect(f.revoked).toEqual(['owned'])
+})
+
+it('retains relocated file and group placement through narrowing, restart and widening', async () => {
+  const f = fixture('Shared', 'Shared/Sub')
+  await f.ui.connect(f.source)
+  const id = f.ui.rows.value[0].id
+  f.registry.setLocalRoot(id, 'Imported')
+  const selection = [f.scopes[2], f.scopes[0]].map((scope) => ({
+    ...scope,
+    path: scope.path.replace('Shared/', 'Imported/'),
+  }))
+  vi.mocked(f.ui.connectionsChanged).mockRejectedValueOnce(
+    new Error('sample activation interrupted')
+  )
+  await expect(f.ui.deviceScopes.change(id, selection)).rejects.toThrow(
+    'sample activation interrupted'
+  )
+  expect(f.ui.deviceScopes.state(id)?.activating).toBe(true)
+  const check = (registry: TokenConnectionRegistry, ui: TokenUi) => {
+    for (const child of ui.deviceScopes.state(id)!.current!.records) {
+      expect(registry.records().find((record) => record.id === child)).toMatchObject({
+        scopePlacement: { server: 'Shared', local: 'Imported' },
+      })
+    }
+  }
+  check(f.registry, f.ui)
+  await f.registry.flush()
+  const restarted = f.restart()
+  await restarted.ui.deviceScopes.resume()
+  check(restarted.registry, restarted.ui)
+  const fileRecord = restarted.registry
+    .records()
+    .find(
+      (record) =>
+        restarted.ui.deviceScopes.state(id)!.current!.records.includes(record.id) &&
+        record.scope.kind === 'file'
+    )!
+  expect(retainedCopyCovered([fileRecord], new Map(), 'other', 'Imported/Plan.md')).toBe(true)
+  expect(retainedCopyCovered([fileRecord], new Map(), 'other', 'Shared/Plan.md')).toBe(false)
+  await restarted.ui.itemSets.enroll(decodeAccessToken(restarted.ui.itemSets.encoded(fileRecord)))
+  check(restarted.registry, restarted.ui)
+  for (const child of restarted.ui.deviceScopes.state(id)!.current!.records) {
+    const record = restarted.registry.records().find((one) => one.id === child)!
+    const members =
+      record.scope.kind === 'file' ? [record.scope.path] : ['Shared/Reading.md', 'Shared/Plan.md']
+    const app = buildFakeVault(
+      members.flatMap((path) => [
+        {
+          path: path.replace('Shared/', 'Imported/'),
+          content: new TextDecoder().decode(f.content(path)),
+        },
+        { path, content: 'unrelated local bytes' },
+      ])
+    )
+    const root = record.scopePlacement!.local
+    const raw = app.vault.adapter
+    const adapter = connectionAdapter(raw as never, root, connectionPrivateRoot(child))
+    const fs = new ObsidianFileSystem(app as never, {
+      adapter,
+      fileScope: root,
+      connectionId: child,
+    })
+    const reviews = new MemoryStateStore()
+    const runtime = new TokenEngineRuntime({
+      id: child,
+      scope: record.scope,
+      scopePlacement: record.scopePlacement,
+      encoded: restarted.ui.itemSets.encoded(record),
+      item: restarted.ui.itemSets.store.get(id)!.items.find((item) => item.recordId === child)!.id,
+      fs,
+      state: new MemoryStateStore(),
+      reviews: {
+        executables: new ExecutableReview(reviews),
+        attachments: new AttachmentConsent(reviews),
+        close: () => {},
+      },
+      fetch: f.transport,
+      changed: () => {},
+      failed: () => {},
+      covers: async () => false,
+    })
+    const commit = vi
+      .spyOn(runtime.client, 'commitRaw')
+      .mockRejectedValue(new Error('sample commit captured'))
+    vi.spyOn(runtime.client, 'hasBlob').mockResolvedValue(true)
+    try {
+      await runtime.sync()
+      expect(commit).not.toHaveBeenCalled()
+      const path = members.at(-1)!
+      const bytes = new TextEncoder().encode('edited relocated note')
+      await raw.writeBinary(path.replace('Shared/', 'Imported/'), bytes.buffer, { mtime: 5000 })
+      await runtime.sync().catch(() => {})
+      expect(commit).toHaveBeenCalled()
+      const ops = commit.mock.calls.flatMap(([ops]) => ops)
+      expect(ops).toContainEqual(
+        expect.objectContaining({
+          file_id: 'file-a',
+          sha: createHash('sha256').update(bytes).digest('hex'),
+        })
+      )
+      expect(
+        ops.some(
+          (op) =>
+            'sha' in op &&
+            op.sha === createHash('sha256').update('unrelated local bytes').digest('hex')
+        )
+      ).toBe(false)
+      expect(new TextDecoder().decode(await raw.readBinary(path))).toBe('unrelated local bytes')
+    } finally {
+      await runtime.disconnect()
+    }
+  }
+  await restarted.ui.deviceScopes.change(id, [{ kind: 'folder', id: 'root', path: 'Imported' }])
+  const child = restarted.ui.deviceScopes.state(id)!.current!.records[0]
+  expect(restarted.registry.records().find((record) => record.id === child)).toMatchObject({
+    localRoot: 'Imported',
+  })
 })
 
 it('keeps a narrowed subfolder under the relocated local parent', async () => {

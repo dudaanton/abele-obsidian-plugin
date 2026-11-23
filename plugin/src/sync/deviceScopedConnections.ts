@@ -208,7 +208,6 @@ export class DeviceScopedConnections {
             .find(
               (source) =>
                 source.scope.kind === 'folder' &&
-                child.scope.kind === 'folder' &&
                 (source.scope.id === child.scope.id ||
                   [source.serverRoot ?? source.scope.path, source.scope.path].some(
                     (root) => root === '/' || child.scope.path.startsWith(root + '/')

@@ -128,6 +128,7 @@ export interface TokenEngineOptions {
   rootIssue?: ScopeRootIssue
   rootChanged?(issue: ScopeRootIssue | undefined): void
   localRoot?: string
+  scopePlacement?: { server: string; local: string }
   followRecoveredRoot?(from: string, to: string): void | Promise<void>
   localRootChanged?(path: string): void
   verifyRootFileSystem?(path: string): FileSystem
@@ -734,16 +735,25 @@ export class TokenEngineRuntime
     this.selective = structuredClone(options.selective ?? selectiveDefaults())
     const decoded = decodeAccessToken(options.encoded)
     this.token = { ...decoded, scope: options.scope ?? tokenScope(decoded, options.item) }
-    if (this.token.scope.kind === 'folder' && (options.localRoot ?? this.token.scope.path) !== '/')
+    const placementRoot = () =>
+      options.scopePlacement?.local ?? options.localRoot ?? this.token.scope.path
+    if ((this.token.scope.kind === 'folder' || options.scopePlacement) && placementRoot() !== '/')
       options.fs = scopedFileSystem(
         options.fs,
-        (path) => this.assertPhysicalLocalPaths([path]),
         (path) => {
-          const root = this.options.localRoot ?? this.token.scope.path
+          assertPhysicalPath(path)
+          const root = placementRoot()
+          if (path !== root && !path.startsWith(root + '/'))
+            throw new FolderScopeError(
+              'The local file is outside this connection; sync stopped: ' + path
+            )
+        },
+        (path) => {
+          const root = placementRoot()
           return path === root || path.startsWith(root + '/')
         },
         connectionPrivateRoot(options.id),
-        () => options.localRoot ?? this.token.scope.path
+        placementRoot
       )
     if (this.token.scope.kind === 'folder' && this.token.scope.path !== '/') {
       this.serverPaths = new ServerFolderPaths(
@@ -753,6 +763,17 @@ export class TokenEngineRuntime
       this.placement = new LocalFolderPlacement(
         this.token.scope.path,
         options.localRoot ?? this.token.scope.path
+      )
+      options.fs = this.placement.fileSystem(options.fs)
+      const prepare = options.preparePlacement?.bind(options)
+      if (prepare)
+        options.preparePlacement = (paths) =>
+          prepare(paths.map((path) => this.placement.toLocal(path)))
+    }
+    if (options.scopePlacement && this.token.scope.kind !== 'folder') {
+      this.placement = new LocalFolderPlacement(
+        options.scopePlacement.server,
+        options.scopePlacement.local
       )
       options.fs = this.placement.fileSystem(options.fs)
       const prepare = options.preparePlacement?.bind(options)
@@ -2684,9 +2705,12 @@ export class TokenEngineRuntime
     return scope.kind === 'folder' && scope.path === '/'
   }
   folderScope(): string | undefined {
-    return this.token.scope.kind === 'folder'
-      ? (this.options.localRoot ?? this.token.scope.path)
-      : undefined
+    return (
+      this.options.scopePlacement?.local ??
+      (this.token.scope.kind === 'folder'
+        ? (this.options.localRoot ?? this.token.scope.path)
+        : undefined)
+    )
   }
   private async refreshHolds(): Promise<void> {
     const latest = new Map<string, ExecutableCandidate>()

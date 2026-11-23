@@ -18,7 +18,7 @@ export function retainedCopyCovered(
     if (runtime && runtime.coverageAvailable !== false) return runtime.covers(path)
     // Membership cannot be inferred from a group's path, especially while offline.
     if (!record.scope || record.scope.kind === 'group') return true
-    if (record.scope.kind === 'file') return record.scope.path === path
+    if (record.scope.kind === 'file') return (record.localRoot ?? record.scope.path) === path
     const root = record.localRoot ?? record.scope.path
     return root === '/' || path === root || path.startsWith(root + '/')
   })

@@ -84,6 +84,10 @@ const recordSchema = z
     trusted: z.boolean().optional(),
     localRoot: physicalRootSchema.optional(),
     serverRoot: localRootSchema.optional(),
+    scopePlacement: z
+      .object({ server: localRootSchema, local: physicalRootSchema })
+      .strict()
+      .optional(),
     rootIssue: z
       .discriminatedUnion('kind', [
         z.object({ kind: z.literal('deleted') }).strict(),
@@ -527,11 +531,24 @@ export class TokenConnectionRegistry {
         !record.state['abele-sync-token-state:scope-bootstrap']) ||
       record.address !== source.address ||
       record.spaceId !== source.spaceId ||
-      record.scope?.kind !== 'folder' ||
+      !record.scope ||
       source.scope?.kind !== 'folder'
     )
       throw new Error('Scope placement identity changed')
-    if (record.scope.id === source.scope.id) {
+    if (record.scope.kind !== 'folder') {
+      const server = source.serverRoot ?? source.scope.path
+      const root = [server, source.scope.path].find(
+        (root) => root === '/' || record.scope.path.startsWith(root + '/')
+      )
+      if (root === undefined) throw new Error('Scope placement identity changed')
+      if (server !== '/') {
+        // Keep the prefix for every group member, separately from the selector's local path.
+        const local = source.localRoot ?? source.scope.path
+        record.scopePlacement = { server, local }
+        const suffix = record.scope.path.slice(root.length + 1)
+        record.localRoot = local === '/' ? suffix : local + '/' + suffix
+      }
+    } else if (record.scope.id === source.scope.id) {
       if (source.localRoot !== undefined) record.localRoot = source.localRoot
       if (source.serverRoot !== undefined) record.serverRoot = source.serverRoot
     } else {
