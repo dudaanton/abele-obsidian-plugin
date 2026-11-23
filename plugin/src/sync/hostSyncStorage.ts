@@ -29,9 +29,9 @@ export type { ScanFingerprint } from './hostScanCache'
 const prepared = new WeakMap<LocalStorage, HostSyncStorage>()
 const parents = new WeakMap<LocalStorage, LocalStorage>()
 export const durableHostOf = (local: LocalStorage): HostSyncStorage | undefined => {
-  if (local instanceof HostSyncStorage) return local
+  if (local instanceof HostSyncStorage) return local.isClosed ? undefined : local
   const own = prepared.get(local)
-  if (own) return own
+  if (own && !own.isClosed) return own
   const parent = parents.get(local)
   return parent ? durableHostOf(parent) : undefined
 }
@@ -454,6 +454,7 @@ export class HostSyncStorage implements LocalStorage {
   }
   close(): void {
     this.closed = true
+    if (prepared.get(this.local) === this) prepared.delete(this.local)
     this.channel?.close()
     this.db.close()
   }

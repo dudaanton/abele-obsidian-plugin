@@ -4,7 +4,12 @@ import { prepareTokenConnections } from '@/sync/tokenRegistryPreparation'
 import { TOKEN_REGISTRY_KEY } from '@/sync/tokenConnectionRegistry'
 import { recordTeardown } from '@/sync/teardownBarrier'
 import { IDBFactory } from 'fake-indexeddb'
-import { durableHostOf, HostSyncStorage } from '@/sync/hostSyncStorage'
+import {
+  durableHostOf,
+  hostStorageOf,
+  inheritHostStorage,
+  HostSyncStorage,
+} from '@/sync/hostSyncStorage'
 
 it('starts with quota-full local storage and no retired credentials', async () => {
   const { app } = local()
@@ -45,6 +50,16 @@ it('resumes retired credential deletion from durable storage after quota-full st
       'keychain unavailable'
     )
     expect(data.has('abele-sync-connection')).toBe(false)
+    const alias = inheritHostStorage(
+      {
+        loadLocalStorage: app.loadLocalStorage,
+        saveLocalStorage: app.saveLocalStorage,
+      },
+      app
+    )
+    expect(durableHostOf(app)).toBeUndefined()
+    expect(durableHostOf(alias)).toBeUndefined()
+    expect(() => hostStorageOf(alias).saveLocalStorage('sample-settings', true)).not.toThrow()
     interrupted = false
     expect((await prepareTokenConnections(app, secrets, undefined, factory)).records()).toEqual([])
     expect(values.size).toBe(0)
@@ -69,6 +84,10 @@ it('keeps legacy references and credentials when the cleanup journal cannot comm
       deviceTokenId: 'abele-sync-device-old',
     })
     expect(remove).not.toHaveBeenCalled()
+    expect(host.isClosed).toBe(true)
+    expect(durableHostOf(host)).toBeUndefined()
+    hostStorageOf(app).saveLocalStorage('sample-settings', true)
+    expect(app.loadLocalStorage('sample-settings')).toBe(true)
   } finally {
     flush.mockRestore()
     host.close()
