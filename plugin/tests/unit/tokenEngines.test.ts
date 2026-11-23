@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import * as syncCore from '@abele/sync-sdk/core'
 import { Notice, TFile, type App } from 'obsidian'
 import { IDBFactory } from 'fake-indexeddb'
 import { MemoryStateStore, sha256, type EngineStatus, type SyncReport } from '@abele/sync-sdk/core'
@@ -1919,6 +1920,106 @@ function inspectionFixture(
     secrets,
   }
 }
+
+it('restarts a relocated group with server-named members in its durable ledger', async () => {
+  const f = inspectionFixture(false, 'Notes/group.md', 'group')
+  let restarted: TokenEngines | undefined
+  const recovery = vi.spyOn(safety, 'recoverExternalState')
+  let handshake: ReturnType<typeof vi.spyOn> | undefined
+  let journalFence: ReturnType<typeof vi.spyOn> | undefined
+  f.release()
+  try {
+    await f.ui.connect(f.encoded)
+    const id = f.registry.records()[0].id
+    await f.ui.sync(id)
+    await f.host.close()
+    const record = f.registry.records().find((one) => one.id === id)!
+    const state = await openTokenLedger(f.factory, f.registry, record, () => {})
+    try {
+      const member = 'ordinary member'
+      await f.app.vault.adapter.write('Notes/member.md', member)
+      const stat = await f.app.vault.adapter.stat('Notes/member.md')
+      await state.put({
+        path: 'Notes/member.md',
+        wirePath: 'Notes/member.md',
+        fileId: 'member',
+        versionId: 'v1',
+        sha: await sha256(new TextEncoder().encode(member)),
+        size: member.length,
+        mtime: stat!.mtime,
+      })
+      expect(await state.get('Notes/member.md')).not.toBeNull()
+      const rows = []
+      for await (const entry of state.all())
+        rows.push({
+          file_id: entry.fileId,
+          path: entry.path,
+          version_id: entry.versionId,
+          kind: 'note',
+          sha: entry.sha,
+          size: entry.size,
+          mtime: entry.mtime,
+        })
+      const cursor = await state.getCursor()
+      const original = f.transport.getMockImplementation()!
+      f.transport.mockImplementation(async (input, init) => {
+        if (new URL(String(input)).pathname === '/v2/manifest')
+          return Response.json({ items: rows, cursor, next: null })
+        return original(input, init)
+      })
+    } finally {
+      state.close()
+    }
+    await f.app.vault.rename(f.app.vault.getAbstractFileByPath('Notes')!, 'Imported')
+    const parent = f.registry.add(true)
+    const scope = { kind: 'folder' as const, id: 'parent-folder', path: 'Notes' }
+    f.registry.attach(
+      parent,
+      { v: 1, address: record.address, key: 'b'.repeat(43), scope },
+      { protocol: 2, token_id: 'parent-token', space_id: record.spaceId, scope, status: 'active' },
+      f.secrets
+    )
+    f.registry.storage(parent).saveLocalStorage('abele-sync-token-state:scope-source', parent)
+    f.registry.storage(id).saveLocalStorage('abele-sync-token-state:scope-bootstrap', parent)
+    f.registry.setLocalRoot(parent, 'Imported')
+    f.registry.inheritScopePlacement(id, parent)
+    await f.registry.flush()
+    f.probe.mockClear()
+    recovery.mockClear()
+    handshake = vi
+      .spyOn(ObsidianFileSystem.prototype, 'needsRecoveryHandshake')
+      .mockResolvedValue(true)
+    const fenceJournal = syncCore.fenceRestoredJournal
+    journalFence = vi
+      .spyOn(syncCore, 'fenceRestoredJournal')
+      .mockImplementation(async (...args) => {
+        // Restored journals resolve their server-named ledger entries through this port.
+        expect(await args[2]!.stat('Notes/member.md')).not.toBeNull()
+        return fenceJournal(...args)
+      })
+    restarted = f.makeHost()
+    restarted.start()
+    await vi.waitFor(() => {
+      expect(f.ui.activity.value[id]?.error).toBeUndefined()
+      expect(f.ui.runtimes.has(id)).toBe(true)
+    })
+    await f.ui.sync(id)
+    const inspection = recovery.mock.calls[0][7]!
+    await expect(
+      safety.projectionEvidence(recovery.mock.calls[0][0], () => {}, false, new Set(), inspection)
+    ).resolves.toBeNull()
+    expect(inspection.paths).toContain('Imported/member.md')
+    expect(inspection.paths).not.toContain('Notes/member.md')
+    expect(f.probe.mock.calls.some(([path]) => path.startsWith('Notes/'))).toBe(false)
+    expect(await f.app.vault.adapter.read('Imported/member.md')).toContain('member')
+  } finally {
+    await restarted?.close()
+    await f.host.close()
+    recovery.mockRestore()
+    handshake?.mockRestore()
+    journalFence?.mockRestore()
+  }
+})
 
 it('enables ordinary verification from the first successful exchange report', async () => {
   const f = inspectionFixture()

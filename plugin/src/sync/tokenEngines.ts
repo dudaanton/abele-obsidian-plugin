@@ -1070,7 +1070,13 @@ export class TokenEngines {
             },
           })
           const head = await client.state()
-          await fenceRestoredJournal(state, head.head_seq, ordinary, undefined, client)
+          await fenceRestoredJournal(
+            state,
+            head.head_seq,
+            externalPlacement?.fileSystem(ordinary) ?? ordinary,
+            undefined,
+            client
+          )
           await ordinary.fenceRecovery(state, head.head_seq)
         })
       await stage('Recovering local files', () => ordinary.recover())
@@ -1107,7 +1113,7 @@ export class TokenEngines {
               const paths: string[] = []
               if (record.scope.kind === 'group') {
                 recoverySubstep = 'scope-paths'
-                for await (const entry of state.all()) paths.push(entry.path)
+                for await (const entry of state.all()) paths.push(physicalPath(entry.path))
               }
               scopedInspection.paths = paths
               // Runtime discovery also incorporates server-named group members.
