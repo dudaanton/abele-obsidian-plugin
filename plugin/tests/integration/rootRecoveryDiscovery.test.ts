@@ -9,13 +9,32 @@ import { buildFakeVault } from '../helpers/fakeVault'
 import { AttachmentConsent } from '@/sync/attachmentConsent'
 import { ExecutableReview } from '@/sync/executableReview'
 import { ignoreFor } from '@/sync/scope'
+import { connectionAdapter, connectionInspectionApp } from '@/sync/connectionScope'
+import { connectionPrivateRoot } from '@/sync/connectionPaths'
 
 it.each(['restore', 'follow-server'] as const)(
   'uploads a fresh indexed create on the first explicit sync after root %s without watcher delivery',
   async (recovery) => {
     const app = buildFakeVault([])
+    app.workspace.iterateAllLeaves = () => {}
     const host = await HostSyncStorage.open(new IDBFactory(), 'sample-host-' + recovery, app)
-    const fs = new ObsidianFileSystem(app as never, { prepareStartupInventory: async () => {} })
+    const adapter = connectionAdapter(
+      app.vault.adapter,
+      'Shared',
+      connectionPrivateRoot('sample-connection')
+    )
+    const scopedApp = connectionInspectionApp(
+      app as never,
+      adapter,
+      'Shared',
+      connectionPrivateRoot('sample-connection')
+    )
+    const fs = new ObsidianFileSystem(scopedApp, {
+      adapter,
+      fileScope: 'Shared',
+      connectionId: 'sample-connection',
+      prepareStartupInventory: async () => {},
+    })
     const bytes = new TextEncoder().encode('sample original')
     const scope = { kind: 'folder' as const, id: 'root', path: 'Shared' }
     const item = {
@@ -100,9 +119,23 @@ it.each(['restore', 'follow-server'] as const)(
     try {
       await runtime.sync()
       if (recovery === 'restore') {
-        await app.vault.delete(app.vault.getFileByPath(item.path)!)
+        // Reproduce a host exposing its mobile reconciliation port when recovery starts.
+        const reconcile = vi.fn(function (
+          this: { handler(kind: string, path: string): void },
+          path: string
+        ) {
+          this.handler('file-created', path)
+          return Promise.resolve()
+        })
+        Object.assign(app.vault.adapter, {
+          handler: (_kind: string, path: string) => app.emit('vault', 'create', { path }),
+          reconcileInternalFile: reconcile,
+        })
+        await app.vault.adapter.rmdir('Shared', true)
+        expect(await app.vault.adapter.exists('Shared')).toBe(false)
         runtime.scopeRootGone({ kind: 'deleted' })
         await runtime.restoreRoot()
+        expect(reconcile.mock.calls.some(([path]) => path === item.path)).toBe(true)
       } else {
         scope.path = 'Renamed'
         item.path = 'Renamed/sample.md'
