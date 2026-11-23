@@ -10,6 +10,7 @@ import { sha256 as incremental } from '@noble/hashes/sha2'
 import { chunks, type ChunkSource } from '@abele/sync-sdk/core'
 import { BoundedVaultIo } from '../boundedVaultIo'
 import { vaultInstallationEpoch } from '../installationEpoch'
+import { reconcileVaultFile } from '../vaultMutationEvents'
 import { stagingDirectory } from '../stagingDirectory'
 import { transferBudgetOf } from '../transferBudget'
 import { ExchangeTrace } from '../exchangeTrace'
@@ -396,7 +397,7 @@ export class ExternalFileHost {
           const reconcile = raw.reconcileInternalFile?.bind(adapter)
           if (reconcile) {
             try {
-              await this.effect(() => reconcile(path))
+              await this.effect(() => reconcileVaultFile(this.app.vault, adapter, path))
             } catch {
               /* Index notification is not filesystem outcome evidence. */
             }

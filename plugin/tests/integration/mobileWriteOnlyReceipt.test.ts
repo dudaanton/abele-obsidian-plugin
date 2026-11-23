@@ -5,13 +5,20 @@ import { sha256 as incremental } from '@noble/hashes/sha2'
 import { ObsidianFileSystem } from '@/sync/ObsidianFileSystem'
 import { ExternalFileHost } from '@/sync/external/ObsidianExternalFileHost'
 import { SerialQueue } from '@/sync/queue'
+import { IDBFactory } from 'fake-indexeddb'
+import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
+import { ExternalState } from '@/sync/external/state'
+import { AttachmentStore } from '@/sync/external/attachmentStore'
 import { buildFakeVault } from '../helpers/fakeVault'
 
 it.each([50, 200])(
   'receives and hydrates %s MiB with append-only storage and no local read-back',
   async (mib) => {
     const app = buildFakeVault([]),
-      records = new Map<string, { size: number; mtime: number; ctime: number }>()
+      records = new Map<
+        string,
+        { size: number; mtime: number; ctime: number; bytes?: ArrayBuffer }
+      >()
     let clock = 1
     const chunk = new Uint8Array(1024 * 1024).fill(73),
       size = mib * chunk.length
@@ -23,6 +30,7 @@ it.each([50, 200])(
     }
     const readBinary = vi.fn(async (path: string) => {
       if (records.get(path)!.size > 50 * 1024 * 1024) throw new Error('oversized whole-file read')
+      if (records.get(path)?.bytes) return records.get(path)!.bytes!
       throw new Error('Receipt must not read back')
     })
     Object.assign(app.vault.adapter, {
@@ -31,7 +39,12 @@ it.each([50, 200])(
         records.has(path) ? { type: 'file', ...records.get(path) } : null,
       writeBinary: async (path: string, bytes: ArrayBuffer) => {
         expect(bytes.byteLength).toBeLessThanOrEqual(chunk.length)
-        records.set(path, { size: bytes.byteLength, mtime: ++clock, ctime: clock })
+        records.set(path, {
+          size: bytes.byteLength,
+          mtime: ++clock,
+          ctime: clock,
+          ...(bytes.byteLength < chunk.length ? { bytes: bytes.slice(0) } : {}),
+        })
       },
       appendBinary: async (path: string, bytes: ArrayBuffer) => {
         expect(bytes.byteLength).toBeLessThanOrEqual(chunk.length)
@@ -45,6 +58,9 @@ it.each([50, 200])(
       },
       remove: async (path: string) => {
         records.delete(path)
+      },
+      reconcileInternalFile: async (path: string) => {
+        app.emit('vault', records.has(path) ? 'create' : 'delete', { path })
       },
       readBinary,
     })
@@ -66,6 +82,7 @@ it.each([50, 200])(
       platform: 'mobile',
       assertOwned: () => {},
     })
+    const ledger = await IndexedDbStateStore.open(new IDBFactory(), 'sample-large-attachment')
     try {
       await host.requireTransfer(size)
       if (mib > 50) {
@@ -97,6 +114,57 @@ it.each([50, 200])(
       )
       expect(await host.fingerprint('sample.bin')).toMatchObject(identity)
       expect(readBinary).not.toHaveBeenCalled()
+      const binding = {
+        endpoint: 'https://sync.example.invalid',
+        vaultId: 'sample-vault',
+        mode: 'personal' as const,
+        principalId: 'sample-device',
+        principalType: 'device' as const,
+        grantId: null,
+        generation: 1,
+        credentialAssociation: 'sample-slot',
+      }
+      const state = await ExternalState.open(ledger, 'sample-ledger', binding)
+      await ledger.put({
+        path: 'sample.bin',
+        wirePath: 'sample.bin',
+        fileId: 'sample-file',
+        versionId: 'sample-version',
+        ...identity,
+        mtime: 1,
+      })
+      const api = new AttachmentStore({
+        state,
+        ledger,
+        host,
+        binding,
+        serial: new SerialQueue(),
+        assertOwned: () => {},
+        sync: async () => {},
+        scriptsFolder: () => 'Scripts',
+        verify: async (fileId, input) => ({ file_id: fileId, ...input, verified: true }),
+        download: async () => {
+          throw new Error('Large hydration must stream')
+        },
+        openVersion: async () => source(),
+      })
+      for (let round = 0; round < 2; round++) {
+        expect(
+          await api.evict('sample-file', {
+            operationId: `sample-evict-${round}`,
+            expectedRevision: (await api.get('sample-file'))?.localRevision ?? 0,
+            expectedVersionId: 'sample-version',
+          })
+        ).toMatchObject({ status: 'complete', reclaimedBytes: size })
+        expect(
+          await api.hydrate('sample-file', {
+            operationId: `sample-hydrate-${round}`,
+            expectedVersionId: 'sample-version',
+          })
+        ).toMatchObject({ status: 'complete' })
+        expect(await host.fingerprint('sample.bin')).toMatchObject(identity)
+      }
+      expect(readBinary.mock.calls.some(([path]) => path === 'sample.bin')).toBe(false)
       records.set('sample.bin', { size, mtime: ++clock, ctime: clock })
       if (mib > 50) {
         await expect(host.fingerprint('sample.bin')).rejects.toThrow(
@@ -104,10 +172,11 @@ it.each([50, 200])(
         )
         await expect(fs.openRead('sample.bin')).rejects.toThrow('50 MiB')
         expect(records.has('sample.bin')).toBe(true)
-        expect(readBinary).not.toHaveBeenCalled()
+        expect(readBinary.mock.calls.some(([path]) => path === 'sample.bin')).toBe(false)
       }
     } finally {
       host.close()
+      ledger.close()
     }
   },
   // Hashing 200 MiB three times is bounded CPU work; a loaded shard needs more than the default.

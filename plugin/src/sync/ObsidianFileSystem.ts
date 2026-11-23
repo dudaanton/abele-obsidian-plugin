@@ -74,6 +74,7 @@ import type { ExternalFileCoordination } from './external/coordination'
 import { folderMutations } from './folderMutations'
 import { adapterConfigRevision, observeAdapterConfig } from './adapterConfigChanges'
 import { vaultInstallationEpoch } from './installationEpoch'
+import { reconcileVaultFile } from './vaultMutationEvents'
 import { sha256 as receiptHash } from '@noble/hashes/sha2'
 import { pathCoordinatorOf } from './pathCoordinator'
 import type { LocalStorage } from './ledgerId'
@@ -1574,7 +1575,7 @@ export class ObsidianFileSystem implements FileSystem {
               const reconcile = Reflect.get(this.scopedAdapter, 'reconcileInternalFile')
               if (typeof reconcile === 'function') {
                 this.runtimeFence?.assertOwned()
-                await reconcile.call(this.scopedAdapter, paths[1])
+                await reconcileVaultFile(this.app.vault, this.scopedAdapter, paths[1])
                 this.runtimeFence?.assertOwned()
               }
               return answer

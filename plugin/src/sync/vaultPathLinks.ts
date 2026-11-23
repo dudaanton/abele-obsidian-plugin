@@ -2768,7 +2768,9 @@ type Epochs = {
 }
 const ADAPTER = Symbol.for('abele.sync.installation-epochs-v4')
 // Retire the adapter-bound clock retained by earlier plugin instances.
-const VAULT = Symbol.for('abele.sync.installation-events-v6')
+// Earlier clocks subscribed before index notifications had explicit provenance.
+// Retire those closures on plugin reload together with their module-local receipts.
+const VAULT = Symbol.for('abele.sync.installation-events-v7')
 
 function epochs(adapter: DataAdapter, name?: (path: string) => string): Epochs {
   const cached = Reflect.get(adapter, ADAPTER) as Epochs | undefined

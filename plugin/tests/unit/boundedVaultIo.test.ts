@@ -4,12 +4,57 @@ import { desktopFsPort } from '../helpers/desktopRequire'
 import type { DataAdapter } from 'obsidian'
 import { BoundedVaultIo } from '@/sync/boundedVaultIo'
 import { vaultInstallationEpoch } from '@/sync/installationEpoch'
+import { reconcileVaultFile } from '@/sync/vaultMutationEvents'
 import { mobileStreamFixture } from '../helpers/mobileStreamFixture'
 import { buildFakeVault } from '../helpers/fakeVault'
 import { sha256 } from '@noble/hashes/sha2'
 
 const digest = (bytes: Uint8Array) =>
   Array.from(sha256(bytes), (b) => b.toString(16).padStart(2, '0')).join('')
+
+it.each(['owned', 'legacy-clock', 'foreign-write', 'foreign-event'])(
+  'keeps mobile rename receipts through explicit index reconciliation only (%s)',
+  async (change) => {
+    const app = buildFakeVault([])
+    if (change === 'legacy-clock')
+      Object.defineProperty(app.vault, Symbol.for('abele.sync.installation-events-v6'), {
+        value: () => NaN,
+      })
+    const adapter = app.vault.adapter
+    const io = new BoundedVaultIo(
+      adapter as never,
+      undefined,
+      undefined,
+      adapter,
+      undefined,
+      undefined,
+      true,
+      vaultInstallationEpoch(app.vault as never)
+    )
+    const bytes = new Uint8Array([1, 2, 3])
+    await io.create('stage.bin', 1000)
+    await io.append('stage.bin', 0, bytes, 1000)
+    await io.adoptReceipt('stage.bin', 'sample.bin', () =>
+      adapter.rename('stage.bin', 'sample.bin')
+    )
+    Object.assign(adapter, {
+      reconcileInternalFile: async (path: string) => {
+        if (change === 'foreign-write')
+          await adapter.writeBinary(path, new Uint8Array([3, 2, 1]).buffer, { mtime: 1000 })
+        app.emit('vault', 'create', { path })
+      },
+    })
+    await reconcileVaultFile(app.vault as never, adapter, 'sample.bin')
+    if (change === 'foreign-event') app.emit('vault', 'modify', { path: 'sample.bin' })
+    const read = vi.spyOn(adapter, 'readBinary')
+    expect(await io.verifiedInstallation('sample.bin', { sha: digest(bytes), size: 3 })).toBe(
+      change === 'owned' || change === 'legacy-clock'
+    )
+    if (change === 'owned' || change === 'legacy-clock')
+      expect((await io.fingerprint('sample.bin')).sha).toBe(digest(bytes))
+    expect(read).not.toHaveBeenCalled()
+  }
+)
 
 it.each(['append', 'fingerprint', 'resume'])(
   'does not trust a rebuilt receipt after another same-stat overwrite (%s)',
