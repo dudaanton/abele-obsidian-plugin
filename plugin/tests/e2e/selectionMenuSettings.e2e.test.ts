@@ -4,10 +4,16 @@ import { evalAsync } from './helpers/githubLive'
 import { WAIT_PRELUDE } from './helpers/wait'
 import { SELECTION_MENUS_OPEN } from './helpers/selectionMenus'
 import { targets } from './helpers/target'
+import { SCRIPT_FIXTURE } from './helpers/scriptFixture'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
 const DIR = 'Sample selection menu scripts'
+const SOURCES = {
+  'both.js': '// @name Sample shared action\n// @book\n// @chat-selection\nreturn "sample"',
+  'book.js': '// @name Sample book action\n// @book\nreturn "sample"',
+  'chat.js': '// @name Sample chat action\n// @chat-selection\nreturn "sample"',
+}
 let previous: Record<string, unknown>
 const OPEN = `${WAIT_PRELUDE}\n${SELECTION_MENUS_OPEN}`
 
@@ -18,13 +24,12 @@ describe.skipIf(!available)('independent selection menus in native settings', ()
       return {ai: c.ai, reader: c.reader}
     })()`)
     evalAsync(`(async () => {
+      ${SCRIPT_FIXTURE}
       const c = window.__abeleTest.AbeleConfig.getInstance()
-      if (app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})) throw Error('Synthetic scripts folder already exists')
-      await app.vault.createFolder(${JSON.stringify(DIR)})
+      const sources = ${JSON.stringify(SOURCES)}
+      await prepareScriptFixtureFolder(${JSON.stringify(DIR)}, sources)
       window.__selectionMenuFixtureOwned = true
-      await app.vault.create(${JSON.stringify(DIR + '/both.js')}, '// @name Sample shared action\\n// @book\\n// @chat-selection\\nreturn "sample"')
-      await app.vault.create(${JSON.stringify(DIR + '/book.js')}, '// @name Sample book action\\n// @book\\nreturn "sample"')
-      await app.vault.create(${JSON.stringify(DIR + '/chat.js')}, '// @name Sample chat action\\n// @chat-selection\\nreturn "sample"')
+      for (const [name, source] of Object.entries(sources)) await app.vault.create(${JSON.stringify(DIR)} + '/' + name, source)
       c.editSettings(() => {
         c.ai = {...c.ai, scriptsEnabled: true, scriptsFolder: ${JSON.stringify(DIR)}, chatSelectionScripts: []}
         c.reader = {...c.reader, selectionScripts: []}
@@ -38,12 +43,12 @@ describe.skipIf(!available)('independent selection menus in native settings', ()
   afterAll(() => {
     if (!previous) return
     evalAsync(`(async () => {
+      ${SCRIPT_FIXTURE}
       app.setting.close()
       const c = window.__abeleTest.AbeleConfig.getInstance()
       c.editSettings(() => { c.ai = ${JSON.stringify(previous.ai)}; c.reader = ${JSON.stringify(previous.reader)} })
       try { await c.saveSettings() } finally {
-        const folder = app.vault.getAbstractFileByPath(${JSON.stringify(DIR)})
-        if (folder && window.__selectionMenuFixtureOwned) await app.vault.delete(folder, true)
+        if (window.__selectionMenuFixtureOwned) await removeScriptFixtureFolder(${JSON.stringify(DIR)}, ${JSON.stringify(SOURCES)})
         delete window.__selectionMenuFixtureOwned
       }
       await window.__abeleTest.ScriptService.getInstance().discover()

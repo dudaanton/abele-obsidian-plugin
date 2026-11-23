@@ -6,6 +6,36 @@
  * These functions run inside the app, also in probes that have a single try/finally.
  */
 export const SCRIPT_FIXTURE = String.raw`
+  const fixtureFolderMarker = 'abele-test-script-fixture.txt'
+  const fixtureFolderSignature = 'abele-script-fixture-v1'
+  async function removeScriptFixtureFolder(folder, sources) {
+    const entry = app.vault.getAbstractFileByPath(folder)
+    if (!entry) return
+    const refuse = () => { throw new Error('Script fixture folder is not owned: ' + folder) }
+    if (!Array.isArray(entry.children)) refuse()
+    let marked = false, scripts = 0
+    for (const child of entry.children) {
+      if (child.children) refuse()
+      const name = child.path.slice(folder.length + 1)
+      const source = await app.vault.adapter.read(child.path)
+      if (name === fixtureFolderMarker) {
+        if (source !== fixtureFolderSignature) refuse()
+        marked = true
+      } else {
+        if (!Object.hasOwn(sources, name) || sources[name] !== source) refuse()
+        scripts++
+      }
+    }
+    // Older fixtures had no durable marker. Only their complete, exact synthetic
+    // source set proves ownership; a folder name or a partial match never does.
+    if (!marked && (!scripts || scripts !== Object.keys(sources).length)) refuse()
+    await app.vault.delete(entry, true)
+  }
+  async function prepareScriptFixtureFolder(folder, sources) {
+    await removeScriptFixtureFolder(folder, sources)
+    await app.vault.createFolder(folder)
+    await app.vault.create(folder + '/' + fixtureFolderMarker, fixtureFolderSignature)
+  }
   const fixtureKeys = ['abele-script-trust', 'abele-script-local-upgrade', 'abele-script-provenance', 'abele-script-toolbar-offered']
   const fixtureMarker = '.abele-script-managed'
   const fixtureSyncKeys = ['abele-sync-connections-v2', 'abele-sync-connection']

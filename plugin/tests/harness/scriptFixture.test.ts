@@ -66,6 +66,86 @@ const retained = {
   ],
 }
 const legacy = { serverUrl: 'https://legacy.example', vaultId: 'sample-vault' }
+const folderSources = { 'sample.js': '// @name Sample recovery fixture\nreturn "sample"' }
+function folderFixture(files: Record<string, string>) {
+  const contents = new Map(Object.entries(files))
+  let exists = true
+  const app = {
+    vault: {
+      getAbstractFileByPath: (path: string) =>
+        exists
+          ? {
+              path,
+              children: [...contents.keys()].map((name) => ({ path: path + '/' + name })),
+            }
+          : null,
+      adapter: { read: async (path: string) => contents.get(path.slice(path.indexOf('/') + 1)) },
+      delete: vi.fn(async () => {
+        contents.clear()
+        exists = false
+      }),
+      createFolder: vi.fn(async () => {
+        exists = true
+      }),
+      create: vi.fn(async (path: string, source: string) => {
+        contents.set(path.slice(path.indexOf('/') + 1), source)
+      }),
+    },
+  }
+  const api = new Function(
+    'app',
+    `${SCRIPT_FIXTURE}; return {prepareScriptFixtureFolder, removeScriptFixtureFolder}`
+  )(app) as {
+    prepareScriptFixtureFolder(folder: string, sources: Record<string, string>): Promise<void>
+    removeScriptFixtureFolder(folder: string, sources: Record<string, string>): Promise<void>
+  }
+  return { ...api, app, contents }
+}
+it('recovers an exact synthetic folder left by an earlier run and marks the fresh folder', async () => {
+  const f = folderFixture(folderSources)
+  await f.prepareScriptFixtureFolder('Sample', folderSources)
+  expect(f.app.vault.delete).toHaveBeenCalledTimes(1)
+  expect(f.contents.get('abele-test-script-fixture.txt')).toBe('abele-script-fixture-v1')
+})
+it('recovers a marked folder after a crash during script creation', async () => {
+  const f = folderFixture({ 'abele-test-script-fixture.txt': 'abele-script-fixture-v1' })
+  await f.prepareScriptFixtureFolder('Sample', folderSources)
+  expect(f.app.vault.delete).toHaveBeenCalledTimes(1)
+})
+it.each([
+  { 'notes.md': 'Keep this' },
+  { ...folderSources, 'notes.md': 'Keep this' },
+  { 'sample.js': 'return "changed"' },
+  { 'abele-test-script-fixture.txt': 'abele-script-fixture-v1', 'notes.md': 'Keep this' },
+  { 'abele-test-script-fixture.txt': 'different marker', ...folderSources },
+  { 'sample.js': folderSources['sample.js'], 'nested/notes.md': 'Keep this' },
+  {},
+])('preserves unexpected existing contents during setup and cleanup: %j', async (files) => {
+  const f = folderFixture(files)
+  await expect(f.prepareScriptFixtureFolder('Sample', folderSources)).rejects.toThrow('not owned')
+  await expect(f.removeScriptFixtureFolder('Sample', folderSources)).rejects.toThrow('not owned')
+  expect(f.app.vault.delete).not.toHaveBeenCalled()
+  expect(f.app.vault.createFolder).not.toHaveBeenCalled()
+})
+it('does not adopt an incomplete unmarked legacy folder', async () => {
+  const f = folderFixture(folderSources)
+  await expect(
+    f.prepareScriptFixtureFolder('Sample', { ...folderSources, 'other.js': 'return "other"' })
+  ).rejects.toThrow('not owned')
+  expect(f.app.vault.delete).not.toHaveBeenCalled()
+})
+it('cleans up a marked folder and can set it up again when absent', async () => {
+  const f = folderFixture({
+    ...folderSources,
+    'abele-test-script-fixture.txt': 'abele-script-fixture-v1',
+  })
+  await f.removeScriptFixtureFolder('Sample', folderSources)
+  await f.removeScriptFixtureFolder('Sample', folderSources)
+  expect(f.app.vault.delete).toHaveBeenCalledTimes(1)
+  await f.prepareScriptFixtureFolder('Sample', folderSources)
+  expect(f.app.vault.createFolder).toHaveBeenCalledTimes(1)
+  expect(f.contents.get('abele-test-script-fixture.txt')).toBe('abele-script-fixture-v1')
+})
 it('owns a disconnected context and restores exact retained token and legacy metadata', async () => {
   const f = fixture(retained, legacy)
   const saved = await f.saveScriptFixture()
