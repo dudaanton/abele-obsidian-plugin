@@ -4145,3 +4145,7 @@ invalid choice resolves to confirm-all, never a permissive agent default. Retire
 is committed before replacing the active descriptor, with the recovery context rechecked
 after that asynchronous commit. No per-id in-memory cache is maintained by this store;
 database connections close after each operation. These records never sync or transfer.
+
+Each tool preparation/execution holds its own permission snapshot across asynchronous
+steps. Concurrent reads on a shared adapter neither invalidate readiness nor replace another
+operation's choice. Execution reads again independently of an earlier preview.

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useVault } from '../helpers/testEnv'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
-import { DEFAULT_AI_SETTINGS } from '@/ai/types'
+import { DEFAULT_AI_SETTINGS, type PermissionMode } from '@/ai/types'
 import { ensureNodeAgents } from '@/node/nodeAgentTools'
 import { NodeObsidianTools } from '@/node/NodeObsidianTools'
 import { NodeClientStore } from '@/node/NodeClientStore'
@@ -84,9 +84,15 @@ it.each([
           agent: string,
           revision: string
         ) => {
-          refreshPermissionMode: () => Promise<void>
-          agent: () => { permissionMode: string }
-          asks: (tool: string) => boolean
+          refreshPermissionMode: () => Promise<PermissionMode | undefined>
+          agent: (sessionMode: boolean, mode?: PermissionMode) => { permissionMode: string }
+          asks: (
+            tool: string,
+            args: undefined,
+            key: undefined,
+            sessionMode: boolean,
+            mode?: PermissionMode
+          ) => boolean
         }
       }
       internal.permissionSnapshots = true
@@ -98,18 +104,30 @@ it.each([
         '[Abele node] session permission snapshot unavailable',
         expect.anything()
       )
-      await internal.adapter('sample', agent.id, 'test').refreshPermissionMode()
-      expect(internal.adapter('sample', agent.id, 'test').agent().permissionMode).toBe(expected)
-      expect(internal.adapter('sample', agent.id, 'test').asks('create')).toBe(
-        expected === 'confirm-all'
+      let mode = await internal.adapter('sample', agent.id, 'test').refreshPermissionMode()
+      expect(internal.adapter('sample', agent.id, 'test').agent(true, mode).permissionMode).toBe(
+        expected
       )
+      expect(
+        internal
+          .adapter('sample', agent.id, 'test')
+          .asks('create', undefined, undefined, true, mode)
+      ).toBe(expected === 'confirm-all')
       if (!choice) {
         agent.permissionMode = 'confirm-all'
-        expect(internal.adapter('sample', agent.id, 'test').asks('create')).toBe(true)
+        expect(
+          internal
+            .adapter('sample', agent.id, 'test')
+            .asks('create', undefined, undefined, true, mode)
+        ).toBe(true)
       }
       await rememberSessionOwnerMode('sample-node', 'sample', 'confirm-all')
-      await internal.adapter('sample', agent.id, 'test').refreshPermissionMode()
-      expect(internal.adapter('sample', agent.id, 'test').asks('create')).toBe(true)
+      mode = await internal.adapter('sample', agent.id, 'test').refreshPermissionMode()
+      expect(
+        internal
+          .adapter('sample', agent.id, 'test')
+          .asks('create', undefined, undefined, true, mode)
+      ).toBe(true)
     } finally {
       await runtime.destroy()
       snapshotError.mockRestore()

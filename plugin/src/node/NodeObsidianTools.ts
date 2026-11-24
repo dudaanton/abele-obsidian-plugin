@@ -196,8 +196,6 @@ export class NodeObsidianTools {
     const key = JSON.stringify([session, agent, revision])
     let adapter = this.adapters.get(key)
     if (!adapter) {
-      let ownerMode: PermissionMode | undefined
-      let ownerReady = false
       adapter = new NodeObsidianAdapter(
         agent,
         revision,
@@ -233,16 +231,13 @@ export class NodeObsidianTools {
               )
               .map((receipt) => receipt.result as unknown as AgentToolResult)
           ),
-        () => {
-          if (!ownerReady) throw new Error('Session owner intent has not been loaded')
-          const owner =
-            ownerMode ?? AgentRegistry.getInstance().get(agent)?.permissionMode ?? 'confirm-all'
-          return delegatedPermissionMode(owner, this.sessionModes.get(session)) as PermissionMode
-        },
+        undefined,
         async () => {
-          ownerReady = false
-          ownerMode = await sessionOwnerMode(this.nodeId, session)
-          ownerReady = true
+          const ownerMode = await sessionOwnerMode(this.nodeId, session)
+          return delegatedPermissionMode(
+            ownerMode,
+            this.sessionModes.get(session)
+          ) as PermissionMode
         }
       )
       this.adapters.set(key, adapter)

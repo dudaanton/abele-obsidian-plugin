@@ -46,30 +46,30 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
       session: string
     ) => Promise<AgentToolResult[]> = async () => [],
     private readonly effectivePermissionMode?: () => PermissionMode | undefined,
-    private readonly refreshOwnerMode?: () => Promise<void>
+    private readonly readOwnerMode?: () => Promise<PermissionMode>
   ) {
     this.guardScope.setFullVaultAccess(true)
   }
 
-  async refreshPermissionMode(): Promise<void> {
-    await this.refreshOwnerMode?.()
+  async refreshPermissionMode(): Promise<PermissionMode | undefined> {
+    return this.readOwnerMode ? this.readOwnerMode() : this.effectivePermissionMode?.()
   }
 
-  private agent(sessionMode = true) {
+  private agent(sessionMode = true, permissionMode?: PermissionMode) {
     const agent = AgentRegistry.getInstance().get(this.agentId)
     if (!agent) throw new ObsidianNotExecuted('This agent is no longer configured')
     this.scope.entries.value = agent.scope.map((entry) => ({ ...entry }))
     this.scope.setFullVaultAccess(agent.fullVaultAccess)
     this.scope.invalidate()
-    const mode = sessionMode ? this.effectivePermissionMode?.() : undefined
+    const mode = sessionMode ? (permissionMode ?? this.effectivePermissionMode?.()) : undefined
     return mode ? { ...agent, permissionMode: mode } : agent
   }
-  private registry(): AgentTool[] {
+  private registry(permissionMode?: PermissionMode): AgentTool[] {
     return [
       ...createAgentTools({
         agentId: this.agentId,
         scope: this.scope,
-        githubAgent: () => this.agent(),
+        githubAgent: () => this.agent(true, permissionMode),
       }),
       createReadResultTool(this.results),
     ]
@@ -78,9 +78,10 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
     name: string,
     args?: Record<string, unknown>,
     permissionKey?: string,
-    sessionMode = true
+    sessionMode = true,
+    permissionMode?: PermissionMode
   ): boolean {
-    const agent = this.agent(sessionMode)
+    const agent = this.agent(sessionMode, permissionMode)
     return ordinaryNeedsApproval(
       {
         permissionMode:
@@ -146,10 +147,10 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
       })
     )
   }
-  private tool(i: ObsidianInvocation): AgentTool {
-    const agent = this.agent()
+  private tool(i: ObsidianInvocation, permissionMode?: PermissionMode): AgentTool {
+    const agent = this.agent(true, permissionMode)
     const matches = AgentRegistry.getInstance()
-      .filterTools(agent, this.registry())
+      .filterTools(agent, this.registry(permissionMode))
       .filter((tool) => wireName(tool.name) === i.tool_name)
     if (matches.length > 1) throw new ObsidianNotExecuted('This tool alias is ambiguous')
     const tool = matches[0]
@@ -163,8 +164,11 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
     return tool
   }
   async prepare(i: ObsidianInvocation) {
-    await this.refreshPermissionMode()
-    const tool = this.tool(i)
+    return this.prepareWithMode(i, await this.refreshPermissionMode())
+  }
+
+  private async prepareWithMode(i: ObsidianInvocation, permissionMode?: PermissionMode) {
+    const tool = this.tool(i, permissionMode)
     if (
       tool.name === 'questions' &&
       !QuestionnaireQuestionsSchema.safeParse(i.arguments.questions).success
@@ -178,7 +182,7 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
       const target = resolveTargetAgent(args.data.agent)
       if (!target || target.node)
         throw new ObsidianNotExecuted(`Agent "${args.data.agent}" not found`)
-      if ((this.agent().maxDelegateDepth ?? 0) <= 0)
+      if ((this.agent(true, permissionMode).maxDelegateDepth ?? 0) <= 0)
         throw new ObsidianNotExecuted('This agent cannot delegate at its current depth limit')
     }
     this.history = (await this.previousResults(i.session_id)).map((result, index) => ({
@@ -225,16 +229,21 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
       throw new ObsidianNotExecuted(
         'The tool preview exceeds the node size limit. Read or edit a smaller passage.'
       )
-    return { preview, needsApproval: this.asks(tool.name, args, tool.permissionKey) }
+    return {
+      preview,
+      needsApproval: this.asks(tool.name, args, tool.permissionKey, true, permissionMode),
+    }
   }
   async execute(
     i: ObsidianInvocation,
     bypass: boolean,
     signal: AbortSignal
   ): Promise<Record<string, unknown>> {
-    await this.refreshPermissionMode()
-    const tool = this.tool(i)
-    const prepared = await this.prepare(i)
+    // Keep one operation's permission read across every asynchronous preparation
+    // and execution step. A concurrent read must not invalidate or replace it.
+    const permissionMode = await this.refreshPermissionMode()
+    const tool = this.tool(i, permissionMode)
+    const prepared = await this.prepareWithMode(i, permissionMode)
     if (i.preview && JSON.stringify(prepared.preview) !== JSON.stringify(i.preview))
       throw new ObsidianNotExecuted(
         'The target changed after approval. Request the action again from the current source.'
@@ -260,7 +269,7 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
         approved: true,
         validateWrite: () => {
           signal.throwIfAborted()
-          this.tool(i)
+          this.tool(i, permissionMode)
         },
       })
       await this.guard.record(tool.name, i.arguments, result)
