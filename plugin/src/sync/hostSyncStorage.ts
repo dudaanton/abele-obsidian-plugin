@@ -131,6 +131,8 @@ export class HostSyncStorage implements LocalStorage {
   private draftVersion = 0
   private channel: BroadcastChannel | undefined
   private pending: HostChange[] = []
+  /** Editable snapshots can be retried; file-effect journals always require a fresh read. */
+  private retryable: HostChange[] = []
   private tail: Promise<void> = Promise.resolve()
   private running: Promise<void> | undefined
   private scheduled = false
@@ -223,7 +225,8 @@ export class HostSyncStorage implements LocalStorage {
       this.scheduled = true
       queueMicrotask(() => {
         this.scheduled = false
-        if (this.pending.length && !this.closed) void this.flush().catch(() => {})
+        if ((this.pending.length || this.retryable.length) && !this.closed)
+          void this.flush().catch(() => {})
       })
     }
   }
@@ -338,10 +341,33 @@ export class HostSyncStorage implements LocalStorage {
     receipts: readonly { path: string; value: ScanFingerprint; revision: number }[] = []
   ): Promise<void> {
     if (this.closed) return Promise.reject(new Error('Sync host storage is closed'))
-    if (!this.pending.length && !receipts.length) return this.running ?? Promise.resolve()
+    if (!this.pending.length && !receipts.length && !this.retryable.length)
+      return this.running ?? Promise.resolve()
     const changes = this.pending
     this.pending = []
-    const running = this.tail.then(() => this.commit(changes, receipts))
+    const running = this.tail.then(async () => {
+      // Take retries when this queued transaction starts, including failures from an
+      // earlier flush submitted before this one. Keep their order ahead of newer edits.
+      const batch = [...this.retryable, ...changes]
+      this.retryable = []
+      try {
+        await this.commit(batch, receipts)
+      } catch (error) {
+        const retries = new Map<string, HostChange>()
+        for (const change of batch) {
+          if (
+            change.key !== 'abele-sync-settings-sections-v1' &&
+            change.key !== 'abele-external-last-opened-v1'
+          )
+            continue
+          const id = JSON.stringify([change.key, change.id])
+          const prior = retries.get(id)
+          retries.set(id, { ...change, before: prior ? prior.before : change.before })
+        }
+        this.retryable = [...retries.values()]
+        throw error
+      }
+    })
     this.running = running
     this.tail = running.catch(() => {})
     const settled = () => {

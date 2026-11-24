@@ -8,6 +8,57 @@ import type { AbeleSettings } from '@/services/settingsShape'
 
 const sectionsKey = 'abele-sync-settings-sections-v1'
 const openedKey = 'abele-external-last-opened-v1'
+it.each([false, true])(
+  'retries a failed recovery commit with a newer queued snapshot: %s',
+  async (queued) => {
+    const app = local()
+    const factory = new IDBFactory()
+    let host = await HostSyncStorage.open(factory, 'sample-retry', app)
+    const snapshot = {
+      v: 1,
+      chosen: ['reader'],
+      local: {},
+      remote: {},
+      base: {},
+      kept: [{ id: 'reader', value: { reader: { fontSize: 150 } }, at: 1, from: 'sample' }],
+    }
+    const put = IDBObjectStore.prototype.put
+    let abort = true
+    const failure = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (
+      this: IDBObjectStore,
+      row,
+      key
+    ) {
+      if (abort && row.key === sectionsKey) {
+        abort = false
+        this.transaction.abort()
+        throw new Error('commit failed')
+      }
+      return put.call(this, row, key)
+    })
+    try {
+      host.saveLocalStorage(sectionsKey, snapshot)
+      const failed = expect(host.flush()).rejects.toThrow('commit failed')
+      if (queued) {
+        host.saveLocalStorage(sectionsKey, { ...snapshot, chosen: [] })
+        await host.flush()
+      }
+      await failed
+    } finally {
+      failure.mockRestore()
+    }
+    try {
+      const expected = queued ? { ...snapshot, chosen: [] } : snapshot
+      host.saveLocalStorage(sectionsKey, expected)
+      await host.flush()
+      host.close()
+      host = await HostSyncStorage.open(factory, 'sample-retry', app)
+      expect(host.loadLocalStorage(sectionsKey)).toEqual(expected)
+    } finally {
+      host.close()
+    }
+  }
+)
 function local() {
   const data = new Map<string, unknown>()
   return {
