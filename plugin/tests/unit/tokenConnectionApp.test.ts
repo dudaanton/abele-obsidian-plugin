@@ -1,4 +1,5 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
+import { deferred } from '../helpers/deferred'
 import type { App } from 'obsidian'
 import { connectionApp, connectionAppFor } from '@/sync/connectionApp'
 import { ConnectionRegistry, selectedConnectionStorage } from '@/sync/connectionRegistry'
@@ -53,4 +54,22 @@ it('cannot resurrect retired access slots through a new token context', () => {
   expect(() =>
     view.saveLocalStorage('abele-sync-connection', { deviceTokenId: 'old-key' })
   ).toThrow(/retired/i)
+})
+
+it('shares one recovery attempt across teardown readers', async () => {
+  const app = {}
+  const resume = deferred<void>()
+  const retry = vi.fn(async () => {
+    await resume.promise
+  })
+  recordTeardown(app, Promise.reject(new Error('sample commit interrupted')), retry)
+  const first = pendingTeardown(app)
+  const second = pendingTeardown(app)
+  try {
+    expect(first).toBe(second)
+  } finally {
+    resume.resolve()
+    await Promise.all([first, second])
+  }
+  expect(retry).toHaveBeenCalledOnce()
 })
