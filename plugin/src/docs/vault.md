@@ -4149,3 +4149,8 @@ database connections close after each operation. These records never sync or tra
 Each tool preparation/execution holds its own permission snapshot across asynchronous
 steps. Concurrent reads on a shared adapter neither invalidate readiness nor replace another
 operation's choice. Execution reads again independently of an earlier preview.
+
+Device intent startup opens the database even when no legacy entries remain. If opening
+or using it fails, a localized notice explains that saved permission choices are unavailable
+and actions remain restricted. The failure still propagates; no permissive fallback is used.
+Every use retries. One notice is shown per outage per app, reset by a successful operation.

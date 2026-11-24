@@ -1,4 +1,6 @@
 export const streamBErrors = {
+  'streamBError.deviceIntentUnavailable':
+    'Saved permission choices are unavailable. Actions remain restricted. Abele will retry on next use.',
   'streamBError.nodeRegistrySave':
     'Could not save the node registration. Free local storage space, then try again.',
   'streamBError.diffLineBudget': 'This diff exceeds the line budget. Open each side separately.',

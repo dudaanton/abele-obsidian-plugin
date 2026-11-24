@@ -1,4 +1,6 @@
 export const streamBErrors = {
+  'streamBError.deviceIntentUnavailable':
+    'Las decisiones de permisos guardadas no están disponibles. Las acciones siguen restringidas. Abele lo intentará de nuevo en el próximo uso.',
   'streamBError.nodeRegistrySave':
     'No se pudo guardar el registro del nodo. Libera espacio de almacenamiento local e inténtalo de nuevo.',
   'streamBError.diffLineBudget':

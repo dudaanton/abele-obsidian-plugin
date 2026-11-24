@@ -1,4 +1,6 @@
 export const streamBErrors = {
+  'streamBError.deviceIntentUnavailable':
+    'Gespeicherte Berechtigungseinstellungen sind nicht verfügbar. Aktionen bleiben eingeschränkt. Abele versucht es bei der nächsten Nutzung erneut.',
   'streamBError.nodeRegistrySave':
     'Die Knotenregistrierung konnte nicht gespeichert werden. Gib lokalen Speicherplatz frei und versuche es erneut.',
   'streamBError.diffLineBudget':

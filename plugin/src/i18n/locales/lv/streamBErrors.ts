@@ -1,4 +1,6 @@
 export const streamBErrors = {
+  'streamBError.deviceIntentUnavailable':
+    'Saglabātās atļauju izvēles nav pieejamas. Darbības paliek ierobežotas. Abele mēģinās vēlreiz nākamajā lietošanas reizē.',
   'streamBError.nodeRegistrySave':
     'Neizdevās saglabāt mezgla reģistrāciju. Atbrīvojiet vietu lokālajā krātuvē un mēģiniet vēlreiz.',
   'streamBError.diffLineBudget':

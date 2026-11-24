@@ -1156,5 +1156,8 @@
   },
   "streamBError.nodeRegistrySave": {
     "englishHash": "2b04f7d910918afe9e1d031c6a1c75f016908a9d791defc34f483d5dc1ee5cb0"
+  },
+  "streamBError.deviceIntentUnavailable": {
+    "englishHash": "a4c18486cf57c2e55e23efcf3e5bd8d1364a05b221bb5dc34b9285c081bd0f4c"
   }
 }

@@ -1,4 +1,6 @@
 export const streamBErrors = {
+  'streamBError.deviceIntentUnavailable':
+    'Сохранённые разрешения недоступны. Действия ограничены. Повторим попытку при следующем обращении.',
   'streamBError.nodeRegistrySave':
     'Не удалось сохранить регистрацию ноды. Освободите место в локальном хранилище и попробуйте снова.',
   'streamBError.diffLineBudget':

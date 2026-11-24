@@ -1,3 +1,8 @@
+import { Notice } from 'obsidian'
+import { t } from '@/i18n'
+
+const unavailable = new WeakSet<object>()
+
 const families = [
   'abele-node-session-owner-mode:',
   'abele-slide-network:',
@@ -10,7 +15,7 @@ export class DeviceIntentStore {
   private readonly prefix: string
   private readonly database: string
   constructor(
-    app: object,
+    private readonly app: object,
     private readonly factory: IDBFactory = window.indexedDB,
     private readonly legacy: LegacyStorage = window.localStorage
   ) {
@@ -65,6 +70,26 @@ export class DeviceIntentStore {
     })
   }
 
+  private async withDatabase<T>(work: (db: IDBDatabase) => Promise<T>): Promise<T> {
+    try {
+      const db = await this.open()
+      try {
+        const result = await work(db)
+        unavailable.delete(this.app)
+        return result
+      } finally {
+        db.close()
+      }
+    } catch (error) {
+      // New store instances share outage notification state, never permission values.
+      if (!unavailable.has(this.app)) {
+        unavailable.add(this.app)
+        new Notice(t('streamBError.deviceIntentUnavailable'))
+      }
+      throw error
+    }
+  }
+
   private assertKey(key: string): void {
     if (!families.some((family) => key.startsWith(family)))
       throw new Error('Unknown device intent key')
@@ -96,27 +121,20 @@ export class DeviceIntentStore {
       .filter((key): key is string => !!key && key.startsWith(this.prefix))
       .map((key) => key.slice(this.prefix.length))
       .filter((key) => families.some((family) => key.startsWith(family)))
-    if (!keys.length) return
-    const db = await this.open()
-    try {
+    return this.withDatabase(async (db) => {
       for (const key of keys) await this.migrateKey(db, key)
-    } finally {
-      db.close()
-    }
+    })
   }
 
   async readRaw(key: string): Promise<string | undefined> {
     this.assertKey(key)
-    const db = await this.open()
-    try {
+    return this.withDatabase(async (db) => {
       await this.migrateKey(db, key)
       return await this.run<string | undefined>(db, 'readonly', (tx, result) => {
         const get = tx.objectStore('values').get(key)
         get.onsuccess = () => result(get.result as string | undefined)
       })
-    } finally {
-      db.close()
-    }
+    })
   }
 
   async read(key: string): Promise<unknown> {
@@ -128,22 +146,18 @@ export class DeviceIntentStore {
     this.assertKey(key)
     const raw = JSON.stringify(value)
     if (raw === undefined) throw new Error('Device intent is not serializable')
-    const db = await this.open()
-    try {
+    return this.withDatabase(async (db) => {
       await this.migrateKey(db, key)
       await this.run<void>(db, 'readwrite', (tx) => {
         tx.objectStore('values').put(raw, key)
       })
-    } finally {
-      db.close()
-    }
+    })
   }
 
   /** Conflicting mirrors survive migration for explicit recovery/inspection. */
   async legacyValues(key: string): Promise<string[]> {
     this.assertKey(key)
-    const db = await this.open()
-    try {
+    return this.withDatabase(async (db) => {
       return await this.run<string[]>(db, 'readonly', (tx, result) => {
         const rows: string[] = []
         const cursor = tx.objectStore('legacy').openCursor()
@@ -157,8 +171,6 @@ export class DeviceIntentStore {
           row.continue()
         }
       })
-    } finally {
-      db.close()
-    }
+    })
   }
 }
