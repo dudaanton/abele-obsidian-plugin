@@ -18,12 +18,18 @@ function fixture(texts: Record<string, string>) {
   const path = 'Sample timeline probe'
   const files = Object.keys(texts).map((name) => ({ name, path: `${path}/${name}` }))
   const folder = { path, children: files }
-  const remove = vi.fn(async (_file: unknown, _force: boolean) => {})
+  const verified = new Set<string>()
+  const remove = vi.fn(async (_file: unknown, _force: boolean) => {
+    expect([...verified].sort()).toEqual(files.map((file) => file.name).sort())
+  })
   const app = {
     metadataCache: {
-      getFileCache: (file: { name: string }) => ({
-        frontmatter: load(texts[file.name].match(/^---\n([\s\S]*?)\n---/)?.[1] ?? ''),
-      }),
+      getFileCache: (file: { name: string }) => {
+        verified.add(file.name)
+        return {
+          frontmatter: load(texts[file.name].match(/^---\n([\s\S]*?)\n---/)?.[1] ?? ''),
+        }
+      },
     },
     vault: {
       getAbstractFileByPath: () => folder,
@@ -37,7 +43,7 @@ function fixture(texts: Record<string, string>) {
     },
   }
   const run = new Function('app', 'window', `${script}; return removeTimelineFixture`)(app, window)
-  const steps: string[] = []
+  const steps: Array<{ phase: string; completed: number }> = []
   return {
     run: async () => {
       for await (const progress of run(path, 'sample-timeline-probe')) {
@@ -70,11 +76,15 @@ it('bounds phone cleanup steps while still verifying every note before deleting 
   )
   const good = fixture(texts)
   await good.run()
-  expect(good.steps).toEqual(['verified 16', 'verified 32', 'removed 16', 'removed 32'])
+  expect(good.steps).toEqual([
+    { phase: 'verified', completed: 36 },
+    { phase: 'removed', completed: 72 },
+  ])
   expect(good.remove.mock.calls.map((call) => call[0])).toEqual([...good.files, good.folder])
   const bad = fixture({ ...texts, 'Other note.md': 'Unowned' })
   await expect(bad.run()).rejects.toThrow('unowned fixture file')
-  expect(bad.steps).toEqual(['verified 16', 'verified 32'])
+  // Ownership is checked in one page-side step; no completion is reported for a partial pass.
+  expect(bad.steps).toEqual([])
   expect(bad.remove).not.toHaveBeenCalled()
 })
 
