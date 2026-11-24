@@ -115,6 +115,9 @@ vault-scoped host IndexedDB store, as does external-file opening history. Startu
 their legacy localStorage values transactionally before loading settings, then clears the
 legacy copies only after commit. Recovery versions and opening timestamps remain available
 after restart without occupying the WebView localStorage quota.
+Retired sync credentials are removed from the host keychain as well as the durable
+credential store. Access metadata for missing sync-owned secrets is pruned at startup and
+removal; unrelated secrets and their metadata are preserved.
 
 Multi-item sync grouping uses the separate device-local `abele-sync-connection-sets-v1`
 key. Each connection records its label and ordered item identities, scope identities, paths,

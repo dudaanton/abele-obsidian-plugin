@@ -330,10 +330,7 @@ export default class AbelePlugin extends Plugin {
           return
         }
         this.register(() => {
-          const stopping = Promise.all([
-            this.tokenEngines?.close(),
-            pendingTeardown(this.app),
-          ])
+          const stopping = Promise.all([this.tokenEngines?.close(), pendingTeardown(this.app)])
           const closing = stopping
             .then(() => storage.flush())
             .catch((error) => {
@@ -425,7 +422,8 @@ export default class AbelePlugin extends Plugin {
           await pendingTeardown(this.app)
           if (abandoned()) return
           // A failed policy load must not start sync without the device's section choices.
-          if (!config.sectionSettings) throw new Error('Device settings section storage is unavailable')
+          if (!config.sectionSettings)
+            throw new Error('Device settings section storage is unavailable')
           if (abandoned()) return
           const registry = await prepareTokenConnections(
             this.app,

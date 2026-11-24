@@ -108,6 +108,9 @@ export class DurableTokenSecrets implements Keychain {
     const live = new Set(references.filter((reference) => reference.startsWith(PREFIX)))
     for (const reference of this.persisted.keys()) {
       if (live.has(reference)) continue
+      // Retire the host credential as well as its durable copy. Keep the row until
+      // deletion succeeds so an interrupted migration retries the keychain cleanup.
+      if (reference.startsWith(PREFIX)) this.keychain.remove(reference)
       this.values.delete(reference)
       this.pending.set(reference, null)
     }

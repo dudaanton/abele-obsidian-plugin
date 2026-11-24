@@ -17,6 +17,7 @@ import { readConnection } from '@/sync/connection'
 import type { LocalStorage } from '@/sync/ledgerId'
 import { SecretStore, isDeviceSecretId, type StoreHost } from './SecretStore'
 import type { SecretStoreFile, StoreOff } from './storeFile'
+import { syncSecretKeychain } from '@/sync/secretMetadata'
 
 /**
  * Every keychain id the settings point at. The transfer sections already say, for each thing
@@ -61,9 +62,10 @@ export const CONFLICT_COPY = /(^|\/)data\.sync-conflict-[^/]*\.json$/
 export function pluginStoreHost(plugin: Plugin): StoreHost {
   const adapter = plugin.app.vault.adapter
   const dir = plugin.manifest.dir ?? `${plugin.app.vault.configDir}/plugins/abele`
+  const keychain = syncSecretKeychain(plugin.app)
 
   return {
-    keychain: () => plugin.app.secretStorage,
+    keychain: () => keychain,
     read: () => AbeleConfig.getInstance().secretStore,
     write: async (file: SecretStoreFile | StoreOff | null) => {
       const config = AbeleConfig.getInstance()

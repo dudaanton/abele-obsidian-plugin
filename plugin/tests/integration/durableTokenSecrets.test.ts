@@ -85,6 +85,7 @@ it('migrates only live references and removes orphaned plaintext, then removes d
   const host = volatileHost()
   const live = 'abele-sync-device-token-live'
   const orphan = 'abele-sync-device-token-orphan'
+  host.set(orphan, 'retired-token')
   const db = await new Promise<IDBDatabase>((resolve) => {
     const request = factory.open('abele-sync-device-credentials-v1', 1)
     request.onupgradeneeded = () => request.result.createObjectStore('credentials', { keyPath: ['namespace', 'reference'] })
@@ -98,6 +99,7 @@ it('migrates only live references and removes orphaned plaintext, then removes d
   const secrets = await DurableTokenSecrets.open(factory, 'sample-vault', host, cipher)
   await secrets.migrate([live])
   expect((await rows(factory)).map((row) => row.reference)).toEqual([live])
+  expect(host.get(orphan)).toBeNull()
   expect(JSON.stringify(await rows(factory))).not.toContain(token.key)
   secrets.remove(live)
   await secrets.flush()
