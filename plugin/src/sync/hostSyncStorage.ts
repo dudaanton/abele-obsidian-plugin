@@ -150,6 +150,7 @@ export class HostSyncStorage implements LocalStorage {
   private running: Promise<void> | undefined
   private scheduled = false
   private closed = false
+  private shuttingDown = false
   get isClosed(): boolean {
     return this.closed
   }
@@ -231,6 +232,7 @@ export class HostSyncStorage implements LocalStorage {
   }
   saveLocalStorage(key: string, value: unknown): void {
     if (this.closed) throw new Error('Sync host storage is closed')
+    if (this.shuttingDown) throw new Error('Sync host storage is shutting down')
     if (this.values.has(key)) {
       const knownHint = this.journalHints.has(key)
       this.materializeHint(key)
@@ -248,7 +250,7 @@ export class HostSyncStorage implements LocalStorage {
       this.scheduled = true
       queueMicrotask(() => {
         this.scheduled = false
-        if ((this.pending.length || this.retryable.length) && !this.closed)
+        if ((this.pending.length || this.retryable.length) && !this.closed && !this.shuttingDown)
           void this.flush().catch(() => {})
       })
     }
@@ -350,6 +352,7 @@ export class HostSyncStorage implements LocalStorage {
   /** Explicit record commands; the compatibility view never supplies their preconditions. */
   changeRecords(changes: HostChange[]): void {
     if (this.closed) throw new Error('Sync host storage is closed')
+    if (this.shuttingDown) throw new Error('Sync host storage is shutting down')
     this.draftVersion++
     for (const change of changes) {
       const hint = this.journalHints.get(change.key)
@@ -359,6 +362,13 @@ export class HostSyncStorage implements LocalStorage {
       this.dirtyHints.add(change.key)
     }
     this.pending.push(...structuredClone(changes))
+  }
+  /** Called only after engines stop. Seal new writes before awaiting every submitted
+   * batch, then flush anything still pending. A durable retry now covers the entire queue. */
+  async flushForShutdown(): Promise<void> {
+    this.shuttingDown = true
+    await this.tail
+    await this.flush()
   }
   flush(
     receipts: readonly { path: string; value: ScanFingerprint; revision: number }[] = []

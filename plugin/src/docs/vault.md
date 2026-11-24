@@ -124,7 +124,8 @@ receipts before exposing settings. Receipt replay checks, applies and retires th
 receipt in one IndexedDB transaction without creating another receipt. An obsolete
 snapshot that conflicts with current settings is retired from replay with its original
 changes and current records retained as local IndexedDB evidence; current settings win.
-Shutdown can close after a failed commit when the
+After engine shutdown, storage refuses new saves and drains all previously submitted
+batches and pending snapshots before closing. Shutdown can close after a failed commit when the
 receipt is durable; if receipt persistence also fails, the stopped runtime retains its
 queue and a later startup retries the receipt on a fresh database connection. Failed
 engine shutdown remains blocked until the engine itself can stop safely.

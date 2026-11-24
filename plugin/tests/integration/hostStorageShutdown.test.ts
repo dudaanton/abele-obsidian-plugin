@@ -198,3 +198,103 @@ it.each([false, true])(
     }
   }
 )
+
+it.each(['stopping', 'draining'])(
+  'preserves accepted snapshots when a batch fails during %s',
+  async (phase) => {
+    const factory = new IDBFactory()
+    const app = { loadLocalStorage: () => null, saveLocalStorage: () => {} }
+    const key = 'abele-external-last-opened-v1'
+    const host = await HostSyncStorage.open(factory, 'sample-shutdown-queue', app)
+    const firstStaged = deferred<void>()
+    const resumeFirst = deferred<void>()
+    const secondStarted = deferred<void>()
+    const resumeSecond = deferred<void>()
+    let accepted = false
+    const stopped = deferred<void>()
+    const stage = snapshotRetry.stageSnapshotRetry
+    let stages = 0
+    const staging = vi
+      .spyOn(snapshotRetry, 'stageSnapshotRetry')
+      .mockImplementation(async (...args) => {
+        stages++
+        if (stages === 2) {
+          secondStarted.resolve()
+          await resumeSecond.promise
+        }
+        await stage(...args)
+        if (stages === 1) {
+          firstStaged.resolve()
+          await resumeFirst.promise
+        }
+      })
+    const put = IDBObjectStore.prototype.put
+    const failure = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (
+      this: IDBObjectStore,
+      row,
+      id
+    ) {
+      if (row.key === key) {
+        this.transaction.abort()
+        throw new Error('sample queued commit interrupted')
+      }
+      return put.call(this, row, id)
+    })
+    try {
+      host.saveLocalStorage(key, { sample: 1 })
+      await firstStaged.promise
+      const closing = retireHostStorage(
+        app,
+        host,
+        phase === 'stopping' ? stopped.promise : Promise.resolve()
+      )
+      await Promise.resolve()
+      try {
+        host.saveLocalStorage(key, { sample: 2 })
+        accepted = true
+      } catch (error) {
+        expect((error as Error).message).toBe('Sync host storage is shutting down')
+      }
+      expect(accepted).toBe(phase === 'stopping')
+      stopped.resolve()
+      resumeFirst.resolve()
+      if (accepted) {
+        await secondStarted.promise
+        // Let shutdown handle the first failure while the newer receipt is not durable.
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+      }
+      resumeSecond.resolve()
+      await closing
+      await pendingTeardown(app)
+    } finally {
+      stopped.resolve()
+      resumeFirst.resolve()
+      resumeSecond.resolve()
+      staging.mockRestore()
+      failure.mockRestore()
+      host.close()
+    }
+    const reopened = await HostSyncStorage.open(factory, 'sample-shutdown-queue', { ...app })
+    try {
+      expect(reopened.loadLocalStorage(key)).toEqual({ sample: accepted ? 2 : 1 })
+    } finally {
+      reopened.close()
+    }
+  }
+)
+
+it('refuses new snapshots once the stopped runtime begins its final drain', async () => {
+  const app = { loadLocalStorage: () => null, saveLocalStorage: () => {} }
+  const host = await HostSyncStorage.open(new IDBFactory(), 'sample-sealed-shutdown', app)
+  const closing = retireHostStorage(app, host, Promise.resolve())
+  await Promise.resolve()
+  try {
+    expect(() => host.saveLocalStorage('abele-external-last-opened-v1', { sample: 2 })).toThrow()
+    expect(() =>
+      host.changeRecords(hostChanges('abele-external-last-opened-v1', null, { sample: 2 }))
+    ).toThrow()
+  } finally {
+    await closing
+    host.close()
+  }
+})

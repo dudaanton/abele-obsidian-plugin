@@ -10,7 +10,7 @@ export function retireHostStorage(
   let retrying: Promise<void> | undefined
   const finish = async () => {
     try {
-      await storage.flush()
+      await storage.flushForShutdown()
     } catch (error) {
       console.debug('Settings section storage flush failed', error)
       // The next store replays this receipt before settings are loaded. If even the
