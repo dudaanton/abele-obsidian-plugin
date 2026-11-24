@@ -1006,8 +1006,11 @@ watch(config.version, () => {
   providers.value = JSON.parse(JSON.stringify(config.ai.providers))
   auxiliaryModelId.value = config.ai.auxiliaryModelId
   sequentialAuxiliary.value = config.ai.sequentialAuxiliary
-  modelRequestTimeout.value = requestTimeoutSeconds(config.ai.requestTimeoutSeconds)
-  timeoutInput.value = String(modelRequestTimeout.value)
+  const incomingTimeout = requestTimeoutSeconds(config.ai.requestTimeoutSeconds)
+  // A save completion also bumps the version. Only a changed persisted value replaces the
+  // draft: an earlier valid edit finishing must not erase a newer validation error.
+  if (incomingTimeout !== modelRequestTimeout.value) timeoutInput.value = String(incomingTimeout)
+  modelRequestTimeout.value = incomingTimeout
   chatFolder.value = config.ai.chatFolder
   rewindLimitMb.value = config.ai.rewindLimitMb ?? DEFAULT_REWIND_LIMIT_MB
   commentAgentId.value = config.ai.commentAgentId ?? ''

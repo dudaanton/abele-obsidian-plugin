@@ -9,6 +9,35 @@ import { FakeSettings } from '../helpers/fakeSettings'
 import Card from '@/components/obsidian/Card.vue'
 import Icon from '@/components/obsidian/Icon.vue'
 
+it('retains a newer invalid timeout draft when an earlier save completes', async () => {
+  useVault([])
+  const disk = new FakeSettings()
+  const config = AbeleConfig.getInstance()
+  config.init(disk as never)
+  await config.loadSettings()
+  config.ai.enabled = true
+  const screen = mount(GeneralSettings, {
+    props: { page: 'models' },
+    global: { stubs: { Dropdown: true, Search: true } },
+  })
+  const held = disk.delays.holdNext('save')
+  try {
+    const input = screen.get('input[data-testid="settings-request-timeout"]')
+    await input.setValue('500')
+    await held.entered
+    await input.setValue('5000')
+    held.release()
+    await flushPromises()
+    expect(input.element).toHaveProperty('value', '5000')
+    expect(screen.find('[role="alert"]').exists()).toBe(true)
+    expect(config.ai.requestTimeoutSeconds).toBe(500)
+  } finally {
+    held.release()
+    screen.unmount()
+    config.destroy()
+  }
+})
+
 it.each(['remove', 'reorder'] as const)(
   'keeps secret drafts with their identity during an incoming %s',
   async (operation) => {

@@ -42,7 +42,7 @@ describe.skipIf(!available)('per-model timeout settings on a real screen', () =>
             const input = row.querySelector('input')
             await edit(input, '500')
             await edit(input, '5000')
-            if (input.value !== '5000' || !row.querySelector('[role="alert"]') || config.ai.requestTimeoutSeconds !== 500) throw Error('Invalid global timeout was silently accepted')
+            if (input.value !== '5000' || !row.querySelector('[role="alert"]') || config.ai.requestTimeoutSeconds !== 500) throw Error('Invalid global timeout was silently accepted: ' + JSON.stringify({draft: input.value, alert: !!row.querySelector('[role="alert"]'), stored: config.ai.requestTimeoutSeconds, version: config.version.value}))
             await edit(input, '120')
           }
           const provider = await until(() => doc.querySelector('.abele-ai-provider [aria-label="Change this provider and its models"]'), 5000)
