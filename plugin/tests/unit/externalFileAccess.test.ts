@@ -1,8 +1,14 @@
 import { expect, it, vi } from 'vitest'
-import { prepareExternalFile, externalLinkPath } from '@/sync/external/fileAccess'
+import {
+  prepareExternalFile,
+  externalLinkPath,
+  recordExternalOpening,
+} from '@/sync/external/fileAccess'
 import { tokenOffloadsOf } from '@/sync/tokenOffloadCoordinator'
 import { pathCoordinatorOf } from '@/sync/pathCoordinator'
 import type { App } from 'obsidian'
+import { IDBFactory } from 'fake-indexeddb'
+import { HostSyncStorage } from '@/sync/hostSyncStorage'
 import { readOpeningHistory } from '@/sync/external/openingHistory'
 
 it('resolves absent links and waits for real content, preserving ordinary paths', async () => {
@@ -52,5 +58,40 @@ it.each([[], 'invalid', { sample: 'invalid' }, { sample: Infinity }, { sample: N
   'rejects malformed opening history %j',
   (value) => {
     expect(() => readOpeningHistory({ loadLocalStorage: () => value })).toThrow()
+  }
+)
+
+it('does not let unavailable opening-history storage interrupt file access', () => {
+  const app = { vault: {} } as unknown as App
+  expect(() => recordExternalOpening(app, 'Media/sample.png')).not.toThrow()
+})
+
+it.each(['malformed', 'read failure', 'write failure', 'shutdown'])(
+  'does not let %s opening-history bookkeeping interrupt file access',
+  async (phase) => {
+    const app = {
+      vault: {},
+      loadLocalStorage: () => null,
+      saveLocalStorage: () => {},
+    } as unknown as App
+    const host = await HostSyncStorage.open(new IDBFactory(), 'sample-opening', app)
+    try {
+      if (phase === 'malformed') {
+        host.saveLocalStorage('abele-external-last-opened-v1', { sample: 'invalid' })
+        await host.flush()
+      } else if (phase === 'read failure') {
+        vi.spyOn(host, 'loadLocalStorage').mockImplementation(() => {
+          throw new Error('sample read failure')
+        })
+      } else if (phase === 'write failure') {
+        vi.spyOn(host, 'saveLocalStorage').mockImplementation(() => {
+          throw new Error('sample write failure')
+        })
+      } else await host.flushForShutdown()
+      expect(() => recordExternalOpening(app, 'Media/sample.png')).not.toThrow()
+    } finally {
+      vi.restoreAllMocks()
+      host.close()
+    }
   }
 )

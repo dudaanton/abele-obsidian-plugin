@@ -117,7 +117,9 @@ legacy copies only after commit. Recovery versions and opening timestamps remain
 after restart without occupying the WebView localStorage quota.
 If the section store is unavailable, settings loading, reloading and saving remain blocked
 until its policy is available. Failed section and opening-history commits retain the latest
-snapshot for retry before a subsequent flush can succeed.
+snapshot for retry before a subsequent flush can succeed. Opening-history bookkeeping
+never blocks file access: if storage is unavailable or rejects the record, that opening
+is skipped and the file still opens.
 Section and opening-history flushes first commit an IndexedDB retry receipt. The main
 transaction retires it atomically with the snapshot write. Startup replays outstanding
 receipts before exposing settings. Receipt replay checks, applies and retires the live

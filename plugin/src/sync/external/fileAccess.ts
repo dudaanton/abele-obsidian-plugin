@@ -5,13 +5,21 @@ import { durableHostOf } from '../hostSyncStorage'
 import { readOpeningHistory } from './openingHistory'
 
 export function recordExternalOpening(app: App, path: string): void {
-  const manager = tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault))
-  const storage = durableHostOf(app)
-  if (!storage) throw new Error('External opening history storage is unavailable')
-  storage.saveLocalStorage('abele-external-last-opened-v1', {
-    ...readOpeningHistory(storage),
-    [manager.originalPath(path)]: Date.now(),
-  })
+  try {
+    const storage = durableHostOf(app)
+    if (!storage) {
+      console.debug('External opening history record skipped: storage is unavailable')
+      return
+    }
+    const manager = tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault))
+    storage.saveLocalStorage('abele-external-last-opened-v1', {
+      ...readOpeningHistory(storage),
+      [manager.originalPath(path)]: Date.now(),
+    })
+  } catch (error) {
+    // Opening history is bookkeeping; storage failures must never prevent file access.
+    console.debug('External opening history record skipped', error)
+  }
 }
 
 /** Shared content seam: callers authorize their path before asking for bytes. */
