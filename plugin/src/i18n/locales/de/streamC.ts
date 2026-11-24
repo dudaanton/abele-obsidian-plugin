@@ -1,4 +1,7 @@
 export const streamC = {
+  'sync.sections.storageUnavailable':
+    'Abele konnte den Einstellungsspeicher dieses Geräts nicht öffnen. Es werden Standardwerte verwendet. Das Laden und Speichern von Einstellungen ist zum Schutz gerätelokaler Einstellungen pausiert. Lade Abele erneut oder schließe und öffne den Vault, um es noch einmal zu versuchen.',
+  'sync.sections.retryStorage': 'Erneut versuchen und Abele neu laden',
   'sync.deviceScope.keyName': 'Zugriffsschlüssel dieses Geräts',
   'sync.deviceScope.copyKey': 'Zugriffsschlüssel des Geräts kopieren',
   'sync.deviceScope.key': 'Zugriffsschlüssel dieses Geräts: {id}',

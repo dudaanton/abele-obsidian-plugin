@@ -748,5 +748,25 @@
       "es",
       "de"
     ]
+  },
+  "sync.sections.storageUnavailable": {
+    "englishHash": "77f65b6eb188fb6a3c87b6fa19c43a3554107c14a511e425c4269f735145b961",
+    "context": "Device settings storage failure and safe startup retry",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
+  },
+  "sync.sections.retryStorage": {
+    "englishHash": "d89ba6bf1029aa0a5e5810346ea106b84dec03f1d76d52c07c52d203231d158a",
+    "context": "Device settings storage failure and safe startup retry",
+    "reviewedLocales": [
+      "ru",
+      "lv",
+      "es",
+      "de"
+    ]
   }
 }

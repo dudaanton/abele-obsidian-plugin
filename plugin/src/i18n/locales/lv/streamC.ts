@@ -1,4 +1,7 @@
 export const streamC = {
+  'sync.sections.storageUnavailable':
+    'Abele nevarēja atvērt šīs ierīces iestatījumu krātuvi. Tiek izmantoti noklusējuma iestatījumi; iestatījumu ielāde un saglabāšana ir apturēta, lai aizsargātu ierīces lokālos iestatījumus. Mēģiniet vēlreiz, pārlādējot Abele, vai aizveriet un atkal atveriet glabātuvi.',
+  'sync.sections.retryStorage': 'Mēģināt vēlreiz un pārlādēt Abele',
   'sync.deviceScope.keyName': 'Šīs ierīces piekļuves atslēga',
   'sync.deviceScope.copyKey': 'Kopēt ierīces piekļuves atslēgu',
   'sync.deviceScope.key': 'Šīs ierīces piekļuves atslēga: {id}',

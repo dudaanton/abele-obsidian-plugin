@@ -12,6 +12,7 @@ import '@/helpers/deferredCleanup'
 import { openSyncedFile } from './sync/openSyncedFile'
 import { abeleSectionsSource } from './sync/abeleSections'
 import { liveAbeleSections, installSectionSettings } from './sync/abeleSectionsRuntime'
+import { startSettingsSectionStorage } from './sync/settingsSectionStartup'
 import { primeVaultMutationEvents } from './sync/vaultMutationEvents'
 import { tokenOffloadsOf } from './sync/tokenOffloadCoordinator'
 import { pathCoordinatorOf } from './sync/pathCoordinator'
@@ -321,30 +322,46 @@ export default class AbelePlugin extends Plugin {
       dayjs.extend(dayOfYear)
 
       AbeleConfig.getInstance().init(this, true)
-      await startupStepAsync('settings section storage', async () => {
-        await pendingTeardown(this.app)
-        if (this.unloaded) return
-        const storage = await prepareHostSyncStorage(this.app, window.indexedDB)
-        if (this.unloaded) {
-          storage.close()
-          return
-        }
-        this.register(() => {
-          const stopping = Promise.all([this.tokenEngines?.close(), pendingTeardown(this.app)])
-          const closing = stopping
-            .then(() => storage.flush())
-            .catch((error) => {
-              console.debug('Settings section storage flush failed', error)
-              throw error
+      await startupStepAsync('settings section storage', () =>
+        startSettingsSectionStorage(
+          async () => {
+            await pendingTeardown(this.app)
+            if (this.unloaded) return
+            const storage = await prepareHostSyncStorage(this.app, window.indexedDB)
+            if (this.unloaded) {
+              storage.close()
+              return
+            }
+            this.register(() => {
+              const stopping = Promise.all([this.tokenEngines?.close(), pendingTeardown(this.app)])
+              const closing = stopping
+                .then(() => storage.flush())
+                .catch((error) => {
+                  console.debug('Settings section storage flush failed', error)
+                  throw error
+                })
+                .finally(() => storage.close())
+              recordTeardown(this.app, closing)
             })
-            .finally(() => storage.close())
-          recordTeardown(this.app, closing)
-        })
-      })
-      if (this.unloaded) return
-      startupStep('settings sections', () =>
-        installSectionSettings(AbeleConfig.getInstance(), this.app)
+            installSectionSettings(AbeleConfig.getInstance(), this.app)
+          },
+          async () => {
+            if (this.unloaded) return
+            const plugins = (
+              this.app as typeof this.app & {
+                plugins: {
+                  disablePlugin(id: string): Promise<void>
+                  enablePlugin(id: string): Promise<void>
+                }
+              }
+            ).plugins
+            await plugins.disablePlugin(this.manifest.id)
+            await plugins.enablePlugin(this.manifest.id)
+          },
+          (dispose) => this.register(dispose)
+        )
       )
+      if (this.unloaded) return
       ;(window as any).process = (window as any).process || {
         env: { NODE_ENV: 'production' },
       } // Ensure process is defined for Node.js compatibility

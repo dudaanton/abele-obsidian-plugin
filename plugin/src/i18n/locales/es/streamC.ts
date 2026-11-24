@@ -1,4 +1,7 @@
 export const streamC = {
+  'sync.sections.storageUnavailable':
+    'Abele no pudo abrir el almacenamiento de ajustes de este dispositivo. Se usan los valores predeterminados y la carga y el guardado de ajustes están en pausa para proteger los ajustes locales. Vuelve a cargar Abele o cierra y abre la bóveda para intentarlo de nuevo.',
+  'sync.sections.retryStorage': 'Reintentar y volver a cargar Abele',
   'sync.deviceScope.keyName': 'Clave de acceso del dispositivo',
   'sync.deviceScope.copyKey': 'Copiar clave de acceso del dispositivo',
   'sync.deviceScope.key': 'Clave de acceso del dispositivo: {id}',

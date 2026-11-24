@@ -118,6 +118,10 @@ after restart without occupying the WebView localStorage quota.
 If the section store is unavailable, settings loading, reloading and saving remain blocked
 until its policy is available. Failed section and opening-history commits retain the latest
 snapshot for retry before a subsequent flush can succeed.
+On a cold start without section storage, Abele initializes complete defaults while keeping
+settings loading and saving paused. A persistent notice explains the pause and offers a
+plugin reload to retry normal startup; reopening the vault retries it too. The retry does
+not enable writing defaults to shared settings before the device policy has loaded.
 Retired sync credentials are removed from the host keychain as well as the durable
 credential store. Access metadata for missing sync-owned secrets is pruned at startup and
 removal; unrelated secrets and their metadata are preserved. A retired credential's durable

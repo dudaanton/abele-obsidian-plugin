@@ -263,6 +263,9 @@ export class AbeleConfig {
     this.sectionsRequired = requireSections
     this.file.reset()
     this.chatIndex.reset()
+    // A cold start still needs complete settings when device storage cannot open.
+    // Required policy checks keep these defaults from reaching shared storage.
+    if (requireSections && !this.ai) this.applySettings(undefined, {}, [])
   }
 
   public destroy(): void {

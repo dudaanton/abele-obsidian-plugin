@@ -1,4 +1,7 @@
 export const streamC = {
+  'sync.sections.storageUnavailable':
+    'Abele could not open this device’s settings storage. It is using defaults, with settings loading and saving paused to protect device-only settings. Retry by reloading Abele, or close and reopen the vault.',
+  'sync.sections.retryStorage': 'Retry and reload Abele',
   'sync.deviceScope.keyName': 'Device access key',
   'sync.deviceScope.copyKey': 'Copy device access key',
   'sync.deviceScope.key': 'Device access key: {id}',
