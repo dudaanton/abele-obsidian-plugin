@@ -99,6 +99,7 @@ export class DurableTokenSecrets implements Keychain {
   remove(reference: string): void {
     if (!reference.startsWith(PREFIX)) return
     this.keychain.remove(reference)
+    if (this.keychain.get(reference)) throw new Error('Device credential removal failed')
     this.values.delete(reference)
     this.pending.set(reference, null)
   }
@@ -110,7 +111,7 @@ export class DurableTokenSecrets implements Keychain {
       if (live.has(reference)) continue
       // Retire the host credential as well as its durable copy. Keep the row until
       // deletion succeeds so an interrupted migration retries the keychain cleanup.
-      if (reference.startsWith(PREFIX)) this.keychain.remove(reference)
+      if (reference.startsWith(PREFIX)) this.remove(reference)
       this.values.delete(reference)
       this.pending.set(reference, null)
     }

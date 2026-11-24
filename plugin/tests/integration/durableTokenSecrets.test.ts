@@ -107,6 +107,31 @@ it('migrates only live references and removes orphaned plaintext, then removes d
   secrets.close()
 })
 
+it('keeps an orphan row for retry when the host silently refuses credential removal', async () => {
+  const factory = new IDBFactory()
+  const host = volatileHost()
+  const reference = 'abele-sync-device-token-retired'
+  let secrets = await DurableTokenSecrets.open(factory, 'sample-removal', host, cipher)
+  secrets.set(reference, token.key)
+  await secrets.flush()
+  const remove = vi.spyOn(host, 'remove').mockImplementation(() => {})
+  try {
+    await expect(secrets.migrate([])).rejects.toThrow('credential')
+    expect((await rows(factory)).map((row) => row.reference)).toEqual([reference])
+  } finally {
+    remove.mockRestore()
+    secrets.close()
+  }
+  secrets = await DurableTokenSecrets.open(factory, 'sample-removal', host, cipher)
+  try {
+    await secrets.migrate([])
+    expect(host.get(reference)).toBeNull()
+    expect(await rows(factory)).toEqual([])
+  } finally {
+    secrets.close()
+  }
+})
+
 it('keeps an enrolled credential after every volatile host write is lost', async () => {
   const factory = new IDBFactory()
   const host = volatileHost()
