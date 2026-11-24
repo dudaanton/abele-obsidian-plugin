@@ -120,7 +120,11 @@ until its policy is available. Failed section and opening-history commits retain
 snapshot for retry before a subsequent flush can succeed.
 Section and opening-history flushes first commit an IndexedDB retry receipt. The main
 transaction retires it atomically with the snapshot write. Startup replays outstanding
-receipts before exposing settings. Shutdown can close after a failed commit when the
+receipts before exposing settings. Receipt replay checks, applies and retires the live
+receipt in one IndexedDB transaction without creating another receipt. An obsolete
+snapshot that conflicts with current settings is retired from replay with its original
+changes and current records retained as local IndexedDB evidence; current settings win.
+Shutdown can close after a failed commit when the
 receipt is durable; if receipt persistence also fails, the stopped runtime retains its
 queue and a later startup retries the receipt on a fresh database connection. Failed
 engine shutdown remains blocked until the engine itself can stop safely.

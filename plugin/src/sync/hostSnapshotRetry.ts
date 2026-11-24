@@ -1,5 +1,5 @@
-import type { HostChange } from './hostSyncRecords'
-import { STORE } from './hostSyncSchema'
+import { mergeHostChange, type HostChange, type HostRecord } from './hostSyncRecords'
+import { RECORDS, recordKey, STORE } from './hostSyncSchema'
 import { completion, wait } from './idbRequests'
 
 export const SNAPSHOT_RETRY_PREFIX = '!snapshot-retry:'
@@ -86,4 +86,59 @@ export async function readSnapshotRetries(
       cursor.continue()
     }
   })
+}
+
+/** Discovery is only a hint. Read, merge and retire the live receipt under one write lock.
+ * Never stage a new receipt for replay: a concurrent writer may already have retired it. */
+export async function replaySnapshotRetry(
+  db: IDBDatabase,
+  namespace: string,
+  key: string
+): Promise<void> {
+  const tx = db.transaction([STORE, RECORDS], 'readwrite')
+  const done = completion(tx, 'cannot replay pending settings snapshots')
+  void done.catch(() => {})
+  try {
+    const receipts = tx.objectStore(STORE)
+    const receipt = await wait<{ value: HostChange[] } | undefined>(receipts.get([namespace, key]))
+    if (receipt) {
+      const records = tx.objectStore(RECORDS)
+      const current: HostRecord[] = []
+      const merged: HostRecord[] = []
+      let obsolete = false
+      // Prepare the complete snapshot before writing any of it. A conflict retains
+      // the whole receipt as evidence rather than applying a partial settings change.
+      for (const change of receipt.value) {
+        const row = await wait<HostRecord>(records.get(recordKey(namespace, change.key, change.id)))
+        current.push(row)
+        try {
+          merged.push({ ...row, value: mergeHostChange(change, row?.value) })
+        } catch {
+          obsolete = true
+        }
+      }
+      if (obsolete) {
+        await wait(
+          receipts.put({
+            namespace,
+            key: '!snapshot-obsolete:' + key + ':' + crypto.randomUUID(),
+            value: { changes: receipt.value, current, reason: 'concurrent snapshot changed' },
+          })
+        )
+        console.debug('Settings snapshot retry retained as obsolete evidence')
+      } else {
+        for (const row of merged) await wait(records.put(row))
+      }
+      await wait(receipts.delete([namespace, key]))
+    }
+    await done
+  } catch (error) {
+    try {
+      tx.abort()
+    } catch {
+      /* Already settled. */
+    }
+    await done.catch(() => {})
+    throw error
+  }
 }

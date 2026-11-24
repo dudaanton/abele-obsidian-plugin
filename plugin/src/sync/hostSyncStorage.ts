@@ -15,6 +15,7 @@ import {
 import { HostScanCache, type ScanFingerprint } from './hostScanCache'
 import {
   readSnapshotRetries,
+  replaySnapshotRetry,
   snapshotChanges,
   stageSnapshotRetry,
   SNAPSHOT_RETRY_PREFIX,
@@ -175,10 +176,10 @@ export class HostSyncStorage implements LocalStorage {
       // Replay before exposing a draft or removing legacy data. Each failed writer
       // has its own receipt, so one window cannot erase another's pending recovery.
       for (const retry of await readSnapshotRetries(db, namespace)) {
-        result.snapshotRetryKeys.add(retry.key)
-        result.retryable = retry.value
-        await result.flush()
-        for (const key of new Set(retry.value.map((change) => change.key)))
+        await replaySnapshotRetry(db, namespace, retry.key)
+        // The live receipt may differ from discovery, or its writer may already
+        // have committed. Refresh both snapshots rather than trust that old draft.
+        for (const key of ['abele-sync-settings-sections-v1', 'abele-external-last-opened-v1'])
           await result.readValue(key)
       }
       // Free the large legacy copies before any compatibility write can hit the quota.
