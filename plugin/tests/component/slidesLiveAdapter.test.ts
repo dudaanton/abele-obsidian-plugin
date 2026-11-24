@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { Modal } from 'obsidian'
+import { IDBFactory } from 'fake-indexeddb'
 import { parseDeck } from '@/slides/core/markdown'
 import { liveRenderer } from '@/slides/liveAdapter'
 import { ScriptService } from '@/scripting/ScriptService'
@@ -14,6 +15,7 @@ vi.mock('@/scripting/runScript', () => ({
 afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   ScriptService.destroy()
 })
 
@@ -22,11 +24,8 @@ it('shares one pending network decision for parallel blocks and audience rendere
   vi.spyOn(Modal.prototype, 'open').mockImplementation(function (this: Modal) {
     dialogs.push(this)
   })
-  const storage = new Map<string, unknown>()
-  const app = {
-    loadLocalStorage: (key: string) => storage.get(key),
-    saveLocalStorage: (key: string, value: unknown) => storage.set(key, value),
-  }
+  vi.stubGlobal('indexedDB', new IDBFactory())
+  const app = { appId: 'sample-slide-network' }
   const markdown = { render: async () => () => {} }
   const first = liveRenderer(app as never, () => 'sample-deck.md', markdown)
   const audience = liveRenderer(app as never, () => 'sample-deck.md', markdown)
@@ -34,7 +33,7 @@ it('shares one pending network decision for parallel blocks and audience rendere
   const a = first.allowNetwork!(deck)
   const b = first.allowNetwork!(deck)
   const c = audience.allowNetwork!(deck)
-  expect(dialogs).toHaveLength(1)
+  await vi.waitFor(() => expect(dialogs).toHaveLength(1))
   expect((dialogs[0] as unknown as { titleText: string }).titleText).toBe('Allow network access?')
   dialogs[0].close()
   expect(await Promise.all([a, b, c])).toEqual([false, false, false])

@@ -36,7 +36,9 @@ const binding = {
 let app: App
 let factory: IDBFactory
 beforeEach(() => {
-  app = useVault([{ path, content: source }]) as unknown as App
+  app = Object.assign(useVault([{ path, content: source }]), {
+    appId: 'sample-script-upgrade',
+  }) as unknown as App
   ScriptTrust.reset()
   factory = new IDBFactory()
   vi.stubGlobal('indexedDB', factory)
