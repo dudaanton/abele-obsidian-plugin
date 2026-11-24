@@ -8,17 +8,18 @@ import { pageSections } from '@/transfer/pages'
 import { openAbeleSettings } from '@/components/settings/settingsTab'
 import type { AbeleSectionsSource, KeyStoreState } from './abeleSections'
 import { flushHostStorage } from './hostSyncStorage'
-import { hostStorageOf } from './hostSyncStorage'
+import { durableHostOf } from './hostSyncStorage'
 import { SectionSettings } from './abeleSectionEngine'
 import { readConnection } from './connection'
 import { Platform } from 'obsidian'
 
 export function installSectionSettings(config: AbeleConfig, app: App): void {
+  const storage = durableHostOf(app)
+  if (!storage) throw new Error('Device settings section storage is unavailable')
   config.sectionSettings = new SectionSettings(
     {
-      read: () => hostStorageOf(app).loadLocalStorage('abele-sync-settings-sections-v1'),
-      write: (value) =>
-        hostStorageOf(app).saveLocalStorage('abele-sync-settings-sections-v1', value),
+      read: () => storage.loadLocalStorage('abele-sync-settings-sections-v1'),
+      write: (value) => storage.saveLocalStorage('abele-sync-settings-sections-v1', value),
     },
     readConnection(app).deviceName || (Platform.isMobile ? 'Phone' : 'Computer')
   )

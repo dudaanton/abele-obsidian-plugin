@@ -110,6 +110,12 @@ applies to the next message.
 
 ## Device-local connection trust
 
+Settings section choices, local/shared snapshots and retained recovery versions use the
+vault-scoped host IndexedDB store, as does external-file opening history. Startup migrates
+their legacy localStorage values transactionally before loading settings, then clears the
+legacy copies only after commit. Recovery versions and opening timestamps remain available
+after restart without occupying the WebView localStorage quota.
+
 Multi-item sync grouping uses the separate device-local `abele-sync-connection-sets-v1`
 key. Each connection records its label and ordered item identities, scope identities, paths,
 pause flags and detached flags. Detached entries are retained so their local copies and

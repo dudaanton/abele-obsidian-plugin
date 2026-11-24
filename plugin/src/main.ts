@@ -321,6 +321,30 @@ export default class AbelePlugin extends Plugin {
       dayjs.extend(dayOfYear)
 
       AbeleConfig.getInstance().init(this)
+      await startupStepAsync('settings section storage', async () => {
+        await pendingTeardown(this.app)
+        if (this.unloaded) return
+        const storage = await prepareHostSyncStorage(this.app, window.indexedDB)
+        if (this.unloaded) {
+          storage.close()
+          return
+        }
+        this.register(() => {
+          const stopping = Promise.all([
+            this.tokenEngines?.close(),
+            pendingTeardown(this.app),
+          ])
+          const closing = stopping
+            .then(() => storage.flush())
+            .catch((error) => {
+              console.debug('Settings section storage flush failed', error)
+              throw error
+            })
+            .finally(() => storage.close())
+          recordTeardown(this.app, closing)
+        })
+      })
+      if (this.unloaded) return
       startupStep('settings sections', () =>
         installSectionSettings(AbeleConfig.getInstance(), this.app)
       )
@@ -370,15 +394,13 @@ export default class AbelePlugin extends Plugin {
       await startupStepAsync('sync connection', async () => {
         const { TokenEngines } = await import('./sync/tokenEngines')
         if (this.unloaded) return
-        let hostStorage: Awaited<ReturnType<typeof prepareHostSyncStorage>> | undefined
         let desktopSecrets: DurableTokenSecrets | undefined
         const config = AbeleConfig.getInstance(),
           loaded = config.takeLoadedSync()
-        // Storage may finish opening after unload. It is still owned by startup until
-        // the engine's teardown is registered, so close it instead of installing it.
+        // Credential storage can finish opening after unload; startup owns it until
+        // the engine's teardown is registered.
         const abandoned = () => {
           if (!this.unloaded) return false
-          hostStorage?.close()
           desktopSecrets?.close()
           return true
         }
@@ -402,9 +424,8 @@ export default class AbelePlugin extends Plugin {
           // Keep the prior writer's teardown barrier before opening its replacement store.
           await pendingTeardown(this.app)
           if (abandoned()) return
-          // Registry preparation reuses this host store. Own its handle before awaiting
-          // the registry so an unload at either opening can close every acquired store.
-          hostStorage = await prepareHostSyncStorage(this.app, window.indexedDB)
+          // A failed policy load must not start sync without the device's section choices.
+          if (!config.sectionSettings) throw new Error('Device settings section storage is unavailable')
           if (abandoned()) return
           const registry = await prepareTokenConnections(
             this.app,
@@ -416,8 +437,8 @@ export default class AbelePlugin extends Plugin {
               },
               flush: () => desktopSecrets?.flush() ?? Promise.resolve(),
             },
-            loaded?.sync,
-            window.indexedDB
+            // The settings lifecycle owns the already-open host store, even if sync fails.
+            loaded?.sync
           )
           if (abandoned()) return
           await desktopSecrets?.migrate(
@@ -524,12 +545,11 @@ export default class AbelePlugin extends Plugin {
             if (tokenUi.value === ui) tokenUi.value = null
             markLoad('syncCloseStart')
             const stopping = this.tokenEngines?.close() ?? Promise.resolve()
-            const closed = stopping.finally(() => {
+            const closed = Promise.all([stopping, pendingTeardown(this.app)]).finally(() => {
               try {
                 reviews.close()
               } finally {
                 try {
-                  hostStorage?.close()
                   desktopSecrets?.close()
                 } finally {
                   markLoad('syncCloseEnd')
@@ -555,7 +575,6 @@ export default class AbelePlugin extends Plugin {
           )
         } catch (error) {
           if (!this.tokenEngines) {
-            hostStorage?.close()
             desktopSecrets?.close()
             this.tokenHostStartup.state = 'failed'
             this.tokenHostStartup.error =

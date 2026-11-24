@@ -157,10 +157,15 @@ export class HostSyncStorage implements LocalStorage {
       const result = new HostSyncStorage(db, namespace, local)
       for (const [key, value] of await migrateHostStorage(db, namespace, local))
         result.setView(key, value)
+      // Free the large legacy copies before any compatibility write can hit the quota.
+      for (const key of ['abele-sync-settings-sections-v1', 'abele-external-last-opened-v1'])
+        local.saveLocalStorage(key, null)
       // Only a compatibility view. On every reopen the committed IDB rows win.
       for (const [key, value] of result.values) {
         if (
           key === 'abele-token-local-files-v1' ||
+          key === 'abele-sync-settings-sections-v1' ||
+          key === 'abele-external-last-opened-v1' ||
           key === 'abele-sync-retired-access-cleanup-v1'
         ) {
           // Migration has committed. Do not refill limited app storage with durable records.

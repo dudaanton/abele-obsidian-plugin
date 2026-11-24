@@ -1,11 +1,14 @@
 import type { App } from 'obsidian'
 import { tokenOffloadsOf } from '../tokenOffloadCoordinator'
 import { pathCoordinatorOf } from '../pathCoordinator'
+import { durableHostOf } from '../hostSyncStorage'
 
 export function recordExternalOpening(app: App, path: string): void {
   const manager = tokenOffloadsOf(app.vault, pathCoordinatorOf(app.vault))
-  app.saveLocalStorage('abele-external-last-opened-v1', {
-    ...(app.loadLocalStorage('abele-external-last-opened-v1') ?? {}),
+  const storage = durableHostOf(app)
+  if (!storage) throw new Error('External opening history storage is unavailable')
+  storage.saveLocalStorage('abele-external-last-opened-v1', {
+    ...(storage.loadLocalStorage('abele-external-last-opened-v1') ?? {}),
     [manager.originalPath(path)]: Date.now(),
   })
 }

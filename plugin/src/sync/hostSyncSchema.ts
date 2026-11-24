@@ -53,6 +53,8 @@ export function readGroup(
   })
 }
 const KEYS = [
+  'abele-sync-settings-sections-v1',
+  'abele-external-last-opened-v1',
   'abele-sync-writes',
   'abele-sync-recovered-writes',
   'abele-sync-connections-v2',
@@ -128,6 +130,8 @@ export async function migrateHostStorage(
         marker &&
         !row &&
         (key === 'abele-sync-external-activation-v1' ||
+          key === 'abele-sync-settings-sections-v1' ||
+          key === 'abele-external-last-opened-v1' ||
           key === 'abele-token-local-files-v1' ||
           key === 'abele-sync-retired-access-cleanup-v1')
       if (marker && !row && !addingKey)
