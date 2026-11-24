@@ -847,15 +847,18 @@ const REMOVE_TIMELINE_FIXTURE = `
         fm?.type === 'task' && Array.isArray(fm.labels) && fm.labels.includes(label) &&
         Array.isArray(fm.groups) && fm.groups.includes('[[' + path + '/Sample group]]')
       if (!group && !task) throw Error('unowned fixture file: ' + file.path)
-      if (++verified % 16 === 0) yield 'verified ' + verified
+      ++verified
     }
+    yield { phase: 'verified', completed: verified }
     // Keep individual native deletion events, but overlap independent filesystem operations.
     // A batch is fully drained before yielding or removing the empty folder.
     for (let offset = 0; offset < files.length; offset += 16) {
       const results = await Promise.allSettled(files.slice(offset, offset + 16).map(file => app.vault.delete(file, true)))
       const failed = results.find(result => result.status === 'rejected')
       if (failed) throw failed.reason
-      if (offset + 16 <= files.length) yield 'removed ' + (offset + 16)
+      // Four drained native batches per host round trip; retain bounded concurrency.
+      if ((offset + 16) % 64 === 0 || offset + 16 >= files.length)
+        yield { phase: 'removed', completed: files.length + Math.min(offset + 16, files.length) }
     }
     if (folder) await app.vault.delete(folder, true)
     const deadline = Date.now() + 30000
@@ -869,8 +872,10 @@ const REMOVE_TIMELINE_FIXTURE = `
 
 // Synthetic fixtures may survive an interrupted run. Remove only proven owned notes.
 async function removeFixtures(): Promise<void> {
+  const deadline = Date.now() + 240_000
   for (const dir of [FOLDER, FOLDER + ' short']) {
-    const deadline = Date.now() + 120_000
+    let completed = -1
+    let progress: unknown = 'starting'
     evalRaw(
       `(() => {
         ${REMOVE_TIMELINE_FIXTURE}
@@ -880,14 +885,23 @@ async function removeFixtures(): Promise<void> {
     )
     try {
       for (;;) {
-        if (Date.now() >= deadline) throw Error('timeline fixture cleanup exceeded its budget')
+        if (Date.now() >= deadline)
+          throw Error(
+            'timeline fixture cleanup exceeded its budget: ' + JSON.stringify({ dir, progress })
+          )
         const raw = await evalLong(
           'window.__timelineCleanup.next()',
-          Math.min(45_000, deadline - Date.now())
+          Math.min(60_000, deadline - Date.now())
         )
         if (raw.startsWith('Error:')) throw Error(raw)
         const step = JSON.parse(raw)
         if (step.done) break
+        progress = step.value
+        if (!Number.isInteger(step.value?.completed) || step.value.completed <= completed)
+          throw Error(
+            'timeline fixture cleanup made no progress: ' + JSON.stringify({ dir, progress })
+          )
+        completed = step.value.completed
       }
     } finally {
       await evalLong(
