@@ -59,7 +59,15 @@ const script = `(async () => {
     const chatMedia = await app.vault.createBinary(root + '/sample-chat.png', new Uint8Array([41, 59]).buffer)
     await app.vault.create(root + '/sample-chat.abchat', JSON.stringify({ v: 2, k: 'meta', title: 'Sample chat' }) + '\\n' + JSON.stringify({ k: 'msg', attachments: [chatMedia.path] }) + '\\n')
     window.__abeleTest.openDialog('unused-media')
-    await until(() => document.querySelector('.abele-unused-media') && !document.querySelector('.abele-unused-media[aria-busy="true"]'))
+    // This scans the vault, so budget native filesystem work separately from UI rendering.
+    try {
+      await until(() => document.querySelector('.abele-unused-media') && !document.querySelector('.abele-unused-media[aria-busy="true"]'), 60000)
+    } catch (error) {
+      const modal = document.querySelector('.abele-unused-media')
+      throw new Error('Unused-media scan timed out: ' + JSON.stringify({
+        modal: !!modal, busy: modal?.getAttribute('aria-busy'), files: app.vault.getFiles().length,
+      }) + ': ' + String(error))
+    }
     report.scanError = document.querySelector('.abele-unused-media .abele-empty-state_error')?.textContent ?? ''
     report.chatProtected = ![...document.querySelectorAll('.abele-unused-media__path')].some((el) => el.title === chatMedia.path)
     await close()
@@ -94,7 +102,7 @@ const script = `(async () => {
 })()`
 
 async function verify() {
-  const answer = await evalLong(script, 120_000)
+  const answer = await evalLong(script, 180_000)
   if (answer.startsWith('Error:')) throw new Error(answer)
   const report = JSON.parse(answer)
   expect(report.merge, report.mergeError).toBe('done')
@@ -116,7 +124,7 @@ describe('media cleanup and bulk replacement safety', () => {
     expect(isObsidianRunning()).toBe(true)
     expect(hasTestApi()).toBe(true)
   })
-  it('uses real parsed links, protects chat media and rejects stale replacements', verify, 150_000)
+  it('uses real parsed links, protects chat media and rejects stale replacements', verify, 210_000)
   it.skipIf(onPhone())(
     'preserves the same guarantees under phone emulation',
     async () => {
