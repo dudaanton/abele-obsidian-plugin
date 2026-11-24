@@ -193,6 +193,11 @@ describe.skipIf(!available)('shared human and agent canvas acceptance', () => {
   afterAll(async () => {
     try {
       run(`
+        // Cancel while the input still owns focus: blurring it first commits the name.
+        const prompt=document.querySelector('.abele-prompt__field')?.closest('.modal')
+        if(prompt){const cancel=[...prompt.querySelectorAll('button')].find(b=>b.textContent.trim()==='Cancel');if(!cancel)throw Error('Naming prompt has no cancel action');cancel.click()}
+        await new Promise(done=>requestAnimationFrame(done))
+        if(document.querySelector('.abele-prompt__field'))throw Error('Naming prompt remained open during cleanup')
         document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))
         const state=window.__canvasAcceptance,leaves=[];app.workspace.iterateAllLeaves(l=>{if(l.view.file?.path.startsWith(${JSON.stringify(DIR + '/')}))leaves.push(l)})
         for(const leaf of leaves){leaf.view.documentLease?.document.discardDraft();leaf.detach()}

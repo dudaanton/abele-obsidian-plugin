@@ -123,7 +123,18 @@ export async function keyboardReady<P>(
   if (extra < 1 || extra > sent)
     throw new Error(`The probe changed the field unexpectedly (sent ${sent}): ` + evidence())
   erase(extra)
-  if (!(await until(() => read(el) === before, 5000)))
+  // DOM deletion is visible before the native responder has applied the edit. Require a
+  // quiet restored field, otherwise queued probe edits can consume the start of real text.
+  let restoredAt = Date.now()
+  if (
+    !(await until(() => {
+      if (document.activeElement !== el || read(el) !== before) {
+        restoredAt = Date.now()
+        return false
+      }
+      return Date.now() - restoredAt >= 300
+    }, 5000))
+  )
     throw new Error('The probe could not be erased: ' + evidence())
   return paths[at]
 }

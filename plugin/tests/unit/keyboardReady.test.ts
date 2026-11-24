@@ -40,6 +40,32 @@ afterEach(() => {
 })
 
 describe('keyboardReady', () => {
+  it('waits for probe erasure to settle before admitting real text', async () => {
+    vi.useFakeTimers()
+    const input = field('')
+    let ready = false
+    const pending = keyboardReady(
+      async (text) => {
+        input.value += text
+      },
+      ['keys'],
+      5000,
+      () => {
+        input.value = ''
+        setTimeout(() => {
+          input.value = 'x'
+        }, 100)
+      }
+    ).then(() => {
+      ready = true
+    })
+    await vi.advanceTimersByTimeAsync(200)
+    expect(ready).toBe(false)
+    input.value = ''
+    await vi.advanceTimersByTimeAsync(1000)
+    await pending
+    expect(input.value).toBe('')
+  })
   it('uses native delivery when keyboard geometry is missing instead of spending the probe budget on it', async () => {
     vi.useFakeTimers()
     const input = field('Sample')
