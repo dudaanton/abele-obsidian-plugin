@@ -110,6 +110,7 @@ export class AbeleConfig {
   /** Carried through untouched; `SecretStore` is the only thing that reads or writes it. */
   public secretStore: unknown = undefined
   public sectionSettings: SectionSettings | undefined
+  private sectionsRequired = false
   /**
    * The plugin found no settings file when it loaded: its first start in this vault, which is
    * when the documentation opens by itself. Not a setting — nothing saves it.
@@ -128,7 +129,11 @@ export class AbeleConfig {
 
   /** The settings file itself: every load, reload and write of it, one at a time. */
   private readonly file = new SettingsKeeper({
-    sections: () => this.sectionSettings,
+    sections: () => {
+      if (this.sectionsRequired && !this.sectionSettings)
+        throw new Error('Device settings section storage is unavailable')
+      return this.sectionSettings
+    },
     flushSections: async () => {
       if (this.plugin?.app) await flushHostStorage(this.plugin.app)
     },
@@ -251,10 +256,11 @@ export class AbeleConfig {
     this.pendingEdits.record(before, settingsSnapshot(this.exportSettings()))
   }
 
-  public init(plugin: AbelePlugin): void {
+  public init(plugin: AbelePlugin, requireSections = false): void {
     this.pendingEdits = new SettingsEdits()
     this.plugin = plugin
     this.sectionSettings = undefined
+    this.sectionsRequired = requireSections
     this.file.reset()
     this.chatIndex.reset()
   }

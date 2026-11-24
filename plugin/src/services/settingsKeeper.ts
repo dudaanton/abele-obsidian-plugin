@@ -185,7 +185,12 @@ export class SettingsKeeper {
 
   /** Runs `step` after every load, reload and write of the settings file already asked for. */
   private onFile<T>(step: () => Promise<T>): Promise<T> {
-    const run = this.fileQueue.then(step)
+    const run = this.fileQueue.then(() => {
+      // A required policy may be unavailable after failed startup. Do not read, apply,
+      // advance a baseline or write settings until the host can supply that policy.
+      this.host.sections?.()
+      return step()
+    })
     this.fileQueue = run.catch((): void => undefined)
     return run
   }

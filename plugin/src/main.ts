@@ -320,7 +320,7 @@ export default class AbelePlugin extends Plugin {
       dayjs.extend(updateLocale)
       dayjs.extend(dayOfYear)
 
-      AbeleConfig.getInstance().init(this)
+      AbeleConfig.getInstance().init(this, true)
       await startupStepAsync('settings section storage', async () => {
         await pendingTeardown(this.app)
         if (this.unloaded) return

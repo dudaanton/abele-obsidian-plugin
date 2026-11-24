@@ -6,6 +6,34 @@ import { useVault } from '../helpers/testEnv'
 
 const config = AbeleConfig.getInstance()
 afterEach(() => config.destroy())
+it('refuses settings loading and saving when required section storage failed to open', async () => {
+  useVault([])
+  const disk = new FakeSettings({ reader: { fontSize: 100 } })
+  config.init(disk as never, true)
+  config.applySettings({ reader: { fontSize: 150 } } as never)
+  await expect(config.loadSettings()).rejects.toThrow('section storage')
+  expect(config.reader.fontSize).toBe(150)
+  await expect(config.reloadSettings()).rejects.toThrow('section storage')
+  expect(config.reader.fontSize).toBe(150)
+  await expect(config.saveSettings()).rejects.toThrow('section storage')
+  expect(disk.saved).toEqual([])
+  expect(disk.stored).toEqual({ reader: { fontSize: 100 } })
+  let saved: unknown
+  const storage = {
+    read: () => saved,
+    write: (value: unknown) => {
+      saved = value
+    },
+  }
+  const policy = new SectionSettings(storage)
+  policy.receive({ reader: { fontSize: 100 } } as never)
+  policy.choose('reader', false, config.exportSettings())
+  config.sectionSettings = new SectionSettings(storage)
+  await config.loadSettings()
+  expect(config.reader.fontSize).toBe(150)
+  await config.saveSettings()
+  expect((disk.stored as any).reader.fontSize).toBe(100)
+})
 async function setup() {
   useVault([])
   const disk = new FakeSettings({ tasksFolder: 'Shared', reader: { fontSize: 100 } })
