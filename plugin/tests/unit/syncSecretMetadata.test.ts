@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import type { App } from 'obsidian'
-import { syncSecretKeychain } from '@/sync/secretMetadata'
+import { syncSecretKeychain } from '@/secrets/syncMetadata'
 
 it('bounds metadata through years of missing probes and retired credentials, retaining live and unrelated secrets', () => {
   const values = new Map([

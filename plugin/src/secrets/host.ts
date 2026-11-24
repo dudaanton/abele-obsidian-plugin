@@ -17,7 +17,7 @@ import { readConnection } from '@/sync/connection'
 import type { LocalStorage } from '@/sync/ledgerId'
 import { SecretStore, isDeviceSecretId, type StoreHost } from './SecretStore'
 import type { SecretStoreFile, StoreOff } from './storeFile'
-import { syncSecretKeychain } from '@/sync/secretMetadata'
+import { syncSecretKeychain } from './syncMetadata'
 
 /**
  * Every keychain id the settings point at. The transfer sections already say, for each thing
