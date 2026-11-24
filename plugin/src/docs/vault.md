@@ -159,7 +159,7 @@ current owner mode; changing the retained mode requires a new task key. Stricter
 requests remain exact retries even if the owner subsequently allows bypass.
 Explicit session choices are stored in vault-scoped device-local IndexedDB under `abele-node-session-owner-mode:` plus
 the JSON pair of node and session IDs. For device-side Obsidian tool execution, this choice
-(or the current agent default when absent) is bounded by the stricter node-reported mode;
+(or confirm-all when absent or unreadable) is bounded by the stricter node-reported mode;
 node-reported bypass alone never grants device-side bypass.
 Node-agent definitions retain whether the owner explicitly chose their permission default;
 otherwise delegation inherits its parent's effective mode. Delegation captures the stricter
@@ -4133,13 +4133,15 @@ Permission decisions and recovery evidence are not subject to these cache budget
 The vault-scoped IndexedDB database `abele-device-intent:<appId>` holds session owner
 modes, slide network choices, and retired script provenance descriptors. These are durable
 intent/evidence, not evictable caches. Startup imports all three legacy localStorage key
-families. Each import commits before deleting its source. Failed writes retain the source;
+families. Every import and new write requests strict transaction durability. Each import commits
+before deleting its source; unsupported strict writes fail while retaining the source. Failed writes retain the source;
 interrupted cleanup retries on startup or access. Durable values win over stale mirrors;
 conflicting legacy bytes are retained in the database's `legacy` store for inspection.
 Malformed retired evidence is preserved verbatim and is accessible through raw reads.
 
 New owner choices are committed before session configuration proceeds. Tool preparation
-and execution reload the durable choice and fail if it cannot be read. Retired provenance
+and execution reload the durable choice and fail if the database cannot be read. A missing or
+invalid choice resolves to confirm-all, never a permissive agent default. Retired provenance
 is committed before replacing the active descriptor, with the recovery context rechecked
 after that asynchronous commit. No per-id in-memory cache is maintained by this store;
 database connections close after each operation. These records never sync or transfer.

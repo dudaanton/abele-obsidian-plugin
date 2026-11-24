@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { IDBFactory } from 'fake-indexeddb'
+import { IDBFactory, IDBDatabase as FakeDatabase } from 'fake-indexeddb'
 import { DeviceIntentStore } from '@/services/DeviceIntentStore'
 
 const owner = 'abele-node-session-owner-mode:["sample-node","sample-session"]'
@@ -108,4 +108,40 @@ it('retains the legacy source if the import transaction aborts before commit', a
   const recovered = new DeviceIntentStore({ appId: 'sample' }, factory, window.localStorage)
   await recovered.migrate()
   expect(await recovered.read(owner)).toBe('allow-edit')
+})
+
+it('requires strict durability for imports and new writes before retiring their sources', async () => {
+  window.localStorage.clear()
+  window.localStorage.setItem('sample-' + owner, JSON.stringify('confirm-all'))
+  const spy = vi.spyOn(FakeDatabase.prototype, 'transaction')
+  try {
+    const store = new DeviceIntentStore({ appId: 'sample' }, new IDBFactory(), window.localStorage)
+    await store.migrate()
+    await store.write(owner, 'allow-edit')
+    const writes = spy.mock.calls.filter((call) => call[1] === 'readwrite')
+    expect(writes.length).toBeGreaterThanOrEqual(2)
+    expect(writes.every((call) => call[2]?.durability === 'strict')).toBe(true)
+  } finally {
+    spy.mockRestore()
+  }
+})
+
+it('retains the source when strict durability cannot be requested', async () => {
+  window.localStorage.clear()
+  window.localStorage.setItem('sample-' + owner, JSON.stringify('confirm-all'))
+  const transaction = FakeDatabase.prototype.transaction
+  const spy = vi.spyOn(FakeDatabase.prototype, 'transaction').mockImplementation(function (
+    ...args
+  ) {
+    if (args[2]?.durability === 'strict') throw new Error('strict unavailable')
+    return transaction.apply(this, args)
+  })
+  try {
+    await expect(
+      new DeviceIntentStore({ appId: 'sample' }, new IDBFactory(), window.localStorage).migrate()
+    ).rejects.toThrow('strict unavailable')
+    expect(window.localStorage.getItem('sample-' + owner)).toBe(JSON.stringify('confirm-all'))
+  } finally {
+    spy.mockRestore()
+  }
 })

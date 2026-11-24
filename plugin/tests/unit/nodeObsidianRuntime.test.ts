@@ -21,7 +21,7 @@ it.each([
   ['allow-all', undefined, 'manual', 'confirm-all'],
   ['confirm-all', 'allow-all', 'bypassPermissions', 'allow-all'],
   ['allow-all', 'confirm-all', 'bypassPermissions', 'confirm-all'],
-  ['allow-all', undefined, 'acceptEdits', 'allow-edit'],
+  ['allow-all', undefined, 'acceptEdits', 'confirm-all'],
 ] as const)(
   'bounds remote permissions by local owner choice: %s / %s / %s',
   async (own, choice, remote, expected) => {

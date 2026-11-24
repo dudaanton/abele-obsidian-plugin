@@ -14,12 +14,13 @@ export async function rememberSessionOwnerMode(
   await new DeviceIntentStore(GlobalStore.getInstance().app).write(key(node, session), mode)
 }
 
-export async function sessionOwnerMode(
-  node: string,
-  session: string
-): Promise<PermissionMode | undefined> {
+export async function sessionOwnerMode(node: string, session: string): Promise<PermissionMode> {
   const mode: unknown = await new DeviceIntentStore(GlobalStore.getInstance().app).read(
     key(node, session)
   )
-  return mode === 'confirm-all' || mode === 'allow-edit' || mode === 'allow-all' ? mode : undefined
+  // Absence cannot prove that a previous restrictive owner choice never existed.
+  // A missing database or record must not enable an agent's permissive default.
+  return mode === 'confirm-all' || mode === 'allow-edit' || mode === 'allow-all'
+    ? mode
+    : 'confirm-all'
 }

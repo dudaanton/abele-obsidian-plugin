@@ -48,7 +48,13 @@ export class DeviceIntentStore {
     work: (tx: IDBTransaction, result: (value: T) => void) => void
   ): Promise<T> {
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(['values', 'legacy'], mode)
+      // Legacy sources are retired only after a disk-durable commit. Never retry
+      // imports with relaxed durability if the host rejects this request.
+      const tx = db.transaction(
+        ['values', 'legacy'],
+        mode,
+        mode === 'readwrite' ? { durability: 'strict' } : undefined
+      )
       let result: T
       tx.oncomplete = () => resolve(result)
       tx.onabort = tx.onerror = () =>

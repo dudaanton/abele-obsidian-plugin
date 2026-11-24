@@ -111,3 +111,17 @@ it('does not fall back to permissive intent or replace provenance when durable s
     spy.mockRestore()
   }
 })
+
+it('never restores a permissive default when a previously restrictive choice is missing after restart', async () => {
+  Object.assign(useVault([]), { appId: 'sample-missing-owner' })
+  vi.stubGlobal('indexedDB', new IDBFactory())
+  await rememberSessionOwnerMode('sample-node', 'sample', 'confirm-all')
+  // Model a lost database after source cleanup. No legacy mirror remains to recover.
+  vi.stubGlobal('indexedDB', new IDBFactory())
+  expect(await sessionOwnerMode('sample-node', 'sample')).toBe('confirm-all')
+  expect(
+    window.localStorage.getItem(
+      'sample-missing-owner-abele-node-session-owner-mode:["sample-node","sample"]'
+    )
+  ).toBeNull()
+})
