@@ -2,6 +2,7 @@ import { Notice } from 'obsidian'
 import { t } from '@/i18n'
 
 const unavailable = new WeakSet<object>()
+const malformed = new WeakSet<object>()
 
 const families = [
   'abele-node-session-owner-mode:',
@@ -139,7 +140,30 @@ export class DeviceIntentStore {
 
   async read(key: string): Promise<unknown> {
     const raw = await this.readRaw(key)
-    return raw === undefined ? undefined : (JSON.parse(raw) as unknown)
+    if (raw === undefined) return undefined
+    try {
+      const value: unknown = JSON.parse(raw)
+      const valid = key.startsWith('abele-node-session-owner-mode:')
+        ? value === 'confirm-all' || value === 'allow-edit' || value === 'allow-all'
+        : key.startsWith('abele-slide-network:')
+          ? typeof value === 'boolean'
+          : true
+      if (valid) return value
+    } catch {
+      // Unreadable choices are missing intent, never permission to use a default.
+    }
+    // Preserve exact bytes even if the owner subsequently replaces this choice.
+    await this.withDatabase((db) =>
+      this.run<void>(db, 'readwrite', (tx) => {
+        tx.objectStore('legacy').put(raw, [key, raw])
+      })
+    )
+    if (!malformed.has(this.app)) {
+      malformed.add(this.app)
+      console.debug('[Abele] Malformed saved permission choice retained')
+      new Notice(t('streamBError.deviceIntentUnavailable'))
+    }
+    return undefined
   }
 
   async write(key: string, value: unknown): Promise<void> {
@@ -151,6 +175,7 @@ export class DeviceIntentStore {
       await this.run<void>(db, 'readwrite', (tx) => {
         tx.objectStore('values').put(raw, key)
       })
+      malformed.delete(this.app)
     })
   }
 

@@ -125,3 +125,15 @@ it('never restores a permissive default when a previously restrictive choice is 
     )
   ).toBeNull()
 })
+
+it('continues restrictively when a legacy session choice contains malformed JSON', async () => {
+  const app = Object.assign(useVault([]), { appId: 'sample-malformed-session' })
+  const factory = new IDBFactory()
+  vi.stubGlobal('indexedDB', factory)
+  const key = 'abele-node-session-owner-mode:["sample-node","sample-session"]'
+  window.localStorage.setItem('sample-malformed-session-' + key, '{broken')
+  await new DeviceIntentStore(app, factory).migrate()
+  await expect(sessionOwnerMode('sample-node', 'sample-session')).resolves.toBe('confirm-all')
+  await expect(sessionOwnerMode('sample-node', 'sample-session')).resolves.toBe('confirm-all')
+  expect(await new DeviceIntentStore(app, factory).readRaw(key)).toBe('{broken')
+})

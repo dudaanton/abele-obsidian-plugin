@@ -4154,3 +4154,9 @@ Device intent startup opens the database even when no legacy entries remain. If 
 or using it fails, a localized notice explains that saved permission choices are unavailable
 and actions remain restricted. The failure still propagates; no permissive fallback is used.
 Every use retries. One notice is shown per outage per app, reset by a successful operation.
+
+Malformed JSON or invalid permission-choice shapes are treated as missing intent, so
+session reads resolve to confirm-all. The exact bytes remain available through raw reads
+and are archived before returning the fallback, surviving subsequent replacement. A
+malformed-choice notice is shown once per app until a successful write; ordinary reads
+and evidence inspection do not reset it.

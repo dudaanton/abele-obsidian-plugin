@@ -67,3 +67,22 @@ it('localizes transaction-failure notices and propagates the failure', async () 
     'Сохранённые разрешения недоступны. Действия ограничены. Повторим попытку при следующем обращении.',
   ])
 })
+
+it.each(['{broken', 'null', '"unknown-mode"', '{"mode":"allow-all"}'])(
+  'treats malformed choice %s as missing, retains evidence through replacement and notifies once',
+  async (raw) => {
+    notices().length = 0
+    const app = { appId: 'sample-malformed' }
+    const factory = new IDBFactory()
+    window.localStorage.setItem('sample-malformed-' + key, raw)
+    await new DeviceIntentStore(app, factory).migrate()
+    await expect(new DeviceIntentStore(app, factory).read(key)).resolves.toBeUndefined()
+    expect(await new DeviceIntentStore(app, factory).readRaw(key)).toBe(raw)
+    await expect(new DeviceIntentStore(app, factory).read(key)).resolves.toBeUndefined()
+    expect(notices()).toEqual([message])
+    expect(await new DeviceIntentStore(app, factory).legacyValues(key)).toContain(raw)
+    await new DeviceIntentStore(app, factory).write(key, 'allow-edit')
+    expect(await new DeviceIntentStore(app, factory).read(key)).toBe('allow-edit')
+    expect(await new DeviceIntentStore(app, factory).legacyValues(key)).toContain(raw)
+  }
+)
