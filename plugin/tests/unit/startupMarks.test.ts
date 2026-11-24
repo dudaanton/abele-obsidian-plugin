@@ -89,7 +89,7 @@ describe('startup mark boundaries', () => {
         'onloadEnd',
         'vault epoch events',
         'locale',
-        'settings sections',
+        'settings section storage',
         'settings section source',
         'initializeLocale:de',
         'layoutStart',
@@ -110,7 +110,7 @@ describe('startup mark boundaries', () => {
       before('onloadStart', 'locale')
       before('locale', 'initializeLocale:de')
       before('initializeLocale:de', 'settings')
-      before('settings sections', 'settings')
+      before('settings section storage', 'settings')
       before('settings', 'settings section source')
       before('layoutStart', 'layoutEnd')
       before('sync:onload', 'sync:layout-ready')
