@@ -45,9 +45,14 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
     private readonly previousResults: (
       session: string
     ) => Promise<AgentToolResult[]> = async () => [],
-    private readonly effectivePermissionMode?: () => PermissionMode | undefined
+    private readonly effectivePermissionMode?: () => PermissionMode | undefined,
+    private readonly refreshOwnerMode?: () => Promise<void>
   ) {
     this.guardScope.setFullVaultAccess(true)
+  }
+
+  async refreshPermissionMode(): Promise<void> {
+    await this.refreshOwnerMode?.()
   }
 
   private agent(sessionMode = true) {
@@ -158,6 +163,7 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
     return tool
   }
   async prepare(i: ObsidianInvocation) {
+    await this.refreshPermissionMode()
     const tool = this.tool(i)
     if (
       tool.name === 'questions' &&
@@ -226,6 +232,7 @@ export class NodeObsidianAdapter implements ObsidianToolAdapter {
     bypass: boolean,
     signal: AbortSignal
   ): Promise<Record<string, unknown>> {
+    await this.refreshPermissionMode()
     const tool = this.tool(i)
     const prepared = await this.prepare(i)
     if (i.preview && JSON.stringify(prepared.preview) !== JSON.stringify(i.preview))

@@ -1,3 +1,4 @@
+import { DeviceIntentStore } from './services/DeviceIntentStore'
 import { t, initializeLocale, currentLocale } from '@/i18n'
 declare const __ABELE_TEST_SHARING__: boolean
 const testingBuild =
@@ -587,6 +588,10 @@ export default class AbelePlugin extends Plugin {
 
       // The store takes the week start and the rest of what it draws from out of the settings.
       startupStep('store', () => GlobalStore.getInstance().init(this.app))
+      await startupStepAsync('device intent migration', () =>
+        new DeviceIntentStore(this.app).migrate()
+      )
+      if (this.unloaded) return
       initializeDestinations(AbeleConfig.getInstance())
       setRequestGuard((request) => checkRequestDestinations(request, AbeleConfig.getInstance()))
       // Under every tool that writes, so a chat can take back what its agent changed.

@@ -1,4 +1,4 @@
-import { expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useVault } from '../helpers/testEnv'
 import { AgentRegistry } from '@/ai/agents/AgentRegistry'
 import { AbeleConfig } from '@/services/AbeleConfig'
@@ -13,6 +13,9 @@ import { ObsidianToolsSnapshotSchema, PromptSchema } from '@abele/node-protocol'
 import { rememberSessionOwnerMode } from '@/node/sessionOwnerMode'
 import { NodeObsidianAdapter } from '@/node/NodeObsidianAdapter'
 
+beforeEach(() => vi.stubGlobal('indexedDB', new IDBFactory()))
+afterEach(() => vi.unstubAllGlobals())
+
 it.each([
   ['confirm-all', undefined, 'bypassPermissions', 'confirm-all'],
   ['allow-all', undefined, 'manual', 'confirm-all'],
@@ -22,7 +25,7 @@ it.each([
 ] as const)(
   'bounds remote permissions by local owner choice: %s / %s / %s',
   async (own, choice, remote, expected) => {
-    useVault([])
+    Object.assign(useVault([]), { appId: 'sample-' + crypto.randomUUID() })
     AgentRegistry.destroy()
     AbeleConfig.getInstance().ai = structuredClone(DEFAULT_AI_SETTINGS)
     const agent = ensureNodeAgents('sample-node', 'Sample node', ['fake'])[0]!
@@ -72,7 +75,7 @@ it.each([
     const snapshotError = vi.spyOn(console, 'debug')
     const runtime = new NodeObsidianTools(client, store, 'sample-node', 'Sample node')
     try {
-      if (choice) rememberSessionOwnerMode('sample-node', 'sample', choice)
+      if (choice) await rememberSessionOwnerMode('sample-node', 'sample', choice)
       const internal = runtime as unknown as {
         permissionSnapshots: boolean
         snapshot: (session: string, agent: string) => Promise<unknown>
@@ -81,6 +84,7 @@ it.each([
           agent: string,
           revision: string
         ) => {
+          refreshPermissionMode: () => Promise<void>
           agent: () => { permissionMode: string }
           asks: (tool: string) => boolean
         }
@@ -94,6 +98,7 @@ it.each([
         '[Abele node] session permission snapshot unavailable',
         expect.anything()
       )
+      await internal.adapter('sample', agent.id, 'test').refreshPermissionMode()
       expect(internal.adapter('sample', agent.id, 'test').agent().permissionMode).toBe(expected)
       expect(internal.adapter('sample', agent.id, 'test').asks('create')).toBe(
         expected === 'confirm-all'
@@ -102,7 +107,8 @@ it.each([
         agent.permissionMode = 'confirm-all'
         expect(internal.adapter('sample', agent.id, 'test').asks('create')).toBe(true)
       }
-      rememberSessionOwnerMode('sample-node', 'sample', 'confirm-all')
+      await rememberSessionOwnerMode('sample-node', 'sample', 'confirm-all')
+      await internal.adapter('sample', agent.id, 'test').refreshPermissionMode()
       expect(internal.adapter('sample', agent.id, 'test').asks('create')).toBe(true)
     } finally {
       await runtime.destroy()
@@ -113,7 +119,7 @@ it.each([
 )
 
 it('keeps node agent tool settings in ordinary transferable agent definitions without offering them as vault models', () => {
-  useVault([])
+  Object.assign(useVault([]), { appId: 'sample-' + crypto.randomUUID() })
   AgentRegistry.destroy()
   AbeleConfig.getInstance().ai = structuredClone(DEFAULT_AI_SETTINGS)
   const agents = ensureNodeAgents('sample-node', 'Sample node', ['claude', 'pi', 'codex'])
@@ -131,7 +137,7 @@ it('keeps node agent tool settings in ordinary transferable agent definitions wi
 })
 
 it('subscribes before recovering every questionnaire page and answers through the durable SDK helper', async () => {
-  useVault([])
+  Object.assign(useVault([]), { appId: 'sample-' + crypto.randomUUID() })
   AgentRegistry.destroy()
   AbeleConfig.getInstance().ai = structuredClone(DEFAULT_AI_SETTINGS)
   const prompt = PromptSchema.parse({
@@ -193,7 +199,7 @@ it('subscribes before recovering every questionnaire page and answers through th
 })
 
 it('configures ordinary schemas before execution, advertises on reconnect and completes a fake-node call once', async () => {
-  useVault([])
+  Object.assign(useVault([]), { appId: 'sample-' + crypto.randomUUID() })
   AgentRegistry.destroy()
   AbeleConfig.getInstance().ai = structuredClone(DEFAULT_AI_SETTINGS)
   vi.spyOn(AbeleConfig.getInstance(), 'saveSettings').mockResolvedValue()

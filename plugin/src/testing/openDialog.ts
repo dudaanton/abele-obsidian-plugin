@@ -2,7 +2,7 @@ import { defineComponent, h, onUnmounted, onMounted, nextTick, type Component } 
 import dayjs from 'dayjs'
 import { GlobalStore } from '@/stores/GlobalStore'
 import { mountKit } from '@/components/obsidian/mount'
-import { networkDecision } from '@/slides/liveAdapter'
+import { askNetworkDecision } from '@/slides/liveAdapter'
 import { AbeleConfig } from '@/services/AbeleConfig'
 import { t } from '@/i18n'
 import { reviewKeyDestinations } from '@/secrets/destinationReview'
@@ -628,12 +628,7 @@ const DIALOGS: Record<string, (options?: DialogFixtureOptions) => void | Promise
     })
   },
   'slide-network': () => {
-    const app = GlobalStore.getInstance().app
-    const path = 'sample-network-probe.md'
-    const key = `abele-slide-network:${path}`
-    const previous = app.loadLocalStorage(key)
-    app.saveLocalStorage(key, null)
-    void networkDecision(app, path).finally(() => app.saveLocalStorage(key, previous))
+    void askNetworkDecision()
   },
   'selection-source': () => {
     void chooseAnchorSource([

@@ -1,3 +1,4 @@
+import { DeviceIntentStore } from '@/services/DeviceIntentStore'
 import type { App } from 'obsidian'
 import { IndexedDbStateStore } from '@/sync/IndexedDbStateStore'
 import { storageOf } from '@/sync/vaultWrites'
@@ -72,7 +73,20 @@ export async function recoverScriptProvenance(
   )
     throw new Error('Script connection changed while its recovery approval was open')
   // Retain the old descriptor and database for diagnosis; never delete another path's evidence.
-  storage.saveLocalStorage(`abele-script-provenance-retired:${id}`, previous)
+  await new DeviceIntentStore(app, factory).write(
+    `abele-script-provenance-retired:${id}`,
+    previous ?? null
+  )
+  assertNoScriptContextHold(storage)
+  if (
+    (await app.vault.adapter.exists(SCRIPT_CONTEXT_HOLD_FILE)) ||
+    context !==
+      JSON.stringify([
+        storage.loadLocalStorage(SCRIPT_TRUST_KEY),
+        storage.loadLocalStorage(CONNECTION_KEY),
+      ])
+  )
+    throw new Error('Script connection changed while preserving recovery evidence')
   storage.saveLocalStorage(SCRIPT_TRUST_KEY, value)
   if (JSON.stringify(storage.loadLocalStorage(SCRIPT_TRUST_KEY)) !== JSON.stringify(value))
     throw new Error('Script provenance descriptor was not persisted')

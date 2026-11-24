@@ -196,6 +196,8 @@ export class NodeObsidianTools {
     const key = JSON.stringify([session, agent, revision])
     let adapter = this.adapters.get(key)
     if (!adapter) {
+      let ownerMode: PermissionMode | undefined
+      let ownerReady = false
       adapter = new NodeObsidianAdapter(
         agent,
         revision,
@@ -232,11 +234,15 @@ export class NodeObsidianTools {
               .map((receipt) => receipt.result as unknown as AgentToolResult)
           ),
         () => {
+          if (!ownerReady) throw new Error('Session owner intent has not been loaded')
           const owner =
-            sessionOwnerMode(this.nodeId, session) ??
-            AgentRegistry.getInstance().get(agent)?.permissionMode ??
-            'confirm-all'
+            ownerMode ?? AgentRegistry.getInstance().get(agent)?.permissionMode ?? 'confirm-all'
           return delegatedPermissionMode(owner, this.sessionModes.get(session)) as PermissionMode
+        },
+        async () => {
+          ownerReady = false
+          ownerMode = await sessionOwnerMode(this.nodeId, session)
+          ownerReady = true
         }
       )
       this.adapters.set(key, adapter)
@@ -246,6 +252,7 @@ export class NodeObsidianTools {
   private async snapshot(session: string, agentId: string) {
     const agent = AgentRegistry.getInstance().get(agentId)
     if (!agent) throw new Error('This node agent is no longer configured')
+    await this.adapter(session, agentId, 'snapshot').refreshPermissionMode()
     if (
       this.permissionSnapshots &&
       !['delegate-target', 'delegation'].includes(session) &&

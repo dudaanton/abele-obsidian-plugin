@@ -1,3 +1,4 @@
+import { DeviceIntentStore } from '@/services/DeviceIntentStore'
 import { t } from '@/i18n'
 import type { App } from 'obsidian'
 import { choiceDialog } from '@/components/obsidian/dialogs'
@@ -16,8 +17,6 @@ const pendingDecisions = new WeakMap<App, Map<string, Promise<boolean>>>()
 /** The decision is local to this device and vault, and bound to the deck path. */
 export function networkDecision(app: App, path: string): Promise<boolean> {
   const key = `abele-slide-network:${path}`
-  const saved = app.loadLocalStorage(key)
-  if (typeof saved === 'boolean') return Promise.resolve(saved)
   let pending = pendingDecisions.get(app)
   if (!pending) {
     pending = new Map()
@@ -25,7 +24,22 @@ export function networkDecision(app: App, path: string): Promise<boolean> {
   }
   const existing = pending.get(key)
   if (existing) return existing
-  const decision = choiceDialog<'offline' | 'network'>({
+  const decision = (async () => {
+    const store = new DeviceIntentStore(app)
+    const saved = await store.read(key)
+    if (typeof saved === 'boolean') return saved
+    const allowed = await askNetworkDecision()
+    // Closing it without an answer is remembered as offline.
+    await store.write(key, allowed)
+    return allowed
+  })().finally(() => pending!.delete(key))
+  pending.set(key, decision)
+  return decision
+}
+
+// The prompt can also be previewed without modifying a saved decision.
+export async function askNetworkDecision(): Promise<boolean> {
+  const answer = await choiceDialog<'offline' | 'network'>({
     title: t('streamC.9d5e8fa2b811ff82'),
     message: t('streamC.45781bfb2ff820d1'),
     choices: [
@@ -42,15 +56,7 @@ export function networkDecision(app: App, path: string): Promise<boolean> {
       },
     ],
   })
-    // Closing it without an answer is the same as keeping it offline, and is remembered so.
-    .then((answer) => {
-      const allowed = answer === 'network'
-      app.saveLocalStorage(key, allowed)
-      return allowed
-    })
-    .finally(() => pending!.delete(key))
-  pending.set(key, decision)
-  return decision
+  return answer === 'network'
 }
 
 /** Adapter for the script view kit: mount it into the slide, not a new workspace tab. */

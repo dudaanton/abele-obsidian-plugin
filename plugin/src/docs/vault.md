@@ -157,8 +157,7 @@ authorize changing the owner's agent settings.
 An exact create retry is refused if its retained bypass is no longer authorized by the
 current owner mode; changing the retained mode requires a new task key. Stricter retained
 requests remain exact retries even if the owner subsequently allows bypass.
-Explicit session choices made on a device are stored in vault-scoped device local storage
-under `abele-node-session-owner-mode:` plus
+Explicit session choices are stored in vault-scoped device-local IndexedDB under `abele-node-session-owner-mode:` plus
 the JSON pair of node and session IDs. For device-side Obsidian tool execution, this choice
 (or the current agent default when absent) is bounded by the stricter node-reported mode;
 node-reported bypass alone never grants device-side bypass.
@@ -1131,7 +1130,7 @@ notes derive source counts and a final Sources slide in memory only; no appendix
 metadata is written into the note. Fenced `css`
 blocks store deck styling. `slide-script` fences store named-script parameters and refresh policy;
 `slide-html` fences store HTML. Optional `htmlNetwork: true` requests interactive HTML network
-permission, not an approval itself. Vault-scoped device local storage keeps a boolean under
+permission, not an approval itself. Vault-scoped device-local IndexedDB keeps a boolean under
 `abele-slide-network:<deck path>`; allow, deny and dismissal are remembered, do not sync or travel
 in settings transfer, and a renamed deck needs a new decision. Pending decisions and activation
 lifetimes are ephemeral. Nothing is written to a side file. Agent deck edits keep this same
@@ -4127,3 +4126,20 @@ snapshots are rebuilt from the node. Agent choices (`abele.node.last-agent:`) an
 launch arguments (`abele-debug-launch-arguments:`) each share a 32,768-character budget.
 Their older entries are trimmed at startup and after writes, prioritizing the entry just saved.
 Permission decisions and recovery evidence are not subject to these cache budgets.
+
+
+## Durable device intent and recovery evidence
+
+The vault-scoped IndexedDB database `abele-device-intent:<appId>` holds session owner
+modes, slide network choices, and retired script provenance descriptors. These are durable
+intent/evidence, not evictable caches. Startup imports all three legacy localStorage key
+families. Each import commits before deleting its source. Failed writes retain the source;
+interrupted cleanup retries on startup or access. Durable values win over stale mirrors;
+conflicting legacy bytes are retained in the database's `legacy` store for inspection.
+Malformed retired evidence is preserved verbatim and is accessible through raw reads.
+
+New owner choices are committed before session configuration proceeds. Tool preparation
+and execution reload the durable choice and fail if it cannot be read. Retired provenance
+is committed before replacing the active descriptor, with the recovery context rechecked
+after that asynchronous commit. No per-id in-memory cache is maintained by this store;
+database connections close after each operation. These records never sync or transfer.
