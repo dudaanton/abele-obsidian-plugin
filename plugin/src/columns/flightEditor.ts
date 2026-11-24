@@ -5,12 +5,18 @@ import {
   COLUMN_FLIGHT_FLAG,
   columnFlight,
   createColumnFlight,
+  compactColumnFlight,
   setColumnFlight,
   type ColumnFlightRecorder,
 } from './flight'
 
 /** Installed only after the harness explicitly enables recording for this page load. */
 export function registerColumnFlight(plugin: Plugin): void {
+  try {
+    compactColumnFlight(window.localStorage)
+  } catch {
+    // An unavailable diagnostic store must not affect editor registration.
+  }
   let deactivate: (() => void) | undefined
   const activate = () => {
     let recorder: ColumnFlightRecorder | undefined

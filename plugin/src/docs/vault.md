@@ -30,6 +30,9 @@ Redraw entries also retain bounded metadata: selection offsets, up to 64 changed
 block/sides, lengths and parent consistency. Widget lifecycle entry/exit hooks are scoped
 to that redraw and flushed synchronously, including host widgets. No document content or
 DOM contents are included in this metadata.
+The serialized buffer is capped at 65,536 characters, keeping the newest records that fit;
+oversized traces from previous loads are compacted during plugin startup. Site names are
+limited to 128 characters and details to 1,200 characters, including redraw metadata.
 A flag from an earlier page load cannot enable recording, so relaunch preserves the last
 saved trace for inspection. A same-page `storage` event applies a changed flag; removing
 the flag and sending that event stops recording. Neither key is synced or transferred.
@@ -4113,3 +4116,14 @@ nanosecond birth time. The host checks it again on the captured object before ap
 conditional effect. Missing birth-time authority never falls back to stat or equal content.
 Adapter-only hosts do not expose this capability; after a restart a pending move holds a
 present source and retains its owned stage until the decision can safely resolve.
+
+## Device-local node metadata caches
+
+Node path snapshots in vault-scoped `abele-node-path-cache:<registration>` keys are
+disposable metadata, never retained file edits. Startup and node removal delete snapshots
+for absent registrations. A snapshot is at most 32,768 characters; the family shares a
+65,536-character budget including keys. Eviction leaves active models intact; missing
+snapshots are rebuilt from the node. Agent choices (`abele.node.last-agent:`) and debugger
+launch arguments (`abele-debug-launch-arguments:`) each share a 32,768-character budget.
+Their older entries are trimmed at startup and after writes, prioritizing the entry just saved.
+Permission decisions and recovery evidence are not subject to these cache budgets.

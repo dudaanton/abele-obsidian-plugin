@@ -1,3 +1,4 @@
+import { pruneNodePathCaches } from '@/helpers/localStorageBudget'
 import { UiError, uiMessage } from '@/i18n/streamBErrors'
 import { watch, type WatchStopHandle } from 'vue'
 import { GlobalStore } from '@/stores/GlobalStore'
@@ -30,21 +31,26 @@ export class NodePathService {
     if (saved && typeof saved === 'object' && !Array.isArray(saved))
       for (const [key, id] of Object.entries(saved))
         if (typeof id === 'string') this.seen.set(key, id)
-    this.stopNodes = watch(NodeService.getInstance().nodes, (nodes) => {
-      for (const [id, model] of this.models)
-        if (!nodes.some((n) => n.id === id)) {
-          model.destroy()
-          this.models.delete(id)
-          this.stops.get(id)?.()
-          this.stops.delete(id)
-          this.loads.delete(id)
-          this.cacheStops.get(id)?.()
-          this.cacheStops.delete(id)
-          this.debugStops.get(id)?.()
-          this.debugStops.delete(id)
-          app.saveLocalStorage(`abele-node-path-cache:${id}`, null)
-        }
-    })
+    this.stopNodes = watch(
+      NodeService.getInstance().nodes,
+      (nodes) => {
+        pruneNodePathCaches(app, new Set(nodes.map((node) => node.id)))
+        for (const [id, model] of this.models)
+          if (!nodes.some((n) => n.id === id)) {
+            model.destroy()
+            this.models.delete(id)
+            this.stops.get(id)?.()
+            this.stops.delete(id)
+            this.loads.delete(id)
+            this.cacheStops.get(id)?.()
+            this.cacheStops.delete(id)
+            this.debugStops.get(id)?.()
+            this.debugStops.delete(id)
+            app.saveLocalStorage(`abele-node-path-cache:${id}`, null)
+          }
+      },
+      { immediate: true }
+    )
   }
   model(registrationId: string): NodePathModel {
     const existing = this.models.get(registrationId)
@@ -86,8 +92,13 @@ export class NodePathService {
         ],
         () => {
           const parsed = NodePathSnapshotSchema.safeParse(model.snapshot())
-          if (parsed.success && JSON.stringify(parsed.data).length <= 1024 * 1024)
-            app.saveLocalStorage(cacheKey, parsed.data)
+          if (parsed.success) {
+            // Snapshots are disposable metadata; live models remain authoritative in memory.
+            app.saveLocalStorage(cacheKey, null)
+            if (JSON.stringify(parsed.data).length <= 32768)
+              app.saveLocalStorage(cacheKey, parsed.data)
+            pruneNodePathCaches(app, new Set(service.nodes.value.map((node) => node.id)), cacheKey)
+          }
         }
       )
     )

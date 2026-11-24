@@ -29,6 +29,7 @@ interface FlightView {
   viewport: { from: number; to: number }
 }
 const capacity = 500
+const characterBudget = 65536
 const clock: FlightClock = {
   now: () => Date.now(),
   schedule: (callback) => {
@@ -89,8 +90,15 @@ export class ColumnFlightRecorder {
     this.docLen = docLen
     this.viewportFrom = viewportFrom
     this.viewportTo = viewportTo
-    this.ring[this.next] = { t, site, docLen, viewportFrom, viewportTo, counter: ++this.counter }
-    if (detail !== undefined) this.ring[this.next].detail = detail
+    this.ring[this.next] = {
+      t,
+      site: site.slice(0, 128),
+      docLen,
+      viewportFrom,
+      viewportTo,
+      counter: ++this.counter,
+    }
+    if (detail !== undefined) this.ring[this.next].detail = detail.slice(0, 1200)
     this.next = (this.next + 1) % capacity
     this.pending++
     // This elapsed-time check also works while a synchronous loop starves timers.
@@ -122,7 +130,7 @@ export class ColumnFlightRecorder {
           : [...this.ring.slice(this.next), ...this.ring.slice(0, this.next)],
     }
     try {
-      this.storage.setItem(COLUMN_FLIGHT_BUFFER, JSON.stringify(snapshot))
+      this.storage.setItem(COLUMN_FLIGHT_BUFFER, boundedSnapshot(snapshot))
       this.pending = 0
       this.lastPersist = this.clock.now()
     } catch {
@@ -149,7 +157,33 @@ function isRecord(value: FlightRecord): boolean {
   )
 }
 
-/** A flag from a previous WebView load must leave the frozen trace untouched. */
+function boundedSnapshot(snapshot: FlightSnapshot): string {
+  let size = JSON.stringify({ ...snapshot, entries: [] }).length
+  let start = snapshot.entries.length
+  while (start > 0) {
+    const length = JSON.stringify(snapshot.entries[start - 1]).length + 1
+    if (size + length > characterBudget) break
+    size += length
+    start--
+  }
+  return JSON.stringify({ ...snapshot, entries: snapshot.entries.slice(start) })
+}
+
+// Compact old oversized traces even when diagnostics are not enabled this load.
+export function compactColumnFlight(storage: FlightStorage): void {
+  try {
+    const text = storage.getItem(COLUMN_FLIGHT_BUFFER)
+    if (!text || text.length <= characterBudget) return
+    const saved = JSON.parse(text) as FlightSnapshot
+    if (!Array.isArray(saved.entries)) return
+    saved.entries = saved.entries.filter(isRecord).slice(-capacity)
+    storage.setItem(COLUMN_FLIGHT_BUFFER, boundedSnapshot(saved))
+  } catch {
+    // Diagnostics must never prevent startup.
+  }
+}
+
+/** A flag from a previous WebView load must leave the bounded frozen trace untouched. */
 export function createColumnFlight(
   storage: FlightStorage,
   epoch: string,

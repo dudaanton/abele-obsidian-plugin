@@ -1,3 +1,4 @@
+import { pruneNodePathCaches, trimLocalPreference } from '@/helpers/localStorageBudget'
 import { uiField, uiMessage, uiErrorMessage } from '@/i18n/streamBErrors'
 import { t } from '@/i18n'
 import { ref, watch, type Ref } from 'vue'
@@ -659,7 +660,10 @@ export class NodeService {
       setSecret: (id, value) => secrets().setLocal(id, value),
       removeSecret: (id) => secrets().forgetLocal(id),
     })
+    trimLocalPreference(app, 'abele.node.last-agent:')
+    trimLocalPreference(app, 'abele-debug-launch-arguments:')
     this.nodes = ref(this.registry.list())
+    pruneNodePathCaches(app, new Set(this.nodes.value.map((node) => node.id)))
     void pruneNodeDatabases(
       indexedDB,
       this.installation,
@@ -921,6 +925,10 @@ export class NodeService {
     this.connections.delete(id)
     this.registry.remove(id)
     this.nodes.value = this.registry.list()
+    pruneNodePathCaches(
+      GlobalStore.getInstance().app,
+      new Set(this.nodes.value.map((node) => node.id))
+    )
     AgentsService.getInstance().setNodes(this.nodes.value)
   }
 

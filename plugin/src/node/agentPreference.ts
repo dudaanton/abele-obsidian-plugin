@@ -1,3 +1,4 @@
+import { trimLocalPreference } from '@/helpers/localStorageBudget'
 import type { AgentChoice, NodeProvider } from './providers'
 
 export function preferredAgentChoices(
@@ -33,13 +34,14 @@ export function lastNodeAgent(
 export function rememberNodeAgent(
   node: string,
   choice: AgentChoice,
-  storage: { saveLocalStorage(key: string, value: string): void }
+  storage: { appId?: string; saveLocalStorage(key: string, value: string): void }
 ): void {
   try {
     storage.saveLocalStorage(
       key(node),
       choice.agent ? `${choice.provider}:${choice.agent}` : choice.provider
     )
+    trimLocalPreference(storage, 'abele.node.last-agent:', key(node))
   } catch (error) {
     console.debug('[Abele node] agent preference unavailable', error)
   }

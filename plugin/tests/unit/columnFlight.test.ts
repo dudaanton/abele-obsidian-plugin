@@ -1,5 +1,10 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { COLUMN_FLIGHT_BUFFER, COLUMN_FLIGHT_FLAG, createColumnFlight } from '@/columns/flight'
+import {
+  COLUMN_FLIGHT_BUFFER,
+  COLUMN_FLIGHT_FLAG,
+  createColumnFlight,
+  compactColumnFlight,
+} from '@/columns/flight'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -164,4 +169,35 @@ it('uses the default 100 ms heartbeat and cancels it on destruction', () => {
     recorder.destroy()
   }
   expect(vi.getTimerCount()).toBe(0)
+})
+
+it('bounds serialized diagnostics even with large detail strings', () => {
+  const f = fixture()
+  const recorder = createColumnFlight(f.storage, 'sample-load', f.options)!
+  for (let i = 0; i < 500; i++) recorder.record('sample', 1, 0, 1, 'x'.repeat(10000))
+  recorder.destroy()
+  expect(f.values.get(COLUMN_FLIGHT_BUFFER)!.length).toBeLessThanOrEqual(65536)
+})
+
+it('compacts oversized frozen traces without enabling recording or changing the epoch', () => {
+  const f = fixture('previous-load')
+  const entries = Array.from({ length: 500 }, (_, counter) => ({
+    t: 1,
+    site: 'sample',
+    docLen: 1,
+    viewportFrom: 0,
+    viewportTo: 1,
+    counter,
+    detail: 'x'.repeat(1200),
+  }))
+  f.values.set(
+    COLUMN_FLIGHT_BUFFER,
+    JSON.stringify({ version: 1, epoch: 'previous-load', entries })
+  )
+  compactColumnFlight(f.storage)
+  expect(f.values.get(COLUMN_FLIGHT_BUFFER)!.length).toBeLessThanOrEqual(65536)
+  expect(f.read().epoch).toBe('previous-load')
+  expect(f.read().entries.at(-1).counter).toBe(499)
+  expect(createColumnFlight(f.storage, 'sample-load', f.options)).toBeUndefined()
+  expect(f.schedule).not.toHaveBeenCalled()
 })

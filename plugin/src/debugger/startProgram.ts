@@ -1,3 +1,4 @@
+import { trimLocalPreference } from '@/helpers/localStorageBudget'
 import { t } from '@/i18n'
 // Starting a program of a node chat's folder under the debugger: the node runs it with its own
 // Node and holds it on its first line; the program's file opens with its margin, so record points
@@ -403,16 +404,21 @@ export async function askAndStartProgram(
           const saved: unknown = app.loadLocalStorage(argumentsKey(path))
           return typeof saved === 'string' ? saved : ''
         },
-        rememberArguments: (path: string, text: string) =>
-          app.saveLocalStorage(argumentsKey(path), text),
+        rememberArguments: (path: string, text: string) => {
+          app.saveLocalStorage(argumentsKey(path), text)
+          trimLocalPreference(app, 'abele-debug-launch-arguments:', argumentsKey(path))
+        },
         configurationFor: (path: string) => {
           const saved = z
             .object({ runtimeArguments: z.string(), cwd: z.string(), environment: z.string() })
             .safeParse(app.loadLocalStorage(`${argumentsKey(path)}:configuration`))
           return saved.success ? saved.data : undefined
         },
-        rememberConfiguration: (path: string, configuration: LaunchConfiguration) =>
-          app.saveLocalStorage(`${argumentsKey(path)}:configuration`, configuration),
+        rememberConfiguration: (path: string, configuration: LaunchConfiguration) => {
+          const key = `${argumentsKey(path)}:configuration`
+          app.saveLocalStorage(key, configuration)
+          trimLocalPreference(app, 'abele-debug-launch-arguments:', key)
+        },
         launch: (
           path: string,
           argv: string[],
