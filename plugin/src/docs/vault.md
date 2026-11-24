@@ -118,6 +118,12 @@ after restart without occupying the WebView localStorage quota.
 If the section store is unavailable, settings loading, reloading and saving remain blocked
 until its policy is available. Failed section and opening-history commits retain the latest
 snapshot for retry before a subsequent flush can succeed.
+Section and opening-history flushes first commit an IndexedDB retry receipt. The main
+transaction retires it atomically with the snapshot write. Startup replays outstanding
+receipts before exposing settings. Shutdown can close after a failed commit when the
+receipt is durable; if receipt persistence also fails, the stopped runtime retains its
+queue and a later startup retries the receipt on a fresh database connection. Failed
+engine shutdown remains blocked until the engine itself can stop safely.
 On a cold start without section storage, Abele initializes complete defaults while keeping
 settings loading and saving paused. A persistent notice explains the pause and offers a
 plugin reload to retry normal startup; reopening the vault retries it too. The retry does

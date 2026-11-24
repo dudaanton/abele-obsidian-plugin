@@ -14,6 +14,12 @@ import {
 } from './hostSyncRecords'
 import { HostScanCache, type ScanFingerprint } from './hostScanCache'
 import {
+  readSnapshotRetries,
+  snapshotChanges,
+  stageSnapshotRetry,
+  SNAPSHOT_RETRY_PREFIX,
+} from './hostSnapshotRetry'
+import {
   DATABASE,
   RECORDS,
   STORE,
@@ -133,6 +139,12 @@ export class HostSyncStorage implements LocalStorage {
   private pending: HostChange[] = []
   /** Editable snapshots can be retried; file-effect journals always require a fresh read. */
   private retryable: HostChange[] = []
+  private readonly snapshotRetryKey = SNAPSHOT_RETRY_PREFIX + crypto.randomUUID()
+  private readonly snapshotRetryKeys = new Set<string>()
+  private snapshotRetryDurable = false
+  get hasDurableSnapshotRetry(): boolean {
+    return this.snapshotRetryDurable
+  }
   private tail: Promise<void> = Promise.resolve()
   private running: Promise<void> | undefined
   private scheduled = false
@@ -143,7 +155,8 @@ export class HostSyncStorage implements LocalStorage {
   private constructor(
     private readonly db: IDBDatabase,
     private readonly namespace: string,
-    private readonly local: LocalStorage
+    private readonly local: LocalStorage,
+    private readonly factory: IDBFactory
   ) {
     this.scan = new HostScanCache(db, namespace)
   }
@@ -156,9 +169,18 @@ export class HostSyncStorage implements LocalStorage {
     if (!namespace) throw new Error('Sync host storage requires a vault identity')
     const db = await openHostDatabase(factory)
     try {
-      const result = new HostSyncStorage(db, namespace, local)
+      const result = new HostSyncStorage(db, namespace, local, factory)
       for (const [key, value] of await migrateHostStorage(db, namespace, local))
         result.setView(key, value)
+      // Replay before exposing a draft or removing legacy data. Each failed writer
+      // has its own receipt, so one window cannot erase another's pending recovery.
+      for (const retry of await readSnapshotRetries(db, namespace)) {
+        result.snapshotRetryKeys.add(retry.key)
+        result.retryable = retry.value
+        await result.flush()
+        for (const key of new Set(retry.value.map((change) => change.key)))
+          await result.readValue(key)
+      }
       // Free the large legacy copies before any compatibility write can hit the quota.
       for (const key of ['abele-sync-settings-sections-v1', 'abele-external-last-opened-v1'])
         local.saveLocalStorage(key, null)
@@ -351,20 +373,18 @@ export class HostSyncStorage implements LocalStorage {
       const batch = [...this.retryable, ...changes]
       this.retryable = []
       try {
-        await this.commit(batch, receipts)
-      } catch (error) {
-        const retries = new Map<string, HostChange>()
-        for (const change of batch) {
-          if (
-            change.key !== 'abele-sync-settings-sections-v1' &&
-            change.key !== 'abele-external-last-opened-v1'
-          )
-            continue
-          const id = JSON.stringify([change.key, change.id])
-          const prior = retries.get(id)
-          retries.set(id, { ...change, before: prior ? prior.before : change.before })
+        const snapshots = snapshotChanges(batch)
+        if (snapshots.length) {
+          this.snapshotRetryDurable = false
+          await stageSnapshotRetry(this.db, this.namespace, this.snapshotRetryKey, snapshots)
+          this.snapshotRetryKeys.add(this.snapshotRetryKey)
+          this.snapshotRetryDurable = true
         }
-        this.retryable = [...retries.values()]
+        await this.commit(batch, receipts)
+        this.snapshotRetryKeys.clear()
+        this.snapshotRetryDurable = false
+      } catch (error) {
+        this.retryable = snapshotChanges(batch)
         throw error
       }
     })
@@ -381,7 +401,10 @@ export class HostSyncStorage implements LocalStorage {
     changes: HostChange[],
     receipts: readonly { path: string; value: ScanFingerprint; revision: number }[] = []
   ): Promise<void> {
-    const tx = this.db.transaction(receipts.length ? [RECORDS, STORE] : RECORDS, 'readwrite')
+    const tx = this.db.transaction(
+      receipts.length || this.snapshotRetryKeys.size ? [RECORDS, STORE] : RECORDS,
+      'readwrite'
+    )
     const done = completion(tx, 'cannot commit sync host records')
     void done.catch(() => {})
     const groups = new Map<string, Map<string, HostRecord>>()
@@ -468,6 +491,8 @@ export class HostSyncStorage implements LocalStorage {
         if (key === 'abele-sync-registry-write-v1' && joinHostValue([...live.values()]) != null)
           throw new Error('Unfinished registry update requires retry before host commit')
       }
+      for (const key of this.snapshotRetryKeys)
+        await wait(tx.objectStore(STORE).delete([this.namespace, key]))
       await done
       this.invalidate(false)
       this.channel?.postMessage(null)
@@ -488,6 +513,18 @@ export class HostSyncStorage implements LocalStorage {
     if (prepared.get(this.local) === this) prepared.delete(this.local)
     this.channel?.close()
     this.db.close()
+  }
+  /** Only after engine shutdown: recover a receipt even if the old IDB connection died. */
+  async retainSnapshotsOnFreshConnection(): Promise<void> {
+    const changes = snapshotChanges([...this.retryable, ...this.pending])
+    if (!changes.length) throw new Error('No pending settings snapshot can recover this shutdown')
+    const db = await openHostDatabase(this.factory)
+    try {
+      await stageSnapshotRetry(db, this.namespace, this.snapshotRetryKey, changes)
+      this.snapshotRetryDurable = true
+    } finally {
+      db.close()
+    }
   }
 }
 

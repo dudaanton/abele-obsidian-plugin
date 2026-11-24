@@ -104,7 +104,8 @@ import '@/composables/useFooterView'
 import { prepareTokenConnections } from './sync/tokenRegistryPreparation'
 import { prepareHostSyncStorage } from './sync/hostSyncStorage'
 import { DurableTokenSecrets, desktopCredentialCipher } from './sync/durableTokenSecrets'
-import { pendingTeardown, recordTeardown } from './sync/teardownBarrier'
+import { pendingTeardown } from './sync/teardownBarrier'
+import { retireHostStorage } from './sync/hostStorageShutdown'
 import { tokenUi, TokenUi } from './sync/tokenUi'
 import { SyncStartupTimeline, timedSyncTransport } from './sync/startupTimeline'
 import { openDeviceReviews } from './sync/openDeviceReviews'
@@ -334,14 +335,9 @@ export default class AbelePlugin extends Plugin {
             }
             this.register(() => {
               const stopping = Promise.all([this.tokenEngines?.close(), pendingTeardown(this.app)])
-              const closing = stopping
-                .then(() => storage.flush())
-                .catch((error) => {
-                  console.debug('Settings section storage flush failed', error)
-                  throw error
-                })
-                .finally(() => storage.close())
-              recordTeardown(this.app, closing)
+              void retireHostStorage(this.app, storage, stopping).catch((error) => {
+                console.error('[Abele] settings storage shutdown requires retry', error)
+              })
             })
             installSectionSettings(AbeleConfig.getInstance(), this.app)
           },
@@ -571,7 +567,8 @@ export default class AbelePlugin extends Plugin {
                 }
               }
             })
-            recordTeardown(this.app, closed)
+            // TokenEngines records its stop barrier; the settings lifecycle owns the
+            // final storage barrier, including any recoverable snapshot commit failure.
             void closed.catch(() => console.error('[Abele] token sync shutdown requires recovery'))
           })
           this.registerEvent(
