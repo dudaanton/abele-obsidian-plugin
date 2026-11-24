@@ -1,3 +1,4 @@
+import { DEVICE_INTENT_FIXTURE } from './helpers/deviceIntentFixture'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalJson, evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
@@ -5,7 +6,8 @@ import { shotDir } from './helpers/shots'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
-const PATH = 'sample-agent-deck.md'
+const RUN_ID = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)
+const PATH = 'sample-agent-deck-' + RUN_ID + '.md'
 const SHOTS = shotDir('abele-slides-agent')
 const SOURCE = `---
 type: presentation
@@ -71,7 +73,8 @@ afterAll(async () => {
     const paths=[${JSON.stringify(PATH)},...(s?.pictures??[])]
     for(const leaf of app.workspace.getLeavesOfType('abele-deck'))if(leaf.view.file?.path===${JSON.stringify(PATH)})leaf.detach()
     for(const path of paths){const file=app.vault.getAbstractFileByPath(path);if(file)await app.vault.delete(file)}
-    app.saveLocalStorage('abele-slide-network:'+${JSON.stringify(PATH)},null)
+    ${DEVICE_INTENT_FIXTURE}
+    await deviceIntentFixture('abele-slide-network:'+${JSON.stringify(PATH)},'reset')
     delete window.__sampleDeckAgent;delete window.__sampleDeckExecuted
     await app.workspace.changeLayout(${JSON.stringify(layout)})
     return true
@@ -126,8 +129,9 @@ describe.skipIf(!available)('agent deck authoring and inspection', () => {
     const result = JSON.parse(
       await evalLong(`(async()=>{
       ${PRELUDE}
+      ${DEVICE_INTENT_FIXTURE}
       const report=JSON.parse((await call('deck_check',{path:${JSON.stringify(PATH)}})).content[0].text)
-      return JSON.stringify({slides:report.slides,executed:!!window.__sampleDeckExecuted,consent:app.loadLocalStorage('abele-slide-network:'+${JSON.stringify(PATH)})??null,dialogs:document.querySelectorAll('.modal-container').length,hosts:document.querySelectorAll('body > div[aria-hidden="true"] .abele-deck').length})
+      return JSON.stringify({slides:report.slides,executed:!!window.__sampleDeckExecuted,consent:await deviceIntentFixture('abele-slide-network:'+${JSON.stringify(PATH)})??null,dialogs:document.querySelectorAll('.modal-container').length,hosts:document.querySelectorAll('body > div[aria-hidden="true"] .abele-deck').length})
     })()`)
     )
     expect(result.slides).toHaveLength(4)
@@ -251,10 +255,11 @@ describe.skipIf(!available)('agent deck authoring and inspection', () => {
     const result = JSON.parse(
       await evalLong(`(async()=>{
       ${PRELUDE}
-      const path='sample-positioned-deck.md',key='abele-slide-network:'+path
+      ${DEVICE_INTENT_FIXTURE}
+      const path=${JSON.stringify('sample-positioned-deck-' + RUN_ID + '.md')},key='abele-slide-network:'+path
       if(app.vault.getAbstractFileByPath(path))throw Error('position fixture exists')
       const file=await app.vault.create(path,${JSON.stringify('---\ntype: presentation\nhtmlNetwork: true\n---\n```slide-html\n<button>Sample</button>\n```\n---\n# Second\n---\n# Requested')})
-      s.ctx.scope.addFile(path);app.saveLocalStorage(key,null)
+      s.ctx.scope.addFile(path);const intent=await deviceIntentFixture(key,'reset')
       let done=false,error=null
       const opening=call('present',{path,slide:3}).then(()=>done=true,e=>{error=String(e);done=true})
       try {
@@ -268,10 +273,10 @@ describe.skipIf(!available)('agent deck authoring and inspection', () => {
         await opening
         if(error)throw Error(error)
         const view=app.workspace.getLeavesOfType('abele-deck').find(l=>l.view.file?.path===path).view
-        return JSON.stringify({asked,index:view.viewer.index+1,consent:app.loadLocalStorage(key)??null})
+        return JSON.stringify({asked,index:view.viewer.index+1,consent:await deviceIntentFixture(key)??null})
       } finally {
         for(const leaf of app.workspace.getLeavesOfType('abele-deck'))if(leaf.view.file?.path===path)leaf.detach()
-        await app.vault.delete(file);app.saveLocalStorage(key,null)
+        await app.vault.delete(file);await deviceIntentFixture(key,'restore',intent)
       }
     })()`)
     )

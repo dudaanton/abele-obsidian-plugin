@@ -1,3 +1,4 @@
+import { DEVICE_INTENT_FIXTURE } from './deviceIntentFixture'
 /**
  * Script fixtures own feature flags and exact-source decisions, including managed vaults.
  * Keep the serializable snapshot in the test process across reloads. The vault must be
@@ -5,7 +6,9 @@
  * registry because a running sync host could mutate the same trust store.
  * These functions run inside the app, also in probes that have a single try/finally.
  */
-export const SCRIPT_FIXTURE = String.raw`
+export const SCRIPT_FIXTURE =
+  DEVICE_INTENT_FIXTURE +
+  String.raw`
   const fixtureFolderMarker = 'abele-test-script-fixture.txt'
   const fixtureFolderSignature = 'abele-script-fixture-v1'
   async function removeScriptFixtureFolder(folder, sources) {
@@ -189,7 +192,7 @@ export const SCRIPT_FIXTURE = String.raw`
     if (snapshot.marker !== null) await app.vault.adapter.writeBinary(fixtureMarker, new Uint8Array(snapshot.marker).buffer)
     else if (await app.vault.adapter.exists(fixtureMarker)) await app.vault.adapter.remove(fixtureMarker)
     if (created?.id && created.id !== old?.id) {
-      app.saveLocalStorage('abele-script-provenance-retired:' + created.id, null)
+      await deviceIntentFixture('abele-script-provenance-retired:' + created.id, 'reset')
       await new Promise((resolve, reject) => {
         const request = indexedDB.deleteDatabase('abele-script-provenance-' + created.id)
         request.onsuccess = resolve; request.onerror = () => reject(request.error)

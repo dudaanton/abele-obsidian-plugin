@@ -1,3 +1,4 @@
+import { DEVICE_INTENT_FIXTURE } from './helpers/deviceIntentFixture'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { evalJson, evalLong, hasTestApi, isObsidianRunning } from './helpers/obsidianCli'
 import { onPhone, targets } from './helpers/target'
@@ -184,17 +185,19 @@ describe.skipIf(!available)('live slide lifecycle', () => {
       await evalLong(`(async()=>{
       const leaf=app.workspace.getLeavesOfType('abele-deck').find(l=>l.view.file?.path===${JSON.stringify(PATH)})
       const viewer=leaf.view.viewer,file=leaf.view.file
+      ${DEVICE_INTENT_FIXTURE}
       const key='abele-slide-network:'+file.path
-      app.saveLocalStorage(key,null)
+      const intent=await deviceIntentFixture(key,'reset')
+      try {
       await viewer.go(0)
       await app.vault.modify(file,${JSON.stringify(SOURCE.replace('type: presentation', 'type: presentation\nhtmlNetwork: true').replace('---\n# End', '```slide-html\n<h2>Parallel frame</h2>\n```\n---\n# End'))})
-      try {
         const until=async(fn)=>{for(let i=0;i<50;i++){const result=fn();if(result)return result;await new Promise(r=>setTimeout(r,100))}return null}
         await until(()=>viewer.model?.settings.properties.htmlNetwork===true)
         const pending=viewer.go(1)
         const button=await until(()=>[...document.querySelectorAll('.modal-container button')].find(b=>b.textContent?.includes('Allow network')))
         const asked=!!button
         const dialogs=document.querySelectorAll('.modal-container').length
+        const initialDecision=await deviceIntentFixture(key)
         if(window.__e2eHost)await window.__e2eHost.shot(${JSON.stringify(SHOTS + '/network-consent.png')})
         button?.click()
         await pending
@@ -205,15 +208,23 @@ describe.skipIf(!available)('live slide lifecycle', () => {
         await viewer.go(1)
         // Native phone dialogs close with an animation; test the settled state, not its first frame.
         const remembered=!!await until(()=>viewer.viewport.querySelector('.abele-slide:not([hidden]) iframe')?.srcdoc.includes('connect-src https:') && !document.querySelector('.modal-container'))
-        return JSON.stringify({asked,dialogs,allowed,remembered})
+        return JSON.stringify({asked,dialogs,allowed,remembered,initialDecision,savedDecision:await deviceIntentFixture(key)})
       } finally {
-        await viewer.go(0)
-        await app.vault.modify(file,${JSON.stringify(SOURCE)})
-        app.saveLocalStorage(key,null)
+        try {
+          await viewer.go(0)
+          await app.vault.modify(file,${JSON.stringify(SOURCE)})
+        } finally { await deviceIntentFixture(key,'restore',intent) }
       }
     })()`)
     ) as Record<string, boolean>
-    expect(result).toEqual({ asked: true, dialogs: 1, allowed: true, remembered: true })
+    expect(result).toEqual({
+      asked: true,
+      dialogs: 1,
+      allowed: true,
+      remembered: true,
+      initialDecision: null,
+      savedDecision: true,
+    })
   })
 
   it('refuses offline script execution and declarative navigation on mobile and desktop', async () => {

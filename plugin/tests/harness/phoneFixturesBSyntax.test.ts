@@ -1,3 +1,5 @@
+import { OWNED_MEDIA_FIXTURE } from '../e2e/helpers/ownedMediaFixture'
+import { DEVICE_INTENT_FIXTURE } from '../e2e/helpers/deviceIntentFixture'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import { expect, it } from 'vitest'
@@ -9,6 +11,8 @@ import * as chatProbeInteractions from '../helpers/chatProbeInteractions'
 const files = [
   'bookLibraryScript',
   'slidesLive',
+  'slidesAgent',
+  'mediaBulkSafety',
   'canvasGeometry',
   'chatNavigation',
   'modelTimeout',
@@ -23,6 +27,8 @@ it.each(files)('parses emitted browser scripts in %s without contacting a live a
   const tree = ts.createSourceFile(name, source, ts.ScriptTarget.Latest, true)
   const scope: Record<string, unknown> = {
     SCRIPT_FIXTURE,
+    DEVICE_INTENT_FIXTURE,
+    OWNED_MEDIA_FIXTURE,
     WAIT_PRELUDE,
     findToolbarScroller,
     visibleToolbarTarget,
