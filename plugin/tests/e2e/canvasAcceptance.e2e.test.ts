@@ -17,6 +17,7 @@ import { withNativeInput } from './helpers/nativeInput'
 import { shotDir } from './helpers/shots'
 import { RESTORE_PHONE_SCRIPT } from './helpers/phoneState'
 import { canvasChrome } from './helpers/canvasChrome'
+import { typeField } from './helpers/typeField'
 
 targets('desktop', 'phone')
 const available = isObsidianRunning() && hasTestApi()
@@ -120,7 +121,21 @@ const type = async (text: string, selector: string) => {
         { timeout: 20_000, interval: 150 }
       )
       .toMatchObject({ focused: true, ready: true })
-    typeText(text)
+    await typeField(text, {
+      type: typeText,
+      read: () =>
+        run<string>(`
+        const el=document.querySelector(${JSON.stringify(selector)})
+        if(!el||document.activeElement!==el)throw Error('The typing field lost focus')
+        return el.value
+      `),
+      select: () =>
+        run(`
+        const el=document.querySelector(${JSON.stringify(selector)})
+        if(!el||document.activeElement!==el)throw Error('The typing field lost focus')
+        el.setSelectionRange(0,el.value.length);return true
+      `),
+    })
   } else
     await withNativeInput(() =>
       run(`
