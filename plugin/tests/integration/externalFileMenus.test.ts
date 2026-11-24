@@ -163,3 +163,27 @@ it('rechecks last-opened age after confirmation instead of applying an obsolete 
   expect(evict).not.toHaveBeenCalled()
   externalActionsOf.delete(app.vault)
 })
+
+it('rejects malformed opening history before previewing an offload rule', async () => {
+  const app = useVault([{ path: 'Media/sample.pdf', content: 'abc' }])
+  app.saveLocalStorage('abele-external-last-opened-v1', { 'Media/sample.pdf': 'invalid' })
+  const actions = new ExternalFileActions({
+    inspect: async (path) => ({ path, size: 3, version: 'v', pinned: false, blocked: null }),
+    evict: vi.fn(async () => ({ status: 'complete', reclaimedBytes: 3 })),
+  })
+  const preview = vi.spyOn(actions, 'preview')
+  externalActionsOf.set(app.vault, { actions: () => actions, pin: vi.fn(), hydrate: vi.fn() })
+  try {
+    await expect(
+      previewRule(app as never, 'sample', {
+        folder: 'Media',
+        extensions: [],
+        minBytes: 0,
+        unopenedDays: 7,
+      })
+    ).rejects.toThrow()
+    expect(preview).not.toHaveBeenCalled()
+  } finally {
+    externalActionsOf.delete(app.vault)
+  }
+})

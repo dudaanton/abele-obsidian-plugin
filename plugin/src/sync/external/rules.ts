@@ -3,6 +3,7 @@ import type { App } from 'obsidian'
 import { matchesRule, type OffloadRule, type OffloadPreview } from './fileActions'
 import { externalActionsOf } from './actionHost'
 import { hostStorageOf } from '../hostSyncStorage'
+import { readOpeningHistory } from './openingHistory'
 
 const KEY = 'abele-external-rules-v1'
 export const ruleSchema = z.object({
@@ -31,7 +32,7 @@ export async function previewRule(app: App, connection: string, rule: OffloadRul
   ruleSchema.parse(rule)
   const host = externalActionsOf.get(app.vault)
   if (!host) throw new Error('Connections are unavailable')
-  const opened = hostStorageOf(app).loadLocalStorage('abele-external-last-opened-v1') ?? {}
+  const opened = readOpeningHistory(hostStorageOf(app))
   const paths = app.vault
     .getFiles()
     .filter((file) =>
@@ -50,7 +51,7 @@ export async function previewRule(app: App, connection: string, rule: OffloadRul
         const results: { path: string; status: string; reclaimedBytes: number }[] = []
         for (const file of confirmed.files) {
           const local = app.vault.getFileByPath(file.path)
-          const history = hostStorageOf(app).loadLocalStorage('abele-external-last-opened-v1') ?? {}
+          const history = readOpeningHistory(hostStorageOf(app))
           if (
             !local ||
             !matchesRule(rule, {

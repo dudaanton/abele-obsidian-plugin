@@ -3,6 +3,7 @@ import { prepareExternalFile, externalLinkPath } from '@/sync/external/fileAcces
 import { tokenOffloadsOf } from '@/sync/tokenOffloadCoordinator'
 import { pathCoordinatorOf } from '@/sync/pathCoordinator'
 import type { App } from 'obsidian'
+import { readOpeningHistory } from '@/sync/external/openingHistory'
 
 it('resolves absent links and waits for real content, preserving ordinary paths', async () => {
   const app = { vault: {}, metadataCache: { getFirstLinkpathDest: () => null } } as unknown as App
@@ -40,3 +41,16 @@ it('retains explicit and relative absent paths ahead of a local namesake', () =>
   expect(externalLinkPath(app, 'Media/sample.png', 'Notes/note.md')).toBe('Media/sample.png')
   expect(externalLinkPath(app, '../Media/sample.png', 'Notes/note.md')).toBe('Media/sample.png')
 })
+
+it('reads empty and persisted opening history through the unknown storage boundary', () => {
+  for (const value of [null, undefined, {}, { 'Media/sample.pdf': 123 }]) {
+    expect(readOpeningHistory({ loadLocalStorage: () => value })).toEqual(value ?? {})
+  }
+})
+
+it.each([[], 'invalid', { sample: 'invalid' }, { sample: Infinity }, { sample: NaN }])(
+  'rejects malformed opening history %j',
+  (value) => {
+    expect(() => readOpeningHistory({ loadLocalStorage: () => value })).toThrow()
+  }
+)
