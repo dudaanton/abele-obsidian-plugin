@@ -27,15 +27,26 @@ export class ExternalFileCoordination {
   private readonly reservations = new Set<{
     request: ExternalReservationRequest
     invalidated: boolean
+    blocked: Set<string>
   }>()
   private readonly engineMutations = new Set<readonly string[]>()
   private readonly uses = new Map<string, number>()
+  private readonly unblocked = new Set<(paths: string[]) => void>()
+
+  onUnblocked(notify: (paths: string[]) => void): () => void {
+    this.unblocked.add(notify)
+    return () => this.unblocked.delete(notify)
+  }
 
   assertEnginePaths(paths: readonly string[]): void {
-    const keys = paths.map(caseKey)
+    let busy = false
     for (const op of this.reservations)
-      if (op.request.paths.some((path) => keys.some((key) => overlaps(caseKey(path), key))))
-        throw new ExternalFilePortError('busy')
+      for (const path of paths)
+        if (op.request.paths.some((reserved) => overlaps(caseKey(reserved), caseKey(path)))) {
+          op.blocked.add(path)
+          busy = true
+        }
+    if (busy) throw new ExternalFilePortError('busy')
   }
 
   /** Take before the first await of a whole apply/rename/delete, not just its final syscall. */
@@ -72,7 +83,7 @@ export class ExternalFileCoordination {
       [...this.reservations].some((op) => op.request.fileId === copy.fileId)
     )
       throw new ExternalFilePortError('busy')
-    const op = { request: copy, invalidated: false }
+    const op = { request: copy, invalidated: false, blocked: new Set<string>() }
     this.reservations.add(op)
     return {
       request: copy,
@@ -86,7 +97,20 @@ export class ExternalFileCoordination {
           throw new ExternalFilePortError('busy')
       },
       release: () => {
-        this.reservations.delete(op)
+        if (!this.reservations.delete(op)) return
+        const paths = [...op.blocked].filter(
+          (path) =>
+            ![...this.reservations].some((active) =>
+              active.request.paths.some((reserved) => overlaps(caseKey(reserved), caseKey(path)))
+            )
+        )
+        if (paths.length)
+          for (const notify of this.unblocked)
+            try {
+              notify(paths)
+            } catch (error) {
+              console.debug('[abele-sync] cannot wake released external paths', error)
+            }
       },
     }
   }

@@ -5053,6 +5053,15 @@ export class ObsidianFileSystem implements FileSystem {
     )
     this.pollNow = watcher.kick
     this.inspectPoll = watcher.inspect
+    const stopUnblocked = this.externalCoordination.onUnblocked((paths) => {
+      const relevant = paths.filter(
+        (path) => this.inventoryVisible(path) && this.withinFileScope(path)
+      )
+      if (!relevant.length) return
+      for (const path of relevant) this.noteWatchChange(path)
+      this.scanWatchRevision++
+      cb(relevant)
+    })
     let stopped = false
     return () => {
       if (stopped) return
@@ -5064,6 +5073,7 @@ export class ObsidianFileSystem implements FileSystem {
         this.rootChain = undefined
       }
       watcher.stop()
+      stopUnblocked()
       stopScanChanges()
       this.app.vault.offref(directoryRename)
       for (const ref of rootChanges) this.app.vault.offref(ref)

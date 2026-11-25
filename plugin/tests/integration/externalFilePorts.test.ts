@@ -405,6 +405,30 @@ describe('external-file host coordination and filesystem effects', () => {
     )
   })
 
+  it('wakes a busy file after the hydration reservation releases', async () => {
+    const s = setup(),
+      entered = barrier(),
+      hold = barrier(),
+      changed = vi.fn()
+    const stop = s.fs.watch(changed)
+    try {
+      const hydration = s.run(async () => {
+        entered.release()
+        await hold.promise
+        throw new ExternalFilePortError('collision')
+      })
+      await entered.promise
+      expect(await reason(s.fs.writeAtomic(source, bytes('new local edit'), 1))).toBe('busy')
+      hold.release()
+      expect(await reason(hydration)).toBe('collision')
+      expect(changed).toHaveBeenCalledWith([source])
+    } finally {
+      hold.release()
+      stop()
+      s.host.close()
+    }
+  })
+
   it('cannot reserve a path while an already-issued engine mutation is unfinished', async () => {
     const s = setup(),
       entered = barrier(),
