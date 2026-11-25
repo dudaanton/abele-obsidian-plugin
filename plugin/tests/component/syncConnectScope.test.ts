@@ -25,6 +25,7 @@ const token = (key = 'a') =>
 it('reports a malformed token even when scope inspection cannot start', async () => {
   const ui = tokenUiFixture(true)
   const connectScope = vi.spyOn(ui.itemSets, 'connectScope')
+  const connectRequest = vi.spyOn(ui, 'connect')
   ui.itemSets.install()
   const wrapper = mount(TokenDialogs, {
     props: { ui, mode: 'connect' },
@@ -39,6 +40,10 @@ it('reports a malformed token even when scope inspection cannot start', async ()
     expect(connect.props('disabled')).toBe(false)
     expect(wrapper.get('[role=alert]').text()).toMatch(/token.*damaged|damaged.*token/i)
     expect(connectScope).not.toHaveBeenCalled()
+    await connect.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role=alert]').text()).toMatch(/token.*damaged|damaged.*token/i)
+    expect(connectRequest).not.toHaveBeenCalled()
   } finally {
     wrapper.unmount()
     ui.itemSets.uninstall()
