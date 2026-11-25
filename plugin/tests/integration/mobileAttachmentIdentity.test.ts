@@ -70,6 +70,7 @@ it('rejects eviction while an on-disk attachment has no indexed identity, then a
         versionBytes: async () => bytes,
       }) as never,
     sync: async () => {},
+    retryNotSynced: async () => {},
     includes: () => true,
     capture,
     rememberIdentity: (file) => identities.remember(file),

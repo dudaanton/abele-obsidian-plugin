@@ -71,6 +71,7 @@ export async function externalFileFixture(
         versionBytes: async () => (download ? download() : bytes),
       }) as never,
     sync: async () => {},
+    retryNotSynced: async () => {},
     includes: () => true,
     capture,
     rememberIdentity: () => {},

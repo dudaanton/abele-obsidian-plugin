@@ -1199,6 +1199,7 @@ export class TokenEngines {
             client: () => runtime.client,
             available: () => runtime?.available ?? true,
             sync: () => runtime.sync(),
+            retryNotSynced: (paths) => runtime.retryNotSynced(paths),
             exclusive: (work) => (runtime ? runtime.engine.runExclusive(work) : work()),
             includes: (path) =>
               runtime

@@ -43,6 +43,7 @@ export async function tokenOffloadConnection(input: {
   scriptsFolder(): string
   client(): V2EngineClient
   sync(): Promise<void>
+  retryNotSynced(paths: readonly string[]): Promise<void>
   /** Share effect phases with the engine's ordinary ledger transaction queue. */
   exclusive?<T>(work: () => Promise<T>): Promise<T>
   includes(path: string): boolean
@@ -100,6 +101,13 @@ export async function tokenOffloadConnection(input: {
       if (devicePinned(input.app, path)) throw new ExternalFilePortError('pinned')
     },
     stagingMtime: (path) => stagingMtimes.get(path) ?? Date.now(),
+  })
+  const stopUnblocked = localHost.coordination.onUnblocked((paths) => {
+    const relevant = paths.filter((path) => input.includes(path))
+    if (!relevant.length) return
+    void input
+      .retryNotSynced(relevant)
+      .catch((error) => console.debug('[abele-sync] cannot retry released external paths', error))
   })
   const host = placedExternalHost(localHost, input.placement)
   const describe = async (
@@ -417,6 +425,7 @@ export async function tokenOffloadConnection(input: {
       await refresh()
     },
     close: () => {
+      stopUnblocked()
       unbind()
       host.close()
     },

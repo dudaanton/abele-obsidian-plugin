@@ -122,6 +122,7 @@ it('offloads bytes another connection has not received yet after preserving them
         },
       }) as never,
     sync: async () => {},
+    retryNotSynced: async () => {},
     exclusive: (work) => {
       attempted?.()
       const next = engineTail.then(async () => {

@@ -66,6 +66,7 @@ it.each([
   }))
   const download = vi.fn(async () => bytes)
   const manager = new TokenOffloadCoordinator(new PathCoordinator())
+  const retryNotSynced = vi.fn(async (_paths: readonly string[]) => {})
   const open = () =>
     tokenOffloadConnection({
       app: app as never,
@@ -80,6 +81,7 @@ it.each([
       scriptsFolder: () => 'Scripts',
       client: () => ({ verifyExternalFile: verify, versionBytes: download }) as never,
       sync: async () => {},
+      retryNotSynced,
       includes: () => true,
       capture: async () => {},
       rememberIdentity: () => {},
@@ -88,6 +90,17 @@ it.each([
   let port = await open()
   try {
     expect((await port.evict(local)).status).toBe('complete')
+    if (phase === 'placement-coordinator') {
+      const coordination = new ObsidianFileSystem(app as never).externalCoordination
+      const reservation = coordination.reserve({
+        operationId: 'sample-hydration-collision',
+        fileId: head.fileId,
+        paths: [local],
+      })
+      expect(() => coordination.assertEnginePaths([local])).toThrow('busy')
+      reservation.release()
+      expect(retryNotSynced).toHaveBeenCalledWith([local])
+    }
     if (phase.startsWith('follow-')) {
       await app.vault.rename(app.vault.getAbstractFileByPath('Media')!, 'Moved')
       if (phase === 'follow-invalid-sidecar')
@@ -233,6 +246,7 @@ it.each(['verification', 'download'])(
       scriptsFolder: () => 'Scripts',
       client: () => ({ verifyExternalFile: verify, versionBytes: download }) as never,
       sync: async () => {},
+      retryNotSynced: async () => {},
       includes: () => true,
       capture: async () => {},
       rememberIdentity: () => {},
