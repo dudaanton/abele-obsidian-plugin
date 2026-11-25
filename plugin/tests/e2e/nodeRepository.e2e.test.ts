@@ -335,8 +335,9 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
     })()`)
     expect(readFileSync(resolve(projectPath, 'app.ts'), 'utf8')).toBe('export const value = 6\n')
     // A second external writer wins after explicit adoption; Save must still detect that race.
-    writeFileSync(resolve(projectPath, 'app.ts'), 'export const value = 9\n')
     await evalLong(`(async()=>{${prelude}
+      // Write and click in one renderer turn so the watcher cannot refresh first.
+      require('fs').writeFileSync(${JSON.stringify(resolve(projectPath, 'app.ts'))},'export const value = 9\\n');
       [...document.querySelectorAll('.abele-node-save button')].find(b=>b.textContent.trim()==='Save file').click();
       await until(()=>document.querySelector('.abele-node-save')?.textContent.includes('Conflict ·'));
       return 'conflict retained';
@@ -414,18 +415,23 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
     )
     await withEmulatedPhone(() =>
       evalLong(`(async()=>{${prelude}${homeFills}
+        try {
         await api.openNodeRepository(${JSON.stringify(registration)},${JSON.stringify(ids.project)},${JSON.stringify(ids.workspace)},{location:{kind:'home'}});
         await until(()=>[...document.querySelectorAll('.abele-github-folder')].some(el=>el.getBoundingClientRect().width));
         await homeFills([...document.querySelectorAll('.abele-github-folder')].find(el=>el.getBoundingClientRect().width),'phone-home.png',false);
         ${committedBlame}await committedBlame(${JSON.stringify(registration)},${JSON.stringify(ids.project)},${JSON.stringify(ids.workspace)},'blame-committed-phone.png');
-        const search=[...document.querySelectorAll('.abele-github-header .abele-obsidian-icon')].find(el=>el.getAttribute('aria-label')?.startsWith('Search the code'));search.click();
-        await until(()=>document.querySelector('.abele-github-search input'));const input=document.querySelector('.abele-github-search input');input.value='value';input.dispatchEvent(new Event('input',{bubbles:true}));
-        await until(()=>document.querySelector('.abele-github-search__results')?.textContent.includes('app.ts'));
+        const live=app.workspace.getLeavesOfType('abele-github').find(l=>l.view.model?.sourceTarget?.source.workspace===${JSON.stringify(ids.workspace)}&&l.view.contentEl.getBoundingClientRect().width)?.view.contentEl;
+        if(!live)throw Error('Phone repository view is missing');
+        const search=[...live.querySelectorAll('.abele-github-header .abele-obsidian-icon')].find(el=>el.getAttribute('aria-label')?.startsWith('Search the code'));search.click();
+        await until(()=>live.querySelector('.abele-github-search input'));const input=live.querySelector('.abele-github-search input');input.value='value';input.dispatchEvent(new Event('input',{bubbles:true}));
+        await until(()=>live.querySelector('.abele-github-search__results')?.textContent.includes('app.ts'));
         {const capture=await require('@electron/remote').getCurrentWebContents().capturePage();require('fs').writeFileSync(${JSON.stringify(SHOTS)}+'/search-live-phone.png',capture.toPNG())}
-        // The phone keeps a layout of its own; the tab this probe opened must not stay saved in it.
-        for(const leaf of app.workspace.getLeavesOfType('abele-github'))leaf.detach();
-        await app.workspace.requestSaveLayout.run();
         return 'phone home fills';
+        } finally {
+          // The phone keeps a layout of its own, even when an assertion fails.
+          for(const leaf of app.workspace.getLeavesOfType('abele-github'))leaf.detach();
+          await app.workspace.requestSaveLayout.run();
+        }
       })()`)
     )
   } catch (error) {
