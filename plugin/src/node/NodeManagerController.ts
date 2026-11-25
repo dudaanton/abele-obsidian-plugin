@@ -91,19 +91,18 @@ function parsedRun(receipt: NodeClientState['results'][string] | undefined) {
   return result
 }
 const parentOperations = new WeakMap<object, Map<string, [string, ManagerOperation][]>>()
-function operationsFor(operations: NodeClientState['managerOperations'], parent: string) {
+export function operationsFor(operations: NodeClientState['managerOperations'], parent: string) {
   operations = snapshotOf(operations)
   if (!operations) return []
-  let index = Object.isFrozen(operations) ? parentOperations.get(operations) : undefined
-  if (!index) {
-    index = new Map()
-    for (const entry of Object.entries(operations)) {
-      const rows = index.get(entry[1].parent) ?? []
-      rows.push(entry)
-      index.set(entry[1].parent, rows)
-    }
-    if (Object.isFrozen(operations)) parentOperations.set(operations, index)
+  const cached = parentOperations.get(operations)
+  if (cached) return cached.get(parent) ?? []
+  const index = new Map<string, [string, ManagerOperation][]>()
+  for (const entry of Object.entries(operations)) {
+    const rows = index.get(entry[1].parent) ?? []
+    rows.push(entry)
+    index.set(entry[1].parent, rows)
   }
+  if (Object.isFrozen(operations)) parentOperations.set(operations, index)
   return index.get(parent) ?? []
 }
 type OperationRequest = NonNullable<NodeClientState['operationRequests']>[string]
@@ -111,28 +110,27 @@ const executionRequests = new WeakMap<
   object,
   Map<string, Map<string, [string, OperationRequest][]>>
 >()
-function executionRequestsFor(
+export function executionRequestsFor(
   requests: NodeClientState['operationRequests'],
   parent: string,
   run: string
 ) {
   requests = snapshotOf(requests)
   if (!requests) return []
-  let index = Object.isFrozen(requests) ? executionRequests.get(requests) : undefined
-  if (!index) {
-    index = new Map()
-    for (const entry of Object.entries(requests)) {
-      if (!/^(command|integration)\.context\.v1\.execute$/.test(entry[1].method)) continue
-      const params = entry[1].params as Record<string, unknown>
-      if (typeof params.parent_chat_id !== 'string' || typeof params.run_id !== 'string') continue
-      let runs = index.get(params.parent_chat_id)
-      if (!runs) index.set(params.parent_chat_id, (runs = new Map()))
-      const rows = runs.get(params.run_id) ?? []
-      rows.push(entry)
-      runs.set(params.run_id, rows)
-    }
-    if (Object.isFrozen(requests)) executionRequests.set(requests, index)
+  const cached = executionRequests.get(requests)
+  if (cached) return cached.get(parent)?.get(run) ?? []
+  const index = new Map<string, Map<string, [string, OperationRequest][]>>()
+  for (const entry of Object.entries(requests)) {
+    if (!/^(command|integration)\.context\.v1\.execute$/.test(entry[1].method)) continue
+    const params = entry[1].params as Record<string, unknown>
+    if (typeof params.parent_chat_id !== 'string' || typeof params.run_id !== 'string') continue
+    let runs = index.get(params.parent_chat_id)
+    if (!runs) index.set(params.parent_chat_id, (runs = new Map()))
+    const rows = runs.get(params.run_id) ?? []
+    rows.push(entry)
+    runs.set(params.run_id, rows)
   }
+  if (Object.isFrozen(requests)) executionRequests.set(requests, index)
   return index.get(parent)?.get(run) ?? []
 }
 function retainedRun(entry: ManagerOperation, receipt: Run, recover = false): Run {
