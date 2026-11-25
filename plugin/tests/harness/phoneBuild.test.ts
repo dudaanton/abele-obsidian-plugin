@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createHash, webcrypto } from 'node:crypto'
 import { join } from 'node:path'
-import { installBuild } from '../e2e/helpers/phoneHost'
+import { assertPhoneReady, installBuild } from '../e2e/helpers/phoneHost'
 
 const phone = vi.hoisted(() => ({ driver: vi.fn(), eval: vi.fn() }))
 vi.mock('../e2e/helpers/phone', () => ({
@@ -33,6 +33,78 @@ beforeEach(() => {
   vi.stubEnv('ABELE_PHONE_BUILD', dir)
   phone.driver.mockReset()
   phone.eval.mockReset()
+})
+
+it.each([
+  'FAIL vault: none open',
+  'FAIL vault: none open\nFAIL abele: missing',
+  'FAIL abele: missing',
+])('opens the vault once and repeats doctor for %s', (failure) => {
+  let checks = 0
+  phone.driver.mockImplementation((args) => {
+    if (args[0] !== 'doctor') return '{"actions":["open"]}'
+    if (checks++ === 0) throw { stdout: failure }
+    return 'OK vault'
+  })
+  assertPhoneReady()
+  expect(phone.driver).toHaveBeenCalledWith(
+    ['open-vault', 'sample-vault', '--timeout', '60'],
+    90000
+  )
+  expect(checks).toBe(2)
+})
+
+it('stops immediately on an unrelated doctor failure', () => {
+  phone.driver.mockImplementation(() => {
+    throw { stdout: 'FAIL vault: none open\nFAIL bridge: unavailable' }
+  })
+  expect(assertPhoneReady).toThrow('FAIL bridge')
+  expect(phone.driver).toHaveBeenCalledTimes(1)
+})
+
+it('fails after one unsuccessful vault recovery', () => {
+  phone.driver.mockImplementation((args) => {
+    if (args[0] === 'doctor') throw { stdout: 'FAIL vault: none open' }
+    return '{"actions":["open"]}'
+  })
+  expect(assertPhoneReady).toThrow('FAIL vault')
+  expect(phone.driver.mock.calls.filter(([args]) => args[0] === 'open-vault')).toHaveLength(1)
+  expect(phone.driver.mock.calls.filter(([args]) => args[0] === 'doctor')).toHaveLength(2)
+})
+
+it('opens the test vault from a chooser during installation', async () => {
+  let opened = false
+  let generation = 10
+  let requestId: string | null = null
+  phone.driver.mockImplementation((args) => {
+    if (args[0] === 'open-vault') opened = true
+    return '{"actions":["open"]}'
+  })
+  phone.eval.mockImplementation((code) => {
+    if (code.includes('SHA-256')) throw Error("Can't find variable: app")
+    if (!opened) throw Error("Can't find variable: app")
+    if (code.includes('location.reload')) {
+      requestId = /sessionStorage.setItem\('[^']+', "([^"]+)"\)/.exec(code)![1]
+      generation++
+      return '=> ' + requestId
+    }
+    return (
+      '=> ' +
+      JSON.stringify({
+        owner: 'sample-vault',
+        generation,
+        requestId,
+        mobile: true,
+        apiReady: true,
+        layoutReady: true,
+      })
+    )
+  })
+  await expect(installBuild(process.cwd())).resolves.toBe(JSON.parse(manifest.toString()).version)
+  expect(phone.driver).toHaveBeenCalledWith(
+    ['open-vault', 'sample-vault', '--timeout', '60'],
+    90000
+  )
 })
 afterEach(() => {
   vi.unstubAllEnvs()

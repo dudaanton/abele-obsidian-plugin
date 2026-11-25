@@ -47,10 +47,6 @@ export function takePhone(who: string, waitMs = 30 * 60_000): void {
   tookPhone = verdict.split('\n').pop() === 'taken'
 }
 
-const sleepSync = (ms: number): void => {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
-}
-
 /** Gives the phone back, only when this run took it: a lock it found under its name is left. */
 export function dropPhone(): void {
   if (!tookPhone) return
@@ -64,21 +60,29 @@ export function dropPhone(): void {
 
 /** Stops the run with the driver's own report when any part the tier needs is down. */
 export function assertPhoneReady(): void {
-  let out = ''
-  let ok = true
-  try {
-    out = execFileSync(DRIVER, ['doctor'], {
-      encoding: 'utf8',
-      timeout: 120_000,
-    })
-  } catch (error) {
-    out = String((error as { stdout?: string }).stdout ?? error)
-    ok = false
+  const doctor = (): { out: string; ok: boolean } => {
+    try {
+      return {
+        out: driver(['doctor'], 120_000),
+        ok: true,
+      }
+    } catch (error) {
+      return { out: String((error as { stdout?: string }).stdout ?? error), ok: false }
+    }
+  }
+  let result = doctor()
+  const failures = result.out.split('\n').filter((line) => line.startsWith('FAIL'))
+  if (failures.length && failures.every((line) => /^FAIL\s+(?:vault|abele)\b/.test(line))) {
+    const opened = driver(['open-vault', PHONE_VAULT, '--timeout', '60'], 90_000)
+    console.info('[abele e2e] phone: open-vault recovery', opened)
+    result = doctor()
   }
   // The plugin's own line is what the run is about to fix by installing its build.
-  const failing = out.split('\n').filter((l) => l.startsWith('FAIL') && !/^FAIL\s+abele\b/.test(l))
-  if (failing.length || (!ok && !out.includes('FAIL')))
-    throw new Error(`The phone is not ready (${DRIVER} doctor, run ${process.pid}):\n${out}`)
+  const failing = result.out
+    .split('\n')
+    .filter((line) => line.startsWith('FAIL') && !/^FAIL\s+abele\b/.test(line))
+  if (failing.length || (!result.ok && !result.out.includes('FAIL')))
+    throw new Error(`The phone is not ready (${DRIVER} doctor, run ${process.pid}):\n${result.out}`)
 }
 
 /**
@@ -144,22 +148,9 @@ export async function installBuild(pluginDir: string): Promise<string> {
   } finally {
     if (scratch) rmSync(scratch, { recursive: true, force: true })
   }
-  // Someone else's run may have left another vault open: the test vault is opened by name.
-  let vault = phoneEval('app.vault.getName()', 30_000)
-  if (vault !== `=> ${PHONE_VAULT}`) {
-    driver(['open-url', `obsidian://open?vault=${encodeURIComponent(PHONE_VAULT)}`])
-    const until = Date.now() + 60_000
-    while (vault !== `=> ${PHONE_VAULT}` && Date.now() < until) {
-      sleepSync(2000)
-      try {
-        vault = phoneEval('window.app && app.vault ? app.vault.getName() : ""', 15_000)
-      } catch {
-        // Between two vaults the page is not there to ask.
-      }
-    }
-    if (vault !== `=> ${PHONE_VAULT}`)
-      throw new Error(`Obsidian on the phone has ${vault} open and would not open ${PHONE_VAULT}`)
-  }
+  // The native driver can reopen a vault from a chooser or crash prompt, when no page exists.
+  const opened = driver(['open-vault', PHONE_VAULT, '--timeout', '60'], 90_000)
+  console.info('[abele e2e] phone: opened test vault', opened)
   const key = 'abele-e2e-install-request'
   const requestId = 'install-' + Date.now() + '-' + Math.random().toString(36).slice(2)
   type InstallState = ReloadWitness & {

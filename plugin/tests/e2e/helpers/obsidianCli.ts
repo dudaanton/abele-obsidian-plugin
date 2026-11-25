@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { onPhone, desktopOnly, emulationCovered, EmulationCoveredError } from './target'
 import { expect } from 'vitest'
-import { phoneEval, installPhoneHost, assertPhoneTransport } from './phone'
+import { phoneEval, installPhoneHost, assertPhoneTransport, driver, PHONE_VAULT } from './phone'
 import { confirmReload, type ReloadWitness } from './reloadWitness'
 
 /**
@@ -1167,25 +1167,74 @@ async function reloadPhone(): Promise<void> {
       apiReady: !!window.__abeleTest, layoutReady: !!app.workspace.layoutReady })`,
       10_000
     )
-  await confirmReload(
-    read(),
-    requestId,
-    true,
-    {
-      request: () =>
-        evalRaw(
-          `(() => {
+  const before = read()
+  try {
+    await confirmReload(
+      before,
+      requestId,
+      true,
+      {
+        request: () =>
+          evalRaw(
+            `(() => {
       sessionStorage.setItem('${key}', ${JSON.stringify(requestId)})
       setTimeout(() => location.reload(), 50)
       return ${JSON.stringify(requestId)}
     })()`,
-          30_000
-        ),
-      read,
-      now: Date.now,
-      pause: pauseAsync,
-    },
-    90_000
-  )
+            30_000
+          ),
+        read,
+        now: Date.now,
+        pause: pauseAsync,
+      },
+      90_000
+    )
+  } catch (reloadError) {
+    // A native crash prompt has no app object to answer the witness. Restore the vault for
+    // the next file, but keep this file's reload failure: its page state was lost.
+    let hasApp = false
+    try {
+      hasApp = evalRawIdempotent('!!window.app', 10_000) === 'true'
+    } catch {
+      // The chooser has no page to evaluate.
+    }
+    if (!hasApp) {
+      try {
+        const opened = driver(['open-vault', PHONE_VAULT, '--timeout', '60'], 90_000)
+        console.warn(
+          '[abele e2e] phone: vault did not finish opening after reload; recovered via open-vault',
+          opened
+        )
+        const deadline = Date.now() + 60_000
+        let ready = false
+        do {
+          try {
+            const state = read()
+            if (
+              state.owner === PHONE_VAULT &&
+              state.generation !== before.generation &&
+              state.mobile &&
+              state.apiReady &&
+              state.layoutReady
+            ) {
+              ready = true
+              break
+            }
+          } catch {
+            // The reopened page may still be loading.
+          }
+          if (Date.now() >= deadline) break
+          await pauseAsync(Math.min(250, deadline - Date.now()))
+        } while (Date.now() <= deadline)
+        if (!ready) throw new Error('reopened vault did not become ready')
+        installPhoneHost()
+      } catch (recoveryError) {
+        throw new Error(
+          `${String(reloadError)}; phone vault recovery failed: ${String(recoveryError)}`
+        )
+      }
+    }
+    throw reloadError
+  }
   installPhoneHost()
 }
