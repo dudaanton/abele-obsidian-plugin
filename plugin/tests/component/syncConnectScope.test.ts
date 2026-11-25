@@ -8,6 +8,7 @@ import Modal from '@/components/obsidian/Modal.vue'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { shareSetSource, type ConnectScope } from '@/sync/shareSets'
 import { encodeAccessToken } from '@/sync/v2/contract'
+import { V2ClientError } from '@/sync/v2/client'
 import { deferred } from '../helpers/deferred'
 
 afterEach(() => {
@@ -159,14 +160,16 @@ it('checks metadata without connecting and passes the chosen scope only after Co
   }
 })
 
-it('ignores an old token answer and exposes the current check failure for retry', async () => {
+it('retries a failed scope check after the server returns, then connects with the inspected scope', async () => {
   Platform.isPhone = true
   const ui = tokenUiFixture(true)
   const first = deferred<ConnectScope>(),
     second = deferred<ConnectScope>()
-  vi.spyOn(ui.itemSets, 'connectScope')
+  const check = vi
+    .spyOn(ui.itemSets, 'connectScope')
     .mockReturnValueOnce(first.promise)
     .mockReturnValueOnce(second.promise)
+    .mockResolvedValue({ choices: [{ kind: 'vault', id: 'vault', path: '/' }], serverFiles: 4 })
   const connect = vi.spyOn(ui, 'connect').mockResolvedValue()
   ui.itemSets.install()
   const wrapper = mount(TokenDialogs, {
@@ -193,8 +196,45 @@ it('ignores an old token answer and exposes the current check failure for retry'
     expect(wrapper.get('[role=alert]').text()).toMatch(/could not finish|server/i)
     expect(connect).not.toHaveBeenCalled()
     await action.trigger('click')
-    expect(wrapper.get('[role=alert]').text()).toMatch(/could not finish|server/i)
+    await flushPromises()
+    expect(check).toHaveBeenCalledTimes(3)
+    expect(wrapper.findComponent(DeviceScopeField).props('modelValue')).toEqual([
+      { kind: 'vault', id: 'vault', path: '/' },
+    ])
     expect(connect).not.toHaveBeenCalled()
+    await action.trigger('click')
+    expect(connect).toHaveBeenCalledWith(token('b'), expect.any(AbortSignal), [
+      { kind: 'vault', id: 'vault', path: '/' },
+    ])
+  } finally {
+    wrapper.unmount()
+    ui.itemSets.uninstall()
+  }
+})
+
+it('keeps a revoked token refusal without repeating the scope request', async () => {
+  const ui = tokenUiFixture(true)
+  const check = vi
+    .spyOn(ui.itemSets, 'connectScope')
+    .mockRejectedValue(new V2ClientError('revoked'))
+  const connect = vi.spyOn(ui, 'connect')
+  ui.itemSets.install()
+  const wrapper = mount(TokenDialogs, {
+    props: { ui, mode: 'connect' },
+    global: { stubs: { Modal: { template: '<div><slot /><slot name="footer" /></div>' } } },
+  })
+  try {
+    await wrapper.find('input[type=password]').setValue(token())
+    await flushPromises()
+    expect(wrapper.get('[role=alert]').text()).toMatch(/access is closed/i)
+    await wrapper
+      .findAllComponents(Button)
+      .find((one) => one.props('text') === 'Connect')!
+      .trigger('click')
+    await flushPromises()
+    expect(check).toHaveBeenCalledTimes(1)
+    expect(connect).not.toHaveBeenCalled()
+    expect(wrapper.get('[role=alert]').text()).toMatch(/access is closed/i)
   } finally {
     wrapper.unmount()
     ui.itemSets.uninstall()

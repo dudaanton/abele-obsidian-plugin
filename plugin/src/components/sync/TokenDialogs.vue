@@ -386,6 +386,13 @@ const scope = ref<ConnectScope | null>(null),
   scopeFailure = ref<unknown>(null),
   checking = ref(false),
   picked = ref<ShareItem[]>([])
+function acceptScope(answer: ConnectScope) {
+  scope.value = answer
+  scopeFailure.value = null
+  picked.value = answer.narrowed
+    ? [...answer.narrowed]
+    : answer.choices.filter((one) => one.kind === 'vault').slice(0, 1)
+}
 watch(text, async (value, _, cleanup) => {
   scope.value = null
   scopeFailure.value = null
@@ -409,10 +416,7 @@ watch(text, async (value, _, cleanup) => {
   try {
     const answer = await source.connectScope(value, controller.signal)
     if (!alive || controller.signal.aborted) return
-    scope.value = answer
-    picked.value = answer.narrowed
-      ? [...answer.narrowed]
-      : answer.choices.filter((one) => one.kind === 'vault').slice(0, 1)
+    acceptScope(answer)
   } catch (cause) {
     if (alive && !controller.signal.aborted) {
       scopeFailure.value = cause
@@ -449,9 +453,20 @@ async function run(action: () => Promise<void>) {
   }
 }
 async function connect() {
-  if (shareSetSource.value?.connectScope && !scope.value) {
+  const source = shareSetSource.value
+  if (source?.connectScope && !scope.value) {
     if (!preview.value) tokenScope(decodeAccessToken(text.value))
-    throw scopeFailure.value ?? new Error('Could not inspect what this token opens')
+    const code = (scopeFailure.value as { code?: string } | null)?.code
+    if (code && ['bad-token', 'revoked', 'unauthorized', 'forbidden'].includes(code))
+      throw scopeFailure.value
+    try {
+      const answer = await source.connectScope(text.value, enrollment.signal)
+      if (alive && !enrollment.signal.aborted) acceptScope(answer)
+    } catch (cause) {
+      scopeFailure.value = cause
+      throw cause
+    }
+    return
   }
   const full = scope.value?.narrowed
   const entireAccess =
