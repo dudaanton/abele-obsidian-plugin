@@ -60,6 +60,7 @@ export async function removeForgottenBreakpoints(
     )
   }
   const stopped = controller.snapshot
+  const registeredBeforeRemoval = stopped?.breakpoints?.map((point) => point.breakpoint_id)
   const initialStop = stopped?.threads.find(
     (thread) => thread.thread_id === stopped.selected_thread_id
   )?.stop
@@ -147,13 +148,25 @@ export async function removeForgottenBreakpoints(
   const settledStop = settled?.threads.find(
     (thread) => thread.thread_id === settled.selected_thread_id
   )?.stop
+  // Some adapters clear hit IDs when a breakpoint is removed. An unidentified stop
+  // belongs to the discarded points only if they were the entire registered set
+  // before removal and no live point appeared while removal was in flight.
+  const unidentifiedDiscardedStop =
+    settledStop?.hit_breakpoint_ids?.length === 0 &&
+    !!registeredBeforeRemoval?.length &&
+    registeredBeforeRemoval.every((id) => points.some((point) => point.id === id)) &&
+    !!settled?.breakpoints &&
+    settled.breakpoints.every((point) =>
+      points.some((removed) => removed.id === point.breakpoint_id)
+    )
   if (
     current() &&
     isPaused() &&
     settled?.stop_epoch !== captureEpoch &&
     settledStop?.reason === 'breakpoint' &&
-    settledStop.hit_breakpoint_ids?.length &&
-    settledStop.hit_breakpoint_ids.every((id) => points.some((point) => point.id === id))
+    (unidentifiedDiscardedStop ||
+      (settledStop.hit_breakpoint_ids?.length &&
+        settledStop.hit_breakpoint_ids.every((id) => points.some((point) => point.id === id))))
   )
     heldEpoch = settled?.stop_epoch
   if (

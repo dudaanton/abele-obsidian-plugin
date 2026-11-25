@@ -5,6 +5,42 @@ import {
   forgottenBreakpointLocations,
 } from '@/debugger/restoreBreakpoint'
 
+it.each([
+  { live: false, late: false },
+  { live: false, late: true },
+  { live: true, late: false },
+  { live: true, late: true },
+])('releases an empty-ID discarded stop only without a live point (%j)', async ({ live, late }) => {
+  const discarded = { breakpoint_id: 'sample-removed' }
+  const survivor = { breakpoint_id: 'sample-live' }
+  const snapshot = {
+    stop_epoch: 7,
+    selected_thread_id: 1,
+    threads: [{ thread_id: 1, stop: { reason: 'breakpoint', hit_breakpoint_ids: [] } }],
+    breakpoints: live ? [discarded, survivor] : [discarded],
+  }
+  const command = vi.fn(async () => ({ outcome: 'completed' }))
+  const controller = {
+    current: true,
+    session: { status: 'paused' },
+    snapshot,
+    command,
+    knownBreakpoints: () => [
+      { id: 'sample-removed', file: 'sample.ts', requestedLine: 5 },
+      ...(live ? [{ id: 'sample-live', file: 'sample.ts', requestedLine: 8 }] : []),
+    ],
+    removeBreakpoint: vi.fn(async () => {
+      snapshot.breakpoints = live ? [survivor] : []
+      if (late) snapshot.stop_epoch++
+      return { outcome: 'completed' }
+    }),
+  }
+  await removeForgottenBreakpoints(undefined, { controller } as never, [
+    { file: 'sample.ts', requestedLine: 5 },
+  ])
+  expect(command.mock.calls).toEqual(live ? [] : [['continue']])
+})
+
 it.each([false, true])(
   'releases a late discarded breakpoint stop only when all hits belong to it (mixed: %s)',
   async (mixed) => {
