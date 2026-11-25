@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { V2Client } from '../../src/sync/v2/client'
 import { decodeAccessToken } from '@abele/sync-sdk/protocol'
 import { waitFor } from './helpers/syncVault'
@@ -14,15 +14,10 @@ import {
 } from './helpers/syncTrustedConnection'
 import { closeSyncScreens, captureSyncScreen } from './helpers/syncScreens'
 import { SHARE_SET_PICKER } from './helpers/shareSetPicker'
-import { TokenSyncLive } from './helpers/tokenSyncLive'
 describe('explicit re-share of retained copies', () => {
-  let code: string | null
-  const s = new TokenSyncLive(true)
-  afterAll(async () => {
-    await s.close()
-  })
-  beforeAll(async () => {
-    await s.start()
+  const fixture = liveSuite()
+  const retainedCopy = async () => {
+    const s = fixture()
     const owner = s.primary
     const id = await s.connect()
     const path = s.root + '/Retained.md'
@@ -34,9 +29,13 @@ describe('explicit re-share of retained copies', () => {
       `const share=(await svc.itemSets.shares(${JSON.stringify(id)})).find(one=>one.label==='Sample retained share');if(!share)throw new Error('Share unavailable');await poll(()=>svc.itemSets.deleteFacts(share.id,null)?.canWrite);await svc.itemSets.deleteFromServer(share.id,null);return true`
     )
     await owner.syncNow(id)
+    return { s, owner, id, path }
+  }
+  it('refuses retained-copy re-share without publishing bytes or issuing a code', async () => {
+    const { s, owner, id, path } = await retainedCopy()
     await expect(
       owner.shareSet(id, ['Folder: ' + s.root], 'Sample explicit re-share')
-    ).rejects.toThrow('Sharing token failed:')
+    ).rejects.toThrow('issue a set through the native picker failed while waiting for')
     const state = await owner.long<{ alert: string; code: string | null; held: boolean }>(
       'inspect safe refusal of retained-copy publication',
       `const box=modal('Share access');return {alert:[...box.querySelectorAll('[role="alert"]')].map(textOf).find(Boolean)||'',code:box.querySelector('textarea')?.value||null,held:host.localOnly.has(${JSON.stringify(path)})}`
@@ -46,15 +45,17 @@ describe('explicit re-share of retained copies', () => {
     expect(state.held).toBe(true)
     expect(owner.read(path)).toBe('retained local bytes')
     expect((await s.items()).some((one) => one.path === path)).toBe(false)
-    code = state.code
     closeSyncScreens(owner)
   }, 180000)
-  // Suite-hook safety failures stay red instead of being inverted by the known-bug test.
+  // The ordinary test above enforces safety; only successful staged issuance is a known bug.
   it.fails(
     'BUG: D-RESHARE-STAGING — retained copies need staged publication before issuing a code',
-    () => {
-      expect(code).toBeTruthy()
-    }
+    async () => {
+      const { s, owner, id } = await retainedCopy()
+      const issued = await owner.shareSet(id, ['Folder: ' + s.root], 'Sample explicit re-share')
+      expect(issued.token).toBeTruthy()
+    },
+    180000
   )
 })
 describe('device sync', () => {
