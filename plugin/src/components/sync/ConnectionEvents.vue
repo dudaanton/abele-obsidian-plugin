@@ -30,6 +30,7 @@ let alreadyOwned = false
 let position = 0
 let following = true
 let anchor: { row: HTMLElement; id: string; offset: number } | undefined
+let settleFrame = 0
 const rememberEntry = () => {
   const rows = list.value?.children
   if (!owner || !rows?.length) return undefined
@@ -64,6 +65,7 @@ onMounted(() => {
   owner.addEventListener('scroll', rememberScroll, { passive: true })
 })
 onBeforeUnmount(() => {
+  if (settleFrame) window.cancelAnimationFrame(settleFrame)
   if (!owner) return
   owner.removeEventListener('scroll', rememberScroll)
   owner.classList.toggle(scrollClass, alreadyOwned)
@@ -87,29 +89,43 @@ watch(
     const parent = owner
     if (parent?.isConnected) {
       if (following) parent.scrollTop = parent.scrollHeight
-      else if (anchor) {
-        // Stable row ids survive chunk-boundary changes. If the reader's entry itself
-        // expired, show the oldest remaining entry from its start: the old negative
-        // offset may be taller than the entire replacement row.
-        const retained = anchor.row.isConnected
-          ? anchor.row
-          : list.value?.querySelector<HTMLElement>(`[data-activity-id="${anchor.id}"]`)
-        const row = retained ?? (list.value?.firstElementChild as HTMLElement | undefined)
-        const offset = retained ? anchor.offset : 0
-        if (row) {
-          parent.scrollTop +=
-            row.getBoundingClientRect().top -
-            parent.getBoundingClientRect().top -
-            parent.clientTop -
-            offset
-          anchor = { row, id: row.dataset.activityId, offset }
-        }
-      } else parent.scrollTop = position
+      else if (anchor) alignReader(parent)
+      else parent.scrollTop = position
       position = parent.scrollTop
+      // Status and progress rows in the surrounding window can finish layout after
+      // the event list renders. Align once more against the final frame geometry.
+      if (!following && anchor) {
+        if (settleFrame) window.cancelAnimationFrame(settleFrame)
+        settleFrame = window.requestAnimationFrame(() => {
+          settleFrame = 0
+          if (owner === parent && parent.isConnected && !following && anchor) alignReader(parent)
+        })
+      }
     }
   },
   { flush: 'post' }
 )
+function alignReader(parent: HTMLElement) {
+  if (anchor) {
+    // Stable row ids survive chunk-boundary changes. If the reader's entry itself
+    // expired, show the oldest remaining entry from its start: the old negative
+    // offset may be taller than the entire replacement row.
+    const retained = anchor.row.isConnected
+      ? anchor.row
+      : list.value?.querySelector<HTMLElement>(`[data-activity-id="${anchor.id}"]`)
+    const row = retained ?? (list.value?.firstElementChild as HTMLElement | undefined)
+    const offset = retained ? anchor.offset : 0
+    if (row) {
+      parent.scrollTop +=
+        row.getBoundingClientRect().top -
+        parent.getBoundingClientRect().top -
+        parent.clientTop -
+        offset
+      anchor = { row, id: row.dataset.activityId, offset }
+    }
+  }
+  position = parent.scrollTop
+}
 </script>
 
 <style>

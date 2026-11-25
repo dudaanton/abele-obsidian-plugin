@@ -4,6 +4,39 @@ import { nextTick } from 'vue'
 import { ActivityHistory } from '@/sync/activityHistory'
 import ConnectionEvents from '@/components/sync/ConnectionEvents.vue'
 
+it('keeps the visible entry when status above the log settles after activity renders', async () => {
+  const host = document.createElement('div')
+  host.className = 'abele-modal__body'
+  document.body.append(host)
+  let statusHeight = 80
+  const entries = Array.from({ length: 30 }, (_, at) => ({ at, text: `Uploaded sample-${at}.md` }))
+  Object.defineProperties(host, {
+    clientHeight: { get: () => 100 },
+    scrollHeight: { get: () => statusHeight + entries.length * 20 },
+  })
+  const rect = vi
+    .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+    .mockImplementation(function () {
+      if (this.tagName !== 'LI') return new DOMRect(0, 0, 400, 100)
+      const index = Number(this.dataset.activityId)
+      return new DOMRect(0, statusHeight + index * 20 - host.scrollTop, 400, 20)
+    })
+  const view = mount(ConnectionEvents, { props: { events: entries }, attachTo: host })
+  try {
+    host.scrollTop = 200
+    host.dispatchEvent(new Event('scroll'))
+    const before = host.querySelector('li[data-activity-id="6"]')!.getBoundingClientRect().top
+    await view.setProps({ events: [...entries, { at: 30, text: 'Uploaded last.md' }] })
+    statusHeight = 20
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    expect(host.querySelector('li[data-activity-id="6"]')!.getBoundingClientRect().top).toBe(before)
+  } finally {
+    view.unmount()
+    rect.mockRestore()
+    host.remove()
+  }
+})
+
 it('recognizes a return to the bottom before the browser delivers its scroll event', async () => {
   const host = document.createElement('div')
   host.className = 'abele-modal__body'
