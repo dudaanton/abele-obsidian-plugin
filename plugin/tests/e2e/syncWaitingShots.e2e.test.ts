@@ -9,7 +9,7 @@ import { heldPlacementSample } from './helpers/syncWaitingSamples'
 
 targets('desktop')
 
-// Presentation data only: no token is stored, no engine starts and no file is changed.
+// Presentation data only: the synthetic token stays in memory, no engine starts and no file is changed.
 const since = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString()
 const waiting = [
   { path: 'Research/Field notes/Survey export.zip', fact: 'quota_waiting: server storage is full' },
@@ -42,9 +42,16 @@ it('pictures temporary waits apart from refusals and compares connection and sta
       await reloadAs(vault, layout === 'phone')
       run(`
         if(svc.rows.value.length)throw new Error('Screenshot fixture needs an unconnected pool vault');
-        window.__waitingShotRestore={rows:svc.rows.value,activity:svc.activity.value,available:svc.available.value};
-        svc.available.value=true;
-        svc.rows.value=[{id:'sample-waiting',kind:'token',address:'https://sync.example',spaceId:'sample-space',tokenId:'sample-token',scope:{kind:'folder',id:'root',path:'/'},secretReference:'',ledgerId:'sample-ledger',paused:false,status:'idle',state:{}}];
+        const saved={rows:svc.rows.value,activity:svc.activity.value,available:svc.available.value};
+        const id=svc.registry.add();
+        try {
+          const secrets=new Map();
+          const scope={kind:'folder',id:'root',path:'/'};
+          svc.registry.attach(id,{v:1,address:'https://sync.example',key:'a'.repeat(43),scope},{protocol:2,token_id:'sample-token',space_id:'sample-space',scope,status:'active'},{get:key=>secrets.get(key)??null,set:(key,value)=>secrets.set(key,value)});
+          window.__waitingShotRestore={...saved,id};
+          svc.available.value=true;
+          svc.rows.value=svc.registry.records();
+        } catch(error) { svc.registry.forget(id); throw error }
         return true;
       `)
       try {
@@ -57,12 +64,12 @@ it('pictures temporary waits apart from refusals and compares connection and sta
             Screen & { line: string; status: string; headings: string[]; height: number }
           >(`
             ${probePrelude(shots)}
-            svc.activity.value={'sample-waiting':{notSynced:${JSON.stringify(items)}}};
+            svc.activity.value={[window.__waitingShotRestore.id]:{notSynced:${JSON.stringify(items)}}};
             const root=await openSyncTab();
             const owner=root.ownerDocument.defaultView;
             owner.require('@electron/remote').getCurrentWindow().setContentSize(${width},${height});
             await poll(()=>owner.innerWidth===${width}&&owner.innerHeight===${height});
-            connectionRow(root,'sample-waiting').click();
+            connectionRow(root,window.__waitingShotRestore.id).click();
             await poll(()=>inWindows('.abele-sync-window'));
             await wait(300);
             const body=inWindows('.abele-sync-window'),sheet=body.closest('.modal');
@@ -153,7 +160,7 @@ it('pictures temporary waits apart from refusals and compares connection and sta
         }
       } finally {
         run(
-          `${close}const saved=window.__waitingShotRestore;if(saved){svc.rows.value=saved.rows;svc.activity.value=saved.activity;svc.available.value=saved.available;delete window.__waitingShotRestore}return true`
+          `${close}const saved=window.__waitingShotRestore;if(saved){svc.rows.value=saved.rows;svc.activity.value=saved.activity;svc.available.value=saved.available;svc.registry.forget(saved.id);await svc.registry.flush();delete window.__waitingShotRestore}return true`
         )
       }
     }
