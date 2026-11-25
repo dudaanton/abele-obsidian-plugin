@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import TokenQrReader from '@/components/sync/TokenQrReader.vue'
 import { readPhoto } from '@/transfer/photo'
 import { sampleIssuedToken } from '@/testing/tokenUiFixture'
+import { deferred } from '../helpers/deferred'
 
 vi.mock('@/transfer/photo', () => ({ readPhoto: vi.fn() }))
 afterEach(() => {
@@ -55,4 +56,38 @@ it('explains how to retry and keeps paste available when no token is found', asy
   expect(view.emitted('token')).toBeUndefined()
   expect(revoke).toHaveBeenCalled()
   view.unmount()
+})
+
+it('drops a photo result when scanning becomes disabled during decoding', async () => {
+  const answer = deferred<string | null>()
+  vi.mocked(readPhoto).mockReturnValue(answer.promise)
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:sample')
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  vi.stubGlobal(
+    'Image',
+    class {
+      naturalWidth = 4032
+      naturalHeight = 3024
+      async decode() {}
+    }
+  )
+  const view = mount(TokenQrReader)
+  const input = view.find('input')
+  Object.defineProperty(input.element, 'files', {
+    value: [new File(['sample'], 'sample-image.jpg')],
+  })
+  Object.defineProperty(input.element, 'doc', {
+    value: { win: { createEl: () => ({ getContext: () => ({}) }) } },
+  })
+  try {
+    await input.trigger('change')
+    await Promise.resolve()
+    expect(readPhoto).toHaveBeenCalledOnce()
+    await view.setProps({ disabled: true })
+    answer.resolve(sampleIssuedToken)
+    await flushPromises()
+    expect(view.emitted('token')).toBeUndefined()
+  } finally {
+    view.unmount()
+  }
 })

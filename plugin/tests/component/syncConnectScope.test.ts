@@ -284,3 +284,40 @@ it.each(['resolve', 'reject'] as const)(
     }
   }
 )
+
+it('keeps one enrollment active when another code is scanned before it finishes', async () => {
+  const ui = tokenUiFixture(true)
+  const pending = deferred<void>()
+  const selected = { kind: 'vault' as const, id: 'sample-vault', path: '/' }
+  const check = vi
+    .spyOn(ui.itemSets, 'connectScope')
+    .mockResolvedValue({ choices: [selected], serverFiles: 2 })
+  const connect = vi.spyOn(ui, 'connect').mockReturnValue(pending.promise)
+  ui.itemSets.install()
+  const wrapper = mount(TokenDialogs, {
+    props: { ui, mode: 'connect' },
+    global: { stubs: { Modal: { template: '<div><slot /><slot name="footer" /></div>' } } },
+  })
+  try {
+    await wrapper.find('input[type=password]').setValue(token('a'))
+    await flushPromises()
+    const action = () =>
+      wrapper.findAllComponents(Button).find((one) => one.props('text') === 'Connect')!
+    await action().trigger('click')
+    expect(connect).toHaveBeenCalledTimes(1)
+    wrapper.findComponent(TokenQrReader).vm.$emit('token', token('b'))
+    await flushPromises()
+    expect(wrapper.findComponent(TokenQrReader).props('disabled')).toBe(true)
+    expect(wrapper.find('input[type=password]').element.value).toBe(token('a'))
+    expect(action().props('disabled')).toBe(true)
+    await action().trigger('click')
+    expect(check).toHaveBeenCalledTimes(1)
+    expect(connect).toHaveBeenCalledTimes(1)
+    pending.resolve()
+    await flushPromises()
+    expect(wrapper.emitted('close')).toHaveLength(1)
+  } finally {
+    wrapper.unmount()
+    ui.itemSets.uninstall()
+  }
+})

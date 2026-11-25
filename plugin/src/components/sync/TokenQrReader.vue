@@ -3,7 +3,7 @@
     <Button
       :text="t('sync.qr.read')"
       :tooltip="t('sync.qr.readTip')"
-      :disabled="busy"
+      :disabled="busy || disabled"
       @click="picker?.click()"
     />
     <input ref="picker" type="file" accept="image/*" capture="environment" hidden @change="read" />
@@ -18,6 +18,7 @@ import { readPhoto } from '@/transfer/photo'
 import { decodeAccessToken } from '@/sync/v2/client'
 import { useI18n } from '@/i18n/useI18n'
 const { t } = useI18n()
+const { disabled = false } = defineProps<{ disabled?: boolean }>()
 const emit = defineEmits<{ token: [text: string] }>()
 const picker = ref<HTMLInputElement>(),
   busy = ref(false),
@@ -25,7 +26,11 @@ const picker = ref<HTMLInputElement>(),
 async function read(event: Event) {
   const input = event.target as HTMLInputElement,
     file = input.files?.[0]
-  if (!file || busy.value) return
+  if (!file) return
+  if (busy.value || disabled) {
+    input.value = ''
+    return
+  }
   busy.value = true
   error.value = ''
   const url = URL.createObjectURL(file)
@@ -65,7 +70,7 @@ async function read(event: Event) {
       }
     )
     if (token) {
-      emit('token', token)
+      if (!disabled) emit('token', token)
       return
     }
     error.value = t('sync.qr.missing')

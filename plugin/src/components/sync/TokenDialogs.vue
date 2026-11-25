@@ -15,7 +15,7 @@
           :invalid="!!error"
           :placeholder="t('streamC.9547fcece571e82f')"
       /></Setting>
-      <TokenQrReader @token="text = $event" />
+      <TokenQrReader :disabled="enrolling" @token="receiveToken" />
       <dl v-if="preview" class="abele-token-dialog__facts">
         <dt>{{ t('settings.CalendarsSettings.server.aef7de28') }}</dt>
         <dd>{{ preview.address }}</dd>
@@ -322,9 +322,13 @@ onBeforeUnmount(() => {
 const text = ref(''),
   error = ref(''),
   busy = ref(false),
+  enrolling = ref(false),
   selected = ref('0'),
   label = ref(''),
   issued = ref('')
+function receiveToken(value: string) {
+  if (!enrolling.value) text.value = value
+}
 const choices = ref<V2Scope[]>([]),
   tokens = ref<V2TokenInfo[]>([]),
   revoking = ref<V2TokenInfo | null>(null)
@@ -394,6 +398,7 @@ function acceptScope(answer: ConnectScope) {
     : answer.choices.filter((one) => one.kind === 'vault').slice(0, 1)
 }
 watch(text, async (value, _, cleanup) => {
+  if (enrolling.value) return
   scope.value = null
   scopeFailure.value = null
   checking.value = false
@@ -485,12 +490,16 @@ async function connect() {
     full.every((item) =>
       picked.value.some((chosen) => chosen.kind === item.kind && chosen.id === item.id)
     )
-  if (scope.value && !entireAccess)
-    await props.ui.connect(text.value, enrollment.signal, picked.value)
-  else await props.ui.connect(text.value, enrollment.signal)
-  text.value = ''
-  new Notice(t('streamC.1e965e25daad8d30'))
-  emit('close')
+  enrolling.value = true
+  try {
+    if (scope.value && !entireAccess) await props.ui.connect(input, enrollment.signal, picked.value)
+    else await props.ui.connect(input, enrollment.signal)
+    text.value = ''
+    new Notice(t('streamC.1e965e25daad8d30'))
+    emit('close')
+  } finally {
+    enrolling.value = false
+  }
 }
 async function issue() {
   const epoch = generation,
