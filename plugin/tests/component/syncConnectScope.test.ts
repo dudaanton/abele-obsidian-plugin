@@ -5,6 +5,7 @@ import DeviceScopeField from '@/components/sync/DeviceScopeField.vue'
 import TokenDialogs from '@/components/sync/TokenDialogs.vue'
 import Button from '@/components/obsidian/Button.vue'
 import Modal from '@/components/obsidian/Modal.vue'
+import TokenQrReader from '@/components/sync/TokenQrReader.vue'
 import { tokenUiFixture } from '@/testing/tokenUiFixture'
 import { shareSetSource, type ConnectScope } from '@/sync/shareSets'
 import { encodeAccessToken } from '@/sync/v2/contract'
@@ -212,31 +213,74 @@ it('retries a failed scope check after the server returns, then connects with th
   }
 })
 
-it('keeps a revoked token refusal without repeating the scope request', async () => {
-  const ui = tokenUiFixture(true)
-  const check = vi
-    .spyOn(ui.itemSets, 'connectScope')
-    .mockRejectedValue(new V2ClientError('revoked'))
-  const connect = vi.spyOn(ui, 'connect')
-  ui.itemSets.install()
-  const wrapper = mount(TokenDialogs, {
-    props: { ui, mode: 'connect' },
-    global: { stubs: { Modal: { template: '<div><slot /><slot name="footer" /></div>' } } },
-  })
-  try {
-    await wrapper.find('input[type=password]').setValue(token())
-    await flushPromises()
-    expect(wrapper.get('[role=alert]').text()).toMatch(/access is closed/i)
-    await wrapper
-      .findAllComponents(Button)
-      .find((one) => one.props('text') === 'Connect')!
-      .trigger('click')
-    await flushPromises()
-    expect(check).toHaveBeenCalledTimes(1)
-    expect(connect).not.toHaveBeenCalled()
-    expect(wrapper.get('[role=alert]').text()).toMatch(/access is closed/i)
-  } finally {
-    wrapper.unmount()
-    ui.itemSets.uninstall()
+it.each(['revoked', 'scope_deleted'])(
+  'keeps a %s token refusal without repeating the scope request',
+  async (code) => {
+    const ui = tokenUiFixture(true)
+    const check = vi.spyOn(ui.itemSets, 'connectScope').mockRejectedValue(new V2ClientError(code))
+    const connect = vi.spyOn(ui, 'connect')
+    ui.itemSets.install()
+    const wrapper = mount(TokenDialogs, {
+      props: { ui, mode: 'connect' },
+      global: { stubs: { Modal: { template: '<div><slot /><slot name="footer" /></div>' } } },
+    })
+    try {
+      await wrapper.find('input[type=password]').setValue(token())
+      await flushPromises()
+      expect(wrapper.get('[role=alert]').text()).toMatch(/closed|deleted/i)
+      await wrapper
+        .findAllComponents(Button)
+        .find((one) => one.props('text') === 'Connect')!
+        .trigger('click')
+      await flushPromises()
+      expect(check).toHaveBeenCalledTimes(1)
+      expect(connect).not.toHaveBeenCalled()
+      expect(wrapper.get('[role=alert]').text()).toMatch(/closed|deleted/i)
+    } finally {
+      wrapper.unmount()
+      ui.itemSets.uninstall()
+    }
   }
-})
+)
+
+it.each(['resolve', 'reject'] as const)(
+  'ignores an older retry that %s after a scanned token is inspected',
+  async (outcome) => {
+    const ui = tokenUiFixture(true)
+    const oldRetry = deferred<ConnectScope>()
+    const oldItem = { kind: 'vault' as const, id: 'old-vault', path: '/' }
+    const newItem = { kind: 'vault' as const, id: 'new-vault', path: '/' }
+    const check = vi
+      .spyOn(ui.itemSets, 'connectScope')
+      .mockRejectedValueOnce(new V2ClientError('offline'))
+      .mockReturnValueOnce(oldRetry.promise)
+      .mockResolvedValueOnce({ choices: [newItem], serverFiles: 2 })
+    const connect = vi.spyOn(ui, 'connect').mockResolvedValue()
+    ui.itemSets.install()
+    const wrapper = mount(TokenDialogs, {
+      props: { ui, mode: 'connect' },
+      global: { stubs: { Modal: { template: '<div><slot /><slot name="footer" /></div>' } } },
+    })
+    try {
+      await wrapper.find('input[type=password]').setValue(token('a'))
+      await flushPromises()
+      const action = () =>
+        wrapper.findAllComponents(Button).find((one) => one.props('text') === 'Connect')!
+      await action().trigger('click')
+      expect(check).toHaveBeenCalledTimes(2)
+      wrapper.findComponent(TokenQrReader).vm.$emit('token', token('b'))
+      await flushPromises()
+      expect(wrapper.findComponent(DeviceScopeField).props('modelValue')).toEqual([newItem])
+      if (outcome === 'resolve') oldRetry.resolve({ choices: [oldItem], serverFiles: 1 })
+      else oldRetry.reject(new V2ClientError('offline'))
+      await flushPromises()
+      expect(wrapper.findComponent(DeviceScopeField).props('modelValue')).toEqual([newItem])
+      expect(wrapper.find('[role=alert]').exists()).toBe(false)
+      await action().trigger('click')
+      expect(connect).toHaveBeenCalledWith(token('b'), expect.any(AbortSignal), [newItem])
+    } finally {
+      wrapper.unmount()
+      ui.itemSets.uninstall()
+    }
+  }
+)

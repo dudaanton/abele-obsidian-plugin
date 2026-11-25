@@ -399,6 +399,8 @@ watch(text, async (value, _, cleanup) => {
   checking.value = false
   error.value = ''
   if (props.mode !== 'connect') return
+  generation++
+  busy.value = false
   if (!value.trim()) return
   if (!preview.value) {
     try {
@@ -442,28 +444,36 @@ const operationName = (value: string) =>
 async function run(action: () => Promise<void>) {
   if (busy.value || !alive) return
   const epoch = generation
+  const input = props.mode === 'connect' ? text.value : null
   busy.value = true
   error.value = ''
   try {
     await action()
   } catch (cause) {
-    if (alive && epoch === generation) error.value = connectionError(cause)
+    if (alive && epoch === generation && (input === null || input === text.value))
+      error.value = connectionError(cause)
   } finally {
     if (alive && epoch === generation) busy.value = false
   }
 }
 async function connect() {
+  const input = text.value
+  const epoch = generation
   const source = shareSetSource.value
   if (source?.connectScope && !scope.value) {
     if (!preview.value) tokenScope(decodeAccessToken(text.value))
     const code = (scopeFailure.value as { code?: string } | null)?.code
-    if (code && ['bad-token', 'revoked', 'unauthorized', 'forbidden'].includes(code))
+    if (
+      code &&
+      ['bad-token', 'revoked', 'unauthorized', 'forbidden', 'scope_deleted'].includes(code)
+    )
       throw scopeFailure.value
     try {
-      const answer = await source.connectScope(text.value, enrollment.signal)
-      if (alive && !enrollment.signal.aborted) acceptScope(answer)
+      const answer = await source.connectScope(input, enrollment.signal)
+      if (alive && !enrollment.signal.aborted && epoch === generation && input === text.value)
+        acceptScope(answer)
     } catch (cause) {
-      scopeFailure.value = cause
+      if (alive && epoch === generation && input === text.value) scopeFailure.value = cause
       throw cause
     }
     return
