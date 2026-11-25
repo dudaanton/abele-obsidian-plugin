@@ -212,13 +212,7 @@
         v-if="mode === 'connect'"
         :text="t('streamC.1a2303ede07493ac')"
         :tooltip="t('streamC.3a588cb1a419d7f2')"
-        :disabled="
-          busy ||
-          !text.trim() ||
-          checking ||
-          (!!shareSetSource?.connectScope && !scope) ||
-          (!!scope && !picked.length)
-        "
+        :disabled="busy || !text.trim() || checking || (!!scope && !picked.length)"
         accent
         @click="run(connect)"
       />
@@ -389,18 +383,29 @@ watch(text, async (value, _, cleanup) => {
 })
 /** The server read before connecting: what it holds and what this device may choose from. */
 const scope = ref<ConnectScope | null>(null),
+  scopeFailure = ref<unknown>(null),
   checking = ref(false),
   picked = ref<ShareItem[]>([])
 watch(text, async (value, _, cleanup) => {
   scope.value = null
+  scopeFailure.value = null
   checking.value = false
+  error.value = ''
   if (props.mode !== 'connect') return
+  if (!value.trim()) return
+  if (!preview.value) {
+    try {
+      tokenScope(decodeAccessToken(value))
+    } catch (cause) {
+      error.value = connectionError(cause)
+    }
+    return
+  }
   const source = shareSetSource.value
-  if (!source?.connectScope || !preview.value) return
+  if (!source?.connectScope) return
   const controller = new AbortController()
   cleanup(() => controller.abort())
   checking.value = true
-  error.value = ''
   try {
     const answer = await source.connectScope(value, controller.signal)
     if (!alive || controller.signal.aborted) return
@@ -409,7 +414,10 @@ watch(text, async (value, _, cleanup) => {
       ? [...answer.narrowed]
       : answer.choices.filter((one) => one.kind === 'vault').slice(0, 1)
   } catch (cause) {
-    if (alive && !controller.signal.aborted) error.value = connectionError(cause)
+    if (alive && !controller.signal.aborted) {
+      scopeFailure.value = cause
+      error.value = connectionError(cause)
+    }
   } finally {
     if (!controller.signal.aborted) checking.value = false
   }
@@ -441,6 +449,10 @@ async function run(action: () => Promise<void>) {
   }
 }
 async function connect() {
+  if (shareSetSource.value?.connectScope && !scope.value) {
+    if (!preview.value) tokenScope(decodeAccessToken(text.value))
+    throw scopeFailure.value ?? new Error('Could not inspect what this token opens')
+  }
   const full = scope.value?.narrowed
   const entireAccess =
     full &&

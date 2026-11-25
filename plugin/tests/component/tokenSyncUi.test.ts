@@ -21,6 +21,23 @@ import { Menu, Notice } from '../mocks/obsidian'
 import { SyncDriver } from '../e2e/helpers/syncDriver'
 vi.mock('../e2e/helpers/syncVault', () => ({ waitFor: vi.fn() }))
 
+it('lets a malformed connection code report a specific visible error', async () => {
+  const ui = tokenUiFixture()
+  const view = mount(TokenDialogs, {
+    props: { ui, mode: 'connect' },
+    global: { stubs: { Modal: modalStub } },
+  })
+  try {
+    await view.find('input:not([type=file])').setValue('damaged token')
+    await flushPromises()
+    const connect = view.findAllComponents(Button).find((one) => one.props('text') === 'Connect')!
+    expect(connect.props('disabled')).toBe(false)
+    expect(view.get('[role="alert"]').text()).toMatch(/token.*damaged|damaged.*token/i)
+  } finally {
+    view.unmount()
+  }
+})
+
 it('accepts approval before runtime registration and shows progress and errors beside the buttons', async () => {
   const ui = tokenUiFixture(),
     candidate = ui.candidates.value[0]

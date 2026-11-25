@@ -22,6 +22,29 @@ const token = (key = 'a') =>
     scope: { kind: 'folder', id: 'root', path: '/' },
   })
 
+it('reports a malformed token even when scope inspection cannot start', async () => {
+  const ui = tokenUiFixture(true)
+  const connectScope = vi.spyOn(ui.itemSets, 'connectScope')
+  ui.itemSets.install()
+  const wrapper = mount(TokenDialogs, {
+    props: { ui, mode: 'connect' },
+    global: { stubs: { Modal: { template: '<div><slot /><slot name="footer" /></div>' } } },
+  })
+  try {
+    await wrapper.find('input[type=password]').setValue('damaged token')
+    await flushPromises()
+    const connect = wrapper
+      .findAllComponents(Button)
+      .find((one) => one.props('text') === 'Connect')!
+    expect(connect.props('disabled')).toBe(false)
+    expect(wrapper.get('[role=alert]').text()).toMatch(/token.*damaged|damaged.*token/i)
+    expect(connectScope).not.toHaveBeenCalled()
+  } finally {
+    wrapper.unmount()
+    ui.itemSets.uninstall()
+  }
+})
+
 it.each([1, 3])(
   'connects the full %i-item access directly so issuer changes remain live',
   async (count) => {
@@ -131,7 +154,7 @@ it('checks metadata without connecting and passes the chosen scope only after Co
   }
 })
 
-it('ignores an old token answer and keeps Connect disabled after the current check fails', async () => {
+it('ignores an old token answer and exposes the current check failure for retry', async () => {
   Platform.isPhone = true
   const ui = tokenUiFixture(true)
   const first = deferred<ConnectScope>(),
@@ -161,7 +184,11 @@ it('ignores an old token answer and keeps Connect disabled after the current che
     const action = wrapper
       .findAllComponents(Button)
       .find((button) => button.props('text') === 'Connect')!
-    expect(action.props('disabled')).toBe(true)
+    expect(action.props('disabled')).toBe(false)
+    expect(wrapper.get('[role=alert]').text()).toMatch(/could not finish|server/i)
+    expect(connect).not.toHaveBeenCalled()
+    await action.trigger('click')
+    expect(wrapper.get('[role=alert]').text()).toMatch(/could not finish|server/i)
     expect(connect).not.toHaveBeenCalled()
   } finally {
     wrapper.unmount()
