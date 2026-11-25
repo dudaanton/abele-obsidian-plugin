@@ -58,6 +58,60 @@ it('updates receipt membership when a record revision changes', () => {
   expect(Object.keys(presenterSnapshot(state, 'sample').receipts)).toEqual(['other'])
 })
 
+it('keeps full-scan receipt order across random additions, deletions and reinserts', () => {
+  let table = new RecordTable().set('sample-seed', { result: { session_id: 'sample' } })
+  const revisions = [table]
+  const state = {
+    results: table.view,
+    events: { sample: [{ data: { input_id: 'sample-input' } }] },
+    outbox: [],
+  } as unknown as NodeClientState
+  const compare = () => {
+    state.results = table.view as NodeClientState['results']
+    const expected = Object.entries(state.results)
+      .filter(([, receipt]) => {
+        const result = receipt.result as { session_id?: string; input_id?: string } | undefined
+        return (
+          receipt.input?.sessionId === 'sample' ||
+          receipt.answer?.sessionId === 'sample' ||
+          result?.session_id === 'sample' ||
+          result?.input_id === 'sample-input'
+        )
+      })
+      .map(([id]) => id)
+    expect(Object.keys(presenterSnapshot(state, 'sample').receipts)).toEqual(expected)
+  }
+  compare()
+  table = table.set('sample-first', { result: { session_id: 'sample' } })
+  revisions.push(table)
+  table = table.set('sample-second', { result: { session_id: 'sample' } })
+  revisions.push(table)
+  compare()
+  table = table.delete('sample-first')
+  revisions.push(table)
+  table = table.set('sample-first', { result: { session_id: 'sample' } })
+  revisions.push(table)
+  compare()
+
+  let seed = 0x5eed1234
+  const random = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) % 100
+  const receipts: NodeClientState['results'][string][] = [
+    { result: { session_id: 'sample' } },
+    { result: { session_id: 'elsewhere' } },
+    { result: { input_id: 'sample-input' } },
+    { input: { sessionId: 'sample', text: 'Sample' } },
+    { answer: { sessionId: 'sample', promptId: 'sample-prompt', choice: 'allow' } },
+  ]
+  for (let batch = 0; batch < 80; batch++) {
+    for (let step = 0; step < 1 + (random() % 4); step++) {
+      const key = random() % 5 === 0 ? String(random() % 6) : `sample-key-${random() % 12}`
+      table = random() % 4 === 0 ? table.delete(key) : table.set(key, receipts[random() % 5])
+      revisions.push(table)
+    }
+    compare()
+  }
+})
+
 it('projects answers from immutable source receipts before making detached presentation copies', async () => {
   const { frozen } = await import('@/node/storeDraft')
   const { PromptSchema } = await import('@abele/node-protocol')

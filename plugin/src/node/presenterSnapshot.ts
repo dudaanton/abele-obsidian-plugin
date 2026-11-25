@@ -8,7 +8,6 @@ interface ReceiptIndex {
   sessions: Map<string, Set<string>>
   inputs: Map<string, Set<string>>
   order: Map<string, number>
-  next: number
 }
 const receiptIndexes = new WeakMap<object, ReceiptIndex>()
 
@@ -63,12 +62,11 @@ function receiptIndex(results: NodeClientState['results']): ReceiptIndex {
         sessions: new Map(base.sessions),
         inputs: new Map(base.inputs),
         order: new Map(base.order),
-        next: base.next,
       }
       for (const id of changed) {
         membership(index, id, receiptOf(ancestor.get(id)), false)
         const current = receiptOf(table.get(id))
-        if (current && !index.order.has(id)) index.order.set(id, index.next++)
+        if (current) index.order.set(id, table.orderOf(id))
         if (!current) index.order.delete(id)
         membership(index, id, current, true)
       }
@@ -76,9 +74,9 @@ function receiptIndex(results: NodeClientState['results']): ReceiptIndex {
       return index
     }
   }
-  const index: ReceiptIndex = { sessions: new Map(), inputs: new Map(), order: new Map(), next: 0 }
+  const index: ReceiptIndex = { sessions: new Map(), inputs: new Map(), order: new Map() }
   for (const [id, receipt] of Object.entries(source)) {
-    index.order.set(id, index.next++)
+    index.order.set(id, table?.orderOf(id) ?? index.order.size)
     const result = receipt.result as { session_id?: string; input_id?: string } | undefined
     add(index.sessions, receipt.input?.sessionId, id)
     add(index.sessions, receipt.answer?.sessionId, id)
@@ -110,7 +108,19 @@ export function presenterSnapshot(
   const ids = new Set(index.sessions.get(session))
   for (const inputId of inputIds) for (const id of index.inputs.get(inputId) ?? []) ids.add(id)
   for (const id of Object.keys(letters)) if (id in results) ids.add(id)
-  for (const id of [...ids].sort((a, b) => (index.order.get(a) ?? 0) - (index.order.get(b) ?? 0))) {
+  const arrayIndex = (id: string) => {
+    const value = Number(id)
+    return Number.isInteger(value) && value >= 0 && value < 4294967295 && String(value) === id
+      ? value
+      : undefined
+  }
+  for (const id of [...ids].sort((a, b) => {
+    const aIndex = arrayIndex(a)
+    const bIndex = arrayIndex(b)
+    if (aIndex !== undefined || bIndex !== undefined)
+      return aIndex === undefined ? 1 : bIndex === undefined ? -1 : aIndex - bIndex
+    return (index.order.get(a) ?? 0) - (index.order.get(b) ?? 0)
+  })) {
     const receipt: Receipt = results[id]
     if (!receipt) continue
     const result = receipt.result as

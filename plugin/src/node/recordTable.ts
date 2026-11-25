@@ -97,6 +97,9 @@ export class RecordTable {
   get(key: string): unknown {
     return this.find(key)?.value
   }
+  orderOf(key: string): number | undefined {
+    return this.find(key)?.order
+  }
   patch(changes: Iterable<readonly [string, unknown]>): RecordTable {
     if (this.root.item || this.root.children.size) {
       let table: RecordTable | undefined
