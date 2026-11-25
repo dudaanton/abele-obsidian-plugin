@@ -15,6 +15,7 @@ it.each([
   const survivor = { breakpoint_id: 'sample-live' }
   const snapshot = {
     stop_epoch: 7,
+    breakpoint_revision: 1,
     selected_thread_id: 1,
     threads: [{ thread_id: 1, stop: { reason: 'breakpoint', hit_breakpoint_ids: [] } }],
     breakpoints: live ? [discarded, survivor] : [discarded],
@@ -31,6 +32,7 @@ it.each([
     ],
     removeBreakpoint: vi.fn(async () => {
       snapshot.breakpoints = live ? [survivor] : []
+      snapshot.breakpoint_revision++
       if (late) snapshot.stop_epoch++
       return { outcome: 'completed' }
     }),
@@ -39,6 +41,36 @@ it.each([
     { file: 'sample.ts', requestedLine: 5 },
   ])
   expect(command.mock.calls).toEqual(live ? [] : [['continue']])
+})
+
+it('does not release an empty-ID stop after an intervening user point was added and removed', async () => {
+  const snapshot = {
+    stop_epoch: 7,
+    breakpoint_revision: 1,
+    selected_thread_id: 1,
+    threads: [{ thread_id: 1, stop: { reason: 'breakpoint', hit_breakpoint_ids: [] } }],
+    breakpoints: [{ breakpoint_id: 'sample-removed' }],
+  }
+  const command = vi.fn(async () => ({ outcome: 'completed' }))
+  const controller = {
+    current: true,
+    session: { status: 'paused' },
+    snapshot,
+    command,
+    knownBreakpoints: () => [{ id: 'sample-removed', file: 'sample.ts', requestedLine: 5 }],
+    removeBreakpoint: vi.fn(async () => {
+      // Another controller adds a user point, stops on it, then removes it.
+      snapshot.breakpoint_revision += 2
+      snapshot.stop_epoch++
+      snapshot.breakpoints = []
+      snapshot.breakpoint_revision++ // Our discarded-point removal also completes.
+      return { outcome: 'completed' }
+    }),
+  }
+  await removeForgottenBreakpoints(undefined, { controller } as never, [
+    { file: 'sample.ts', requestedLine: 5 },
+  ])
+  expect(command).not.toHaveBeenCalled()
 })
 
 it.each([false, true])(
