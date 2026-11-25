@@ -139,8 +139,13 @@ export class LocalOnlyCopies {
     this.refresh()
   }
   private save(copies: Copy[]): void {
-    // Rename events arrive after the disk move. Fence the destination before any fallible IO.
-    this.unsaved = copies
+    // A failed write must retain both old and new fences. Rename events arrive after the disk
+    // move; release writes remove old entries only after storage confirms the replacement.
+    const previous = this.copies()
+    this.unsaved = [
+      ...copies,
+      ...previous.filter((one) => !copies.some((next) => next.id === one.id)),
+    ]
     this.refresh()
     this.registry.localStorage.saveLocalStorage(LOCAL_ONLY_COPIES, copies)
     if (
@@ -170,7 +175,14 @@ export class LocalOnlyCopies {
     const held = (path: string) => selected(path) && this.has(path)
     if (!this.paths.some(selected)) return
     await retire(held)
-    this.save(this.copies().filter((one) => !selected(one.path)))
+    // Keep an umbrella exclusion until every connection slot has been cleared. A crash or a
+    // failed slot write must never expose a copy merely because an earlier slot was saved.
+    const original = this.copies()
+    const guarded = [...original]
+    for (const path of new Set(this.paths.filter(selected)))
+      if (!guarded.some((one) => caseKey(one.path) === caseKey(path)))
+        guarded.push({ id: crypto.randomUUID(), path, ledgerId: issuer.ledgerId })
+    this.save(guarded)
     for (const record of this.registry.records())
       for (const slot of slots) {
         const paths = ((record.state[slot] ?? []) as string[]).filter(
@@ -178,6 +190,7 @@ export class LocalOnlyCopies {
         )
         this.registry.storage(record.id).saveLocalStorage(slot, paths)
       }
+    this.save(original.filter((one) => !selected(one.path)))
     this.refresh()
   }
 }

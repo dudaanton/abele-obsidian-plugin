@@ -1,6 +1,60 @@
 import { expect, it, vi } from 'vitest'
-import { TokenConnectionRegistry } from '@/sync/tokenConnectionRegistry'
+import { TokenConnectionRegistry, TOKEN_REGISTRY_KEY } from '@/sync/tokenConnectionRegistry'
 import { LocalOnlyCopies, LOCAL_ONLY_COPIES } from '@/sync/localOnlyCopies'
+
+it('keeps a selected copy fenced when a later exclusion write fails', async () => {
+  const values = new Map<string, unknown>()
+  let fail = false
+  let registryWrites = 0
+  const local = {
+    loadLocalStorage: (key: string) => structuredClone(values.get(key) ?? null),
+    saveLocalStorage: (key: string, value: unknown) => {
+      if (fail && key === TOKEN_REGISTRY_KEY && ++registryWrites === 2)
+        throw new Error('Storage unavailable')
+      values.set(key, structuredClone(value))
+    },
+  }
+  const registry = TokenConnectionRegistry.open(local)
+  const id = registry.add()
+  registry.storage(id).saveLocalStorage('abele-sync-token-state:local-only', ['Shared/Kept.md'])
+  const copies = new LocalOnlyCopies(registry)
+  fail = true
+  await expect(copies.releaseSelected(id, ['Shared'])).rejects.toThrow('Storage unavailable')
+  expect(new LocalOnlyCopies(TokenConnectionRegistry.open(local)).has('Shared/Kept.md')).toBe(true)
+})
+
+it('keeps the in-memory fence when the final release write fails', async () => {
+  const values = new Map<string, unknown>()
+  let failFinal = false
+  const local = {
+    loadLocalStorage: (key: string) => structuredClone(values.get(key) ?? null),
+    saveLocalStorage: (key: string, value: unknown) => {
+      if (
+        failFinal &&
+        key === LOCAL_ONLY_COPIES &&
+        !(value as { path: string }[]).some((copy) => copy.path === 'Shared/Kept.md')
+      ) {
+        failFinal = false
+        throw new Error('Final storage write failed')
+      }
+      values.set(key, structuredClone(value))
+    },
+  }
+  const registry = TokenConnectionRegistry.open(local)
+  const id = registry.add()
+  registry.storage(id).saveLocalStorage('abele-sync-token-state:local-only', ['Shared/Kept.md'])
+  const copies = new LocalOnlyCopies(registry)
+  local.saveLocalStorage(LOCAL_ONLY_COPIES, [
+    { id: 'sample-copy', path: 'Shared/Kept.md', ledgerId: 'sample-ledger' },
+  ])
+  copies.refresh()
+  failFinal = true
+  await expect(copies.releaseSelected(id, ['Shared'])).rejects.toThrow('Final storage write failed')
+  expect(copies.has('Shared/Kept.md')).toBe(true)
+  await copies.assertPublishSafe(async () => true)
+  expect(copies.has('Shared/Kept.md')).toBe(true)
+  expect(new LocalOnlyCopies(TokenConnectionRegistry.open(local)).has('Shared/Kept.md')).toBe(true)
+})
 
 it('follows a kept identity into another shared folder and through folder renames after restart', async () => {
   const values = new Map<string, unknown>()
