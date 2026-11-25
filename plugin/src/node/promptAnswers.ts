@@ -42,8 +42,8 @@ export function promptAnswerStates(
   // An unchanged transaction draft has the same immutable backing collection.
   // Resolve it before indexing; proxy identities are replaced on every transaction.
   const results = snapshotOf(state.results)
-  const immutable = !!tableOf(results) || Object.isFrozen(results)
-  let index = immutable ? answerIndexes.get(results) : undefined
+  let index = answerIndexes.get(results)
+  const immutable = !!index || !!tableOf(results) || Object.isFrozen(results)
   if (!index) {
     index = new Map()
     for (const receipt of Object.values(results)) {

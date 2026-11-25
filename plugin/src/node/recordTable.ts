@@ -25,11 +25,15 @@ export function tableOf(value: object): RecordTable | undefined {
 
 export class RecordTable {
   readonly view: Record<string, unknown>
+  readonly previous?: WeakRef<RecordTable>
   private materialized?: Record<string, unknown>
   constructor(
     private readonly root: Branch = empty(),
-    private readonly next = 0
+    private readonly next = 0,
+    previous?: RecordTable,
+    readonly changedKeys: readonly string[] = []
   ) {
+    this.previous = previous ? new WeakRef(previous) : undefined
     const target: Record<string, unknown> = {}
     const materialize = () => {
       if (!this.materialized) {
@@ -107,8 +111,10 @@ export class RecordTable {
     const root = empty()
     let next = this.next
     let changed = false
+    const changedKeys: string[] = []
     for (const [key, value] of changes) {
       changed = true
+      changedKeys.push(key)
       let branch = root
       for (const char of digits(key)) {
         let child = branch.children.get(char)
@@ -121,7 +127,7 @@ export class RecordTable {
       if (value === DELETE_RECORD) branch.item = undefined
       else branch.item = { key, value, order: branch.item?.order ?? next++ }
     }
-    return changed ? new RecordTable(root, next) : this
+    return changed ? new RecordTable(root, next, this, changedKeys) : this
   }
   set(key: string, value: unknown): RecordTable {
     const before = this.find(key)
@@ -147,7 +153,7 @@ export class RecordTable {
       else children.set(char, child)
       child = { item: branch.item, children }
     }
-    return new RecordTable(child, next)
+    return new RecordTable(child, next, this, [key])
   }
   object(): Record<string, unknown> {
     // The proxy's frozen target is materialized only for explicit enumeration/cloning.

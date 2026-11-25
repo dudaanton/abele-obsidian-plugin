@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { presenterSnapshot } from '@/node/presenterSnapshot'
 import type { NodeClientState } from '@/node/NodeClientStore'
 import { promptAnswerStates } from '@/node/promptAnswers'
+import { DELETE_RECORD, RecordTable } from '@/node/recordTable'
 
 it('copies only session receipts and referenced artifacts without retaining store getters', () => {
   const state = {
@@ -18,6 +19,43 @@ it('copies only session receipts and referenced artifacts without retaining stor
   expect(snapshot.receipts).not.toBe(state.results)
   expect(snapshot.receipts.own).not.toBe(state.results.own)
   expect(Object.getOwnPropertyDescriptor(snapshot.receipts, 'own')).not.toHaveProperty('get')
+})
+
+it('does not enumerate unchanged receipts on each presenter refresh', () => {
+  let enumerations = 0
+  const results = new Proxy(
+    Object.freeze({ own: Object.freeze({ result: Object.freeze({ session_id: 'sample' }) }) }),
+    {
+      ownKeys(target) {
+        enumerations++
+        return Reflect.ownKeys(target)
+      },
+    }
+  )
+  const state = { results, events: { sample: [] }, outbox: [] } as unknown as NodeClientState
+  expect(presenterSnapshot(state, 'sample').receipts.own).toBeDefined()
+  const afterFirst = enumerations
+  for (let i = 0; i < 5; i++) expect(presenterSnapshot(state, 'sample').receipts.own).toBeDefined()
+  expect(enumerations).toBe(afterFirst)
+})
+
+it('updates receipt membership when a record revision changes', () => {
+  const initial = new RecordTable().patch([
+    ['own', Object.freeze({ result: { session_id: 'sample' } })],
+    ['other', Object.freeze({ result: { session_id: 'elsewhere' } })],
+  ])
+  const state = {
+    results: initial.view,
+    events: { sample: [] },
+    outbox: [],
+  } as unknown as NodeClientState
+  expect(Object.keys(presenterSnapshot(state, 'sample').receipts)).toEqual(['own'])
+  const changed = initial.patch([
+    ['own', DELETE_RECORD],
+    ['other', Object.freeze({ result: { session_id: 'sample' } })],
+  ])
+  state.results = changed.view as NodeClientState['results']
+  expect(Object.keys(presenterSnapshot(state, 'sample').receipts)).toEqual(['other'])
 })
 
 it('projects answers from immutable source receipts before making detached presentation copies', async () => {
