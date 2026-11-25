@@ -4,7 +4,11 @@ import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
 import { responseSchema } from '@abele/channel-protocol'
 import { PromptSchema } from '@abele/node-protocol'
 import { NodeClientStore, type NodeClientState } from '@/node/NodeClientStore'
-import { NodeManagerController, executionRequestsFor, operationsFor } from '@/node/NodeManagerController'
+import {
+  NodeManagerController,
+  executionRequestsFor,
+  operationsFor,
+} from '@/node/NodeManagerController'
 import { NodeChatPresenter } from '@/node/NodeChatPresenter'
 import { contextualNodeHistory } from '../fixtures/contextualNodeHistory.mjs'
 
@@ -35,7 +39,9 @@ it('reuses immutable manager indexes without enumerating the snapshot again', ()
   const requestCount = requests.count()
   const operationCount = operations.count()
   for (let i = 0; i < 10; i++) {
-    expect(executionRequestsFor(requests.proxy as never, 'sample-parent', 'sample-run')).toBe(requestRows)
+    expect(executionRequestsFor(requests.proxy as never, 'sample-parent', 'sample-run')).toBe(
+      requestRows
+    )
     expect(operationsFor(operations.proxy as never, 'sample-parent')).toBe(operationRows)
   }
   expect(requests.count()).toBe(requestCount)

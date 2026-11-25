@@ -215,10 +215,12 @@ async function repositoryScenario(emptyDirectoryOnly = false) {
       await until(()=>row('README.md'));
       const expand=async path=>{await until(()=>row(path));if(row(path).getAttribute('aria-expanded')==='false')row(path).click();await until(()=>row(path)?.getAttribute('aria-expanded')==='true')};
       const operate=async(path,label,value,preview=false)=>{
+        const previousItems=new Set(document.querySelectorAll('.menu-item'));
         row(path).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:100,clientY:200}));
-        await until(()=>[...document.querySelectorAll('.menu-item')].some(item=>item.querySelector('.menu-item-title')?.textContent.trim()===label));
-        [...document.querySelectorAll('.menu-item')].find(item=>item.querySelector('.menu-item-title')?.textContent.trim()===label).click();
-        await until(()=>document.querySelector('.modal.abele-modal'));
+        const action=()=>[...document.querySelectorAll('.menu-item')].find(item=>!previousItems.has(item)&&item.querySelector('.menu-item-title')?.textContent.trim()===label);
+        await until(action);
+        action().click();
+        await until(()=>document.querySelector('.modal.abele-modal')).catch(error=>{throw Error(String(error)+'; '+JSON.stringify({path,label,notices:[...document.querySelectorAll('.notice')].map(el=>el.textContent),menus:[...document.querySelectorAll('.menu')].map(el=>el.textContent.slice(0,200))}))});
         const modal=document.querySelector('.modal.abele-modal');
         if(value!==undefined){const input=modal.querySelector('input');input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));await wait(50)}
         if(preview&&label==='Delete…')return;
