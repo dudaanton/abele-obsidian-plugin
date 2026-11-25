@@ -98,6 +98,37 @@ const installationSnapshot = async () => {
  return result;
 };`
 
+/** Bounded failure-only reads: distinguish path exclusion from a locally failed request. */
+export const DELIVERY_SNAPSHOT = `
+const deliverySnapshot = async () => {
+ const host=app.plugins.plugins.abele?.tokenEngines;
+ const wanted=window.__abeleSyncDelivery||null;
+ const bounded=async work=>{let timer;try{return await Promise.race([Promise.resolve().then(work).catch(error=>({error:String(error?.message||error)})),new Promise(done=>{timer=setTimeout(()=>done({error:'timed out'}),2000)})])}finally{clearTimeout(timer)}};
+ const failure=(error,depth=0)=>!error||depth>5?null:{name:error.name,code:error.code,message:error.message,stack:error.stack,cause:failure(error.cause,depth+1)};
+ const result={at:Date.now(),wanted,connections:{}};
+ const manager=app.vault[Symbol.for('abele.sync.token-offloads-v1')];
+ result.offloads=manager?{inflight:[...manager.inflight.keys()],absent:[...manager.absent].map(([id,one])=>({id,files:one.files})),placement:manager.locks.snapshot()}:null;
+ await Promise.all([...(host?.live??[])].map(async ([id,runtime]) => {
+  const state=runtime.options?.state,fs=runtime.options?.fs;
+  const coordination=fs?.externalCoordination;
+  const row={state:runtime.engine?.status?.state,failure:failure(runtime.engine?.status?.lastError),exclusions:coordination?{reservations:[...coordination.reservations].map(one=>({...one.request,invalidated:one.invalidated,blocked:[...one.blocked]})),mutations:[...coordination.engineMutations],uses:[...coordination.uses]}:null};
+  result.connections[id]=row;
+  await Promise.all([
+  bounded(()=>Promise.all((wanted?.paths||[]).map(async local=>{
+   const placement=runtime.placement;
+   const wire=placement?placement.toServer(local):local;
+   return {local,wire,stat:await bounded(()=>fs.stat(wire)),entry:await bounded(()=>state.get(wire))};
+  }))).then(value=>{row.paths=value}),
+  bounded(()=>state.getJournal()).then(value=>{row.journal=value}),
+  bounded(()=>state.getExternalState()).then(value=>{row.external=value}),
+  bounded(async()=>{
+   const keys=(await Promise.all(['file-retry:','pull-held:','pull-refused:','not-synced-outgoing:'].map(prefix=>state.metadataKeys(prefix)))).flat();
+   return await Promise.all(keys.slice(0,40).map(async key=>({key,value:JSON.parse((await state.getMeta(key))||'null')})));
+  }).then(value=>{row.retry=value})]);
+ }));
+ return result;
+};`
+
 /** Never evaluate or print the failed command again: it can contain a private pasted token. */
 export function captureSyncFailure(cli: VaultCli, label: string): string {
   const directory = resolve(
@@ -110,7 +141,7 @@ export function captureSyncFailure(cli: VaultCli, label: string): string {
   let snapshot: unknown
   try {
     snapshot = cli.evalAwait(
-      `(async()=>{${SYNC_SNAPSHOT}${DIRECTORY_SNAPSHOT}${INSTALLATION_SNAPSHOT}const one=syncSnapshot();one.installations=await installationSnapshot();one.directories=await directorySnapshot();return one})()`
+      `(async()=>{${SYNC_SNAPSHOT}${DIRECTORY_SNAPSHOT}${INSTALLATION_SNAPSHOT}${DELIVERY_SNAPSHOT}const one=syncSnapshot();one.installations=await installationSnapshot();one.directories=await directorySnapshot();if(window.__abeleSyncDelivery)one.delivery=await deliverySnapshot();return one})()`
     )
   } catch {
     snapshot = { unavailable: 'Vault did not answer diagnostic evaluation' }

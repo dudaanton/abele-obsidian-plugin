@@ -133,7 +133,12 @@ describe('waiting for a real sync state snapshot', () => {
       }
     }
     vi.spyOn(driver, 'long').mockImplementation(async (_label, body) =>
-      new Function('svc', 'host', 'poll', `return (async()=>{${body}})()`)(svc, host, poll)
+      new Function('svc', 'host', 'poll', 'window', `return (async()=>{${body}})()`)(
+        svc,
+        host,
+        poll,
+        {}
+      )
     )
     expect(await driver.waitDelivered('sample', ['Shared/Note.md'])).toMatchObject([
       { id: 'sample', status: 'idle' },
@@ -163,7 +168,12 @@ describe('waiting for a real sync state snapshot', () => {
       }
     }
     vi.spyOn(driver, 'long').mockImplementation(async (_label, body) =>
-      new Function('svc', 'host', 'poll', `return (async()=>{${body}})()`)(svc, host, poll)
+      new Function('svc', 'host', 'poll', 'window', `return (async()=>{${body}})()`)(
+        svc,
+        host,
+        poll,
+        {}
+      )
     )
     await driver.waitDelivered('sample', ['Mounted/note.md'])
     expect(polls).toBe(2)

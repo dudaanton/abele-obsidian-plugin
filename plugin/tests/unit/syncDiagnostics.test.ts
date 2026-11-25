@@ -1,6 +1,10 @@
 import { expect, it, vi } from 'vitest'
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { captureSyncFailure, SYNC_SNAPSHOT } from '../e2e/helpers/syncDiagnostics'
+import {
+  captureSyncFailure,
+  SYNC_SNAPSHOT,
+  DELIVERY_SNAPSHOT,
+} from '../e2e/helpers/syncDiagnostics'
 import { SHARE_SET_PICKER } from '../e2e/helpers/shareSetPicker'
 import { syncModalClosed } from '../e2e/helpers/syncModal'
 vi.mock('node:fs', async (original) => {
@@ -16,6 +20,54 @@ vi.mock('node:fs', async (original) => {
 })
 vi.mock('../e2e/helpers/target', () => ({ onPhone: () => false }))
 vi.mock('../e2e/helpers/phone', () => ({ screenshot: vi.fn() }))
+
+it('captures the requested delivery path, durable retry deadline, exclusion owner and original failure', async () => {
+  const path = 'Collection/sample.bin'
+  const failure = new Error('Local hydration refused')
+  const runtime = {
+    engine: { status: { state: 'offline', lastError: failure } },
+    options: {
+      state: {
+        get: async () => ({ path, versionId: 'version' }),
+        getJournal: async () => ({ ops: [{ op: 'create', path }] }),
+        getExternalState: async () => ({
+          files: [{ fileId: 'file', representation: 'remote-only' }],
+        }),
+        metadataKeys: async (prefix: string) =>
+          prefix === 'file-retry:' ? ['file-retry:sample'] : [],
+        getMeta: async () => JSON.stringify({ path, retryAt: 12345, reason: 'busy' }),
+      },
+      fs: {
+        stat: async () => ({ path, size: 3 }),
+        externalCoordination: {
+          reservations: new Set([
+            { request: { operationId: 'operation', paths: [path] }, blocked: new Set([path]) },
+          ]),
+          engineMutations: new Set(),
+          uses: new Map(),
+        },
+      },
+    },
+  }
+  const host = { live: new Map([['sample', runtime]]) }
+  const app = { plugins: { plugins: { abele: { tokenEngines: host } } }, vault: {} }
+  const scope = { __abeleSyncDelivery: { id: 'sample', paths: [path] } }
+  const result = await new Function(
+    'app',
+    'window',
+    DELIVERY_SNAPSHOT + ';return deliverySnapshot()'
+  )(app, scope)
+  expect(result.wanted).toEqual(scope.__abeleSyncDelivery)
+  expect(result.connections.sample).toMatchObject({
+    paths: [{ local: path, wire: path, stat: { size: 3 }, entry: { versionId: 'version' } }],
+    retry: [{ key: 'file-retry:sample', value: { retryAt: 12345, reason: 'busy' } }],
+    exclusions: { reservations: [{ operationId: 'operation', paths: [path], blocked: [path] }] },
+    failure: {
+      message: 'Local hydration refused',
+      stack: expect.stringContaining('Local hydration refused'),
+    },
+  })
+})
 
 it('waits for a confirmation in another document to actually disconnect', () => {
   const settings = document.implementation.createHTMLDocument('Sample settings')
