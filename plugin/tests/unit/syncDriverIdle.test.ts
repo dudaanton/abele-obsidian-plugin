@@ -110,6 +110,79 @@ it.each([true, false])(
 )
 
 describe('waiting for a real sync state snapshot', () => {
+  it('waits for a queued file before treating idle as delivered', async () => {
+    const driver = new SyncDriver(() => {
+      throw new Error('No live vault expected')
+    })
+    const waitingFiles = [{ path: 'Shared/Note.md' }]
+    const svc = {
+      rows: {
+        value: [{ id: 'sample', status: 'idle', paused: false, address: 'https://sync.example' }],
+      },
+      connectionActivity: () => ({}),
+      registry: { records: () => [{ id: 'sample' }] },
+      itemSets: { store: { get: () => null } },
+    }
+    const host = { live: new Map([['sample', { engine: { status: { waitingFiles } } }]]) }
+    let polls = 0
+    const poll = async (check: () => unknown) => {
+      for (;;) {
+        polls++
+        if (await check()) return true
+        waitingFiles.splice(0)
+      }
+    }
+    vi.spyOn(driver, 'long').mockImplementation(async (_label, body) =>
+      new Function('svc', 'host', 'poll', `return (async()=>{${body}})()`)(svc, host, poll)
+    )
+    expect(await driver.waitDelivered('sample', ['Shared/Note.md'])).toMatchObject([
+      { id: 'sample', status: 'idle' },
+    ])
+    expect(polls).toBe(2)
+  })
+
+  it('maps mounted local paths before checking queued server paths', async () => {
+    const driver = new SyncDriver(() => {
+      throw new Error('No live vault expected')
+    })
+    const waitingFiles = [{ path: 'Shared/note.md' }]
+    const record = { id: 'sample', scopePlacement: { server: 'Shared', local: 'Mounted' } }
+    const svc = {
+      rows: { value: [{ id: 'sample', status: 'idle', paused: false, address: '' }] },
+      connectionActivity: () => ({}),
+      registry: { records: () => [record] },
+      itemSets: { store: { get: () => null } },
+    }
+    const host = { live: new Map([['sample', { engine: { status: { waitingFiles } } }]]) }
+    let polls = 0
+    const poll = async (check: () => unknown) => {
+      for (;;) {
+        polls++
+        if (await check()) return true
+        waitingFiles.splice(0)
+      }
+    }
+    vi.spyOn(driver, 'long').mockImplementation(async (_label, body) =>
+      new Function('svc', 'host', 'poll', `return (async()=>{${body}})()`)(svc, host, poll)
+    )
+    await driver.waitDelivered('sample', ['Mounted/note.md'])
+    expect(polls).toBe(2)
+  })
+
+  it('surfaces an issuance alert while waiting for the token', async () => {
+    const driver = new SyncDriver(() => {
+      throw new Error('No live vault expected')
+    })
+    let body = ''
+    vi.spyOn(driver, 'long').mockImplementation(async (_label, code) => {
+      body = code
+      return { token: '', image: '' } as never
+    })
+    await driver.shareSet('sample', ['Folder: Shared'])
+    expect(body).toContain('[role="alert"]')
+    expect(body).toContain('Sharing token failed')
+  })
+
   it.each([true, false])(
     'counts completed exchange work, never an aging request, in the outer connect wait (advancing=%s)',
     async (advancing) => {

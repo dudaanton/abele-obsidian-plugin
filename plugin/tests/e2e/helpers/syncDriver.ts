@@ -298,6 +298,13 @@ export class SyncDriver {
       id
     )
   }
+  async waitDelivered(id: string, paths: string[]): Promise<SyncStatus[]> {
+    const rows = await this.long<SyncStatus[]>(
+      'wait for selected files to reach the server',
+      `let seen;await poll(()=>{const row=svc.rows.value.find(one=>one.id===${JSON.stringify(id)});seen=row?[{id:row.id,status:row.status,paused:row.paused,address:row.address,error:svc.connectionActivity(row.id)?.error}]:[];if(row?.status==='error')return true;const members=svc.registry.records().filter(one=>one.id===${JSON.stringify(id)}||(svc.itemSets.store.get(${JSON.stringify(id)})?.items||[]).some(item=>item.recordId===one.id));return row?.status==='idle'&&members.length>0&&members.every(one=>{const status=host.live.get(one.id)?.engine.status;const placement=one.scopePlacement||(one.scope?.kind==='folder'?{local:one.localRoot??one.scope.path,server:one.serverRoot??one.scope.path}:null);const wirePath=path=>!placement?path:path===placement.local?placement.server:path.startsWith(placement.local+'/')?(placement.server==='/'?path.slice(placement.local.length+1):placement.server+path.slice(placement.local.length)):path;return status&&![...${JSON.stringify(paths)}].some(path=>status.waitingFiles?.some(waiting=>waiting.path===wirePath(path)))})},${this.timeoutMs},'selected files to be delivered');return seen`
+    )
+    return this.settled(rows, id)
+  }
   private settled(all: SyncStatus[], id?: string): SyncStatus[] {
     const rows = all.filter((one) => !id || one.id === id)
     const failed = rows.filter((one) => one.status === 'error')
@@ -393,7 +400,7 @@ export class SyncDriver {
       const box=modal('Share access');${SHARE_SET_PICKER}
       for(const label of ${JSON.stringify(labels)}) await pickShareItem(box,label);
       typeInto(box.querySelector('input[placeholder="A second device, a colleague"]'),${JSON.stringify(label)});
-      await press(box,'Create token');await poll(()=>box.querySelector('textarea')&&box.querySelector('svg.abele-qr'));
+      await press(box,'Create token');await poll(()=>{const alert=[...box.querySelectorAll('[role="alert"]')].map(textOf).find(Boolean);if(alert)throw new Error('Sharing token failed: '+alert);return box.querySelector('textarea')&&box.querySelector('svg.abele-qr')});
       const token=box.querySelector('textarea').value,svg=box.querySelector('svg.abele-qr').cloneNode(true);
       svg.setAttribute('xmlns','http://www.w3.org/2000/svg');svg.setAttribute('width','1024');svg.setAttribute('height','1024');svg.querySelector('rect').setAttribute('fill','white');svg.querySelector('path').setAttribute('fill','black');
       const url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)],{type:'image/svg+xml'}));let image;

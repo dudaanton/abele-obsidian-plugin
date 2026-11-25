@@ -205,6 +205,7 @@ liveCase(
     })
     expect(outcome.bytes).toBe('newest local edit')
     await a.syncNow(other)
+    await a.waitDelivered(other, [path])
     const remote = (await s.items(target)).find((one) => one.path === path)!
     expect(
       new TextDecoder().decode(
@@ -242,6 +243,7 @@ liveCase(
     expect(a.read(path)).toBe('real attachment bytes')
     a.create(path, 'new local attachment edit')
     await a.syncNow(id)
+    await a.waitDelivered(id, [path])
     expect(a.read(path)).toBe('new local attachment edit')
     const file = (await s.items()).find((one) => one.path === path)!
     expect(
