@@ -27,7 +27,13 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { onPhone, desktopOnly, emulationCovered, EmulationCoveredError } from './target'
 import { expect } from 'vitest'
-import { phoneEval, installPhoneHost, assertPhoneTransport, driver, PHONE_VAULT } from './phone'
+import {
+  phoneEval,
+  installPhoneHost,
+  assertPhoneTransport,
+  driverAsync,
+  PHONE_VAULT,
+} from './phone'
 import { confirmReload, type ReloadWitness } from './reloadWitness'
 
 /**
@@ -1200,11 +1206,7 @@ async function reloadPhone(): Promise<void> {
     }
     if (!hasApp) {
       try {
-        const opened = driver(['open-vault', PHONE_VAULT, '--timeout', '60'], 90_000)
-        console.warn(
-          '[abele e2e] phone: vault did not finish opening after reload; recovered via open-vault',
-          opened
-        )
+        const opened = await driverAsync(['open-vault', PHONE_VAULT, '--timeout', '60'], 90_000)
         const deadline = Date.now() + 60_000
         let ready = false
         do {
@@ -1228,10 +1230,12 @@ async function reloadPhone(): Promise<void> {
         } while (Date.now() <= deadline)
         if (!ready) throw new Error('reopened vault did not become ready')
         installPhoneHost()
-      } catch (recoveryError) {
-        throw new Error(
-          `${String(reloadError)}; phone vault recovery failed: ${String(recoveryError)}`
+        console.warn(
+          '[abele e2e] phone: vault did not finish opening after reload; recovered via open-vault',
+          opened
         )
+      } catch (recoveryError) {
+        console.warn('[abele e2e] phone: vault recovery failed after reload', recoveryError)
       }
     }
     throw reloadError

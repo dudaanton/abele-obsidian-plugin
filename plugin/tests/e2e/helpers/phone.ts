@@ -18,7 +18,7 @@
  * - `press home` — send the foreground app to the real Home screen;
  * - `push-plugin DIR MANIFEST VAULT` — install a build into that vault on the phone.
  */
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { keyboardReady } from './keyboardReady'
@@ -37,6 +37,21 @@ export function driver(args: string[], timeoutMs = 60_000): string {
     maxBuffer: 64 * 1024 * 1024,
     stdio: ['ignore', 'pipe', 'pipe'],
   }).trim()
+}
+
+/** A long native action must leave the test worker free to report progress. */
+export function driverAsync(args: string[], timeoutMs = 60_000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      DRIVER,
+      args,
+      { encoding: 'utf8', timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: 64 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        if (error) reject(new Error(String(stderr || error.message)))
+        else resolve(stdout.trim())
+      }
+    )
+  })
 }
 export function phoneHome(): void {
   driver(['press', 'home'], 30000)
