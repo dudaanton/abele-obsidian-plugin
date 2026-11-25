@@ -4,6 +4,40 @@ import { TokenOffloadCoordinator } from '@/sync/tokenOffloadCoordinator'
 import { PathCoordinator } from '@/sync/pathCoordinator'
 import { deferred } from '../helpers/deferred'
 
+it('accepts incoming events over a new local edit after another source hydration collided', async () => {
+  const manager = new TokenOffloadCoordinator(new PathCoordinator())
+  const fs = new MemoryFileSystem()
+  const path = 'Media/sample.bin'
+  await fs.writeAtomic(path, new TextEncoder().encode('new local edit'), 2)
+  manager.remember('source', [{ path, size: 20, mtime: 1 }], [])
+  const hydrate = vi.fn(async () => {
+    throw new Error('File hydration stopped: ineligible')
+  })
+  manager.hydrator('source', hydrate)
+  await expect(manager.prepareIncoming('target', [path], fs)).resolves.toBeUndefined()
+  expect(hydrate).not.toHaveBeenCalled()
+  expect(new TextDecoder().decode(await fs.read(path))).toBe('new local edit')
+  expect(manager.isOffloaded(path)).toBe(true)
+})
+
+it('prepares only physically absent offloaded descendants before a parent placement', async () => {
+  const manager = new TokenOffloadCoordinator(new PathCoordinator())
+  const fs = new MemoryFileSystem()
+  await fs.writeAtomic('Media/edited.bin', new TextEncoder().encode('local edit'), 2)
+  manager.remember(
+    'source',
+    [
+      { path: 'Media/edited.bin', size: 20, mtime: 1 },
+      { path: 'Media/absent.bin', size: 20, mtime: 1 },
+    ],
+    []
+  )
+  const hydrate = vi.fn(async () => {})
+  manager.hydrator('source', hydrate)
+  await manager.prepareIncoming('target', ['Media'], fs)
+  expect(hydrate).toHaveBeenCalledExactlyOnceWith('Media/absent.bin')
+})
+
 it('accepts incoming metadata without hydrating an offloaded stale version after reconnect', async () => {
   const manager = new TokenOffloadCoordinator(new PathCoordinator())
   const hydrate = vi.fn(async () => {

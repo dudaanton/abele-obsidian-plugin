@@ -22,6 +22,8 @@ it.each([
   'placement-reload',
   'placement-coordinator',
   'placement-disconnect',
+  'collision-incoming',
+  'placement-collision-incoming',
   'follow-sidecar',
   'follow-invalid-sidecar',
 ])('handles %s hydration through the retained identity', async (phase) => {
@@ -149,6 +151,27 @@ it.each([
       } finally {
         await runtime.close()
       }
+      return
+    }
+    if (phase.endsWith('collision-incoming')) {
+      download.mockImplementationOnce(async () => {
+        await app.vault.create(local, 'new local edit')
+        return bytes
+      })
+      await expect(port.hydrate(local)).rejects.toThrow('File hydration stopped: collision')
+      const document = await state.getExternalState()
+      expect(JSON.parse(document!).files[0]).toMatchObject({ representation: 'pending-download' })
+      expect(JSON.parse(document!).operations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: 'hydration', phase: 'ready-to-install' }),
+        ])
+      )
+      await expect(
+        manager.prepareIncoming('other-ledger', [local], new ObsidianFileSystem(app as never))
+      ).resolves.toBeUndefined()
+      expect(await app.vault.adapter.read(local)).toBe('new local edit')
+      expect(await state.getExternalState()).toBe(document)
+      expect(await app.vault.adapter.exists(local + '.abele-ref')).toBe(true)
       return
     }
     if (placed) {

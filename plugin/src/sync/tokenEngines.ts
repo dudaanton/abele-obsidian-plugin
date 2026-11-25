@@ -1315,7 +1315,7 @@ export class TokenEngines {
           state,
           engineState: offloads.state,
           engineClient: offloads.client,
-          preparePlacement: (paths) => manager.prepareIncoming(record.ledgerId, paths),
+          preparePlacement: (paths) => manager.prepareIncoming(record.ledgerId, paths, ordinary),
           recoverPlacement: () => ordinary.recover(),
           retirePlacement: (generation, archive) => ordinary.retireGeneration(generation, archive),
           fencePlacement: (head) => ordinary.fenceRecovery(state, head),
