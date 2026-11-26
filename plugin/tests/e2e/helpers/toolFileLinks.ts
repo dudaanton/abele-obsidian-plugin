@@ -56,6 +56,12 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
       const links=()=>[...root().querySelectorAll('.abele-chat-tool-files [role="link"]')].filter(el=>el.getBoundingClientRect().width)
       const shot=async state=>{await wait(150);require('fs').writeFileSync(${JSON.stringify(shots + '/')}+(node?'node-':'chat-')+${JSON.stringify(phone ? 'phone-' : 'desktop-')}+state+'.png',(await require('@electron/remote').getCurrentWebContents().capturePage()).toPNG())}
       try {
+        if(!${phone}){
+          // Same-line geometry requires a wide pane regardless of saved workspace splits.
+          const pane=owned.containerEl
+          for(const [key,value] of Object.entries({flex:'0 0 760px',width:'760px','min-width':'760px','max-width':'760px'}))pane.style.setProperty(key,value,'important')
+          await until(()=>Math.abs(pane.getBoundingClientRect().width-760)<1)
+        }
         if(node){tab=presenter.id;chats.nodeSessions.set(tab,presenter);chats.tabOrder.value=[...chats.tabOrder.value,tab];chats.activeTabId.value=tab}
         else {tab=chats.createTab();session=chats.getSession(tab);await session.addUserNote('Sample file operations');for(const message of messages)session.appendChatMessage(message);session.updateVisibleMessages()}
         await owned.setViewState({type:'abele-ai-sidebar-view',active:true})
@@ -65,6 +71,8 @@ export async function checkToolFileLinks(node: boolean, phone: boolean) {
             runs:[...root().querySelectorAll('[data-run-ids]')].map(el=>({ids:el.dataset.runIds,open:el.querySelector('[aria-expanded]')?.getAttribute('aria-expanded')}))}))
         }
         if(node){await until(()=>root().querySelectorAll('a[data-node-resource]').length>=2);const citations=[...root().querySelectorAll('a[data-node-resource]')];for(const path of ['src/sample.ts:3-7','src/other.ts:9']){const link=citations.find(a=>a.getAttribute('data-node-resource')===path);if(!link)throw Error('Code citation missing: '+path);await follow(path,()=>link.click())}citations.find(a=>a.getAttribute('data-node-resource')==='src/sample.ts:3-7').scrollIntoView({block:'center'});await shot('code-citations')}
+        const paneWidth=owned.containerEl.getBoundingClientRect().width
+        if(!${phone}&&Math.abs(paneWidth-760)>=1)throw Error('Unexpected file-link pane width: '+paneWidth)
         const folded=links().map(el=>el.textContent)
         const singleGeometry=()=>singlePaths.map(path=>{
           const el=links().find(el=>el.title===path),row=el?.closest('.tree-item-self'),name=row?.querySelector('.abele-tree-item__text')
