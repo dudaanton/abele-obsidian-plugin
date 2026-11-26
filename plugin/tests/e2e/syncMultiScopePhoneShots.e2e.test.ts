@@ -34,6 +34,16 @@ it('captures four multi-scope screens on the phone without confirming destructiv
   const ownerId = await s.connect()
   const owner = new V2Client(decodeAccessToken(s.server.rootToken), fixtureFetch)
   const shots = shotDir('abele-sync-multi-scope-phone-shots')
+  const capture = (name: string) => {
+    // Native screenshots run outside the page. Keep their boundaries in the
+    // memory timeline too, so a reload between a screen and the next eval is visible.
+    phone.phaseMemory('screenshot ' + name, 'before')
+    try {
+      screenshot(shots + '/' + name)
+    } finally {
+      phone.phaseMemory('screenshot ' + name, 'after')
+    }
+  }
   let restore: (() => Promise<void>) | undefined
   try {
     await phone.long(
@@ -77,7 +87,7 @@ it('captures four multi-scope screens on the phone without confirming destructiv
     expect(picker.inline).toBe(true)
     expect(picker.titles).toHaveLength(1)
     expect(picker.titles[0]).toContain('Workshop')
-    screenshot(shots + '/2-share-inline-keyboard.png')
+    capture('2-share-inline-keyboard.png')
     await phone.long(
       'cancel Share picker',
       `const box=modal('Share access');box.querySelector('input')?.blur();await press(box,'Close');return true`
@@ -122,7 +132,7 @@ it('captures four multi-scope screens on the phone without confirming destructiv
     expect(preview.scope).not.toBe('/')
     expect(preview.warnings.some((warning) => warning.includes('in group Reading list'))).toBe(true)
     expect(preview.warnings.some((warning) => warning.includes('in group Workshop'))).toBe(false)
-    screenshot(shots + '/3-server-delete-group.png')
+    capture('3-server-delete-group.png')
     await phone.long(
       'cancel server deletion',
       `await press(inWindows('.abele-server-delete__facts').closest('.modal'),'Cancel');return true`
@@ -159,7 +169,7 @@ it('captures four multi-scope screens on the phone without confirming destructiv
     )
     for (const title of ['Field notes', 'Workshop', 'Reading list', 'Checklist'])
       expect(rows.some((row) => row.includes(title))).toBe(true)
-    screenshot(shots + '/1-connection-four-items.png')
+    capture('1-connection-four-items.png')
     closeSyncScreens(phone)
 
     // Detach only this fixture's folder; put it back even if a preview assertion fails.
@@ -186,7 +196,7 @@ it('captures four multi-scope screens on the phone without confirming destructiv
     expect(copy.files).toBe('2')
     expect(copy.changed).toBe('1, it stays')
     expect(copy.note).toContain('Nothing changes on the server')
-    screenshot(shots + '/4-remove-copy.png')
+    capture('4-remove-copy.png')
     await phone.long(
       'cancel local-copy removal',
       `await press(modal('Remove your copy of Field notes?'),'Cancel');return true`

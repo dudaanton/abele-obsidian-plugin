@@ -88,12 +88,15 @@ export class SyncDriver {
   ) {}
   run<T>(body: string, cleanup = false): T {
     if (!cleanup) this.assertActive()
+    this.phaseMemory('inline sync action', 'before')
     try {
       return this.vault().evalAwait<T>(
         `(async()=>{window.__abeleSyncActionTimeoutMs=${this.timeoutMs};${SYNC_PRELUDE}\n${body}})()`
       )
     } catch (error) {
       throw this.failure('live sync action', error)
+    } finally {
+      this.phaseMemory('inline sync action', 'after')
     }
   }
   failure(label: string, error: unknown): Error {

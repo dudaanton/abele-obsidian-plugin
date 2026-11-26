@@ -1,6 +1,44 @@
 import { expect, it } from 'vitest'
 import { syncPhaseMemory } from '../e2e/helpers/syncPhaseMemory'
 
+it('counts held inventory without rebuilding choices or reading durable payloads', async () => {
+  const itemSets = {
+    choiceCache: new Map([['sample', Array(40000)]]),
+    localInventory: { choices: Array(19000) },
+    choices() {
+      throw new Error('must not rebuild inventory')
+    },
+  }
+  const view = {
+    performance: { timeOrigin: 12 },
+    __abelePhoneLoadIdentity: { loadId: 'sample-generation' },
+    app: {
+      plugins: {
+        plugins: {
+          abele: {
+            tokenEngines: {
+              live: new Map([['sample', {}]]),
+              ui: { itemSets },
+            },
+          },
+        },
+      },
+    },
+  }
+  const injected = new Function(
+    'return (' + syncPhaseMemory.toString() + ')'
+  )() as typeof syncPhaseMemory
+  const result = await injected(
+    view as never,
+    { getElementsByTagName: () => [], querySelectorAll: () => [] } as never
+  )
+  expect(result).toMatchObject({
+    webViewLoad: { timeOrigin: 12, loadId: 'sample-generation' },
+    held: { runtimes: 1, remoteChoiceSets: 1, remoteChoices: 40000, localChoices: 19000 },
+  })
+  expect(JSON.stringify(result).length).toBeLessThan(1500)
+})
+
 it('reports unsupported heap measurement explicitly and keeps only scalar allocation proxies', async () => {
   const doc = {
     getElementsByTagName: (tag: string) =>

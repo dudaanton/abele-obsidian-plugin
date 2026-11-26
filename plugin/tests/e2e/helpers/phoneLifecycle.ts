@@ -31,6 +31,9 @@ export function phoneLifecycle(win: Window, action?: string) {
     'cancel Share picker',
     'open group server-delete preview',
     'cancel server deletion',
+    'show all four connection items',
+    'open remove-copy preview',
+    'cancel local-copy removal',
   ])
   const kinds = new Set([
     'beforeunload',

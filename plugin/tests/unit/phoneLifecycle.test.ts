@@ -1,6 +1,14 @@
 import { expect, it } from 'vitest'
 import { phoneLifecycle } from '../e2e/helpers/phoneLifecycle'
 
+it('preserves the connection-items action across a WebView replacement', () => {
+  const storage = new Map<string, string>()
+  phoneLifecycle(page(storage), 'show all four connection items')
+  expect(phoneLifecycle(page(storage, 200)).snapshot().previous?.action).toBe(
+    'show all four connection items'
+  )
+})
+
 it('persists explicit reload requests before the page is replaced', () => {
   const storage = new Map<string, string>()
   const win = page(storage)
