@@ -32,6 +32,7 @@ describe('parallel CI verification gates', () => {
         'dependencies',
         'test',
         'test-native-sqlite',
+        'test-scale',
         'types',
         'build',
       ].sort()
@@ -43,6 +44,7 @@ describe('parallel CI verification gates', () => {
       'dependencies',
       'test',
       'test-native-sqlite',
+      'test-scale',
       'types',
     ]) {
       expect(checks.jobs[job].needs).toBeUndefined()
@@ -93,8 +95,35 @@ describe('parallel CI verification gates', () => {
         SHARD: String(shard),
         SHARD_COUNT: String(tests.env.SHARD_COUNT),
       })
-      expect(output).toBe(`test -- --shard=${shard}/4 --maxWorkers=2`)
+      expect(output).toBe(
+        `test -- --project=ordinary --project=native --shard=${shard}/4 --maxWorkers=2`
+      )
     }
+  })
+
+  it('runs every large fixture in a required parallel scale job with its full workload', () => {
+    const scale = checks.jobs['test-scale']
+    expect(scale).toBeDefined()
+    expect(scale['timeout-minutes']).toBe(120)
+    expect(scale.strategy).toEqual({
+      'fail-fast': false,
+      matrix: {
+        file: [
+          'nativePeerPull',
+          'nativeIndexedDbResume',
+          'nativeRepresentationRestart',
+          'inspectionCacheQuota',
+        ],
+      },
+    })
+    const tests = step('test-scale', 'Scale tests')
+    expect(tests.env).toEqual({ SCALE_FILE: '${{ matrix.file }}' })
+    for (const file of scale.strategy.matrix.file) {
+      expect(shell(`npm() { printf '%s\\n' "$*"; }\n${tests.run}`, { SCALE_FILE: file })).toBe(
+        `test -- --project=scale tests/integration/${file}.test.ts --maxWorkers=2`
+      )
+    }
+    expect(tests.run).not.toMatch(/passWithNoTests|PEER_PULL_FILES|PEER_PULL_BYTES/)
   })
 
   it('caches npm installations in every dependency-consuming job and still verifies the exact revision', () => {

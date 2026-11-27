@@ -124,6 +124,13 @@ build results, big files, credentials and real home paths — see
 CI uses read-only repository permissions and installs the exact locked dependencies without
 install scripts. `npm audit --omit=dev --audit-level=moderate` checks shipped dependencies.
 
+The four fast-test shards select the `ordinary` and `native` Vitest projects. Full-size
+persistence fixtures (`nativePeerPull`, `nativeIndexedDbResume`, `nativeRepresentationRestart`
+and `inspectionCacheQuota`) belong to the `scale` project instead. Each runs unchanged in its
+own parallel matrix job with a 120-minute job limit, alongside the fast shards. These jobs
+are required by the reusable workflow, so candidate verification and publication wait for
+all four. A plain `npm test` still includes every project locally.
+
 The four fast-test shards set `ABELE_TEST_NO_NATIVE_SQLITE=1`: the desktop replica open
 and SDK safety-metadata cases explicitly skip because that installation has no SQLite
 binding. A separate required native SQLite job installs the same lockfile, runs only

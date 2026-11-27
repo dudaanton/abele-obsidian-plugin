@@ -16,6 +16,15 @@ if (skippedServerTests.length)
 const fixture = process.env.ABELE_SYNC_DIR ? verifySyncFixture(process.env.ABELE_SYNC_DIR) : null
 const missingFixture = path.resolve(__dirname, 'tests/helpers/missingSyncFixture.ts')
 
+// Full-size persistence fixtures get their own parallel CI jobs. Keep them in the
+// default local run too; CI selects ordinary/native or scale explicitly.
+const scaleLane = [
+  'tests/integration/nativePeerPull.test.ts',
+  'tests/integration/nativeIndexedDbResume.test.ts',
+  'tests/integration/nativeRepresentationRestart.test.ts',
+  'tests/integration/inspectionCacheQuota.test.ts',
+]
+
 // These fixtures keep large vaults, native transfers or IndexedDB histories alive.
 // Use Vitest's later, serial project group so a shard never runs several of them
 // alongside its ordinary tests. The other shard retains its ordinary worker pool.
@@ -96,7 +105,7 @@ export default defineConfig({
             'tests/integration/**/*.test.ts',
             'tests/component/**/*.test.ts',
           ],
-          exclude: [...configDefaults.exclude, ...skippedServerTests, ...nativeLane],
+          exclude: [...configDefaults.exclude, ...skippedServerTests, ...nativeLane, ...scaleLane],
           sequence: { groupOrder: 0 },
         },
       },
@@ -105,8 +114,18 @@ export default defineConfig({
         test: {
           name: 'native',
           include: nativeLane,
+          exclude: [...configDefaults.exclude, ...skippedServerTests, ...scaleLane],
           fileParallelism: false,
           sequence: { groupOrder: 1 },
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'scale',
+          include: scaleLane,
+          fileParallelism: false,
+          sequence: { groupOrder: 2 },
         },
       },
     ],

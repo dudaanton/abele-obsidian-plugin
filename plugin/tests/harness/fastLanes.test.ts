@@ -6,7 +6,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-it('runs native scale fixtures after ordinary files with one worker per shard', () => {
+it('keeps ordinary, native and full-size scale fixtures in disjoint serial groups', () => {
   const projects = config.test?.projects as {
     extends: boolean
     test: {
@@ -17,14 +17,28 @@ it('runs native scale fixtures after ordinary files with one worker per shard', 
       sequence?: { groupOrder: number }
     }
   }[]
-  expect(projects).toHaveLength(2)
-  const [ordinary, native] = projects
+  expect(projects).toHaveLength(3)
+  const [ordinary, native, scale] = projects
   expect(ordinary.extends).toBe(true)
   expect(native.extends).toBe(true)
   expect(native.test.fileParallelism).toBe(false)
   expect(native.test.sequence?.groupOrder).toBeGreaterThan(ordinary.test.sequence?.groupOrder ?? 0)
   expect(native.test.include).toContain('tests/integration/native*.test.ts')
   for (const pattern of native.test.include ?? []) expect(ordinary.test.exclude).toContain(pattern)
+  expect(scale.extends).toBe(true)
+  expect(scale.test.name).toBe('scale')
+  expect(scale.test.fileParallelism).toBe(false)
+  expect(scale.test.sequence?.groupOrder).toBeGreaterThan(native.test.sequence?.groupOrder ?? 0)
+  expect(scale.test.include).toEqual([
+    'tests/integration/nativePeerPull.test.ts',
+    'tests/integration/nativeIndexedDbResume.test.ts',
+    'tests/integration/nativeRepresentationRestart.test.ts',
+    'tests/integration/inspectionCacheQuota.test.ts',
+  ])
+  for (const file of scale.test.include ?? []) {
+    expect(ordinary.test.exclude).toContain(file)
+    expect(native.test.exclude).toContain(file)
+  }
 })
 
 // Exercise Vitest's CLI override and worker scheduler, not just the configuration shape.
@@ -32,7 +46,7 @@ it(
   'keeps the native lane serial even when the train requests four workers',
   { timeout: 60_000 },
   () => {
-    expect(config.test?.projects).toHaveLength(2)
+    expect(config.test?.projects).toHaveLength(3)
     const directory = mkdtempSync(join(tmpdir(), 'sample-fast-lanes-'))
     const events = join(directory, 'events.jsonl')
     try {
@@ -41,6 +55,16 @@ it(
       for (const [kind, folder, names] of [
         ['ordinary', 'unit', ['sampleOne', 'sampleTwo', 'sampleThree', 'sampleFour']],
         ['native', 'integration', ['nativeSampleOne', 'nativeSampleTwo', 'nativeSampleThree']],
+        [
+          'scale',
+          'integration',
+          [
+            'nativePeerPull',
+            'nativeIndexedDbResume',
+            'nativeRepresentationRestart',
+            'inspectionCacheQuota',
+          ],
+        ],
       ] as const) {
         for (const name of names)
           writeFileSync(
@@ -89,17 +113,20 @@ test('sample work', async () => {
         )
       const active = new Set<string>()
       let finishedOrdinary = 0
+      let finishedNative = 0
       for (const row of rows) {
         if (row.kind === 'ordinary' && row.event === 'end') finishedOrdinary++
-        if (row.kind !== 'native') continue
+        if (row.kind === 'native' && row.event === 'end') finishedNative++
+        if (row.kind === 'ordinary') continue
         expect(finishedOrdinary).toBe(4)
+        if (row.kind === 'scale') expect(finishedNative).toBe(3)
         if (row.event === 'start') {
           expect(active.size).toBe(0)
           active.add(row.name)
         } else expect(active.delete(row.name)).toBe(true)
       }
       expect(active.size).toBe(0)
-      expect(rows).toHaveLength(14)
+      expect(rows).toHaveLength(22)
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }
