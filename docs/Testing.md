@@ -127,8 +127,10 @@ install scripts. `npm audit --omit=dev --audit-level=moderate` checks shipped de
 The four fast-test shards set `ABELE_TEST_NO_NATIVE_SQLITE=1`: the desktop replica open
 and SDK safety-metadata cases explicitly skip because that installation has no SQLite
 binding. A separate required native SQLite job installs the same lockfile, runs only
-`npm rebuild better-sqlite3 --ignore-scripts=false`, then exercises both files without
-skips. Local tests require the binding by default; a missing or broken binding fails.
+`npm rebuild better-sqlite3 --ignore-scripts=false --build-from-source`, then exercises
+both files without skips. This compiles the integrity-checked npm sources and disables
+prebuilt binary downloads; other dependencies' lifecycle scripts remain disabled.
+Local tests require the binding by default; a missing or broken binding fails.
 The phone gate always checks the binding before starting, independently of this test flag.
 
 A tag created by `release.sh` must match both `manifest.json` and `plugin/package.json`.

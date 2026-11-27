@@ -120,7 +120,9 @@ describe('parallel CI verification gates', () => {
     const native = checks.jobs['test-native-sqlite']
     const provision = step('test-native-sqlite', 'Provision the native SQLite binding')
     const tests = step('test-native-sqlite', 'Exercise desktop replica and safety metadata')
-    expect(provision.run).toBe('npm rebuild better-sqlite3 --ignore-scripts=false')
+    expect(provision.run).toBe(
+      'npm rebuild better-sqlite3 --ignore-scripts=false --build-from-source'
+    )
     expect(native.steps.indexOf(provision)).toBeLessThan(native.steps.indexOf(tests))
     expect(tests.env.ABELE_TEST_NO_NATIVE_SQLITE).toBe('0')
     expect(tests.run).toBe(

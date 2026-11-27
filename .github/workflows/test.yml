@@ -255,7 +255,8 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Provision the native SQLite binding
         working-directory: plugin
-        run: npm rebuild better-sqlite3 --ignore-scripts=false
+        # Compile the integrity-checked npm sources; do not download a prebuilt binary.
+        run: npm rebuild better-sqlite3 --ignore-scripts=false --build-from-source
       - name: Exercise desktop replica and safety metadata
         working-directory: plugin
         env:
