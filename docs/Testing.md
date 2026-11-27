@@ -129,7 +129,8 @@ persistence fixtures (`nativePeerPull`, `nativeIndexedDbResume`, `nativeRepresen
 and `inspectionCacheQuota`) belong to the `scale` project instead. Each runs unchanged in its
 own parallel matrix job with a 120-minute job limit, alongside the fast shards. These jobs
 are required by the reusable workflow, so candidate verification and publication wait for
-all four. A plain `npm test` still includes every project locally.
+all four. Local balanced shards collect the ordinary and native projects; to run a scale
+file locally, set `ABELE_SCALE_TESTS=1` and select `--project=scale`.
 
 The four fast-test shards set `ABELE_TEST_NO_NATIVE_SQLITE=1`: the desktop replica open
 and SDK safety-metadata cases explicitly skip because that installation has no SQLite

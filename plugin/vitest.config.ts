@@ -16,8 +16,8 @@ if (skippedServerTests.length)
 const fixture = process.env.ABELE_SYNC_DIR ? verifySyncFixture(process.env.ABELE_SYNC_DIR) : null
 const missingFixture = path.resolve(__dirname, 'tests/helpers/missingSyncFixture.ts')
 
-// Full-size persistence fixtures get their own parallel CI jobs. Keep them in the
-// default local run too; CI selects ordinary/native or scale explicitly.
+// Full-size persistence fixtures run in dedicated CI jobs. Local balanced shards
+// collect the default projects, so opt in when running the scale project directly.
 const scaleLane = [
   'tests/integration/nativePeerPull.test.ts',
   'tests/integration/nativeIndexedDbResume.test.ts',
@@ -119,15 +119,19 @@ export default defineConfig({
           sequence: { groupOrder: 1 },
         },
       },
-      {
-        extends: true,
-        test: {
-          name: 'scale',
-          include: scaleLane,
-          fileParallelism: false,
-          sequence: { groupOrder: 2 },
-        },
-      },
+      ...(process.env.ABELE_SCALE_TESTS === '1'
+        ? [
+            {
+              extends: true,
+              test: {
+                name: 'scale',
+                include: scaleLane,
+                fileParallelism: false,
+                sequence: { groupOrder: 2 },
+              },
+            },
+          ]
+        : []),
     ],
     // Vitest 4 keeps a re-used spy's call history. Each case still starts with fresh calls.
     clearMocks: true,

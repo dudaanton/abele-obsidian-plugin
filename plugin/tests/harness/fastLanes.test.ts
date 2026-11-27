@@ -6,7 +6,20 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-it('keeps ordinary, native and full-size scale fixtures in disjoint serial groups', () => {
+function optedInProjects() {
+  const script = `globalThis.__dirname = process.cwd(); const config = (await import('./vitest.config.ts')).default; console.log('SCALE_CONFIG=' + JSON.stringify(config.test.projects))`
+  const output = execFileSync(
+    process.execPath,
+    ['--experimental-strip-types', '--input-type=module', '-e', script],
+    {
+      env: { ...process.env, ABELE_SCALE_TESTS: '1', ABELE_FAST_SHARD_PLAN: '' },
+      encoding: 'utf8',
+    }
+  )
+  return JSON.parse(output.slice(output.indexOf('SCALE_CONFIG=') + 'SCALE_CONFIG='.length))
+}
+
+it('keeps full-size fixtures out of the ordinary and native shard inventory', () => {
   const projects = config.test?.projects as {
     extends: boolean
     test: {
@@ -17,28 +30,35 @@ it('keeps ordinary, native and full-size scale fixtures in disjoint serial group
       sequence?: { groupOrder: number }
     }
   }[]
-  expect(projects).toHaveLength(3)
-  const [ordinary, native, scale] = projects
+  expect(projects).toHaveLength(2)
+  const [ordinary, native] = projects
   expect(ordinary.extends).toBe(true)
   expect(native.extends).toBe(true)
   expect(native.test.fileParallelism).toBe(false)
   expect(native.test.sequence?.groupOrder).toBeGreaterThan(ordinary.test.sequence?.groupOrder ?? 0)
   expect(native.test.include).toContain('tests/integration/native*.test.ts')
   for (const pattern of native.test.include ?? []) expect(ordinary.test.exclude).toContain(pattern)
-  expect(scale.extends).toBe(true)
-  expect(scale.test.name).toBe('scale')
-  expect(scale.test.fileParallelism).toBe(false)
-  expect(scale.test.sequence?.groupOrder).toBeGreaterThan(native.test.sequence?.groupOrder ?? 0)
-  expect(scale.test.include).toEqual([
+  for (const file of [
+    'tests/integration/nativePeerPull.test.ts',
+    'tests/integration/nativeIndexedDbResume.test.ts',
+    'tests/integration/nativeRepresentationRestart.test.ts',
+    'tests/integration/inspectionCacheQuota.test.ts',
+  ]) {
+    expect(ordinary.test.exclude).toContain(file)
+    expect(native.test.exclude).toContain(file)
+  }
+  const optedIn = optedInProjects()
+  expect(optedIn).toHaveLength(3)
+  const scale = optedIn[2].test
+  expect(scale.name).toBe('scale')
+  expect(scale.fileParallelism).toBe(false)
+  expect(scale.sequence.groupOrder).toBeGreaterThan(native.test.sequence?.groupOrder ?? 0)
+  expect(scale.include).toEqual([
     'tests/integration/nativePeerPull.test.ts',
     'tests/integration/nativeIndexedDbResume.test.ts',
     'tests/integration/nativeRepresentationRestart.test.ts',
     'tests/integration/inspectionCacheQuota.test.ts',
   ])
-  for (const file of scale.test.include ?? []) {
-    expect(ordinary.test.exclude).toContain(file)
-    expect(native.test.exclude).toContain(file)
-  }
 })
 
 // Exercise Vitest's CLI override and worker scheduler, not just the configuration shape.
@@ -46,7 +66,8 @@ it(
   'keeps the native lane serial even when the train requests four workers',
   { timeout: 60_000 },
   () => {
-    expect(config.test?.projects).toHaveLength(3)
+    const projects = optedInProjects()
+    expect(projects).toHaveLength(3)
     const directory = mkdtempSync(join(tmpdir(), 'sample-fast-lanes-'))
     const events = join(directory, 'events.jsonl')
     try {
@@ -85,7 +106,7 @@ test('sample work', async () => {
               globals: true,
               environment: 'node',
               include: config.test?.include,
-              projects: config.test?.projects,
+              projects,
             },
           })
       )

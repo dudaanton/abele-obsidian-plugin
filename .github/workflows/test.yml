@@ -270,6 +270,7 @@ jobs:
         working-directory: plugin
         env:
           SCALE_FILE: ${{ matrix.file }}
+          ABELE_SCALE_TESTS: "1"
         run: npm test -- --project=scale "tests/integration/$SCALE_FILE.test.ts" --maxWorkers=2
 
   test-native-sqlite:

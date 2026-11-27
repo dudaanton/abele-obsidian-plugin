@@ -117,7 +117,10 @@ describe('parallel CI verification gates', () => {
       },
     })
     const tests = step('test-scale', 'Scale tests')
-    expect(tests.env).toEqual({ SCALE_FILE: '${{ matrix.file }}' })
+    expect(tests.env).toEqual({
+      SCALE_FILE: '${{ matrix.file }}',
+      ABELE_SCALE_TESTS: '1',
+    })
     for (const file of scale.strategy.matrix.file) {
       expect(shell(`npm() { printf '%s\\n' "$*"; }\n${tests.run}`, { SCALE_FILE: file })).toBe(
         `test -- --project=scale tests/integration/${file}.test.ts --maxWorkers=2`

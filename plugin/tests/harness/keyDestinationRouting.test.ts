@@ -31,9 +31,11 @@ describe('bounded one-release key-destination routing', () => {
     expect(workflow.on.push.branches).toEqual(['master'])
     expect(workflow.on).toHaveProperty('pull_request')
     expect(step.env.TEST_SCOPE).toBe("${{ inputs.test_scope || 'all' }}")
-    expect(select()).toBe('test -- --shard=1/4 --maxWorkers=2')
+    expect(select()).toBe('test -- --project=ordinary --project=native --shard=1/4 --maxWorkers=2')
     for (const shard of [1, 2, 3, 4])
-      expect(select('all', shard)).toBe(`test -- --shard=${shard}/4 --maxWorkers=2`)
+      expect(select('all', shard)).toBe(
+        `test -- --project=ordinary --project=native --shard=${shard}/4 --maxWorkers=2`
+      )
   })
   it('allows only the exact focused scope and fails closed on unexpected input', () => {
     for (const shard of [1, 2, 3, 4])
