@@ -124,6 +124,13 @@ build results, big files, credentials and real home paths — see
 CI uses read-only repository permissions and installs the exact locked dependencies without
 install scripts. `npm audit --omit=dev --audit-level=moderate` checks shipped dependencies.
 
+The four fast-test shards set `ABELE_TEST_NO_NATIVE_SQLITE=1`: the desktop replica open
+and SDK safety-metadata cases explicitly skip because that installation has no SQLite
+binding. A separate required native SQLite job installs the same lockfile, runs only
+`npm rebuild better-sqlite3 --ignore-scripts=false`, then exercises both files without
+skips. Local tests require the binding by default; a missing or broken binding fails.
+The phone gate always checks the binding before starting, independently of this test flag.
+
 A tag created by `release.sh` must match both `manifest.json` and `plugin/package.json`.
 The reusable test workflow builds once with read-only permissions and checks size against
 those emitted bytes. Build/size overlaps tests, lint and audit; the build-only stage first

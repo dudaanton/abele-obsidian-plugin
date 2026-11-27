@@ -1,9 +1,17 @@
 // @vitest-environment node
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, expect, it as baseIt, vi } from 'vitest'
 import Database from 'better-sqlite3'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { assertLocalSafety } from '../../node_modules/@abele/sync-sdk/dist/internal/node/externalSafety.js'
+
+// The native CI job runs these; only script-disabled shards explicitly opt out.
+const withoutNativeSqlite = process.env.ABELE_TEST_NO_NATIVE_SQLITE === '1'
+const it = baseIt.skipIf(withoutNativeSqlite)
+if (withoutNativeSqlite)
+  console.info(
+    'Skipping SDK safety metadata: native SQLite intentionally absent; covered by native CI job'
+  )
 
 const roots: string[] = []
 afterEach(() => {

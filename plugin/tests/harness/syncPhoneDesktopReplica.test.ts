@@ -19,7 +19,14 @@ it('reports a missing desktop ledger binding before phone work starts', () => {
   ).toThrow(/better-sqlite3 native binding/)
 })
 
-it('opens a separate desktop SDK replica using the phone gate connection shape', async () => {
+const withoutNativeSqlite = process.env.ABELE_TEST_NO_NATIVE_SQLITE === '1'
+if (withoutNativeSqlite)
+  console.info(
+    'Skipping desktop replica open: native SQLite intentionally absent; covered by native CI job'
+  )
+
+const sqliteIt = it.skipIf(withoutNativeSqlite)
+sqliteIt('opens a separate desktop SDK replica using the phone gate connection shape', async () => {
   assertDesktopReplicaReady()
   mkdirSync('../.scratch', { recursive: true })
   const root = mkdtempSync('../.scratch/desktop-replica-')

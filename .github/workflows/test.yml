@@ -222,12 +222,45 @@ jobs:
           TEST_SCOPE: ${{ inputs.test_scope || 'all' }}
           SHARD: ${{ matrix.shard }}
           SHARD_COUNT: 4
+          # Native cases run in test-native-sqlite with the binding provisioned.
+          ABELE_TEST_NO_NATIVE_SQLITE: "1"
         run: |
           case "${TEST_SCOPE:-all}" in
             all) npm test -- --shard="$SHARD/$SHARD_COUNT" --maxWorkers=2 ;;
             key-destinations) npm run test:key-destinations -- --shard="$SHARD/$SHARD_COUNT" --maxWorkers=2 ;;
             *) echo "Unknown test scope" >&2; exit 1 ;;
           esac
+
+  test-native-sqlite:
+    name: Native SQLite tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.revision || github.sha }}
+          persist-credentials: false
+      - name: Verify exact revision
+        env:
+          REVISION: ${{ inputs.revision || github.sha }}
+        run: |
+          [[ "$REVISION" =~ ^[a-f0-9]{40}$ ]] && [ "$(git rev-parse HEAD)" = "$REVISION" ]
+          [ "$REVISION" = "$GITHUB_SHA" ]
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.23.4"
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+      - name: Install dependencies
+        working-directory: plugin
+        run: npm ci --ignore-scripts
+      - name: Provision the native SQLite binding
+        working-directory: plugin
+        run: npm rebuild better-sqlite3 --ignore-scripts=false
+      - name: Exercise desktop replica and safety metadata
+        working-directory: plugin
+        env:
+          ABELE_TEST_NO_NATIVE_SQLITE: "0"
+        run: npm test -- tests/harness/syncPhoneDesktopReplica.test.ts tests/integration/sdkNodeSafetyMetadata.test.ts --maxWorkers=2
 
   types:
     runs-on: ubuntu-latest

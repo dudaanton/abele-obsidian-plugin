@@ -25,9 +25,26 @@ function shell(command: string, env: Record<string, string> = {}, cwd?: string) 
 describe('parallel CI verification gates', () => {
   it('keeps every independent gate runnable without waiting for another gate', () => {
     expect(Object.keys(checks.jobs).sort()).toEqual(
-      ['guard', 'lint', 'review', 'dependencies', 'test', 'types', 'build'].sort()
+      [
+        'guard',
+        'lint',
+        'review',
+        'dependencies',
+        'test',
+        'test-native-sqlite',
+        'types',
+        'build',
+      ].sort()
     )
-    for (const job of ['guard', 'lint', 'review', 'dependencies', 'test', 'types']) {
+    for (const job of [
+      'guard',
+      'lint',
+      'review',
+      'dependencies',
+      'test',
+      'test-native-sqlite',
+      'types',
+    ]) {
       expect(checks.jobs[job].needs).toBeUndefined()
       expect(checks.jobs[job].if).toBeUndefined()
       expect(checks.jobs[job]['continue-on-error']).toBeUndefined()
@@ -96,6 +113,22 @@ describe('parallel CI verification gates', () => {
       expect(node.with['cache-dependency-path']).toBe('plugin/package-lock.json')
       expect(step(id, 'Install dependencies').run).toBe('npm ci --ignore-scripts')
     }
+  })
+
+  it('covers native SQLite cases in a required provisioned job rather than dropping their guarantees', () => {
+    expect(step('test', 'Unit and integration tests').env.ABELE_TEST_NO_NATIVE_SQLITE).toBe('1')
+    const native = checks.jobs['test-native-sqlite']
+    const provision = step('test-native-sqlite', 'Provision the native SQLite binding')
+    const tests = step('test-native-sqlite', 'Exercise desktop replica and safety metadata')
+    expect(provision.run).toBe('npm rebuild better-sqlite3 --ignore-scripts=false')
+    expect(native.steps.indexOf(provision)).toBeLessThan(native.steps.indexOf(tests))
+    expect(tests.env.ABELE_TEST_NO_NATIVE_SQLITE).toBe('0')
+    expect(tests.run).toBe(
+      'npm test -- tests/harness/syncPhoneDesktopReplica.test.ts tests/integration/sdkNodeSafetyMetadata.test.ts --maxWorkers=2'
+    )
+    // A failed binding build or native test must fail the reusable release gate.
+    expect(native.if).toBeUndefined()
+    expect(native['continue-on-error']).toBeUndefined()
   })
 
   it('binds the content cache to the complete input tree, lockfile, config and exact Node version without fallback', () => {
