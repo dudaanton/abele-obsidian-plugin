@@ -2483,7 +2483,10 @@ it.each([
       await one.disconnect()
       durableMetadata.close()
     }
-  }
+  },
+  // Three local runs: 2 MiB took 4.59–5.03 s and 20 MiB took about 5–5.3 s.
+  // The three 12000-row scans dominate; allow headroom for a slower CI runner.
+  20_000
 )
 
 it('keeps server attachments available when a local comparison is deliberately cancelled', async () => {
